@@ -189,7 +189,10 @@ function updateContent(md) {
 }
 
 function renderMarkdown() {
-    viewer.innerHTML = marked.parse(currentMarkdown);
+    const preprocessed = (typeof MarkdownBold !== 'undefined' && MarkdownBold.preprocessBold)
+        ? MarkdownBold.preprocessBold(currentMarkdown)
+        : currentMarkdown;
+    viewer.innerHTML = marked.parse(preprocessed);
 }
 
 function toggleMode(mode) {

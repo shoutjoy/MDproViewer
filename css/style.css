@@ -29,6 +29,7 @@
         .markdown-body blockquote { border-left: 4px solid #cbd5e1; padding-left: 1rem; color: #64748b; font-style: italic; margin-bottom: 1rem; }
         .markdown-body img { max-width: 100%; border-radius: 0.5rem; margin: 1rem 0; }
         .markdown-body a { color: #3b82f6; text-decoration: underline; }
+        .markdown-body b, .markdown-body strong { font-weight: 700; }
 
         /* Dark mode markdown */
         .dark .markdown-body h1, .dark .markdown-body h2 { border-bottom-color: #334155; }
