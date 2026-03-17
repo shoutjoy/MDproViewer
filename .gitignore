@@ -1,0 +1,3 @@
+# 빌드/배포 폴더 제외
+md-electron/
+Release/
