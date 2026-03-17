@@ -225,15 +225,134 @@ function handleFileSelect(event) {
     if (file) readFile(file);
 }
 
+const MPV_FORMAT = 'mdviewer/mpv';
+const MPV_VERSION = 1;
+
 function readFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
+        const name = (file.name || '').toLowerCase();
+        const raw = e.target.result;
+        if (name.endsWith('.mpv') || name.endsWith('.json')) {
+            try {
+                const data = JSON.parse(raw);
+                if (data && data.format === MPV_FORMAT && Array.isArray(data.folders) && Array.isArray(data.documents)) {
+                    restoreFromMpv(data);
+                    return;
+                }
+            } catch (_) {}
+        }
         currentFileName = file.name;
         fileNameDisplay.textContent = currentFileName;
-        updateContent(e.target.result);
+        updateContent(raw);
         showToast("파일을 불러왔습니다.");
     };
-    reader.readAsText(file);
+    reader.readAsText(file, 'UTF-8');
+}
+
+async function restoreFromMpv(data) {
+    if (!db) return;
+    const tx = db.transaction(['folders', 'documents'], 'readwrite');
+    const storeFolders = tx.objectStore('folders');
+    const storeDocs = tx.objectStore('documents');
+    storeFolders.clear();
+    storeDocs.clear();
+    for (const f of data.folders || []) {
+        storeFolders.add({ id: f.id, name: f.name });
+    }
+    for (const d of data.documents || []) {
+        storeDocs.add({
+            id: d.id,
+            title: d.title,
+            content: d.content || '',
+            folderId: d.folderId || 'root',
+            updatedAt: d.updatedAt ? new Date(d.updatedAt) : new Date()
+        });
+    }
+    await new Promise((res, rej) => {
+        tx.oncomplete = res;
+        tx.onerror = () => rej(tx.error);
+    });
+    renderDBList();
+    showToast("백업에서 문서를 복원했습니다.");
+}
+
+function openBackupModal() {
+    document.getElementById('backup-modal').classList.remove('hidden');
+    document.getElementById('backup-modal').classList.add('flex');
+    lucide.createIcons();
+}
+
+function closeBackupModal() {
+    document.getElementById('backup-modal').classList.add('hidden');
+    document.getElementById('backup-modal').classList.remove('flex');
+}
+
+async function exportZip() {
+    if (!db || typeof JSZip === 'undefined') {
+        showToast("ZIP 저장을 사용할 수 없습니다.");
+        return;
+    }
+    const folders = await new Promise(r => {
+        const req = db.transaction('folders', 'readonly').objectStore('folders').getAll();
+        req.onsuccess = () => r(req.result);
+    });
+    const documents = await new Promise(r => {
+        const req = db.transaction('documents', 'readonly').objectStore('documents').getAll();
+        req.onsuccess = () => r(req.result);
+    });
+    const zip = new JSZip();
+    const folderMap = new Map((folders || []).map(f => [f.id, f.name]));
+    for (const doc of documents || []) {
+        const folderName = folderMap.get(doc.folderId) || 'root';
+        const safeDir = folderName.replace(/[/\\?*:|"]/g, '_');
+        const path = safeDir + '/' + (doc.title || '제목없음').replace(/[/\\?*:|"]/g, '_') + '.md';
+        zip.file(path, doc.content || '');
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mdviewer_backup_' + new Date().toISOString().slice(0, 10) + '.zip';
+    a.click();
+    URL.revokeObjectURL(url);
+    closeBackupModal();
+    showToast("ZIP으로 저장했습니다.");
+}
+
+async function exportMpv() {
+    if (!db) return;
+    const folders = await new Promise(r => {
+        const req = db.transaction('folders', 'readonly').objectStore('folders').getAll();
+        req.onsuccess = () => r(req.result);
+    });
+    const documents = await new Promise(r => {
+        const req = db.transaction('documents', 'readonly').objectStore('documents').getAll();
+        req.onsuccess = () => r(req.result);
+    });
+    const payload = {
+        format: MPV_FORMAT,
+        version: MPV_VERSION,
+        exportedAt: new Date().toISOString(),
+        folders: folders || [],
+        documents: (documents || []).map(d => ({
+            id: d.id,
+            title: d.title,
+            content: d.content,
+            folderId: d.folderId,
+            updatedAt: d.updatedAt ? (d.updatedAt instanceof Date ? d.updatedAt.toISOString() : d.updatedAt) : null
+        }))
+    };
+    const json = JSON.stringify(payload, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'mdviewer_backup_' + new Date().toISOString().slice(0, 10) + '.mpv';
+    a.click();
+    URL.revokeObjectURL(url);
+    closeBackupModal();
+    showToast("MPV(JSON)로 저장했습니다. 확장자를 .json으로 바꿔도 호환됩니다.");
 }
 
 function saveFile() {
@@ -406,7 +525,16 @@ function saveToDB() {
     document.querySelector('#save-modal h3').textContent = '문서 저장';
     document.querySelector('#save-modal label').textContent = '저장할 제목을 입력하세요';
     const input = document.getElementById('save-title-input');
-    input.value = currentFileName.replace('.md', '');
+    let defaultTitle = currentFileName.replace(/\.md$/i, '');
+    if (editorTextarea && document.activeElement === editorTextarea) {
+        const start = editorTextarea.selectionStart;
+        const end = editorTextarea.selectionEnd;
+        if (start !== end) {
+            const selected = editorTextarea.value.substring(start, end).trim().replace(/\s+/g, ' ').slice(0, 200);
+            if (selected) defaultTitle = selected;
+        }
+    }
+    input.value = defaultTitle;
 
     currentActionCallback = (title) => {
         if (!title) return;
@@ -907,6 +1035,10 @@ window.adjustFontSize = adjustFontSize;
 window.showToast = showToast;
 window.closeSaveModal = closeSaveModal;
 window.confirmSaveModal = confirmSaveModal;
+window.openBackupModal = openBackupModal;
+window.closeBackupModal = closeBackupModal;
+window.exportZip = exportZip;
+window.exportMpv = exportMpv;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;

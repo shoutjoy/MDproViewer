@@ -12,6 +12,8 @@
     </script>
     <!-- Marked.js for MD Rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- JSZip for backup zip -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <!-- Markdown Bold: **텍스트** 특수문자 포함 시 <b> 선변환 (marked 파싱 실패 방지) -->
     <script src="./js/Markdown_bold.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
@@ -46,7 +48,7 @@
                 <i data-lucide="folder-open" class="w-5 h-5"></i>
                 <span class="hidden lg:inline text-sm font-medium">열기</span>
             </button>
-            <input type="file" id="file-input" class="hidden" accept=".md,.txt" onchange="handleFileSelect(event)">
+            <input type="file" id="file-input" class="hidden" accept=".md,.txt,.mpv,.json" onchange="handleFileSelect(event)">
 
             <button onclick="saveFile()"
                 class="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-2"
@@ -85,6 +87,22 @@
                 <i data-lucide="settings" class="w-5 h-5"></i>
             </button>
 
+            <!-- 확대/축소·폰트 (오른쪽) -->
+            <div id="header-zoom-font" class="flex items-center gap-2 ml-2">
+                <span class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">화면</span>
+                <div class="flex items-center gap-1">
+                    <button onclick="adjustPageScale(-0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="minus" class="w-4 h-4"></i></button>
+                    <span id="scale-display" class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">100%</span>
+                    <button onclick="adjustPageScale(0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="plus" class="w-4 h-4"></i></button>
+                </div>
+                <span class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider ml-2">폰트</span>
+                <div class="flex items-center gap-1">
+                    <button onclick="adjustFontSize(-2)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="type" class="w-4 h-4 scale-75"></i></button>
+                    <span id="font-size-display" class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">16px</span>
+                    <button onclick="adjustFontSize(2)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="type" class="w-4 h-4"></i></button>
+                </div>
+            </div>
+
             <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-1 ml-2">
                 <button onclick="toggleMode('view')" id="btn-view"
                     class="px-4 py-1.5 rounded-md text-sm font-medium transition-all bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400">보기</button>
@@ -107,6 +125,11 @@
                             class="flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">목차</button>
                     </div>
                     <div class="flex gap-1 shrink-0">
+                        <button onclick="openBackupModal()"
+                            class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400"
+                            title="내문서 백업">
+                            <i data-lucide="archive" class="w-4 h-4"></i>
+                        </button>
                         <button onclick="createNewFolder()" id="btn-new-folder"
                             class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400"
                             title="폴더 생성">
@@ -135,43 +158,11 @@
         </aside>
 
         <div class="flex-1 flex flex-col overflow-hidden">
-            <!-- Sub Toolbar -->
+            <!-- Sub Toolbar (편집 시 편집 도구 가운데) -->
             <div id="toolbar"
-                class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-6 py-2 flex flex-wrap items-center gap-4 no-print transition-colors">
-                <div class="flex items-center gap-2">
-                    <span
-                        class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">화면</span>
-                    <div class="flex items-center gap-1">
-                        <button onclick="adjustPageScale(-0.1)"
-                            class="p-1 hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 rounded text-slate-600 dark:text-slate-300"><i
-                                data-lucide="minus" class="w-4 h-4"></i></button>
-                        <span id="scale-display"
-                            class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">100%</span>
-                        <button onclick="adjustPageScale(0.1)"
-                            class="p-1 hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 rounded text-slate-600 dark:text-slate-300"><i
-                                data-lucide="plus" class="w-4 h-4"></i></button>
-                    </div>
-                </div>
-
-                <div class="h-4 w-px bg-slate-300 dark:bg-slate-600"></div>
-
-                <div class="flex items-center gap-2">
-                    <span
-                        class="text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">폰트</span>
-                    <div class="flex items-center gap-1">
-                        <button onclick="adjustFontSize(-2)"
-                            class="p-1 hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 rounded text-slate-600 dark:text-slate-300"><i
-                                data-lucide="type" class="w-4 h-4 scale-75"></i></button>
-                        <span id="font-size-display"
-                            class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">16px</span>
-                        <button onclick="adjustFontSize(2)"
-                            class="p-1 hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 rounded text-slate-600 dark:text-slate-300"><i
-                                data-lucide="type" class="w-4 h-4"></i></button>
-                    </div>
-                </div>
-
-                <!-- Edit Toolbar -->
-                <div id="edit-tools" class="hidden flex-wrap items-center gap-2 ml-auto">
+                class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-6 py-2 flex flex-wrap items-center justify-center gap-4 no-print transition-colors">
+                <!-- Edit Toolbar: 가운데 정렬 -->
+                <div id="edit-tools" class="hidden flex flex-wrap items-center justify-center gap-2">
                     <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
                     <button onclick="insertAtCursor('bold')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
@@ -297,6 +288,27 @@
             <div class="flex gap-2">
                 <button onclick="closeMoveModal()"
                     class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backup Modal (내문서 백업) -->
+    <div id="backup-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
+        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4">
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2 flex items-center gap-2">
+                <i data-lucide="archive" class="w-5 h-5"></i> 내문서 백업
+            </h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">저장된 문서를 한 번에 내려받습니다.</p>
+            <div class="flex flex-col gap-2">
+                <button onclick="exportZip()" class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center justify-center gap-2 transition-colors">
+                    <i data-lucide="file-archive" class="w-4 h-4"></i> ZIP 저장 (모든 문서 다운로드)
+                </button>
+                <button onclick="exportMpv()" class="w-full px-4 py-3 bg-indigo-100 dark:bg-indigo-900/40 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 rounded-lg text-sm font-medium text-indigo-700 dark:text-indigo-200 flex items-center justify-center gap-2 transition-colors">
+                    <i data-lucide="file-json" class="w-4 h-4"></i> MPV 저장 (.mpv / .json 호환)
+                </button>
+            </div>
+            <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
+                <button onclick="closeBackupModal()" class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
             </div>
         </div>
     </div>
