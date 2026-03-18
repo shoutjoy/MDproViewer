@@ -117,10 +117,10 @@
             </div>
 
             <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 sm:p-1 ml-0 sm:ml-1 md:ml-2 shrink-0">
-                <button onclick="toggleMode('view')" id="btn-view" title="Alt+1"
-                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400">보기</button>
-                <button onclick="toggleMode('edit')" id="btn-edit" title="Alt+2"
-                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">편집</button>
+                <button onclick="toggleMode('view')" id="btn-view" title="Alt+2"
+                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">보기</button>
+                <button onclick="toggleMode('edit')" id="btn-edit" title="Alt+1"
+                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400">편집</button>
             </div>
         </div>
     </header>
@@ -175,7 +175,7 @@
             <div id="toolbar"
                 class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-2 sm:px-4 md:px-6 py-1.5 sm:py-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 md:gap-4 no-print transition-colors">
                 <!-- Edit Toolbar: 가운데 정렬 -->
-                <div id="edit-tools" class="hidden flex flex-wrap items-center justify-center gap-2">
+                <div id="edit-tools" class="flex flex-wrap items-center justify-center gap-2">
                     <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
                     <button onclick="insertAtCursor('bold')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
@@ -249,7 +249,7 @@
             <!-- Main Content Area -->
             <main id="drop-zone" class="flex-1 overflow-hidden relative">
                 <div id="viewer-container"
-                    class="h-full w-full overflow-y-auto custom-scrollbar p-8 sm:p-12 md:p-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
+                    class="hidden h-full w-full overflow-y-auto custom-scrollbar p-8 sm:p-12 md:p-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
                     <div id="viewer" class="markdown-body w-full max-w-4xl print-area mx-auto">
                         <div
                             class="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
@@ -259,7 +259,7 @@
                     </div>
                 </div>
 
-                <div id="content-viewport" class="hidden h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 p-8 sm:p-12 md:p-16">
+                <div id="content-viewport" class="h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 p-8 sm:p-12 md:p-16 viewer-edit-active">
                     <textarea id="viewer-edit-ta" spellcheck="false"
                         class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
                         placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>

@@ -11,7 +11,7 @@ const AUTH_REQUEST_EMAIL = 'shoutjoy1@yonsei.ac.kr';
 // State
 let currentMarkdown = "";
 let currentFileName = "새 문서.md";
-let isEditMode = false;
+let isEditMode = true;
 let pageScale = 1.0;
 let fontSize = 16;
 let modalMode = 'link';
@@ -125,14 +125,15 @@ window.onload = async () => {
     initTheme();
     initSettings();
     lucide.createIcons();
+    toggleMode('edit');
+
     await initDB();
     await ensureRootFolder();
     renderDBList();
     checkAutoSave();
 
     updateContent('');
-
-    toggleMode('edit');
+    if (isEditMode) editorTextarea.focus();
 
     sidebar.style.display = 'none';
 
