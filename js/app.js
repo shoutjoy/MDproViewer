@@ -260,10 +260,30 @@ function updateContent(md) {
 }
 
 function renderMarkdown() {
-    const preprocessed = (typeof MarkdownBold !== 'undefined' && MarkdownBold.preprocessBold)
-        ? MarkdownBold.preprocessBold(currentMarkdown)
-        : currentMarkdown;
-    viewer.innerHTML = marked.parse(preprocessed);
+    const raw = String(currentMarkdown ?? '');
+    let preprocessed = raw;
+    try {
+        if (typeof MarkdownBold !== 'undefined' && MarkdownBold.preprocessBold) {
+            preprocessed = MarkdownBold.preprocessBold(raw) || raw;
+        }
+        if (typeof marked === 'undefined' || !marked.parse) {
+            viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+            return;
+        }
+        const out = marked.parse(preprocessed);
+        if (out != null && typeof out.then === 'function') {
+            out.then(function (h) {
+                viewer.innerHTML = h || '';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }).catch(function () {
+                viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+            });
+            return;
+        }
+        viewer.innerHTML = out || '';
+    } catch (e) {
+        viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+    }
 }
 
 function toggleMode(mode) {
@@ -285,13 +305,30 @@ function toggleMode(mode) {
         editorTextarea.focus();
     } else {
         isEditMode = false;
+        if (editorTextarea) {
+            editorTextarea.blur();
+            currentMarkdown = String(editorTextarea.value ?? '');
+        }
         editorContainer.classList.remove('viewer-edit-active');
-        renderMarkdown();
-        viewerContainer.classList.remove('hidden');
         editorContainer.classList.add('hidden');
         editTools.classList.add('hidden');
         btnView.classList.add(...activeClasses);
         btnEdit.classList.remove(...activeClasses);
+        viewerContainer.classList.remove('hidden');
+        renderMarkdown();
+        requestAnimationFrame(function () {
+            if (isEditMode) return;
+            if (editorTextarea) {
+                const v = String(editorTextarea.value ?? '');
+                if (v !== currentMarkdown) {
+                    currentMarkdown = v;
+                    renderMarkdown();
+                }
+            }
+            if (currentMarkdown.trim() && viewer && !viewer.textContent.trim()) {
+                renderMarkdown();
+            }
+        });
     }
 }
 
