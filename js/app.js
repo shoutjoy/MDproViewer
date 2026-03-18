@@ -145,6 +145,15 @@ window.onload = async () => {
             updateContent(data.content);
             showToast("외부 문서를 열었습니다.");
         });
+        // 앱이 파일로 처음 실행된 경우 (더블클릭으로 열기)
+        window.electron.ipcRenderer.invoke('get-initial-file').then(function (data) {
+            if (data && data.fileName && data.content !== undefined) {
+                currentFileName = data.fileName;
+                fileNameDisplay.textContent = currentFileName;
+                updateContent(data.content);
+                showToast("문서를 열었습니다.");
+            }
+        }).catch(function () {});
     }
 
     document.addEventListener('dragover', (e) => {
@@ -858,7 +867,7 @@ async function insertUserInfoAtCursor() {
     }
     const s = await getAiSettings();
     const u = s && s.userInfo;
-    if (!u || (!String(u.name || '').trim() && !String(u.id || '').trim() && !String(u.major || '').trim() && !String(u.contact || '').trim())) {
+    if (!u || (!String(u.name || '').trim() && !String(u.id || '').trim() && !String(u.major || '').trim() && !String(u.contact || '').trim() && !String(u.email || '').trim())) {
         showToast('설정에서 사용자 정보를 저장한 뒤 사용하세요.');
         return;
     }
@@ -867,7 +876,8 @@ async function insertUserInfoAtCursor() {
     if (String(u.id || '').trim()) lines.push('학번: ' + String(u.id).trim());
     if (String(u.major || '').trim()) lines.push('전공: ' + String(u.major).trim());
     if (String(u.contact || '').trim()) lines.push('연락처: ' + String(u.contact).trim());
-    const block = lines.join('\n');
+    if (String(u.email || '').trim()) lines.push('이메일: ' + String(u.email).trim());
+    const block = lines.map(function (line) { return line + '  '; }).join('\n');
     const ta = editorTextarea;
     const scrollTop = ta.scrollTop;
     ta.focus();
@@ -877,6 +887,29 @@ async function insertUserInfoAtCursor() {
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
     showToast('사용자 정보를 삽입했습니다.');
+}
+
+function insertMarkdownImageAtCursor(imageUrl, altText) {
+    if (!isEditMode) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+    const u = String(imageUrl || '').trim();
+    if (!u) {
+        showToast('이미지 URL을 입력하세요.');
+        return;
+    }
+    const alt = String(altText || 'image').trim().replace(/[\[\]]/g, '') || 'image';
+    const md = '![' + alt + '](' + u + ')';
+    const ta = editorTextarea;
+    const scrollTop = ta.scrollTop;
+    ta.focus();
+    document.execCommand('insertText', false, md);
+    currentMarkdown = ta.value;
+    ta.scrollTop = scrollTop;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    showToast('이미지 마크다운을 삽입했습니다.');
 }
 
 // --- Helper Insertion (Modal) ---
@@ -1285,7 +1318,8 @@ function readAiUserInfoFromModal() {
     const id = ((document.getElementById('ai-user-id') && document.getElementById('ai-user-id').value) || '').trim();
     const major = ((document.getElementById('ai-user-major') && document.getElementById('ai-user-major').value) || '').trim();
     const contact = ((document.getElementById('ai-user-contact') && document.getElementById('ai-user-contact').value) || '').trim();
-    return { name, id, major, contact };
+    const email = ((document.getElementById('ai-user-email') && document.getElementById('ai-user-email').value) || '').trim();
+    return { name, id, major, contact, email };
 }
 
 async function saveAiUserInfo() {
@@ -1296,7 +1330,7 @@ async function saveAiUserInfo() {
         return;
     }
     const userInfo = readAiUserInfoFromModal();
-    if (!userInfo.name && !userInfo.id && !userInfo.major && !userInfo.contact) {
+    if (!userInfo.name && !userInfo.id && !userInfo.major && !userInfo.contact && !userInfo.email) {
         if (fb) fb.textContent = '이름·학번 등 최소 한 항목을 입력하세요.';
         showToast('저장할 사용자 정보를 입력하세요.');
         return;
@@ -1307,10 +1341,10 @@ async function saveAiUserInfo() {
 }
 
 async function sendAuthRequestMail() {
-    const { name, id, major, contact } = readAiUserInfoFromModal();
-    const userInfo = { name, id, major, contact };
+    const { name, id, major, contact, email } = readAiUserInfoFromModal();
+    const userInfo = { name, id, major, contact, email };
     await setAiSettings({ userInfo });
-    const body = `인증번호 요청\n\n이름: ${name}\n학번: ${id}\n전공: ${major}\n연락처: ${contact}`;
+    const body = `인증번호 요청\n\n이름: ${name}\n학번: ${id}\n전공: ${major}\n연락처: ${contact}\n이메일: ${email}`;
     const subject = '인공지능 인증번호 요청';
     const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1' +
         '&to=' + encodeURIComponent(AUTH_REQUEST_EMAIL) +
@@ -1829,11 +1863,13 @@ async function loadAiSettingsToUI() {
     const idEl = document.getElementById('ai-user-id');
     const majorEl = document.getElementById('ai-user-major');
     const contactEl = document.getElementById('ai-user-contact');
+    const emailEl = document.getElementById('ai-user-email');
     if (settings.userInfo) {
         if (nameEl) nameEl.value = settings.userInfo.name || '';
         if (idEl) idEl.value = settings.userInfo.id || '';
         if (majorEl) majorEl.value = settings.userInfo.major || '';
         if (contactEl) contactEl.value = settings.userInfo.contact || '';
+        if (emailEl) emailEl.value = settings.userInfo.email || '';
     }
 }
 
@@ -1911,6 +1947,7 @@ window.applyRecovery = applyRecovery;
 window.dismissRecovery = dismissRecovery;
 window.insertAtCursor = insertAtCursor;
 window.insertUserInfoAtCursor = insertUserInfoAtCursor;
+window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;

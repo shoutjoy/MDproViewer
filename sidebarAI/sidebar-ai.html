@@ -116,7 +116,15 @@
       </div>
       <label style="font-size:10px;color:#64748b;display:block;margin-bottom:4px">기본: 학술·논문용 도표 스타일</label>
       <label><input type="checkbox" id="ssp-no-text"> 단순 이미지 (텍스트·자막 없음)</label>
-      <button type="button" class="sa-btn" style="background:#f59e0b;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-top:6px" onclick="viewerSSPGenerate()">🎨 AI 재생성</button>
+      <div class="ssp-action-row">
+        <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">🎨 AI 재생성</button>
+        <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="imgBB에서 이미지 업로드 후 링크 발급">imgBB</button>
+      </div>
+      <label class="ssp-img-link-label">이미지 URL → 마크다운 삽입 (편집 모드)</label>
+      <div class="ssp-img-link-row">
+        <input type="url" id="ssp-image-link-url" class="ssp-image-link-input" placeholder="https://i.ibb.co/… (imgBB 등)" inputmode="url">
+        <button type="button" class="sa-btn ghost ssp-btn-insert-md" onclick="sspInsertImageMarkdown()">삽입</button>
+      </div>
       <div id="ssp-progress-wrap" class="ssp-progress-wrap">
         <div class="ssp-progress-bar">
           <div id="ssp-progress-fill" class="ssp-progress-fill"></div>

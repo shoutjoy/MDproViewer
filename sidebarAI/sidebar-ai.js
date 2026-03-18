@@ -766,6 +766,19 @@
     a.download = 'ssp_image_' + Date.now() + '.png';
     a.click();
   }
+  function viewerSSPOpenImgbb() {
+    try { window.open('https://imgbb.com/', '_blank', 'noopener,noreferrer'); } catch (e) {}
+  }
+  function sspInsertImageMarkdown() {
+    var el = document.getElementById('ssp-image-link-url');
+    var u = el && el.value.trim();
+    if (!u) { alert('이미지 URL을 입력하세요.'); return; }
+    if (typeof window.insertMarkdownImageAtCursor !== 'function') {
+      alert('문서 삽입을 사용할 수 없습니다.');
+      return;
+    }
+    window.insertMarkdownImageAtCursor(u, 'image');
+  }
   function viewerSSPImgHistoryLoad() {
     try {
       var raw = localStorage.getItem(LS_SSP_IMG_HISTORY);
@@ -835,6 +848,8 @@
   window.viewerSSPInit = viewerSSPInit;
   window.viewerSSPGenerate = viewerSSPGenerate;
   window.viewerSSPDownload = viewerSSPDownload;
+  window.viewerSSPOpenImgbb = viewerSSPOpenImgbb;
+  window.sspInsertImageMarkdown = sspInsertImageMarkdown;
   window.viewerSSPClearSeed = viewerSSPClearSeed;
   window.viewerSSPOpenFullscreen = viewerSSPOpenFullscreen;
   window.viewerSSPCloseFullscreen = viewerSSPCloseFullscreen;

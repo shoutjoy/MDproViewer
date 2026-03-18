@@ -5,6 +5,18 @@
             background-color: #f8fafc;
             color: #1e293b;
         }
+
+        /* 헤더 타이틀: 창 너비에 따라 글자 크기 자동 조절 */
+        .app-header-title {
+            font-size: clamp(0.65rem, 0.42rem + 2.8vw, 1.25rem);
+            line-height: 1.25;
+        }
+        @media (min-width: 1024px) {
+            .app-header-title { font-size: 1.125rem; line-height: 1.2; }
+        }
+        @media (min-width: 1280px) {
+            .app-header-title { font-size: 1.25rem; }
+        }
         .dark body { background-color: #0f172a; color: #f1f5f9; }
 
         .markdown-body {

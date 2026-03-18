@@ -199,6 +199,16 @@ body.theme-light .ssp-ai-sidebar .ssp-upload { border-color: #cbd5e1; color: #64
 body.theme-light .ssp-ai-sidebar select, body.theme-light .ssp-ai-sidebar textarea { background: #fff; color: #1e293b; border-color: #e2e8f0; }
 .ssp-ai-sidebar textarea { min-height: 56px; resize: vertical; max-height: none; flex-shrink: 0; }
 
+.ssp-action-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.ssp-btn-generate { background: #f59e0b !important; color: #fff !important; border: none !important; padding: 6px 12px !important; border-radius: 6px !important; cursor: pointer; font-size: 12px !important; }
+.ssp-btn-imgbb { background: #0d9488 !important; color: #fff !important; border: none !important; padding: 6px 12px !important; border-radius: 6px !important; cursor: pointer; font-size: 12px !important; }
+.ssp-btn-imgbb:hover { background: #0f766e !important; }
+.ssp-img-link-label { font-size: 10px; color: #94a3b8; display: block; margin: 10px 0 4px; }
+.ssp-img-link-row { display: flex; gap: 6px; align-items: stretch; margin-bottom: 4px; flex-wrap: wrap; }
+.ssp-image-link-input { flex: 1; min-width: 120px; padding: 6px 8px; font-size: 10px; border: 1px solid #1e2332; border-radius: 4px; background: #0c0e13; color: #b0bac8; box-sizing: border-box; }
+body.theme-light .ssp-image-link-input { background: #fff; color: #1e293b; border-color: #e2e8f0; }
+.ssp-btn-insert-md { font-size: 10px !important; padding: 6px 10px !important; flex-shrink: 0; }
+
 .ssp-ai-sidebar .ssp-ratio-wrap { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
 .ssp-ai-sidebar .ssp-ratio-btn { padding: 4px 10px; font-size: 10px; border: 1px solid #2e3447; border-radius: 4px; background: #1a1e28; color: #94a3b8; cursor: pointer; }
 .ssp-ai-sidebar .ssp-ratio-btn.active { border-color: #f59e0b; color: #f59e0b; background: rgba(245,158,11,0.15); }
