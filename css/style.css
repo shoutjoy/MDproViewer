@@ -71,6 +71,21 @@
         }
         .dark .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
         .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+
+        /* 편집창 전용 라이트 모드 (버튼으로 토글) */
+        #content-viewport.editor-light-mode {
+            background-color: #f8fafc;
+        }
+        #content-viewport.editor-light-mode #viewer-edit-ta {
+            background-color: #ffffff;
+            color: #1e293b;
+            caret-color: #0f172a;
+        }
+        #content-viewport.editor-light-mode #viewer-edit-ta::placeholder {
+            color: #94a3b8;
+        }
+        #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-track { background: #e2e8f0; }
+        #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; }
         
         /* Sidebar Transitions */
         #sidebar {

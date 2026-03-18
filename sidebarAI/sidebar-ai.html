@@ -34,9 +34,12 @@
         </select>
       </div>
       <label>입력된 지문 (선택한 텍스트)</label>
-      <textarea id="scholar-ai-selected" readonly placeholder="문서에서 텍스트를 선택하면 여기에 표시됩니다."></textarea>
-      <label>프롬프트 작성 창</label>
-      <textarea id="scholar-ai-prompt" placeholder="선택한 지문에 대한 질문이나 지시를 입력하세요."></textarea>
+      <textarea id="scholar-ai-selected" placeholder="문서에서 텍스트를 선택하면 여기에 표시됩니다. 붙여넣은 후 추가 입력 가능."></textarea>
+      <div class="scholar-ai-prompt-wrap" id="scholar-ai-prompt-wrap">
+        <label>프롬프트 작성 창</label>
+        <textarea id="scholar-ai-prompt" placeholder="선택한 지문에 대한 질문이나 지시를 입력하세요."></textarea>
+        <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="드래그하여 프롬프트창 높이 조절"></div>
+      </div>
       <button type="button" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>
       <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
         <label>결과창</label>
@@ -92,8 +95,10 @@
         이미지 업로드 (JPG, PNG, GIF, WebP)<br><small>또는 Ctrl+V 붙여넣기</small>
       </div>
       <input type="file" id="ssp-file-input" accept="image/*" style="display:none">
-      <label>프롬프트 (비우면 시드 이미지 기반 변형)</label>
+      <label>프롬프트 1 (비우면 시드 이미지 기반 변형)</label>
       <textarea id="ssp-prompt" placeholder="예: 학술적 다이어그램 스타일로 변환"></textarea>
+      <label>프롬프트 2 (추가 지시, 수행 시 1+2 함께 사용)</label>
+      <textarea id="ssp-prompt-2" placeholder="예: 배경은 흰색, 선명한 선으로"></textarea>
       <label>이미지 생성 모델</label>
       <select id="ssp-model">
         <option value="gemini-3.1-flash-image-preview">Nano Banana 2</option>
@@ -109,7 +114,8 @@
         <button type="button" class="ssp-ratio-btn" data-ratio="4:3">4:3</button>
         <button type="button" class="ssp-ratio-btn" data-ratio="3:4">3:4</button>
       </div>
-      <label><input type="checkbox" id="ssp-no-text"> 단순 이미지 (텍스트 없음)</label>
+      <label style="font-size:10px;color:#64748b;display:block;margin-bottom:4px">기본: 학술·논문용 도표 스타일</label>
+      <label><input type="checkbox" id="ssp-no-text"> 단순 이미지 (텍스트·자막 없음)</label>
       <button type="button" class="sa-btn" style="background:#f59e0b;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px;margin-top:6px" onclick="viewerSSPGenerate()">🎨 AI 재생성</button>
       <div id="ssp-progress-wrap" class="ssp-progress-wrap">
         <div class="ssp-progress-bar">

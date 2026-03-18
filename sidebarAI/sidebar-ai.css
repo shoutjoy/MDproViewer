@@ -80,6 +80,9 @@ body.theme-light .scholar-ai-header .sa-btn { background: #fff; border-color: #9
   gap: 10px;
   min-height: 0;
 }
+#scholar-ai-model-panel { flex-shrink: 0; }
+#scholar-ai-model-panel label { display: block; margin-bottom: 6px; color: #94a3b8; font-size: 11px; }
+#scholar-ai-model-select { min-height: 36px; cursor: pointer; }
 .scholar-ai-body label { font-size: 11px; color: #94a3b8; display: block; margin-bottom: 4px; }
 .scholar-ai-body textarea {
   width: 100%;
@@ -103,6 +106,13 @@ body.theme-light #scholar-ai-pre-prompt-panel .scholar-ai-pre-prompt-ta,
 body.theme-light #scholar-ai-pre-prompt-panel textarea,
 body.theme-light #scholar-ai-model-panel select { background: #f1f5f9; color: #1e293b; border-color: #cbd5e1; }
 body.theme-light #scholar-ai-pre-prompt-text { color: #1e293b; }
+
+.scholar-ai-prompt-wrap { display: flex; flex-direction: column; height: 120px; min-height: 80px; max-height: 300px; position: relative; flex-shrink: 0; }
+.scholar-ai-prompt-wrap .scholar-ai-prompt-resize-handle { height: 6px; cursor: row-resize; background: rgba(79,142,247,0.12); flex-shrink: 0; border-radius: 0 0 4px 4px; }
+.scholar-ai-prompt-wrap .scholar-ai-prompt-resize-handle:hover { background: rgba(79,142,247,0.35); }
+body.theme-light .scholar-ai-prompt-wrap .scholar-ai-prompt-resize-handle { background: rgba(79,142,247,0.15); }
+body.theme-light .scholar-ai-prompt-wrap .scholar-ai-prompt-resize-handle:hover { background: rgba(79,142,247,0.3); }
+#scholar-ai-prompt-wrap #scholar-ai-prompt { flex: 1; min-height: 60px; resize: none; }
 
 .scholar-ai-result-wrap { display: flex; flex-direction: column; flex: 1; min-height: 200px; max-height: 600px; position: relative; }
 .scholar-ai-result-wrap .scholar-ai-result { flex: 1; min-height: 120px; }
@@ -187,7 +197,7 @@ body.theme-light .ssp-ai-sidebar .ssp-upload { border-color: #cbd5e1; color: #64
 .ssp-ai-sidebar label { font-size: 10px; color: #94a3b8; display: block; margin-bottom: 4px; }
 .ssp-ai-sidebar select, .ssp-ai-sidebar textarea { width: 100%; padding: 6px 8px; font-size: 11px; border: 1px solid #1e2332; border-radius: 4px; background: #0c0e13; color: #b0bac8; box-sizing: border-box; margin-bottom: 8px; }
 body.theme-light .ssp-ai-sidebar select, body.theme-light .ssp-ai-sidebar textarea { background: #fff; color: #1e293b; border-color: #e2e8f0; }
-.ssp-ai-sidebar textarea { min-height: 56px; resize: vertical; max-height: 100px; flex-shrink: 0; }
+.ssp-ai-sidebar textarea { min-height: 56px; resize: vertical; max-height: none; flex-shrink: 0; }
 
 .ssp-ai-sidebar .ssp-ratio-wrap { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
 .ssp-ai-sidebar .ssp-ratio-btn { padding: 4px 10px; font-size: 10px; border: 1px solid #2e3447; border-radius: 4px; background: #1a1e28; color: #94a3b8; cursor: pointer; }

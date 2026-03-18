@@ -39,26 +39,45 @@
         return { text: text };
       },
 
-      // 필수: 이미지 생성 API
+      // 필수: 이미지 생성 — Gemini 이미지 모델은 :generateContent, Imagen은 :predict
       generateImage: async function (prompt, options) {
         var key = getApiKey();
-        var modelId = (options && options.modelId) || 'gemini-3.1-flash-image-preview';
-        var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateImages?key=' + key;
-        var body = {
-          instances: [{ prompt: prompt || '', image: options?.seedImage ? { bytesBase64Encoded: options.seedImage.split(',')[1] } : undefined }].filter(Boolean),
-          parameters: {
-            sampleCount: 1,
-            aspectRatio: (options && options.aspectRatio) || '1:1',
-            outputOptions: { mimeType: 'image/png' },
-            personGeneration: 'DONT_ALLOW'
-          }
-        };
-        if (options?.noText) body.parameters.personGeneration = 'DONT_ALLOW';
-        var res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        if (!res.ok) throw new Error('Image API Error: ' + res.status);
-        var data = await res.json();
-        var b64 = data.predictions?.[0]?.bytesBase64Encoded;
-        return b64 ? 'data:image/png;base64,' + b64 : null;
+        if (!key) throw new Error('API 키 없음');
+        var modelId = (options && options.modelId) || 'gemini-2.5-flash-image';
+        var aspectRatio = (options && options.aspectRatio) || '1:1';
+        var seed = options && options.seedImage;
+        var hasSeed = seed && String(seed).indexOf('data:image') === 0;
+        if (String(modelId).indexOf('imagen-') === 0 && !hasSeed) {
+          var u1 = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':predict?key=' + encodeURIComponent(key);
+          var imP = (prompt || '').trim() || 'image';
+          imP += (options && options.noText) ? ' No text.' : ' Scholarly figure style; labels OK.';
+          var r1 = await fetch(u1, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ instances: [{ prompt: imP }], parameters: { sampleCount: 1, aspectRatio: aspectRatio, personGeneration: 'allow_adult' } }) });
+          if (!r1.ok) throw new Error('Imagen: ' + r1.status);
+          var d1 = await r1.json();
+          var b1 = d1.generatedImages && d1.generatedImages[0] && d1.generatedImages[0].image && d1.generatedImages[0].image.imageBytes;
+          return b1 ? 'data:image/png;base64,' + b1 : null;
+        }
+        if (String(modelId).indexOf('imagen-') === 0) modelId = 'gemini-2.5-flash-image';
+        var u2 = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent?key=' + encodeURIComponent(key);
+        var simple = options && options.noText;
+        var acad = '[Scholarly figure] For papers/lectures: clear diagram style, labels OK. ';
+        var simp = '[Simple] No text or typography. ';
+        var txt = (prompt || '').trim() || (hasSeed ? (simple ? 'Edit image. ' + simp : 'Scholarly adaptation. ' + acad) : (simple ? 'Image. ' + simp : 'Academic diagram. ' + acad));
+        if (txt.indexOf('[Scholarly') < 0 && txt.indexOf('[Simple') < 0) txt += simple ? ' ' + simp : ' ' + acad;
+        var parts = [];
+        if (hasSeed) {
+          var i = seed.indexOf(',');
+          var mm = seed.match(/^data:([^;]+);/);
+          parts.push({ inlineData: { mimeType: mm ? mm[1] : 'image/png', data: i >= 0 ? seed.slice(i + 1) : seed } });
+        }
+        parts.push({ text: txt });
+        var r2 = await fetch(u2, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ role: 'user', parts: parts }], generationConfig: { responseModalities: ['TEXT', 'IMAGE'], imageConfig: { aspectRatio: aspectRatio } } }) });
+        if (!r2.ok) throw new Error('Gemini image: ' + r2.status);
+        var d2 = await r2.json();
+        var cand = d2.candidates && d2.candidates[0];
+        var ps = cand && cand.content && cand.content.parts;
+        if (ps) for (var j = 0; j < ps.length; j++) if (ps[j].inlineData && ps[j].inlineData.data) return 'data:' + (ps[j].inlineData.mimeType || 'image/png') + ';base64,' + ps[j].inlineData.data;
+        throw new Error('이미지 없음');
       },
 
       // 필수: API 키
@@ -84,7 +103,7 @@
 
       // 이미지 모델
       getImageModelId: function () {
-        return localStorage.getItem('ss_image_model') || 'gemini-3.1-flash-image-preview';
+        return localStorage.getItem('ss_image_model') || 'gemini-2.5-flash-image';
       },
 
       // 작업 중단

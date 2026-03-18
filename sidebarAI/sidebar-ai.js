@@ -38,6 +38,14 @@
     if (h && typeof h[name] === 'function') return h[name].apply(h, args);
     return undefined;
   }
+  /** 콜백/호스트에서 함수 참조만 가져옴 (호출하지 않음). async API·setter 등에 필수 */
+  function getCallback(name) {
+    var c = getConfig();
+    if (c.callbacks && typeof c.callbacks[name] === 'function') return c.callbacks[name];
+    var h = getHost();
+    if (h && typeof h[name] === 'function') return function () { return h[name].apply(h, arguments); };
+    return undefined;
+  }
   function invokeSync(name) {
     var c = getConfig();
     var args = Array.prototype.slice.call(arguments, 1);
@@ -47,19 +55,76 @@
     return undefined;
   }
 
+  function getViewerMarkdownRoot() {
+    return document.getElementById('viewer') || document.getElementById('page-content');
+  }
+
+  var __aiDocSelTimer = null;
+  /** 보기(#viewer) 또는 편집(textarea)에서 선택한 텍스트 → ScholarAI 지문 + SSP 프롬프트 */
+  function syncAiPanelsFromDocumentSelection() {
+    var viewer = getViewerMarkdownRoot();
+    var editTa = document.getElementById('viewer-edit-ta');
+    var vp = document.getElementById('content-viewport');
+    var isEdit = vp && vp.classList.contains('viewer-edit-active') && !vp.classList.contains('hidden');
+    var taPassage = document.getElementById('scholar-ai-selected');
+    var sspPrompt = document.getElementById('ssp-prompt');
+    if (!taPassage && !sspPrompt) return;
+    var text = '';
+    var edStart, edEnd, fromEditor = false;
+    if (isEdit && editTa) {
+      var s = editTa.selectionStart, e = editTa.selectionEnd;
+      if (s !== e) {
+        text = editTa.value.slice(s, e).trim();
+        if (text) {
+          fromEditor = true;
+          edStart = s;
+          edEnd = e;
+        }
+      }
+    }
+    if (!text && viewer) {
+      var sel = window.getSelection && window.getSelection();
+      if (sel && !sel.isCollapsed && sel.anchorNode && viewer.contains(sel.anchorNode)) {
+        var schBar = document.getElementById('scholar-ai-sidebar');
+        var sspBar = document.getElementById('ssp-ai-sidebar');
+        if (schBar && schBar.contains(sel.anchorNode)) return;
+        if (sspBar && sspBar.contains(sel.anchorNode)) return;
+        text = sel.toString().trim();
+      }
+    }
+    if (!text) {
+      if (taPassage && (window.__contentType || '') === 'summary' && (!taPassage.value || !String(taPassage.value).trim())) {
+        taPassage.value = '텍스트를 선택하시면 자동입력됩니다(from 제작자 박중희 교수).';
+      }
+      return;
+    }
+    if (fromEditor) {
+      __scholarAISelStart = edStart;
+      __scholarAISelEnd = edEnd;
+    } else {
+      __scholarAISelStart = __scholarAISelEnd = null;
+    }
+    if (taPassage) taPassage.value = text;
+    if (sspPrompt) sspPrompt.value = text;
+  }
+
+  function onAiGlobalSelectionChange() {
+    clearTimeout(__aiDocSelTimer);
+    __aiDocSelTimer = setTimeout(syncAiPanelsFromDocumentSelection, 90);
+  }
+
   function toggleScholarAI() {
     var el = document.getElementById('scholar-ai-sidebar');
     if (!el) return;
     el.classList.toggle('open');
     if (el.classList.contains('open')) {
-      document.addEventListener('selectionchange', scholarAISyncSelection);
-      scholarAISyncSelection();
+      syncAiPanelsFromDocumentSelection();
       scholarAIInitResize();
       scholarAILoadPrePrompt();
       scholarAIInitModelSelect();
     } else {
-      document.removeEventListener('selectionchange', scholarAISyncSelection);
       el.classList.remove('fullscreen');
+      try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
     }
   }
   function scholarAIInitResize() {
@@ -96,8 +161,8 @@
     if (el) {
       el.classList.remove('open');
       el.classList.remove('fullscreen');
-      document.removeEventListener('selectionchange', scholarAISyncSelection);
     }
+    try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
   }
   function toggleScholarAIPrePrompt() {
     var p = document.getElementById('scholar-ai-pre-prompt-panel');
@@ -112,9 +177,15 @@
     var p = document.getElementById('scholar-ai-model-panel');
     var btn = document.getElementById('sa-model-btn');
     if (p) {
-      p.style.display = p.style.display === 'none' ? 'block' : 'none';
+      var open = p.style.display === 'none' || !p.style.display;
+      p.style.display = open ? 'block' : 'none';
       if (btn) btn.classList.toggle('active', p.style.display !== 'none');
       scholarAIInitModelSelect();
+      if (open && p.scrollIntoView) {
+        requestAnimationFrame(function () {
+          try { p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { p.scrollIntoView(true); }
+        });
+      }
     }
   }
   function scholarAILoadPrePrompt() {
@@ -125,18 +196,22 @@
     if (!el._scholarAISaveOnBlur) {
       el._scholarAISaveOnBlur = true;
       el.addEventListener('blur', function () {
-        var setter = invokeSync('setScholarAISystemInstruction');
+        var setter = getCallback('setScholarAISystemInstruction');
         if (typeof setter === 'function') setter(el.value || '');
       });
     }
   }
   function scholarAIInitModelSelect() {
     var sel = document.getElementById('scholar-ai-model-select');
-    var getter = invokeSync('getScholarAIModelId');
-    if (!sel || typeof getter !== 'function') return;
-    sel.value = getter() || 'gemini-2.5-pro';
+    var getter = getCallback('getScholarAIModelId');
+    if (!sel) return;
+    try {
+      sel.value = (getter && typeof getter === 'function' ? getter() : null) || 'gemini-2.5-pro';
+    } catch (e) {
+      sel.value = 'gemini-2.5-pro';
+    }
     sel.onchange = function () {
-      var setter = invokeSync('setScholarAIModelId');
+      var setter = getCallback('setScholarAIModelId');
       if (typeof setter === 'function') setter(sel.value);
     };
   }
@@ -145,27 +220,7 @@
     if (el) el.classList.toggle('fullscreen');
   }
   function scholarAISyncSelection() {
-    var ta = document.getElementById('scholar-ai-selected');
-    var editTa = document.getElementById('viewer-edit-ta');
-    var isEdit = document.getElementById('content-viewport') && document.getElementById('content-viewport').classList.contains('viewer-edit-active');
-    if (!ta) return;
-    if (isEdit && editTa && editTa === document.activeElement) {
-      var start = editTa.selectionStart, end = editTa.selectionEnd;
-      ta.value = editTa.value.slice(start, end);
-      __scholarAISelStart = start;
-      __scholarAISelEnd = end;
-      if (!ta.value.trim() && (window.__contentType || '') === 'summary') ta.value = '텍스트를 선택하시면 자동입력됩니다(from 제작자 박중희 교수).';
-      return;
-    }
-    __scholarAISelStart = __scholarAISelEnd = null;
-    var sel = window.getSelection && window.getSelection();
-    var target = document.getElementById('page-content');
-    if (sel && target && sel.anchorNode && target.contains(sel.anchorNode)) {
-      ta.value = sel.toString().trim();
-      try { sel.removeAllRanges(); } catch (e) {}
-    } else if (!ta.value.trim() && (window.__contentType || '') === 'summary') {
-      ta.value = '텍스트를 선택하시면 자동입력됩니다(from 제작자 박중희 교수).';
-    }
+    syncAiPanelsFromDocumentSelection();
   }
   function scholarAIHistorySave() {
     try { localStorage.setItem('ss_viewer_scholar_ai_history', JSON.stringify(__scholarAIHistory)); } catch (e) {}
@@ -228,7 +283,7 @@
     var passage = (sel && sel.value) ? sel.value.trim() : '';
     var userQ = (promptEl && promptEl.value) ? promptEl.value.trim() : '';
     if (!passage) { alert('문서에서 텍스트를 선택한 뒤 실행하세요.'); return; }
-    var callGemini = invokeSync('callGemini');
+    var callGemini = getCallback('callGemini');
     if (typeof callGemini !== 'function') { alert('메인 창을 찾을 수 없거나 API를 사용할 수 없습니다.'); return; }
     if (resultEl) resultEl.value = '처리 중...';
     try {
@@ -289,6 +344,36 @@
     var zoomTa = document.getElementById('scholar-ai-result-zoom-ta');
     if (resultEl && zoomTa) resultEl.value = zoomTa.value;
     if (overlay) overlay.classList.remove('open');
+  }
+  function scholarAIPromptWrapInitResize() {
+    var handle = document.getElementById('scholar-ai-prompt-resize-handle');
+    var wrap = document.getElementById('scholar-ai-prompt-wrap');
+    if (!handle || !wrap) return;
+    var minH = 80;
+    var maxH = 300;
+    var startY = 0;
+    var startH = 0;
+    function onMove(e) {
+      var dy = e.clientY - startY;
+      var h = Math.max(minH, Math.min(maxH, startH + dy));
+      wrap.style.height = h + 'px';
+      wrap.style.minHeight = h + 'px';
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    handle.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      startY = e.clientY;
+      startH = wrap.offsetHeight;
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    });
   }
   function scholarAIResultWrapInitResize() {
     var handle = document.getElementById('scholar-ai-result-resize-handle');
@@ -391,34 +476,19 @@
     if (!el) return;
     el.classList.toggle('open');
     if (el.classList.contains('open')) {
-      document.addEventListener('selectionchange', viewerSSPSyncSelection);
-      viewerSSPSyncSelection();
+      syncAiPanelsFromDocumentSelection();
       viewerSSPInit();
     } else {
-      document.removeEventListener('selectionchange', viewerSSPSyncSelection);
+      try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
     }
   }
   function sspAIShrink() {
     var el = document.getElementById('ssp-ai-sidebar');
-    if (el) {
-      el.classList.remove('open');
-      document.removeEventListener('selectionchange', viewerSSPSyncSelection);
-    }
+    if (el) el.classList.remove('open');
+    try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
   }
   function viewerSSPSyncSelection() {
-    var promptEl = document.getElementById('ssp-prompt');
-    var sidebar = document.getElementById('ssp-ai-sidebar');
-    if (!promptEl || !sidebar || !sidebar.classList.contains('open')) return;
-    var sel = window.getSelection && window.getSelection();
-    if (!sel || !sel.toString().trim()) return;
-    var txt = sel.toString().trim();
-    if (!sel.anchorNode) return;
-    if (sidebar.contains(sel.anchorNode)) return;
-    var pageContent = document.getElementById('page-content');
-    var editTa = document.getElementById('viewer-edit-ta');
-    var inDoc = (pageContent && pageContent.contains(sel.anchorNode)) || (editTa && editTa.contains(sel.anchorNode));
-    if (!inDoc) return;
-    promptEl.value = txt;
+    syncAiPanelsFromDocumentSelection();
   }
   function viewerSSPSetUploadZoneContent(dataURL) {
     var uploadZone = document.getElementById('ssp-upload-zone');
@@ -556,7 +626,7 @@
     }
   }
   function viewerSSPAbort() {
-    var fn = invokeSync('abortCurrentTask');
+    var fn = getCallback('abortCurrentTask');
     if (typeof fn === 'function') try { fn(); } catch (e) {}
   }
   function viewerSSPInit() {
@@ -624,20 +694,23 @@
       };
     });
     var modelSel = document.getElementById('ssp-model');
-    var getImageModelId = invokeSync('getImageModelId');
-    if (modelSel && typeof getImageModelId === 'function') {
-      try { modelSel.value = getImageModelId() || 'gemini-3.1-flash-image-preview'; } catch (e) {}
+    var getImgModel = getCallback('getImageModelId');
+    if (modelSel && typeof getImgModel === 'function') {
+      try { modelSel.value = getImgModel() || 'gemini-3.1-flash-image-preview'; } catch (e) {}
     }
     viewerSSPImgHistoryLoad();
     viewerSSPImgHistoryRender();
   }
   async function viewerSSPGenerate() {
     var promptEl = document.getElementById('ssp-prompt');
-    var prompt = promptEl && promptEl.value ? promptEl.value.trim() : '';
+    var promptEl2 = document.getElementById('ssp-prompt-2');
+    var p1 = promptEl && promptEl.value ? promptEl.value.trim() : '';
+    var p2 = promptEl2 && promptEl2.value ? promptEl2.value.trim() : '';
+    var prompt = [p1, p2].filter(Boolean).join('\n\n');
     var seedImage = __viewerSSPSeedImage;
     var hasSeed = seedImage && typeof seedImage === 'string' && seedImage.indexOf('data:image') === 0;
     if (!hasSeed && !prompt) { alert('이미지를 올리거나 프롬프트를 입력하세요.'); return; }
-    var generateImage = invokeSync('generateImage');
+    var generateImage = getCallback('generateImage');
     if (typeof generateImage !== 'function') { alert('메인 창을 찾을 수 없거나 이미지 API를 사용할 수 없습니다.'); return; }
     var statusEl = document.getElementById('ssp-status');
     var resultImg = document.getElementById('ssp-result-img');
@@ -773,19 +846,45 @@
   window.viewerSSPFsCrop = viewerSSPFsCrop;
 
   window.sidebarAIInit = function () {
+    scholarAIPromptWrapInitResize();
     scholarAIResultWrapInitResize();
     scholarAIHistoryRender();
     var resTa = document.getElementById('scholar-ai-result');
     if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + 'px';
     var histSearch = document.getElementById('scholar-ai-history-search');
     if (histSearch) histSearch.addEventListener('input', scholarAIHistoryRender);
+    /* 기존 앱에서 가져온 ScholarAI 히스토리 캐시 삭제 (한 번만 실행) */
     try {
-      var saved = localStorage.getItem('ss_viewer_scholar_ai_history');
-      if (saved) {
-        var arr = JSON.parse(saved);
-        if (Array.isArray(arr) && arr.length) __scholarAIHistory = arr;
+      var SA_CLEAR_FLAG = 'ss_viewer_scholar_ai_history_cleared_v1';
+      if (!localStorage.getItem(SA_CLEAR_FLAG)) {
+        localStorage.removeItem('ss_viewer_scholar_ai_history');
+        __scholarAIHistory = [];
+        localStorage.setItem(SA_CLEAR_FLAG, '1');
+      } else {
+        var saved = localStorage.getItem('ss_viewer_scholar_ai_history');
+        if (saved) {
+          var arr = JSON.parse(saved);
+          if (Array.isArray(arr) && arr.length) __scholarAIHistory = arr;
+        }
       }
     } catch (e) {}
+    if (!window.__aiDocSelectionBound) {
+      window.__aiDocSelectionBound = true;
+      document.addEventListener('selectionchange', onAiGlobalSelectionChange);
+    }
+    var vc = document.getElementById('viewer-container');
+    if (vc && !vc.__aiMouseupSel) {
+      vc.__aiMouseupSel = true;
+      vc.addEventListener('mouseup', function () { setTimeout(syncAiPanelsFromDocumentSelection, 50); });
+    }
+    var editTa = document.getElementById('viewer-edit-ta');
+    if (editTa && !editTa.__aiSelUp) {
+      editTa.__aiSelUp = true;
+      editTa.addEventListener('mouseup', function () { setTimeout(syncAiPanelsFromDocumentSelection, 50); });
+      editTa.addEventListener('keyup', function (e) {
+        if (e.key === 'Shift' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') setTimeout(syncAiPanelsFromDocumentSelection, 50);
+      });
+    }
   };
 
   document.addEventListener('click', function (e) {

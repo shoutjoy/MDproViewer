@@ -1,7 +1,11 @@
 // IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 let db;
+
+const AI_SETTINGS_KEY = 'ai_settings';
+const AI_PASSWORD_CORRECT = 'a123456!';
+const AUTH_REQUEST_EMAIL = 'shoutjoy1@yonsei.ac.kr';
 
 // State
 let currentMarkdown = "";
@@ -18,12 +22,13 @@ let isSidebarCollapsed = false;
 
 // Theme
 const THEME_KEY = 'md_viewer_theme';
+const EDITOR_LIGHT_KEY = 'md_viewer_editor_light';
 
 const sidebar = document.getElementById('sidebar');
 const viewerContainer = document.getElementById('viewer-container');
 const viewer = document.getElementById('viewer');
-const editorContainer = document.getElementById('editor-container');
-const editorTextarea = document.getElementById('editor-textarea');
+const editorContainer = document.getElementById('content-viewport');
+const editorTextarea = document.getElementById('viewer-edit-ta');
 const fileNameDisplay = document.getElementById('file-name-display');
 const dropZone = document.getElementById('drop-zone');
 const inputModal = document.getElementById('input-modal');
@@ -48,14 +53,22 @@ function initDB() {
             if (!db.objectStoreNames.contains('autosave')) {
                 db.createObjectStore('autosave', { keyPath: 'id' });
             }
+            if (!db.objectStoreNames.contains('ai_settings')) {
+                db.createObjectStore('ai_settings', { keyPath: 'id' });
+            }
         };
     });
+}
+
+function syncSidebarAiTheme() {
+    document.body.classList.toggle('theme-light', !document.documentElement.classList.contains('dark'));
 }
 
 function toggleTheme() {
     const html = document.documentElement;
     const isDark = html.classList.toggle('dark');
     localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+    syncSidebarAiTheme();
     lucide.createIcons();
 }
 
@@ -65,6 +78,46 @@ function initTheme() {
     const useDark = saved === 'dark' || (!saved && prefersDark);
     if (useDark) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
+    syncSidebarAiTheme();
+    applyEditorLightPreference();
+}
+
+function toggleEditorLightMode() {
+    const vp = document.getElementById('content-viewport');
+    if (!vp) return;
+    const isLight = vp.classList.toggle('editor-light-mode');
+    localStorage.setItem(EDITOR_LIGHT_KEY, isLight ? '1' : '');
+    updateEditorLightButton();
+    lucide.createIcons();
+}
+
+function applyEditorLightPreference() {
+    const vp = document.getElementById('content-viewport');
+    if (!vp) return;
+    const want = localStorage.getItem(EDITOR_LIGHT_KEY) === '1';
+    if (want) vp.classList.add('editor-light-mode');
+    else vp.classList.remove('editor-light-mode');
+    updateEditorLightButton();
+}
+
+function updateEditorLightButton() {
+    const vp = document.getElementById('content-viewport');
+    const btn = document.getElementById('btn-editor-light');
+    const sun = document.getElementById('editor-light-icon-sun');
+    const moon = document.getElementById('editor-light-icon-moon');
+    const label = document.getElementById('editor-light-label');
+    if (!vp || !btn) return;
+    const isLight = vp.classList.contains('editor-light-mode');
+    if (sun) {
+        sun.classList.toggle('hidden', !isLight);
+        sun.style.display = isLight ? '' : 'none';
+    }
+    if (moon) {
+        moon.classList.toggle('hidden', isLight);
+        moon.style.display = isLight ? 'none' : '';
+    }
+    if (label) label.textContent = isLight ? '편집창 다크' : '편집창 라이트';
+    if (btn) btn.title = isLight ? '편집창을 다크 모드로' : '편집창을 라이트 모드로';
 }
 
 window.onload = async () => {
@@ -81,6 +134,8 @@ window.onload = async () => {
     toggleMode('edit');
 
     sidebar.style.display = 'none';
+
+    initAiVisibility();
 
     if (window.electron && window.electron.ipcRenderer) {
         window.electron.ipcRenderer.on('open-external-file', (event, data) => {
@@ -205,12 +260,16 @@ function toggleMode(mode) {
         isEditMode = true;
         viewerContainer.classList.add('hidden');
         editorContainer.classList.remove('hidden');
+        editorContainer.classList.add('viewer-edit-active');
         editTools.classList.remove('hidden');
         btnEdit.classList.add(...activeClasses);
         btnView.classList.remove(...activeClasses);
+        applyEditorLightPreference();
+        lucide.createIcons();
         editorTextarea.focus();
     } else {
         isEditMode = false;
+        editorContainer.classList.remove('viewer-edit-active');
         renderMarkdown();
         viewerContainer.classList.remove('hidden');
         editorContainer.classList.add('hidden');
@@ -223,6 +282,16 @@ function toggleMode(mode) {
 function handleFileSelect(event) {
     const file = event.target.files[0];
     if (file) readFile(file);
+}
+
+function createNewFile() {
+    currentMarkdown = "";
+    currentFileName = "새 문서.md";
+    fileNameDisplay.textContent = currentFileName;
+    updateContent("");
+    performAutoSave();
+    showToast("새 파일이 생성되었습니다.");
+    if (isEditMode) editorTextarea.focus();
 }
 
 const MPV_FORMAT = 'mdviewer/mpv';
@@ -972,14 +1041,767 @@ function initSettings() {
     }
 }
 
+// --- AI 설정 (IndexedDB + 비밀번호 검증) ---
+async function getAiSettings() {
+    if (!db) return null;
+    return new Promise((res) => {
+        const tx = db.transaction('ai_settings', 'readonly');
+        const req = tx.objectStore('ai_settings').get(AI_SETTINGS_KEY);
+        req.onsuccess = () => res(req.result || null);
+        req.onerror = () => res(null);
+    });
+}
+
+async function setAiSettings(data) {
+    if (!db) return;
+    const existing = await getAiSettings();
+    const payload = { id: AI_SETTINGS_KEY, ...(existing || {}), ...data };
+    return new Promise((res, rej) => {
+        const tx = db.transaction('ai_settings', 'readwrite');
+        const req = tx.objectStore('ai_settings').put(payload);
+        req.onsuccess = () => res();
+        req.onerror = () => rej(req.error);
+    });
+}
+
+function hashPassword(plain) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(plain))
+        .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
+}
+
+/** Google AI Studio / Gemini API 키: 보통 AIza로 시작, 39자 이상 */
+function isValidGoogleAiApiKey(key) {
+    const k = (key || '').trim();
+    if (!k) return false;
+    return /^AIza[0-9A-Za-z_-]{35,120}$/.test(k);
+}
+
+function validateApiKeyInputUI() {
+    const input = document.getElementById('ai-api-key');
+    const fb = document.getElementById('ai-api-key-feedback');
+    if (!input) return;
+    const key = (input.value || '').trim();
+    const base = 'w-full px-3 py-1.5 border rounded-md focus:outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors';
+    const neutral = base + ' border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-indigo-500';
+    const ok = base + ' border-green-500 dark:border-green-500 ring-2 ring-green-500/40';
+    const bad = base + ' border-red-500 dark:border-red-500 ring-2 ring-red-500/40';
+    if (!key) {
+        input.className = neutral + ' ai-api-key-input';
+        if (fb) { fb.textContent = ''; fb.className = 'text-xs mt-1 min-h-[1.25rem]'; }
+        return;
+    }
+    if (isValidGoogleAiApiKey(key)) {
+        input.className = ok + ' ai-api-key-input';
+        if (fb) {
+            fb.textContent = '유효한 API 키 형식입니다.';
+            fb.className = 'text-xs mt-1 text-green-600 dark:text-green-400 min-h-[1.25rem]';
+        }
+    } else {
+        input.className = bad + ' ai-api-key-input';
+        if (fb) {
+            fb.textContent = 'API 키 양식이 맞지 않습니다. (Google AI Studio 키는 보통 AIza로 시작합니다.)';
+            fb.className = 'text-xs mt-1 text-red-600 dark:text-red-400 min-h-[1.25rem]';
+        }
+    }
+}
+
+async function saveApiKey() {
+    const input = document.getElementById('ai-api-key');
+    const key = (input && input.value) ? input.value.trim() : '';
+    if (key && !isValidGoogleAiApiKey(key)) {
+        validateApiKeyInputUI();
+        showToast("API 키 양식이 맞지 않습니다.");
+        return;
+    }
+    await setAiSettings({ apiKey: key });
+    if (key) localStorage.setItem('ss_gemini_api_key', key);
+    else localStorage.removeItem('ss_gemini_api_key');
+    showToast("API 키를 저장했습니다.");
+}
+
+function setAiPasswordVerifiedUI(state) {
+    const input = document.getElementById('ai-password-input');
+    const fb = document.getElementById('ai-password-feedback');
+    const base = 'flex-1 min-w-[120px] px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors';
+    if (!input) return;
+    if (state === 'ok') {
+        input.className = base + ' border-green-500 dark:border-green-500 ring-2 ring-green-500/40';
+        if (fb) {
+            fb.textContent = '인증이 완료되었습니다.';
+            fb.className = 'text-xs text-green-600 dark:text-green-400 min-h-[1.25rem]';
+        }
+    } else if (state === 'bad') {
+        input.className = base + ' border-red-500 dark:border-red-500 ring-2 ring-red-500/40';
+        if (fb) {
+            fb.textContent = '인증번호가 올바르지 않습니다.';
+            fb.className = 'text-xs text-red-600 dark:text-red-400 min-h-[1.25rem]';
+        }
+    } else {
+        input.className = base + ' border-slate-200 dark:border-slate-600';
+        if (fb) { fb.textContent = ''; fb.className = 'text-xs min-h-[1.25rem]'; }
+    }
+}
+
+function toggleAiPasswordSection() {
+    const check = document.getElementById('ai-use-checkbox');
+    const section = document.getElementById('ai-password-section');
+    if (check && section) section.classList.toggle('hidden', !check.checked);
+    if (check && check.checked) {
+        setAiSettings({ aiMasterEnabled: true }).then(() => applyAiFeatureVisibility());
+    } else if (check && !check.checked) {
+        setAiSettings({ aiMasterEnabled: false }).then(() => applyAiFeatureVisibility());
+    }
+    if (check && check.checked && section) {
+        getAiSettings().then(s => updateAiScholarSspimgAvailability(!!(s && s.verified)));
+        requestAnimationFrame(() => {
+            section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            const pwd = document.getElementById('ai-password-input');
+            if (pwd) pwd.focus();
+        });
+    }
+    if (check && !check.checked) {
+        updateAiScholarSspimgAvailability(false);
+    }
+}
+
+async function saveAiPassword() {
+    const input = document.getElementById('ai-password-input');
+    const pwd = (input && input.value) ? input.value : '';
+    if (!pwd) {
+        showToast("인증번호를 입력하세요.");
+        const cur = await getAiSettings();
+        if (!(cur && cur.verified)) setAiPasswordVerifiedUI('neutral');
+        return;
+    }
+    const hash = await hashPassword(pwd);
+    const correctHash = await hashPassword(AI_PASSWORD_CORRECT);
+    if (hash !== correctHash) {
+        setAiPasswordVerifiedUI('bad');
+        showToast("인증번호가 올바르지 않습니다.");
+        return;
+    }
+    await setAiSettings({ passwordHash: hash, verified: true, aiMasterEnabled: true });
+    setAiPasswordVerifiedUI('ok');
+    updateAiScholarSspimgAvailability(true);
+    showToast("인증되었습니다. ScholarAI 또는 sspimgAI를 켜면 메뉴에 버튼이 나타납니다.");
+    await applyAiFeatureVisibility();
+}
+
+function updateAiScholarSspimgAvailability(verified) {
+    const scholarEl = document.getElementById('ai-scholar-enabled');
+    const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    const hint = document.getElementById('ai-scholar-sspimg-hint');
+    if (scholarEl) {
+        scholarEl.disabled = !verified;
+        scholarEl.classList.toggle('opacity-50', !verified);
+        scholarEl.classList.toggle('cursor-not-allowed', !verified);
+    }
+    if (sspimgEl) {
+        sspimgEl.disabled = !verified;
+        sspimgEl.classList.toggle('opacity-50', !verified);
+        sspimgEl.classList.toggle('cursor-not-allowed', !verified);
+    }
+    document.querySelectorAll('.ai-scholar-sspimg-label').forEach(function (lb) {
+        lb.classList.toggle('pointer-events-none', !verified);
+        lb.classList.toggle('opacity-50', !verified);
+    });
+    if (hint) {
+        if (verified) {
+            hint.textContent = '인증이 완료되었습니다. 사용할 AI를 선택하세요.';
+            hint.className = 'text-xs text-green-600 dark:text-green-400';
+        } else {
+            hint.textContent = '인증번호를 저장한 뒤에만 ScholarAI·sspimgAI를 선택할 수 있습니다.';
+            hint.className = 'text-xs text-amber-600 dark:text-amber-400';
+        }
+    }
+}
+
+async function onAiFeatureCheckboxChange() {
+    const settings = await getAiSettings();
+    if (!settings || !settings.verified) return;
+    await applyAiFeatureVisibility();
+}
+
+async function persistAiSettingsFromModal() {
+    if (!db) return;
+    const s = await getAiSettings();
+    const verified = !!(s && s.verified);
+    const scholarEl = document.getElementById('ai-scholar-enabled');
+    const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    const scholarOn = verified && scholarEl && scholarEl.checked;
+    const sspimgOn = verified && sspimgEl && sspimgEl.checked;
+    await setAiSettings({
+        scholarAI: !!scholarOn,
+        sspimgAI: !!sspimgOn
+    });
+}
+
+async function closeSettingsModal() {
+    await persistAiSettingsFromModal();
+    document.getElementById('settings-modal').classList.add('hidden');
+    document.getElementById('settings-modal').classList.remove('flex');
+    await applyAiFeatureVisibility();
+}
+
+async function sendAuthRequestMail() {
+    const name = (document.getElementById('ai-user-name') && document.getElementById('ai-user-name').value) || '';
+    const id = (document.getElementById('ai-user-id') && document.getElementById('ai-user-id').value) || '';
+    const major = (document.getElementById('ai-user-major') && document.getElementById('ai-user-major').value) || '';
+    const contact = (document.getElementById('ai-user-contact') && document.getElementById('ai-user-contact').value) || '';
+    const userInfo = { name, id, major, contact };
+    await setAiSettings({ userInfo });
+    const body = `인증번호 요청\n\n이름: ${name}\n학번: ${id}\n전공: ${major}\n연락처: ${contact}`;
+    const subject = '인공지능 인증번호 요청';
+    const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1' +
+        '&to=' + encodeURIComponent(AUTH_REQUEST_EMAIL) +
+        '&su=' + encodeURIComponent(subject) +
+        '&body=' + encodeURIComponent(body);
+    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
+    showToast("Gmail이 열립니다. 사용자 정보를 확인한 뒤 보내주세요.");
+}
+
+function isAiMasterEnabled(settings) {
+    const check = document.getElementById('ai-use-checkbox');
+    if (check) return !!check.checked;
+    if (settings && settings.aiMasterEnabled === false) return false;
+    return true;
+}
+
+async function applyAiFeatureVisibility() {
+    if (!db) return;
+    const settings = await getAiSettings();
+    const verified = settings && settings.verified === true;
+    const useMaster = isAiMasterEnabled(settings);
+    const scholarEl = document.getElementById('ai-scholar-enabled');
+    const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    const scholarOn = !!(scholarEl && scholarEl.checked);
+    const sspimgOn = !!(sspimgEl && sspimgEl.checked);
+    await setAiSettings({ scholarAI: scholarOn, sspimgAI: sspimgOn });
+    const showAi = !!(useMaster && verified && (scholarOn || sspimgOn));
+    const headerBtns = document.getElementById('header-ai-btns');
+    const wrap = document.getElementById('ai-right-sidebar-wrap');
+    const btnScholar = document.getElementById('btn-scholar-ai');
+    const btnSsp = document.getElementById('btn-sspimg-ai');
+    if (headerBtns) {
+        if (showAi) {
+            headerBtns.classList.remove('hidden');
+            headerBtns.classList.add('flex');
+            headerBtns.style.display = 'flex';
+            if (btnScholar) {
+                btnScholar.classList.toggle('hidden', !scholarOn);
+                btnScholar.style.display = scholarOn ? '' : 'none';
+            }
+            if (btnSsp) {
+                btnSsp.classList.toggle('hidden', !sspimgOn);
+                btnSsp.style.display = sspimgOn ? '' : 'none';
+            }
+        } else {
+            headerBtns.classList.add('hidden');
+            headerBtns.style.display = 'none';
+            if (btnScholar) btnScholar.style.display = '';
+            if (btnSsp) btnSsp.style.display = '';
+        }
+    }
+    if (wrap) {
+        if (!showAi) {
+            if (typeof window.scholarAIShrink === 'function') window.scholarAIShrink();
+            if (typeof window.sspAIShrink === 'function') window.sspAIShrink();
+            wrap.classList.add('hidden');
+            wrap.style.width = '0';
+            wrap.style.display = 'none';
+        } else {
+            const sch = document.getElementById('scholar-ai-sidebar');
+            const ssp = document.getElementById('ssp-ai-sidebar');
+            const anyOpen = (sch && sch.classList.contains('open')) || (ssp && ssp.classList.contains('open'));
+            if (!anyOpen) {
+                wrap.classList.add('hidden');
+                wrap.style.width = '0';
+                wrap.style.display = 'none';
+            }
+        }
+    }
+    if (showAi) ensureSidebarAILoaded();
+}
+
+function setAiSidebarWrapVisible(w, isLoading) {
+    const wrap = document.getElementById('ai-right-sidebar-wrap');
+    const inner = document.getElementById('ai-right-sidebar-inner');
+    if (!wrap) return;
+    var width = typeof w === 'number' ? w : 380;
+    width = Math.min(width, Math.floor(window.innerWidth * 0.92));
+    var sb = document.getElementById('sidebar');
+    width = Math.min(width, Math.max(300, window.innerWidth - (sb ? sb.offsetWidth : 0) - 260));
+    const isDark = document.documentElement.classList.contains('dark');
+    wrap.classList.remove('hidden');
+    wrap.style.cssText = [
+        'display:flex',
+        'flex-direction:column',
+        'flex-shrink:0',
+        'align-self:stretch',
+        'width:' + width + 'px',
+        'min-width:0',
+        'max-width:96vw',
+        'min-height:0',
+        'height:auto',
+        'overflow:hidden',
+        'box-shadow:-4px 0 16px rgba(0,0,0,0.08)',
+        'border-left:1px solid ' + (isDark ? '#334155' : '#e2e8f0'),
+        'background:' + (isDark ? '#0f172a' : '#f8fafc')
+    ].join(';');
+    if (inner) {
+        inner.style.flex = '1';
+        inner.style.minHeight = '0';
+        inner.style.overflow = 'auto';
+        inner.style.width = '100%';
+        if (isLoading && !inner.querySelector('#scholar-ai-sidebar') && !inner.querySelector('#ssp-ai-sidebar')) {
+            inner.innerHTML = '<div class="flex items-center justify-center h-full text-slate-500 dark:text-slate-400 text-sm p-4">AI 패널 로딩 중...</div>';
+        }
+    }
+}
+
+function refreshAiRightSidebarWrap() {
+    const wrap = document.getElementById('ai-right-sidebar-wrap');
+    const inner = document.getElementById('ai-right-sidebar-inner');
+    if (!wrap) return;
+    const sch = document.getElementById('scholar-ai-sidebar');
+    const ssp = document.getElementById('ssp-ai-sidebar');
+    const schOpen = sch && sch.classList.contains('open');
+    const sspOpen = ssp && ssp.classList.contains('open');
+    if (!schOpen && !sspOpen) {
+        wrap.classList.add('hidden');
+        wrap.style.cssText = 'width:0!important;min-width:0!important;max-width:0!important;display:none!important;flex:0!important;overflow:hidden!important;border:none!important;box-shadow:none!important;padding:0!important;margin:0!important;';
+        updateHeaderAiButtonsActive();
+        return;
+    }
+    var w = 400;
+    if (schOpen && sspOpen) {
+        var sw = (sch && sch.offsetWidth > 80) ? sch.offsetWidth : 380;
+        var pw = (ssp && ssp.offsetWidth > 80) ? ssp.offsetWidth : 400;
+        w = Math.min(Math.max(sw + pw, 720), Math.floor(window.innerWidth * 0.96));
+    } else if (schOpen) w = Math.max(360, Math.min((sch && sch.offsetWidth) || 380, 520));
+    else if (sspOpen) w = Math.max(360, Math.min((ssp && ssp.offsetWidth) || 400, 520));
+    w = Math.min(w, Math.floor(window.innerWidth * 0.96));
+    var sidebarLeft = document.getElementById('sidebar');
+    var leftW = sidebarLeft ? sidebarLeft.offsetWidth : 0;
+    var minMain = 260;
+    var maxAi = Math.max(300, window.innerWidth - leftW - minMain);
+    w = Math.min(w, maxAi);
+    const isDark = document.documentElement.classList.contains('dark');
+    wrap.classList.remove('hidden');
+    wrap.style.cssText = [
+        'display:flex',
+        'flex-direction:column',
+        'flex-shrink:0',
+        'align-self:stretch',
+        'width:' + w + 'px',
+        'min-width:0',
+        'max-width:96vw',
+        'min-height:0',
+        'height:auto',
+        'overflow:hidden',
+        'box-shadow:-4px 0 16px rgba(0,0,0,0.08)',
+        'border-left:1px solid ' + (isDark ? '#334155' : '#e2e8f0'),
+        'background:' + (isDark ? '#0f172a' : '#f8fafc')
+    ].join(';');
+    if (inner) {
+        inner.style.flex = '1';
+        inner.style.minHeight = '0';
+        inner.style.display = 'flex';
+        inner.style.flexDirection = 'row';
+        inner.style.alignItems = 'stretch';
+        inner.style.overflowX = schOpen && sspOpen ? 'auto' : 'hidden';
+        inner.style.overflowY = 'hidden';
+        inner.style.width = '100%';
+    }
+    updateHeaderAiButtonsActive();
+}
+
+function updateHeaderAiButtonsActive() {
+    const sch = document.getElementById('scholar-ai-sidebar');
+    const ssp = document.getElementById('ssp-ai-sidebar');
+    const bSch = document.getElementById('btn-scholar-ai');
+    const bSsp = document.getElementById('btn-sspimg-ai');
+    const schOn = sch && sch.classList.contains('open');
+    const sspOn = ssp && ssp.classList.contains('open');
+    const base = 'px-3 py-1.5 rounded-md text-xs font-medium transition-shadow';
+    function vis(btn) {
+        return btn && btn.style.display !== 'none' && !btn.classList.contains('hidden');
+    }
+    if (vis(bSch)) {
+        bSch.className = base + ' ' + (schOn
+            ? 'bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-500 dark:ring-indigo-400'
+            : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600');
+    }
+    if (vis(bSsp)) {
+        bSsp.className = base + ' ' + (sspOn
+            ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 ring-2 ring-amber-500 dark:ring-amber-400'
+            : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600');
+    }
+}
+
+function ensureSidebarAILoadedThen(cb) {
+    function tryCb() {
+        if (document.getElementById('scholar-ai-sidebar') && typeof window.toggleScholarAI === 'function') {
+            cb();
+            return true;
+        }
+        return false;
+    }
+    if (tryCb()) return;
+    ensureSidebarAILoaded();
+    if (tryCb()) return;
+    var n = 0;
+    var t = setInterval(function () {
+        n++;
+        if (n === 8 || n === 24) injectSidebarAIHtml();
+        if (tryCb()) {
+            clearInterval(t);
+            return;
+        }
+        if (n > 100) {
+            clearInterval(t);
+            injectSidebarAIHtml().then(function (ok) {
+                if (tryCb()) return;
+                showToast(ok === false ? 'AI 패널 파일을 불러오지 못했습니다. http 서버로 실행해 보세요.' : 'AI 패널을 여는 중 오류가 있습니다.');
+            });
+        }
+    }, 50);
+}
+
+function openScholarAIFromHeader() {
+    getAiSettings().then(function (s) {
+        if (!s || !s.verified) {
+            showToast('설정에서 인증번호 저장으로 인증을 완료한 뒤 사용할 수 있습니다.');
+            return;
+        }
+        setAiSidebarWrapVisible(380, true);
+        ensureSidebarAILoaded();
+        ensureSidebarAILoadedThen(function () {
+        var scholar = document.getElementById('scholar-ai-sidebar');
+        var ssp = document.getElementById('ssp-ai-sidebar');
+        if (!scholar) return;
+        if (scholar.classList.contains('open')) {
+            if (typeof scholarAIShrink === 'function') scholarAIShrink();
+            else scholar.classList.remove('open');
+            refreshAiRightSidebarWrap();
+            return;
+        }
+        if (!scholar.classList.contains('open') && typeof toggleScholarAI === 'function') toggleScholarAI();
+        refreshAiRightSidebarWrap();
+        requestAnimationFrame(function () {
+            requestAnimationFrame(refreshAiRightSidebarWrap);
+        });
+        });
+    });
+}
+
+function openSspimgAIFromHeader() {
+    getAiSettings().then(function (s) {
+        if (!s || !s.verified) {
+            showToast('설정에서 인증번호 저장으로 인증을 완료한 뒤 사용할 수 있습니다.');
+            return;
+        }
+        setAiSidebarWrapVisible(400, true);
+        ensureSidebarAILoaded();
+        ensureSidebarAILoadedThen(function () {
+        var ssp = document.getElementById('ssp-ai-sidebar');
+        var scholar = document.getElementById('scholar-ai-sidebar');
+        if (!ssp) return;
+        if (ssp.classList.contains('open')) {
+            if (typeof sspAIShrink === 'function') sspAIShrink();
+            else ssp.classList.remove('open');
+            refreshAiRightSidebarWrap();
+            return;
+        }
+        if (!ssp.classList.contains('open') && typeof toggleViewerSSP === 'function') toggleViewerSSP();
+        refreshAiRightSidebarWrap();
+        requestAnimationFrame(function () {
+            requestAnimationFrame(refreshAiRightSidebarWrap);
+        });
+        });
+    });
+}
+
+window.__onAiSidebarPanelClosed = refreshAiRightSidebarWrap;
+window.openScholarAIFromHeader = openScholarAIFromHeader;
+window.openSspimgAIFromHeader = openSspimgAIFromHeader;
+window.refreshAiRightSidebarWrap = refreshAiRightSidebarWrap;
+if (!window.__aiSidebarResizeBound) {
+    window.__aiSidebarResizeBound = true;
+    window.addEventListener('resize', function () {
+        var sch = document.getElementById('scholar-ai-sidebar');
+        var ssp = document.getElementById('ssp-ai-sidebar');
+        if ((sch && sch.classList.contains('open')) || (ssp && ssp.classList.contains('open'))) refreshAiRightSidebarWrap();
+    });
+}
+
+let sidebarAILoaded = false;
+function ensureSidebarAILoaded() {
+    if (sidebarAILoaded) return;
+    sidebarAILoaded = true;
+    getAiSettings().then(s => {
+        if (s && s.apiKey) localStorage.setItem('ss_gemini_api_key', s.apiKey);
+    });
+    window.SidebarAIConfig = {
+        host: null,
+        cropEditorBase: './',
+        callbacks: {
+            getApiKey: function () { return localStorage.getItem('ss_gemini_api_key') || ''; },
+            callGemini: async function (prompt, systemInstruction, useSearch, modelOverride) {
+                const key = localStorage.getItem('ss_gemini_api_key') || '';
+                const modelId = modelOverride || 'gemini-2.5-flash';
+                const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent?key=' + key;
+                const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                if (systemInstruction) payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+                if (useSearch) payload.tools = [{ googleSearch: {} }];
+                const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!res.ok) throw new Error('API Error: ' + res.status);
+                const data = await res.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                return { text: text };
+            },
+            /**
+             * SSP 이미지 전용: Gemini 이미지 모델은 :generateContent, Imagen은 :predict (generateImages 미지원)
+             */
+            generateImage: async function (prompt, options) {
+                const key = localStorage.getItem('ss_gemini_api_key') || '';
+                if (!key || !String(key).trim()) throw new Error('API 키가 없습니다. 설정에서 Gemini API 키를 저장하세요.');
+                let modelId = (options && options.modelId) || 'gemini-2.5-flash-image';
+                const aspectRatio = (options && options.aspectRatio) || '1:1';
+                /** false(기본)=학술적 이미지, true(체크)=단순 이미지·텍스트 없음 */
+                const simpleNoText = !!(options && options.noText);
+                const seedImage = options && options.seedImage;
+                const hasSeed = seedImage && typeof seedImage === 'string' && seedImage.indexOf('data:image') === 0;
+                const ACADEMIC_STYLE = '[Scholarly figure mode] For research papers, lectures, or textbooks: professional conceptual diagram or clean illustration, publication-appropriate layout and colors. Short labels, axis titles, or brief Korean/English annotations are encouraged when they clarify the content. Avoid decorative clutter.';
+                const SIMPLE_STYLE = '[Simple image mode] Purely visual output only: absolutely no text, letters, numbers, captions, watermarks, or typography.';
+
+                if (modelId.indexOf('imagen-') === 0) {
+                    if (hasSeed) {
+                        modelId = 'gemini-2.5-flash-image';
+                    } else {
+                        const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':predict?key=' + encodeURIComponent(key);
+                        let p = (prompt || '').trim() || 'A clear, high-quality image.';
+                        p += simpleNoText ? ' ' + SIMPLE_STYLE.replace('[Simple image mode] ', '') : ' Scholarly academic figure style; clear diagram quality; text labels allowed when helpful.';
+                        const body = {
+                            instances: [{ prompt: p }],
+                            parameters: {
+                                sampleCount: 1,
+                                aspectRatio: aspectRatio,
+                                personGeneration: 'allow_adult'
+                            }
+                        };
+                        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                        if (!res.ok) {
+                            let msg = String(res.status);
+                            try { const err = await res.json(); msg = err.error?.message || msg; } catch (e) {}
+                            throw new Error(msg);
+                        }
+                        const data = await res.json();
+                        const gi = data.generatedImages && data.generatedImages[0];
+                        const bytes = gi && gi.image && gi.image.imageBytes;
+                        return bytes ? 'data:image/png;base64,' + bytes : null;
+                    }
+                }
+
+                const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent?key=' + encodeURIComponent(key);
+                let textPrompt = (prompt || '').trim();
+                if (simpleNoText) {
+                    textPrompt = (textPrompt ? textPrompt + '\n\n' : '') + SIMPLE_STYLE;
+                } else {
+                    textPrompt = (textPrompt ? textPrompt + '\n\n' : '') + ACADEMIC_STYLE;
+                }
+                if (!((prompt || '').trim()) && hasSeed) {
+                    textPrompt = simpleNoText
+                        ? 'Edit or transform this image based on the reference.\n\n' + SIMPLE_STYLE
+                        : 'Adapt this image into a scholarly figure suitable for academic use (diagrams, clear structure, optional short labels).\n\n' + ACADEMIC_STYLE;
+                }
+                if (!textPrompt.trim()) {
+                    textPrompt = simpleNoText
+                        ? 'Generate a clean illustrative image.\n\n' + SIMPLE_STYLE
+                        : 'Generate an academic-style conceptual diagram or scholarly illustration.\n\n' + ACADEMIC_STYLE;
+                }
+
+                const parts = [];
+                if (hasSeed) {
+                    const comma = seedImage.indexOf(',');
+                    const b64 = comma >= 0 ? seedImage.slice(comma + 1) : seedImage;
+                    const mimeMatch = seedImage.match(/^data:([^;]+);/);
+                    const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+                    parts.push({ inlineData: { mimeType: mime, data: b64 } });
+                }
+                parts.push({ text: textPrompt });
+
+                const genFull = {
+                    responseModalities: ['TEXT', 'IMAGE'],
+                    imageConfig: { aspectRatio: aspectRatio }
+                };
+                const genLite = { imageConfig: { aspectRatio: aspectRatio } };
+                let payload = { contents: [{ role: 'user', parts }], generationConfig: genFull };
+                let res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (!res.ok && res.status === 400) {
+                    payload.generationConfig = genLite;
+                    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                }
+                if (!res.ok) {
+                    let msg = String(res.status);
+                    try { const err = await res.json(); msg = err.error?.message || msg; } catch (e) {}
+                    throw new Error(msg);
+                }
+                const data = await res.json();
+                const errObj = data.error;
+                if (errObj) throw new Error(errObj.message || 'API 오류');
+
+                const cand = data.candidates && data.candidates[0];
+                if (!cand) throw new Error('응답에 후보가 없습니다. 모델·프롬프트를 확인하세요.');
+                const cparts = cand.content && cand.content.parts;
+                if (cparts) {
+                    for (let i = 0; i < cparts.length; i++) {
+                        const id = cparts[i].inlineData;
+                        if (id && id.data) {
+                            const mt = id.mimeType || 'image/png';
+                            return 'data:' + mt + ';base64,' + id.data;
+                        }
+                    }
+                    const t = cparts.find(function (x) { return x.text; });
+                    if (t && t.text) throw new Error(t.text.slice(0, 200));
+                }
+                if (cand.finishReason && cand.finishReason !== 'STOP') throw new Error('생성 중단: ' + cand.finishReason);
+                throw new Error('이미지 데이터가 응답에 없습니다. 다른 이미지 모델을 선택해 보세요.');
+            },
+            getScholarAISystemInstruction: function () { return localStorage.getItem('ss_scholar_ai_system') || ''; },
+            setScholarAISystemInstruction: function (text) { localStorage.setItem('ss_scholar_ai_system', text || ''); },
+            getScholarAIModelId: function () { return localStorage.getItem('ss_scholar_ai_model') || 'gemini-2.5-pro'; },
+            setScholarAIModelId: function (id) { localStorage.setItem('ss_scholar_ai_model', id || ''); },
+            getImageModelId: function () { return localStorage.getItem('ss_image_model') || 'gemini-2.5-flash-image'; },
+            abortCurrentTask: function () { if (window._abortController) window._abortController.abort(); },
+            setViewerContent: function (text) { if (typeof updateContent === 'function') updateContent(text || ''); },
+            getViewerRenderedContent: function (text) { if (typeof marked !== 'undefined') return marked.parse(text || ''); return (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); }
+        }
+    };
+    const script = document.createElement('script');
+    try {
+        script.src = new URL('sidebarAI/sidebar-ai.js', window.location.href).href;
+    } catch (e) {
+        script.src = './sidebarAI/sidebar-ai.js';
+    }
+    script.charset = 'utf-8';
+    script.onerror = function () {
+        showToast('sidebar-ai.js를 불러오지 못했습니다.');
+    };
+    script.onload = () => {
+        injectSidebarAIHtml();
+        if (typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
+    };
+    window.viewerSwitchToEdit = function () { toggleMode('edit'); };
+    window.viewerBuildNav = function () {};
+    document.body.appendChild(script);
+}
+
+function injectSidebarAIHtml() {
+    const inner = document.getElementById('ai-right-sidebar-inner');
+    if (!inner || inner.querySelector('#scholar-ai-sidebar')) return Promise.resolve(true);
+    const tryFetch = function (u) {
+        return fetch(u).then(function (r) {
+            if (!r.ok) throw new Error(String(r.status));
+            return r.text();
+        });
+    };
+    var base = '';
+    try {
+        base = new URL('sidebarAI/sidebar-ai.html', window.location.href).href;
+    } catch (e2) {
+        base = './sidebarAI/sidebar-ai.html';
+    }
+    return tryFetch(base)
+        .catch(function () { return tryFetch('./sidebarAI/sidebar-ai.html'); })
+        .then(function (html) {
+            inner.style.display = 'flex';
+            inner.style.flexDirection = 'row';
+            inner.style.alignItems = 'stretch';
+            inner.style.height = '100%';
+            inner.style.overflow = 'hidden';
+            inner.className = 'h-full flex flex-row items-stretch overflow-hidden min-w-0';
+            inner.innerHTML = html;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            return true;
+        })
+        .catch(function () {
+            return false;
+        });
+}
+
+async function loadAiSettingsToUI() {
+    const settings = await getAiSettings();
+    if (!settings) {
+        updateAiScholarSspimgAvailability(false);
+        return;
+    }
+    const apiInput = document.getElementById('ai-api-key');
+    if (apiInput && settings.apiKey) apiInput.value = settings.apiKey;
+    if (typeof validateApiKeyInputUI === 'function') validateApiKeyInputUI();
+    const useCheck = document.getElementById('ai-use-checkbox');
+    const section = document.getElementById('ai-password-section');
+    if (useCheck) {
+        if (settings.aiMasterEnabled === false) useCheck.checked = false;
+        else useCheck.checked = !!(settings.verified || settings.passwordHash);
+    }
+    if (section) section.classList.toggle('hidden', !useCheck || !useCheck.checked);
+    const verified = !!settings.verified;
+    setAiPasswordVerifiedUI('neutral');
+    const pwdInput = document.getElementById('ai-password-input');
+    if (pwdInput) pwdInput.value = '';
+    const fb = document.getElementById('ai-password-feedback');
+    if (fb) {
+        if (verified) {
+            fb.textContent = '인증 정보가 저장되어 있습니다. 아래에서 AI 기능을 선택할 수 있습니다.';
+            fb.className = 'text-xs text-emerald-700 dark:text-emerald-400 min-h-[1.25rem]';
+        } else {
+            fb.textContent = '';
+            fb.className = 'text-xs min-h-[1.25rem]';
+        }
+    }
+    const scholarEl = document.getElementById('ai-scholar-enabled');
+    const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
+    if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
+    updateAiScholarSspimgAvailability(verified);
+    const nameEl = document.getElementById('ai-user-name');
+    const idEl = document.getElementById('ai-user-id');
+    const majorEl = document.getElementById('ai-user-major');
+    const contactEl = document.getElementById('ai-user-contact');
+    if (settings.userInfo) {
+        if (nameEl) nameEl.value = settings.userInfo.name || '';
+        if (idEl) idEl.value = settings.userInfo.id || '';
+        if (majorEl) majorEl.value = settings.userInfo.major || '';
+        if (contactEl) contactEl.value = settings.userInfo.contact || '';
+    }
+}
+
+async function initAiVisibility() {
+    const settings = await getAiSettings();
+    const useCheck = document.getElementById('ai-use-checkbox');
+    const scholarEl = document.getElementById('ai-scholar-enabled');
+    const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    const verified = !!(settings && settings.verified);
+    if (settings) {
+        if (useCheck) {
+            if (settings.aiMasterEnabled === false) useCheck.checked = false;
+            else useCheck.checked = !!(settings.verified || settings.passwordHash);
+        }
+        if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
+        if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
+    } else {
+        if (scholarEl) scholarEl.checked = false;
+        if (sspimgEl) sspimgEl.checked = false;
+    }
+    updateAiScholarSspimgAvailability(verified);
+    await applyAiFeatureVisibility();
+}
+
 function openSettingsModal() {
     document.getElementById('settings-modal').classList.remove('hidden');
     document.getElementById('settings-modal').classList.add('flex');
-}
-
-function closeSettingsModal() {
-    document.getElementById('settings-modal').classList.add('hidden');
-    document.getElementById('settings-modal').classList.remove('flex');
+    loadAiSettingsToUI();
 }
 
 function applyCodeColorSettings() {
@@ -1004,6 +1826,7 @@ function resetCodeColorSettings() {
 
 // Global exports for inline HTML handlers
 window.toggleTheme = toggleTheme;
+window.toggleEditorLightMode = toggleEditorLightMode;
 window.updateContent = updateContent;
 window.renderMarkdown = renderMarkdown;
 window.toggleMode = toggleMode;
@@ -1039,6 +1862,13 @@ window.openBackupModal = openBackupModal;
 window.closeBackupModal = closeBackupModal;
 window.exportZip = exportZip;
 window.exportMpv = exportMpv;
+window.saveApiKey = saveApiKey;
+window.toggleAiPasswordSection = toggleAiPasswordSection;
+window.validateApiKeyInputUI = validateApiKeyInputUI;
+window.saveAiPassword = saveAiPassword;
+window.sendAuthRequestMail = sendAuthRequestMail;
+window.applyAiFeatureVisibility = applyAiFeatureVisibility;
+window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;
