@@ -4,7 +4,8 @@ const DB_VERSION = 2;
 let db;
 
 const AI_SETTINGS_KEY = 'ai_settings';
-const AI_PASSWORD_CORRECT = 'a123456!';
+/** 인증번호 검증용 SHA-256 해시 (평문 비밀번호는 소스에 저장하지 않음) */
+const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
 const AUTH_REQUEST_EMAIL = 'shoutjoy1@yonsei.ac.kr';
 
 // State
@@ -193,6 +194,11 @@ window.onload = async () => {
             e.preventDefault();
             toggleTheme();
             showToast("테마가 변경되었습니다.");
+        }
+        if (e.ctrlKey && e.altKey && (e.key === 'a' || e.key === 'A')) {
+            e.preventDefault();
+            insertUserInfoAtCursor();
+            return;
         }
         // Ctrl + H for Find/Replace
         if (e.ctrlKey && e.key.toLowerCase() === 'h') {
@@ -841,6 +847,38 @@ function dismissRecovery() {
     tx.objectStore('autosave').delete('last_work');
 }
 
+async function insertUserInfoAtCursor() {
+    if (!isEditMode) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+    if (!db) {
+        showToast('저장소를 불러오는 중입니다.');
+        return;
+    }
+    const s = await getAiSettings();
+    const u = s && s.userInfo;
+    if (!u || (!String(u.name || '').trim() && !String(u.id || '').trim() && !String(u.major || '').trim() && !String(u.contact || '').trim())) {
+        showToast('설정에서 사용자 정보를 저장한 뒤 사용하세요.');
+        return;
+    }
+    const lines = [];
+    if (String(u.name || '').trim()) lines.push('이름: ' + String(u.name).trim());
+    if (String(u.id || '').trim()) lines.push('학번: ' + String(u.id).trim());
+    if (String(u.major || '').trim()) lines.push('전공: ' + String(u.major).trim());
+    if (String(u.contact || '').trim()) lines.push('연락처: ' + String(u.contact).trim());
+    const block = lines.join('\n');
+    const ta = editorTextarea;
+    const scrollTop = ta.scrollTop;
+    ta.focus();
+    document.execCommand('insertText', false, block);
+    currentMarkdown = ta.value;
+    ta.scrollTop = scrollTop;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    showToast('사용자 정보를 삽입했습니다.');
+}
+
 // --- Helper Insertion (Modal) ---
 function insertAtCursor(type) {
     const start = editorTextarea.selectionStart;
@@ -1174,8 +1212,7 @@ async function saveAiPassword() {
         return;
     }
     const hash = await hashPassword(pwd);
-    const correctHash = await hashPassword(AI_PASSWORD_CORRECT);
-    if (hash !== correctHash) {
+    if (hash !== AI_PASSWORD_HASH) {
         setAiPasswordVerifiedUI('bad');
         showToast("인증번호가 올바르지 않습니다.");
         return;
@@ -1243,11 +1280,34 @@ async function closeSettingsModal() {
     await applyAiFeatureVisibility();
 }
 
+function readAiUserInfoFromModal() {
+    const name = ((document.getElementById('ai-user-name') && document.getElementById('ai-user-name').value) || '').trim();
+    const id = ((document.getElementById('ai-user-id') && document.getElementById('ai-user-id').value) || '').trim();
+    const major = ((document.getElementById('ai-user-major') && document.getElementById('ai-user-major').value) || '').trim();
+    const contact = ((document.getElementById('ai-user-contact') && document.getElementById('ai-user-contact').value) || '').trim();
+    return { name, id, major, contact };
+}
+
+async function saveAiUserInfo() {
+    const fb = document.getElementById('ai-user-info-feedback');
+    if (fb) fb.textContent = '';
+    if (!db) {
+        showToast('저장소를 불러오는 중입니다. 잠시 후 다시 시도하세요.');
+        return;
+    }
+    const userInfo = readAiUserInfoFromModal();
+    if (!userInfo.name && !userInfo.id && !userInfo.major && !userInfo.contact) {
+        if (fb) fb.textContent = '이름·학번 등 최소 한 항목을 입력하세요.';
+        showToast('저장할 사용자 정보를 입력하세요.');
+        return;
+    }
+    await setAiSettings({ userInfo });
+    if (fb) fb.textContent = '저장되었습니다. 다음에 설정을 열면 자동으로 불러옵니다.';
+    showToast('사용자 정보가 저장되었습니다.');
+}
+
 async function sendAuthRequestMail() {
-    const name = (document.getElementById('ai-user-name') && document.getElementById('ai-user-name').value) || '';
-    const id = (document.getElementById('ai-user-id') && document.getElementById('ai-user-id').value) || '';
-    const major = (document.getElementById('ai-user-major') && document.getElementById('ai-user-major').value) || '';
-    const contact = (document.getElementById('ai-user-contact') && document.getElementById('ai-user-contact').value) || '';
+    const { name, id, major, contact } = readAiUserInfoFromModal();
     const userInfo = { name, id, major, contact };
     await setAiSettings({ userInfo });
     const body = `인증번호 요청\n\n이름: ${name}\n학번: ${id}\n전공: ${major}\n연락처: ${contact}`;
@@ -1850,6 +1910,7 @@ window.checkAutoSave = checkAutoSave;
 window.applyRecovery = applyRecovery;
 window.dismissRecovery = dismissRecovery;
 window.insertAtCursor = insertAtCursor;
+window.insertUserInfoAtCursor = insertUserInfoAtCursor;
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
@@ -1867,6 +1928,7 @@ window.toggleAiPasswordSection = toggleAiPasswordSection;
 window.validateApiKeyInputUI = validateApiKeyInputUI;
 window.saveAiPassword = saveAiPassword;
 window.sendAuthRequestMail = sendAuthRequestMail;
+window.saveAiUserInfo = saveAiUserInfo;
 window.applyAiFeatureVisibility = applyAiFeatureVisibility;
 window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
 window.closeDeleteModal = closeDeleteModal;
