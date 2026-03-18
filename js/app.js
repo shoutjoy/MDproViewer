@@ -259,13 +259,23 @@ function updateContent(md) {
     renderTOC();
 }
 
+/** 보기용: 숫자~숫자 → ～, **굵게** 선변환 후 marked */
+function preprocessMarkdownForView(raw) {
+    let s = String(raw ?? '');
+    if (typeof preprocessNumericRangeTilde === 'function') {
+        s = preprocessNumericRangeTilde(s);
+    }
+    if (typeof MarkdownBold !== 'undefined' && MarkdownBold.preprocessBold) {
+        s = MarkdownBold.preprocessBold(s) || s;
+    }
+    return s;
+}
+
 function renderMarkdown() {
     const raw = String(currentMarkdown ?? '');
     let preprocessed = raw;
     try {
-        if (typeof MarkdownBold !== 'undefined' && MarkdownBold.preprocessBold) {
-            preprocessed = MarkdownBold.preprocessBold(raw) || raw;
-        }
+        preprocessed = preprocessMarkdownForView(raw);
         if (typeof marked === 'undefined' || !marked.parse) {
             viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
             return;
@@ -1807,7 +1817,17 @@ function ensureSidebarAILoaded() {
             getImageModelId: function () { return localStorage.getItem('ss_image_model') || 'gemini-2.5-flash-image'; },
             abortCurrentTask: function () { if (window._abortController) window._abortController.abort(); },
             setViewerContent: function (text) { if (typeof updateContent === 'function') updateContent(text || ''); },
-            getViewerRenderedContent: function (text) { if (typeof marked !== 'undefined') return marked.parse(text || ''); return (text || '').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'); }
+            getViewerRenderedContent: function (text) {
+                var t = text || '';
+                if (typeof marked !== 'undefined' && marked.parse) {
+                    try {
+                        return marked.parse(preprocessMarkdownForView(t));
+                    } catch (e) {
+                        return t.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                    }
+                }
+                return t.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+            }
         }
     };
     const script = document.createElement('script');

@@ -16,6 +16,7 @@
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <!-- Markdown Bold: **텍스트** 특수문자 포함 시 <b> 선변환 (marked 파싱 실패 방지) -->
     <script src="./js/Markdown_bold.js" charset="utf-8"></script>
+    <script src="./js/md_numeric_range.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="./css/style.css" charset="utf-8">
@@ -732,10 +733,10 @@
 
                         <!-- 인공지능 사용: 비번 + ScholarAI/sspimgAI -->
                         <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
-                            <div class="flex items-center gap-2">
-                                <input type="checkbox" id="ai-use-checkbox" onchange="toggleAiPasswordSection()"
+                            <div class="flex items-center gap-2" role="group" aria-label="인공지능 사용">
+                                <input type="checkbox" id="ai-use-checkbox" onclick="setTimeout(toggleAiPasswordSection,0)"
                                     class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                <label for="ai-use-checkbox" class="text-sm font-medium text-slate-700 dark:text-slate-300">인공지능 사용</label>
+                                <label for="ai-use-checkbox" class="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">인공지능 사용</label>
                             </div>
                             <div id="ai-password-section" class="hidden space-y-3 pl-6">
                                 <p class="text-xs text-amber-600 dark:text-amber-400">박중희 교수님에게 인증번호를 받으세요.</p>
