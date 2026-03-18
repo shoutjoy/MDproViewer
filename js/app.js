@@ -1831,10 +1831,11 @@ function ensureSidebarAILoaded() {
         }
     };
     const script = document.createElement('script');
+    const base = (document.querySelector('base') && document.querySelector('base').href) || (window.location.origin + '/');
     try {
-        script.src = new URL('sidebarAI/sidebar-ai.js', window.location.href).href;
+        script.src = new URL('sidebarAI/sidebar-ai.js', base).href;
     } catch (e) {
-        script.src = './sidebarAI/sidebar-ai.js';
+        script.src = base.replace(/\/$/, '') + '/sidebarAI/sidebar-ai.js';
     }
     script.charset = 'utf-8';
     script.onerror = function () {
@@ -1859,10 +1860,11 @@ function injectSidebarAIHtml() {
         });
     };
     var base = '';
+    const baseUrl = (document.querySelector('base') && document.querySelector('base').href) || (window.location.origin + '/');
     try {
-        base = new URL('sidebarAI/sidebar-ai.html', window.location.href).href;
+        base = new URL('sidebarAI/sidebar-ai.html', baseUrl).href;
     } catch (e2) {
-        base = './sidebarAI/sidebar-ai.html';
+        base = baseUrl.replace(/\/$/, '') + '/sidebarAI/sidebar-ai.html';
     }
     return tryFetch(base)
         .catch(function () { return tryFetch('./sidebarAI/sidebar-ai.html'); })
