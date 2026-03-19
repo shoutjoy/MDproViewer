@@ -652,20 +652,30 @@ function createNewFolder() {
     input.focus();
 }
 
+function getSelectedTextForSave() {
+    const sel = window.getSelection && window.getSelection();
+    if (sel && sel.toString && sel.toString().trim()) {
+        return sel.toString().trim().replace(/\s+/g, ' ').slice(0, 200);
+    }
+    if (editorTextarea && document.activeElement === editorTextarea) {
+        const start = editorTextarea.selectionStart;
+        const end = editorTextarea.selectionEnd;
+        if (start !== end) {
+            const selected = editorTextarea.value.substring(start, end).trim().replace(/\s+/g, ' ').slice(0, 200);
+            if (selected) return selected;
+        }
+    }
+    return null;
+}
+
 function saveToDB() {
     const modal = document.getElementById('save-modal');
     document.querySelector('#save-modal h3').textContent = '문서 저장';
     document.querySelector('#save-modal label').textContent = '저장할 제목을 입력하세요';
     const input = document.getElementById('save-title-input');
     let defaultTitle = currentFileName.replace(/\.md$/i, '');
-    if (editorTextarea && document.activeElement === editorTextarea) {
-        const start = editorTextarea.selectionStart;
-        const end = editorTextarea.selectionEnd;
-        if (start !== end) {
-            const selected = editorTextarea.value.substring(start, end).trim().replace(/\s+/g, ' ').slice(0, 200);
-            if (selected) defaultTitle = selected;
-        }
-    }
+    const selected = getSelectedTextForSave();
+    if (selected) defaultTitle = selected;
     input.value = defaultTitle;
 
     currentActionCallback = (title) => {
@@ -902,6 +912,30 @@ function dismissRecovery() {
     document.getElementById('recovery-modal').classList.remove('flex');
     const tx = db.transaction('autosave', 'readwrite');
     tx.objectStore('autosave').delete('last_work');
+}
+
+async function pasteFromClipboardAndDismiss() {
+    document.getElementById('recovery-modal').classList.add('hidden');
+    document.getElementById('recovery-modal').classList.remove('flex');
+    const tx = db.transaction('autosave', 'readwrite');
+    tx.objectStore('autosave').delete('last_work');
+
+    if (!isEditMode) toggleMode('edit');
+    if (editorTextarea) editorTextarea.focus();
+
+    try {
+        const text = await navigator.clipboard.readText();
+        if (text && String(text).trim()) {
+            updateContent(text);
+            showToast("클립보드 내용을 붙여넣었습니다.");
+        } else {
+            updateContent('');
+            showToast("새로 입력할 수 있습니다. Ctrl+V로 붙여넣어 주세요.");
+        }
+    } catch (e) {
+        updateContent('');
+        showToast("Ctrl+V로 붙여넣어 주세요.");
+    }
 }
 
 async function insertUserInfoAtCursor() {
@@ -1283,6 +1317,8 @@ function toggleAiPasswordSection() {
     }
 }
 
+let _lastVerifiedSaveAt = 0;
+
 async function saveAiPassword() {
     const input = document.getElementById('ai-password-input');
     const pwd = (input && input.value) ? input.value : '';
@@ -1299,6 +1335,8 @@ async function saveAiPassword() {
         return;
     }
     await setAiSettings({ passwordHash: hash, verified: true, aiMasterEnabled: true });
+    _lastVerifiedSaveAt = Date.now();
+    if (input) input.value = '';
     setAiPasswordVerifiedUI('ok');
     updateAiScholarSspimgAvailability(true);
     showToast("인증되었습니다. ScholarAI 또는 sspimgAI를 켜면 메뉴에 버튼이 나타납니다.");
@@ -1306,6 +1344,9 @@ async function saveAiPassword() {
 }
 
 function updateAiScholarSspimgAvailability(verified) {
+    // Chrome: 인증 저장 직후 toggleAiPasswordSection의 getAiSettings 콜백이 늦게 도착해
+    // verified=false로 덮어쓰는 레이스 방지 (IndexedDB 읽기 타이밍 차이)
+    if (!verified && Date.now() - _lastVerifiedSaveAt < 300) return;
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const hint = document.getElementById('ai-scholar-sspimg-hint');
@@ -1416,8 +1457,11 @@ async function applyAiFeatureVisibility() {
     const useMaster = isAiMasterEnabled(settings);
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
-    const scholarOn = !!(scholarEl && scholarEl.checked);
-    const sspimgOn = !!(sspimgEl && sspimgEl.checked);
+    const modal = document.getElementById('settings-modal');
+    const modalVisible = modal && !modal.classList.contains('hidden');
+    // 모달이 닫혀 있으면 IndexedDB 사용 (Chrome 등에서 숨겨진 DOM 체크박스 신뢰 불가)
+    const scholarOn = modalVisible && scholarEl ? !!scholarEl.checked : !!(settings && settings.scholarAI === true);
+    const sspimgOn = modalVisible && sspimgEl ? !!sspimgEl.checked : !!(settings && settings.sspimgAI === true);
     await setAiSettings({ scholarAI: scholarOn, sspimgAI: sspimgOn });
     const showAi = !!(useMaster && verified && (scholarOn || sspimgOn));
     const headerBtns = document.getElementById('header-ai-btns');
@@ -2005,6 +2049,7 @@ window.performAutoSave = performAutoSave;
 window.checkAutoSave = checkAutoSave;
 window.applyRecovery = applyRecovery;
 window.dismissRecovery = dismissRecovery;
+window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
 window.insertUserInfoAtCursor = insertUserInfoAtCursor;
 window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
