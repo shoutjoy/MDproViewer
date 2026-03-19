@@ -43,6 +43,13 @@ const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.g
 window.addEventListener('message', function (ev) {
     const d = ev.data;
     if (!d || typeof d !== 'object') return;
+
+    // 1번: scholarToMDPaste — 확장 프로그램에서 postMessage로 전달
+    if (d.type === 'scholarToMDPaste' && d.content) {
+        applyScholarPaste(String(d.content));
+        return;
+    }
+
     const content = d.content ?? d.text ?? d.markdown;
     if (content === undefined || content === null) return;
     const typeOk = d.type && EXTERNAL_LOAD_TYPES.includes(String(d.type));
@@ -1054,6 +1061,25 @@ function performAutoSave() {
         timestamp: Date.now()
     });
 }
+
+/** 확장 프로그램 등에서 붙여넣기 (보기 전환 없이, input 이벤트 미발생) */
+function applyScholarPaste(content) {
+    if (content === undefined || content === null) return;
+    const s = String(content);
+    currentMarkdown = s;
+    if (editorTextarea) {
+        editorTextarea.value = s;
+    }
+    renderMarkdown();
+    renderTOC();
+    performAutoSave();
+    if (typeof showToast === 'function') showToast("내용을 받았습니다.");
+}
+
+/** 2번: 전역 함수 — content script가 window.acceptScholarPaste(content) 호출 */
+window.acceptScholarPaste = function (content) {
+    applyScholarPaste(content);
+};
 
 /** URL 또는 postMessage로 전달된 외부 자료를 바로 로드 (복구 모달 없이) */
 function loadFromExternalContent(content, title) {
