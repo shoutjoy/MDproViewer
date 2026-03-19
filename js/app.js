@@ -122,22 +122,23 @@ function updateEditorLightButton() {
 }
 
 window.onload = async () => {
-    initTheme();
-    initSettings();
-    lucide.createIcons();
-    toggleMode('edit');
+    try {
+        initTheme();
+        initSettings();
+        lucide.createIcons();
+        toggleMode('edit');
 
-    await initDB();
-    await ensureRootFolder();
-    renderDBList();
-    checkAutoSave();
+        await initDB();
+        await ensureRootFolder();
+        renderDBList();
+        checkAutoSave();
 
-    updateContent('');
-    if (isEditMode) editorTextarea.focus();
+        updateContent('');
+        if (isEditMode && editorTextarea) editorTextarea.focus();
 
-    sidebar.style.display = 'none';
+        if (sidebar) sidebar.style.display = 'none';
 
-    initAiVisibility();
+        initAiVisibility();
 
     if (window.electron && window.electron.ipcRenderer) {
         window.electron.ipcRenderer.on('open-external-file', (event, data) => {
@@ -160,7 +161,7 @@ window.onload = async () => {
     document.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        dropZone.classList.add('drag-over');
+        if (dropZone) dropZone.classList.add('drag-over');
     });
 
     document.addEventListener('dragenter', (e) => {
@@ -177,12 +178,12 @@ window.onload = async () => {
     document.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        dropZone.classList.remove('drag-over');
+        if (dropZone) dropZone.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
         if (file) readFile(file);
     });
 
-    editorTextarea.addEventListener('input', () => {
+    if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
         performAutoSave();
     });
@@ -249,12 +250,16 @@ window.onload = async () => {
         if (e.ctrlKey && e.altKey && e.key === '2') { e.preventDefault(); applyHeading(2); }
         if (e.ctrlKey && e.altKey && e.key === '3') { e.preventDefault(); applyHeading(3); }
     });
+    } catch (e) {
+        console.error('초기화 오류:', e);
+        if (typeof showToast === 'function') showToast('초기화 중 오류가 발생했습니다. 콘솔을 확인하세요.');
+    }
 };
 
 // --- Core Functions ---
 function updateContent(md) {
     currentMarkdown = md;
-    editorTextarea.value = md;
+    if (editorTextarea) editorTextarea.value = md;
     renderMarkdown();
     renderTOC();
 }
@@ -272,6 +277,7 @@ function preprocessMarkdownForView(raw) {
 }
 
 function renderMarkdown() {
+    if (!viewer) return;
     const raw = String(currentMarkdown ?? '');
     let preprocessed = raw;
     try {
@@ -297,34 +303,40 @@ function renderMarkdown() {
 }
 
 function toggleMode(mode) {
+    const vc = document.getElementById('viewer-container');
+    const ec = document.getElementById('content-viewport');
     const btnView = document.getElementById('btn-view');
     const btnEdit = document.getElementById('btn-edit');
     const editTools = document.getElementById('edit-tools');
     const activeClasses = ['bg-white', 'dark:bg-slate-700', 'shadow-sm', 'text-indigo-600', 'dark:text-indigo-400'];
+    if (!vc || !ec) {
+        console.warn('toggleMode: viewer-container 또는 content-viewport를 찾을 수 없습니다.', { vc: !!vc, ec: !!ec });
+        return;
+    }
 
     if (mode === 'edit') {
         isEditMode = true;
-        viewerContainer.classList.add('hidden');
-        editorContainer.classList.remove('hidden');
-        editorContainer.classList.add('viewer-edit-active');
-        editTools.classList.remove('hidden');
-        btnEdit.classList.add(...activeClasses);
-        btnView.classList.remove(...activeClasses);
+        vc.classList.add('hidden');
+        ec.classList.remove('hidden');
+        ec.classList.add('viewer-edit-active');
+        if (editTools) editTools.classList.remove('hidden');
+        if (btnEdit) btnEdit.classList.add(...activeClasses);
+        if (btnView) btnView.classList.remove(...activeClasses);
         applyEditorLightPreference();
         lucide.createIcons();
-        editorTextarea.focus();
+        if (editorTextarea) editorTextarea.focus();
     } else {
         isEditMode = false;
         if (editorTextarea) {
             editorTextarea.blur();
             currentMarkdown = String(editorTextarea.value ?? '');
         }
-        editorContainer.classList.remove('viewer-edit-active');
-        editorContainer.classList.add('hidden');
-        editTools.classList.add('hidden');
-        btnView.classList.add(...activeClasses);
-        btnEdit.classList.remove(...activeClasses);
-        viewerContainer.classList.remove('hidden');
+        ec.classList.remove('viewer-edit-active');
+        ec.classList.add('hidden');
+        if (editTools) editTools.classList.add('hidden');
+        if (btnView) btnView.classList.add(...activeClasses);
+        if (btnEdit) btnEdit.classList.remove(...activeClasses);
+        vc.classList.remove('hidden');
         renderMarkdown();
         requestAnimationFrame(function () {
             if (isEditMode) return;
@@ -513,6 +525,8 @@ async function bindMerge() {
         if (isSidebarHidden) toggleSidebarVisibility();
     };
 }
+
+async function exportZip() {
     if (!db || typeof JSZip === 'undefined') {
         showToast("ZIP 저장을 사용할 수 없습니다.");
         return;
@@ -1267,13 +1281,15 @@ function showToast(msg) {
 function initSettings() {
     const savedBg = localStorage.getItem('md_viewer_code_bg');
     const savedText = localStorage.getItem('md_viewer_code_text');
+    const bgEl = document.getElementById('code-bg-color');
+    const textEl = document.getElementById('code-text-color');
     if (savedBg) {
         document.documentElement.style.setProperty('--code-bg-color', savedBg);
-        document.getElementById('code-bg-color').value = savedBg;
+        if (bgEl) bgEl.value = savedBg;
     }
     if (savedText) {
         document.documentElement.style.setProperty('--code-text-color', savedText);
-        document.getElementById('code-text-color').value = savedText;
+        if (textEl) textEl.value = savedText;
     }
 }
 
