@@ -131,9 +131,11 @@ window.onload = async () => {
         await initDB();
         await ensureRootFolder();
         renderDBList();
-        checkAutoSave();
 
-        updateContent('');
+        // 앱 시작 시 복구 모달 표시하지 않음 (NotebookLM 등 외부 자료 우선)
+        const urlContent = tryLoadFromUrl();
+        if (!urlContent) updateContent('');
+
         if (isEditMode && editorTextarea) editorTextarea.focus();
 
         if (sidebar) sidebar.style.display = 'none';
@@ -157,6 +159,21 @@ window.onload = async () => {
             }
         }).catch(function () {});
     }
+
+    // NotebookLM 등 외부에서 postMessage로 보낸 자료는 복구 없이 바로 로드
+    const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
+    const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
+    window.addEventListener('message', function (ev) {
+        const d = ev.data;
+        if (!d || typeof d !== 'object') return;
+        const content = d.content ?? d.text ?? d.markdown;
+        if (content === undefined || content === null) return;
+        const typeOk = d.type && EXTERNAL_LOAD_TYPES.includes(String(d.type));
+        const originOk = ev.origin && NOTEBOOKLM_ORIGINS.some(o => ev.origin.startsWith(o));
+        if (!typeOk && !originOk) return;
+        loadFromExternalContent(content, d.title ?? d.fileName ?? d.name ?? null);
+        if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
+    });
 
     document.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -433,6 +450,7 @@ function closeBackupModal() {
 }
 
 let mergeListState = [];
+let mergeListSearchQuery = '';
 
 async function openMergeModal() {
     if (!db) return;
@@ -442,11 +460,19 @@ async function openMergeModal() {
     });
     const rootDocs = (docs || []).filter(d => d.folderId === 'root');
     mergeListState = rootDocs.map(d => ({ id: d.id, title: d.title, checked: true }));
+    mergeListSearchQuery = '';
+    const searchInput = document.getElementById('merge-search-input');
+    if (searchInput) searchInput.value = '';
     renderMergeList();
     document.getElementById('merge-bundle-name').value = '';
     document.getElementById('merge-modal').classList.remove('hidden');
     document.getElementById('merge-modal').classList.add('flex');
     lucide.createIcons();
+}
+
+function filterMergeList(query) {
+    mergeListSearchQuery = String(query || '').trim().toLowerCase();
+    renderMergeList();
 }
 
 function renderMergeList() {
@@ -456,7 +482,16 @@ function renderMergeList() {
         listEl.innerHTML = '<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">내 문서(ROOT)에 문서가 없습니다.</p>';
         return;
     }
-    listEl.innerHTML = mergeListState.map((item, idx) => `
+    const q = mergeListSearchQuery;
+    const filtered = mergeListState
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item }) => !q || (item.title || '').toLowerCase().includes(q));
+    if (filtered.length === 0) {
+        listEl.innerHTML = '<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">검색 결과가 없습니다.</p>';
+        lucide.createIcons();
+        return;
+    }
+    listEl.innerHTML = filtered.map(({ item, idx }) => `
         <div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600" data-idx="${idx}">
             <i data-lucide="file-text" class="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0"></i>
             <span class="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate" title="${(item.title || '').replace(/"/g, '&quot;')}">${(item.title || '').replace(/</g, '&lt;')}</span>
@@ -470,6 +505,24 @@ function renderMergeList() {
         </div>
     `).join('');
     lucide.createIcons();
+}
+
+function selectAllMergeItems() {
+    const q = mergeListSearchQuery;
+    mergeListState.forEach((item, idx) => {
+        const match = !q || (item.title || '').toLowerCase().includes(q);
+        if (match) item.checked = true;
+    });
+    renderMergeList();
+}
+
+function deselectAllMergeItems() {
+    const q = mergeListSearchQuery;
+    mergeListState.forEach((item) => {
+        const match = !q || (item.title || '').toLowerCase().includes(q);
+        if (match) item.checked = false;
+    });
+    renderMergeList();
 }
 
 function toggleMergeItem(idx, checked) {
@@ -985,6 +1038,43 @@ function performAutoSave() {
         title: currentFileName,
         timestamp: Date.now()
     });
+}
+
+/** URL 또는 postMessage로 전달된 외부 자료를 바로 로드 (복구 모달 없이) */
+function loadFromExternalContent(content, title) {
+    if (content !== undefined && content !== null) {
+        currentMarkdown = String(content);
+        if (editorTextarea) editorTextarea.value = currentMarkdown;
+        renderMarkdown();
+        renderTOC();
+    }
+    if (title) {
+        currentFileName = String(title);
+        if (fileNameDisplay) fileNameDisplay.textContent = currentFileName;
+    }
+    if (db) {
+        const tx = db.transaction('autosave', 'readwrite');
+        tx.objectStore('autosave').delete('last_work');
+    }
+}
+
+/** URL 쿼리에서 content/title 확인 후 로드. 로드했으면 true */
+function tryLoadFromUrl() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        let content = params.get('content');
+        const encoded = params.get('encoded');
+        const title = params.get('title') || params.get('name');
+        if (content) {
+            const decoded = (encoded === 'base64')
+                ? (typeof atob === 'function' ? atob(content) : content)
+                : decodeURIComponent(content);
+            loadFromExternalContent(decoded, title || null);
+            if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
+            return true;
+        }
+    } catch (e) {}
+    return false;
 }
 
 async function checkAutoSave() {
@@ -2148,6 +2238,7 @@ window.performAutoSave = performAutoSave;
 window.checkAutoSave = checkAutoSave;
 window.applyRecovery = applyRecovery;
 window.dismissRecovery = dismissRecovery;
+window.loadFromExternalContent = loadFromExternalContent;
 window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
 window.insertUserInfoAtCursor = insertUserInfoAtCursor;
@@ -2167,6 +2258,9 @@ window.closeMergeModal = closeMergeModal;
 window.bindMerge = bindMerge;
 window.toggleMergeItem = toggleMergeItem;
 window.moveMergeItem = moveMergeItem;
+window.filterMergeList = filterMergeList;
+window.selectAllMergeItems = selectAllMergeItems;
+window.deselectAllMergeItems = deselectAllMergeItems;
 window.exportZip = exportZip;
 window.exportMpv = exportMpv;
 window.saveApiKey = saveApiKey;
