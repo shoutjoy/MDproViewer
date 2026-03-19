@@ -34,6 +34,30 @@ const fileNameDisplay = document.getElementById('file-name-display');
 const dropZone = document.getElementById('drop-zone');
 const inputModal = document.getElementById('input-modal');
 
+/** NotebookLM 등 외부 앱에서 보낸 자료 (onload 전 도착분) */
+let pendingExternalContent = null;
+let receivedExternalContent = false;
+const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
+const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
+
+window.addEventListener('message', function (ev) {
+    const d = ev.data;
+    if (!d || typeof d !== 'object') return;
+    const content = d.content ?? d.text ?? d.markdown;
+    if (content === undefined || content === null) return;
+    const typeOk = d.type && EXTERNAL_LOAD_TYPES.includes(String(d.type));
+    const originOk = ev.origin && NOTEBOOKLM_ORIGINS.some(o => ev.origin.startsWith(o));
+    const openerOk = window.opener && ev.source === window.opener; // 다른 앱에서 열었을 때
+    if (!typeOk && !originOk && !openerOk) return;
+    const payload = { content: String(content), title: d.title ?? d.fileName ?? d.name ?? null };
+    pendingExternalContent = payload;
+    receivedExternalContent = true;
+    if (typeof loadFromExternalContent === 'function') {
+        loadFromExternalContent(payload.content, payload.title);
+        if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
+    }
+});
+
 // Init DB
 function initDB() {
     return new Promise((resolve, reject) => {
@@ -133,8 +157,14 @@ window.onload = async () => {
         renderDBList();
 
         // 앱 시작 시 복구 모달 표시하지 않음 (NotebookLM 등 외부 자료 우선)
-        const urlContent = tryLoadFromUrl();
-        if (!urlContent) updateContent('');
+        if (pendingExternalContent) {
+            loadFromExternalContent(pendingExternalContent.content, pendingExternalContent.title);
+            pendingExternalContent = null;
+            if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
+        } else if (!receivedExternalContent) {
+            const urlContent = tryLoadFromUrl();
+            if (!urlContent) updateContent('');
+        }
 
         if (isEditMode && editorTextarea) editorTextarea.focus();
 
@@ -159,21 +189,6 @@ window.onload = async () => {
             }
         }).catch(function () {});
     }
-
-    // NotebookLM 등 외부에서 postMessage로 보낸 자료는 복구 없이 바로 로드
-    const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
-    const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
-    window.addEventListener('message', function (ev) {
-        const d = ev.data;
-        if (!d || typeof d !== 'object') return;
-        const content = d.content ?? d.text ?? d.markdown;
-        if (content === undefined || content === null) return;
-        const typeOk = d.type && EXTERNAL_LOAD_TYPES.includes(String(d.type));
-        const originOk = ev.origin && NOTEBOOKLM_ORIGINS.some(o => ev.origin.startsWith(o));
-        if (!typeOk && !originOk) return;
-        loadFromExternalContent(content, d.title ?? d.fileName ?? d.name ?? null);
-        if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
-    });
 
     document.addEventListener('dragover', (e) => {
         e.preventDefault();
