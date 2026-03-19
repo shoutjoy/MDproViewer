@@ -124,6 +124,10 @@
       scholarAIInitModelSelect();
     } else {
       el.classList.remove('fullscreen');
+      var inner = document.getElementById('ai-right-sidebar-inner');
+      if (inner && el.parentNode !== inner) {
+        inner.insertBefore(el, inner.firstChild);
+      }
       try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
     }
   }
@@ -134,7 +138,7 @@
     var minW = 280, maxW = Math.min(800, window.innerWidth - 200);
     var startX = 0, startW = 0;
     function onMove(e) {
-      var w = startW + (startX - e.clientX);
+      var w = startW + (e.clientX - startX);
       w = Math.max(minW, Math.min(maxW, w));
       sidebar.style.width = w + 'px';
       sidebar.style.minWidth = w + 'px';
@@ -158,9 +162,13 @@
   }
   function scholarAIShrink() {
     var el = document.getElementById('scholar-ai-sidebar');
+    var inner = document.getElementById('ai-right-sidebar-inner');
     if (el) {
       el.classList.remove('open');
       el.classList.remove('fullscreen');
+      if (inner && el.parentNode !== inner) {
+        inner.insertBefore(el, inner.firstChild);
+      }
     }
     try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
   }
@@ -217,7 +225,17 @@
   }
   function scholarAIFullscreen() {
     var el = document.getElementById('scholar-ai-sidebar');
-    if (el) el.classList.toggle('fullscreen');
+    if (!el) return;
+    var inner = document.getElementById('ai-right-sidebar-inner');
+    if (el.classList.contains('fullscreen')) {
+      el.classList.remove('fullscreen');
+      if (inner && el.parentNode !== inner) {
+        inner.insertBefore(el, inner.firstChild);
+      }
+    } else {
+      el.classList.add('fullscreen');
+      document.body.appendChild(el);
+    }
   }
   function scholarAISyncSelection() {
     syncAiPanelsFromDocumentSelection();

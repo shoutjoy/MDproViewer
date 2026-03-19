@@ -180,104 +180,8 @@
             </div>
         </aside>
 
-        <div class="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-            <!-- Sub Toolbar (편집 시 편집 도구 가운데) -->
-            <div id="toolbar"
-                class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-2 sm:px-4 md:px-6 py-1.5 sm:py-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 md:gap-4 no-print transition-colors">
-                <!-- Edit Toolbar: 가운데 정렬 -->
-                <div id="edit-tools" class="flex flex-wrap items-center justify-center gap-2">
-                    <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
-                    <button onclick="insertAtCursor('bold')"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="굵게">B</button>
-                    <button onclick="insertAtCursor('italic')"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm italic"
-                        title="기울임꼴">I</button>
-
-                    <button onclick="applyHeading(1)"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="제목 1 (H1)">H1</button>
-                    <button onclick="applyHeading(2)"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="제목 2 (H2)">H2</button>
-                    <button onclick="applyHeading(3)"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="제목 3 (H3)">H3</button>
-
-                    <button onclick="insertAtCursor('quote')"
-                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="인용구"><i data-lucide="quote" class="w-3.5 h-3.5"></i></button>
-                    <button onclick="handleTableInsertion()"
-                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="표 삽입"><i data-lucide="table" class="w-3.5 h-3.5"></i></button>
-
-                    <button onclick="openLinkModal('link')"
-                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="링크"><i data-lucide="link" class="w-3.5 h-3.5"></i></button>
-                    <button onclick="openLinkModal('image')"
-                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="이미지"><i data-lucide="image" class="w-3.5 h-3.5"></i></button>
-                    <button onclick="insertAtCursor('br')"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase">Enter</button>
-                    <button type="button" onclick="insertUserInfoAtCursor()"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="커서 위치에 저장된 사용자 정보 삽입 (Ctrl+Alt+A)">userIn</button>
-                    <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
-                    <button type="button" id="btn-editor-light" onclick="toggleEditorLightMode()"
-                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300 flex items-center gap-1"
-                        title="편집창 라이트/다크 전환">
-                        <i data-lucide="sun" id="editor-light-icon-sun" class="w-3.5 h-3.5 hidden"></i>
-                        <i data-lucide="moon" id="editor-light-icon-moon" class="w-3.5 h-3.5"></i>
-                        <span class="text-[10px] sm:text-xs font-medium max-[380px]:hidden sm:inline" id="editor-light-label">편집창 라이트</span>
-                    </button>
-                </div>
-            </div>
-
-            <!-- Find & Replace Toolbar -->
-            <div id="find-replace-bar"
-                class="hidden bg-indigo-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-2 flex flex-wrap items-center gap-3 text-sm no-print transition-colors">
-                <span class="font-bold text-slate-600 dark:text-slate-300">찾기</span>
-                <input type="text" id="find-input" placeholder="검색어..."
-                    class="px-3 py-1.5 border border-indigo-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 shadow-sm">
-                <span class="font-bold text-slate-600 dark:text-slate-300 ml-2">바꾸기</span>
-                <input type="text" id="replace-input" placeholder="바꿀 내용..."
-                    class="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 shadow-sm">
-                <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
-                <button onclick="findNext()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">다음</button>
-                <button onclick="findPrev()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">이전</button>
-                <button onclick="replaceCurrent()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">바꾸기</button>
-                <button onclick="replaceAll()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">모두</button>
-                <button onclick="closeFindReplace()"
-                    class="ml-auto p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm transition-colors"><i
-                        data-lucide="x" class="w-4 h-4"></i></button>
-            </div>
-
-            <!-- Main Content Area -->
-            <main id="drop-zone" class="flex-1 overflow-hidden relative">
-                <div id="viewer-container"
-                    class="hidden h-full w-full overflow-y-auto custom-scrollbar p-8 sm:p-12 md:p-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
-                    <div id="viewer" class="markdown-body w-full max-w-4xl print-area mx-auto">
-                        <div
-                            class="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
-                            <i data-lucide="file-up" class="w-16 h-16 mb-4 opacity-20"></i>
-                            <p class="text-lg">파일을 드래그하거나 열기 버튼을 클릭하세요</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div id="content-viewport" class="h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 p-8 sm:p-12 md:p-16 viewer-edit-active">
-                    <textarea id="viewer-edit-ta" spellcheck="false"
-                        class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
-                        placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
-                </div>
-            </main>
-        </div>
-        <!-- AI 우측 사이드바 (인증 후 표시) -->
-        <div id="ai-right-sidebar-wrap" class="hidden shrink-0 relative z-10 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 overflow-hidden" style="width:0;display:none">
+        <!-- AI 좌측 사이드바 (ScholarAI, sspimgAI) — 왼쪽으로 확장 -->
+        <div id="ai-right-sidebar-wrap" class="hidden shrink-0 relative z-10 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 overflow-visible" style="width:0;display:none">
             <div id="ai-right-sidebar-inner" class="h-full flex flex-row items-stretch overflow-hidden min-w-0">
             <div class="scholar-ai-sidebar" id="scholar-ai-sidebar">
               <div class="scholar-ai-resize-handle" id="scholar-ai-resize-handle" title="드래그하여 창 너비 조절"></div>
@@ -435,6 +339,103 @@
               </div>
             </div>
             </div>
+        </div>
+
+        <div class="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
+            <!-- Sub Toolbar (편집 시 편집 도구 가운데) -->
+            <div id="toolbar"
+                class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-2 sm:px-4 md:px-6 py-1.5 sm:py-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 md:gap-4 no-print transition-colors">
+                <!-- Edit Toolbar: 가운데 정렬 -->
+                <div id="edit-tools" class="flex flex-wrap items-center justify-center gap-2">
+                    <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
+                    <button onclick="insertAtCursor('bold')"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                        title="굵게">B</button>
+                    <button onclick="insertAtCursor('italic')"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm italic"
+                        title="기울임꼴">I</button>
+
+                    <button onclick="applyHeading(1)"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                        title="제목 1 (H1)">H1</button>
+                    <button onclick="applyHeading(2)"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                        title="제목 2 (H2)">H2</button>
+                    <button onclick="applyHeading(3)"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                        title="제목 3 (H3)">H3</button>
+
+                    <button onclick="insertAtCursor('quote')"
+                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
+                        title="인용구"><i data-lucide="quote" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="handleTableInsertion()"
+                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
+                        title="표 삽입"><i data-lucide="table" class="w-3.5 h-3.5"></i></button>
+
+                    <button onclick="openLinkModal('link')"
+                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
+                        title="링크"><i data-lucide="link" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="openLinkModal('image')"
+                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
+                        title="이미지"><i data-lucide="image" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="insertAtCursor('br')"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase">Enter</button>
+                    <button type="button" onclick="insertUserInfoAtCursor()"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                        title="커서 위치에 저장된 사용자 정보 삽입 (Ctrl+Alt+A)">userIn</button>
+                    <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
+                    <button type="button" id="btn-editor-light" onclick="toggleEditorLightMode()"
+                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300 flex items-center gap-1"
+                        title="편집창 라이트/다크 전환">
+                        <i data-lucide="sun" id="editor-light-icon-sun" class="w-3.5 h-3.5 hidden"></i>
+                        <i data-lucide="moon" id="editor-light-icon-moon" class="w-3.5 h-3.5"></i>
+                        <span class="text-[10px] sm:text-xs font-medium max-[380px]:hidden sm:inline" id="editor-light-label">편집창 라이트</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Find & Replace Toolbar -->
+            <div id="find-replace-bar"
+                class="hidden bg-indigo-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-2 flex flex-wrap items-center gap-3 text-sm no-print transition-colors">
+                <span class="font-bold text-slate-600 dark:text-slate-300">찾기</span>
+                <input type="text" id="find-input" placeholder="검색어..."
+                    class="px-3 py-1.5 border border-indigo-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 shadow-sm">
+                <span class="font-bold text-slate-600 dark:text-slate-300 ml-2">바꾸기</span>
+                <input type="text" id="replace-input" placeholder="바꿀 내용..."
+                    class="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 shadow-sm">
+                <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
+                <button onclick="findNext()"
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">다음</button>
+                <button onclick="findPrev()"
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">이전</button>
+                <button onclick="replaceCurrent()"
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">바꾸기</button>
+                <button onclick="replaceAll()"
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">모두</button>
+                <button onclick="closeFindReplace()"
+                    class="ml-auto p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm transition-colors"><i
+                        data-lucide="x" class="w-4 h-4"></i></button>
+            </div>
+
+            <!-- Main Content Area -->
+            <main id="drop-zone" class="flex-1 overflow-hidden relative">
+                <div id="viewer-container"
+                    class="hidden h-full w-full overflow-y-auto custom-scrollbar p-8 sm:p-12 md:p-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
+                    <div id="viewer" class="markdown-body w-full max-w-4xl print-area mx-auto">
+                        <div
+                            class="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
+                            <i data-lucide="file-up" class="w-16 h-16 mb-4 opacity-20"></i>
+                            <p class="text-lg">파일을 드래그하거나 열기 버튼을 클릭하세요</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="content-viewport" class="h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 p-8 sm:p-12 md:p-16 viewer-edit-active">
+                    <textarea id="viewer-edit-ta" spellcheck="false"
+                        class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
+                        placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
+                </div>
+            </main>
         </div>
     </div>
 
