@@ -420,7 +420,99 @@ function closeBackupModal() {
     document.getElementById('backup-modal').classList.remove('flex');
 }
 
-async function exportZip() {
+let mergeListState = [];
+
+async function openMergeModal() {
+    if (!db) return;
+    const docs = await new Promise(r => {
+        const req = db.transaction('documents', 'readonly').objectStore('documents').getAll();
+        req.onsuccess = () => r(req.result);
+    });
+    const rootDocs = (docs || []).filter(d => d.folderId === 'root');
+    mergeListState = rootDocs.map(d => ({ id: d.id, title: d.title, checked: true }));
+    renderMergeList();
+    document.getElementById('merge-bundle-name').value = '';
+    document.getElementById('merge-modal').classList.remove('hidden');
+    document.getElementById('merge-modal').classList.add('flex');
+    lucide.createIcons();
+}
+
+function renderMergeList() {
+    const listEl = document.getElementById('merge-list');
+    if (!listEl) return;
+    if (mergeListState.length === 0) {
+        listEl.innerHTML = '<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">내 문서(ROOT)에 문서가 없습니다.</p>';
+        return;
+    }
+    listEl.innerHTML = mergeListState.map((item, idx) => `
+        <div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600" data-idx="${idx}">
+            <i data-lucide="file-text" class="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0"></i>
+            <span class="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate" title="${(item.title || '').replace(/"/g, '&quot;')}">${(item.title || '').replace(/</g, '&lt;')}</span>
+            <label class="flex items-center shrink-0 cursor-pointer">
+                <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="toggleMergeItem(${idx}, this.checked)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600">
+            </label>
+            <div class="flex flex-col shrink-0">
+                <button type="button" onclick="moveMergeItem(${idx},-1)" class="p-0.5 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400" title="위로">▲</button>
+                <button type="button" onclick="moveMergeItem(${idx},1)" class="p-0.5 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400" title="아래로">▼</button>
+            </div>
+        </div>
+    `).join('');
+    lucide.createIcons();
+}
+
+function toggleMergeItem(idx, checked) {
+    if (mergeListState[idx]) mergeListState[idx].checked = !!checked;
+}
+
+function moveMergeItem(idx, dir) {
+    const next = idx + dir;
+    if (next < 0 || next >= mergeListState.length) return;
+    [mergeListState[idx], mergeListState[next]] = [mergeListState[next], mergeListState[idx]];
+    renderMergeList();
+}
+
+function closeMergeModal() {
+    document.getElementById('merge-modal').classList.add('hidden');
+    document.getElementById('merge-modal').classList.remove('flex');
+}
+
+async function bindMerge() {
+    const nameInput = document.getElementById('merge-bundle-name');
+    const bundleName = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
+    if (!bundleName) {
+        showToast("묶음 파일 이름을 입력하세요.");
+        if (nameInput) nameInput.focus();
+        return;
+    }
+    const selected = mergeListState.filter(x => x.checked);
+    if (selected.length === 0) {
+        showToast("묶을 문서를 하나 이상 선택하세요.");
+        return;
+    }
+    const tx = db.transaction('documents', 'readonly');
+    const contents = await Promise.all(selected.map(item => {
+        return new Promise(r => {
+            const req = tx.objectStore('documents').get(item.id);
+            req.onsuccess = () => r(req.result ? req.result.content : '');
+        });
+    }));
+    const mergedContent = contents.join('\n\n---\n\n');
+    const newDoc = {
+        id: 'doc_' + Date.now(),
+        title: bundleName,
+        content: mergedContent,
+        folderId: 'root',
+        updatedAt: new Date()
+    };
+    const writeTx = db.transaction('documents', 'readwrite');
+    writeTx.objectStore('documents').add(newDoc);
+    writeTx.oncomplete = () => {
+        showToast("묶음 파일이 생성되었습니다.");
+        renderDBList();
+        closeMergeModal();
+        if (isSidebarHidden) toggleSidebarVisibility();
+    };
+}
     if (!db || typeof JSZip === 'undefined') {
         showToast("ZIP 저장을 사용할 수 없습니다.");
         return;
@@ -914,28 +1006,19 @@ function dismissRecovery() {
     tx.objectStore('autosave').delete('last_work');
 }
 
-async function pasteFromClipboardAndDismiss() {
+function pasteFromClipboardAndDismiss() {
     document.getElementById('recovery-modal').classList.add('hidden');
     document.getElementById('recovery-modal').classList.remove('flex');
     const tx = db.transaction('autosave', 'readwrite');
     tx.objectStore('autosave').delete('last_work');
 
+    updateContent('');
     if (!isEditMode) toggleMode('edit');
-    if (editorTextarea) editorTextarea.focus();
+    showToast("Ctrl+V로 붙여넣어 주세요.");
 
-    try {
-        const text = await navigator.clipboard.readText();
-        if (text && String(text).trim()) {
-            updateContent(text);
-            showToast("클립보드 내용을 붙여넣었습니다.");
-        } else {
-            updateContent('');
-            showToast("새로 입력할 수 있습니다. Ctrl+V로 붙여넣어 주세요.");
-        }
-    } catch (e) {
-        updateContent('');
-        showToast("Ctrl+V로 붙여넣어 주세요.");
-    }
+    requestAnimationFrame(() => {
+        if (editorTextarea) editorTextarea.focus();
+    });
 }
 
 async function insertUserInfoAtCursor() {
@@ -2063,6 +2146,11 @@ window.closeSaveModal = closeSaveModal;
 window.confirmSaveModal = confirmSaveModal;
 window.openBackupModal = openBackupModal;
 window.closeBackupModal = closeBackupModal;
+window.openMergeModal = openMergeModal;
+window.closeMergeModal = closeMergeModal;
+window.bindMerge = bindMerge;
+window.toggleMergeItem = toggleMergeItem;
+window.moveMergeItem = moveMergeItem;
 window.exportZip = exportZip;
 window.exportMpv = exportMpv;
 window.saveApiKey = saveApiKey;
