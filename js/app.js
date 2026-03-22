@@ -1385,6 +1385,32 @@ function insertMarkdownImageAtCursor(imageUrl, altText) {
     showToast('이미지 마크다운을 삽입했습니다.');
 }
 
+function insertHtmlImageAtCursor(imageUrl, altText) {
+    if (!isEditMode) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+    const u = String(imageUrl || '').trim();
+    if (!u) {
+        showToast('이미지 URL을 입력하세요.');
+        return;
+    }
+    const alt = String(altText || 'image')
+        .trim()
+        .replace(/"/g, '&quot;')
+        .replace(/[<>]/g, '') || 'image';
+    const html = '<img src="' + u + '" alt="' + alt + '" border="0" />';
+    const ta = editorTextarea;
+    const scrollTop = ta.scrollTop;
+    ta.focus();
+    document.execCommand('insertText', false, html);
+    currentMarkdown = ta.value;
+    ta.scrollTop = scrollTop;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    showToast('이미지 HTML 태그를 삽입했습니다.');
+}
+
 function tidySeparatorSpacing(source) {
     const expandedLines = [];
     const sourceLines = String(source ?? '').split('\n');
@@ -1791,6 +1817,18 @@ async function saveApiKey() {
     if (key) localStorage.setItem('ss_gemini_api_key', key);
     else localStorage.removeItem('ss_gemini_api_key');
     showToast("API 키를 저장했습니다.");
+}
+
+function getImgbbApiKey() {
+    return localStorage.getItem('ss_imgbb_api_key') || '';
+}
+
+async function saveImgbbApiKey(key) {
+    const value = String(key || '').trim();
+    await setAiSettings({ imgbbApiKey: value });
+    if (value) localStorage.setItem('ss_imgbb_api_key', value);
+    else localStorage.removeItem('ss_imgbb_api_key');
+    return value;
 }
 
 function setAiPasswordVerifiedUI(state) {
@@ -2253,12 +2291,15 @@ function ensureSidebarAILoaded() {
     sidebarAILoaded = true;
     getAiSettings().then(s => {
         if (s && s.apiKey) localStorage.setItem('ss_gemini_api_key', s.apiKey);
+        if (s && s.imgbbApiKey) localStorage.setItem('ss_imgbb_api_key', s.imgbbApiKey);
     });
     window.SidebarAIConfig = {
         host: null,
         cropEditorBase: './',
         callbacks: {
             getApiKey: function () { return localStorage.getItem('ss_gemini_api_key') || ''; },
+            getImgbbApiKey: function () { return getImgbbApiKey(); },
+            setImgbbApiKey: async function (key) { return saveImgbbApiKey(key); },
             callGemini: async function (prompt, systemInstruction, useSearch, modelOverride) {
                 const key = localStorage.getItem('ss_gemini_api_key') || '';
                 const modelId = modelOverride || 'gemini-2.5-flash';
@@ -2412,8 +2453,9 @@ function ensureSidebarAILoaded() {
         showToast('sidebar-ai.js를 불러오지 못했습니다.');
     };
     script.onload = () => {
-        injectSidebarAIHtml();
-        if (typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
+        injectSidebarAIHtml().then(function (ok) {
+            if (ok !== false && typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
+        });
     };
     window.viewerSwitchToEdit = function () { toggleMode('edit'); };
     window.viewerBuildNav = function () {};
@@ -2423,10 +2465,65 @@ function ensureSidebarAILoaded() {
 function injectSidebarAIHtml() {
     const inner = document.getElementById('ai-right-sidebar-inner');
     if (!inner || inner.querySelector('#scholar-ai-sidebar')) return Promise.resolve(true);
+    const applyHtml = function (html) {
+        if (!html || !String(html).trim()) return false;
+        inner.style.display = 'flex';
+        inner.style.flexDirection = 'row';
+        inner.style.alignItems = 'stretch';
+        inner.style.height = '100%';
+        inner.style.overflow = 'hidden';
+        inner.className = 'h-full flex flex-row items-stretch overflow-hidden min-w-0';
+        inner.innerHTML = html;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        return true;
+    };
+    try {
+        if (typeof window.getSidebarAIHtml === 'function') {
+            const inlineHtml = window.getSidebarAIHtml();
+            if (applyHtml(inlineHtml)) return Promise.resolve(true);
+        }
+    } catch (e) {}
     const tryFetch = function (u) {
         return fetch(u).then(function (r) {
             if (!r.ok) throw new Error(String(r.status));
             return r.text();
+        });
+    };
+    const tryIframeLoad = function (u) {
+        return new Promise(function (resolve, reject) {
+            const iframe = document.createElement('iframe');
+            iframe.setAttribute('aria-hidden', 'true');
+            iframe.tabIndex = -1;
+            iframe.style.position = 'absolute';
+            iframe.style.width = '0';
+            iframe.style.height = '0';
+            iframe.style.border = '0';
+            iframe.style.opacity = '0';
+            iframe.style.pointerEvents = 'none';
+
+            const cleanup = function () {
+                if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+            };
+
+            iframe.onload = function () {
+                try {
+                    const doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document);
+                    const html = doc && doc.body ? doc.body.innerHTML : '';
+                    cleanup();
+                    if (html && html.trim()) resolve(html);
+                    else reject(new Error('empty sidebar html'));
+                } catch (err) {
+                    cleanup();
+                    reject(err);
+                }
+            };
+            iframe.onerror = function () {
+                cleanup();
+                reject(new Error('iframe load failed'));
+            };
+
+            iframe.src = u;
+            document.body.appendChild(iframe);
         });
     };
     var base = '';
@@ -2438,18 +2535,15 @@ function injectSidebarAIHtml() {
     }
     return tryFetch(base)
         .catch(function () { return tryFetch('./sidebarAI/sidebar-ai.html'); })
+        .catch(function () { return tryIframeLoad(base); })
+        .catch(function () { return tryIframeLoad('./sidebarAI/sidebar-ai.html'); })
         .then(function (html) {
-            inner.style.display = 'flex';
-            inner.style.flexDirection = 'row';
-            inner.style.alignItems = 'stretch';
-            inner.style.height = '100%';
-            inner.style.overflow = 'hidden';
-            inner.className = 'h-full flex flex-row items-stretch overflow-hidden min-w-0';
-            inner.innerHTML = html;
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-            return true;
+            return applyHtml(html);
         })
         .catch(function () {
+            try {
+                if (typeof window.getSidebarAIHtml === 'function') return applyHtml(window.getSidebarAIHtml());
+            } catch (e) {}
             return false;
         });
 }
@@ -2462,6 +2556,8 @@ async function loadAiSettingsToUI() {
     }
     const apiInput = document.getElementById('ai-api-key');
     if (apiInput && settings.apiKey) apiInput.value = settings.apiKey;
+    if (settings.imgbbApiKey) localStorage.setItem('ss_imgbb_api_key', settings.imgbbApiKey);
+    else localStorage.removeItem('ss_imgbb_api_key');
     if (typeof validateApiKeyInputUI === 'function') validateApiKeyInputUI();
     const useCheck = document.getElementById('ai-use-checkbox');
     const section = document.getElementById('ai-password-section');
@@ -2550,6 +2646,126 @@ function resetCodeColorSettings() {
     showToast("코드창 색상을 초기화했습니다.");
 }
 
+function insertHtmlImageAtCursor(imageUrl, altText) {
+    if (!isEditMode) {
+        showToast('Use this in edit mode.');
+        return;
+    }
+    const u = String(imageUrl || '').trim();
+    if (!u) {
+        showToast('Enter an image URL.');
+        return;
+    }
+    const safeUrl = u.replace(/"/g, '&quot;').replace(/[<>]/g, '');
+    const alt = String(altText || 'image')
+        .trim()
+        .replace(/"/g, '&quot;')
+        .replace(/[<>]/g, '') || 'image';
+    const ta = editorTextarea;
+    const scrollTop = ta.scrollTop;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = ta.value.slice(0, start);
+    const prefix = before.length > 0 && !before.endsWith('\n\n')
+        ? (before.endsWith('\n') ? '\n' : '\n\n')
+        : '';
+    const html = prefix + '<img src="' + safeUrl + '" alt="' + alt + '" border="0">' + '\n\n';
+    ta.focus();
+    if (typeof ta.setRangeText === 'function') {
+        ta.setRangeText(html, start, end, 'end');
+    } else {
+        document.execCommand('insertText', false, html);
+    }
+    ta.dispatchEvent(new Event('input', { bubbles: true }));
+    currentMarkdown = ta.value;
+    ta.scrollTop = scrollTop;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    showToast('HTML image tag inserted.');
+}
+
+function getNextIndexedDbTitle(baseTitle, docs) {
+    const trimmedBase = String(baseTitle || '').trim() || 'Untitled';
+    const titles = new Set((Array.isArray(docs) ? docs : []).map(doc => String(doc.title || '').trim()));
+    if (!titles.has(trimmedBase)) return trimmedBase;
+
+    const baseWithoutSuffix = trimmedBase.replace(/\s*\(\d+\)$/, '').trim() || trimmedBase;
+    let index = 1;
+    let candidate = '';
+    do {
+        candidate = `${baseWithoutSuffix} (${index})`;
+        index += 1;
+    } while (titles.has(candidate));
+    return candidate;
+}
+
+function saveToDB() {
+    const modal = document.getElementById('save-modal');
+    const titleEl = document.querySelector('#save-modal h3');
+    const labelEl = document.querySelector('#save-modal label');
+    const input = document.getElementById('save-title-input');
+    if (!modal || !input) return;
+
+    if (titleEl) titleEl.textContent = 'Save to inDB';
+    if (labelEl) labelEl.textContent = 'Enter a title for the inDB document.';
+
+    let defaultTitle = currentFileName.replace(/\.md$/i, '');
+    const selected = getSelectedTextForSave();
+    if (selected) defaultTitle = selected;
+    input.value = defaultTitle;
+
+    currentActionCallback = (title) => {
+        const normalizedTitle = String(title || '').trim();
+        if (!normalizedTitle || !db) return;
+
+        const readTx = db.transaction('documents', 'readonly');
+        const readReq = readTx.objectStore('documents').getAll();
+        readReq.onsuccess = () => {
+            const docs = Array.isArray(readReq.result) ? readReq.result : [];
+            const exactMatches = docs.filter(doc => String(doc.title || '').trim() === normalizedTitle);
+            let resolvedTitle = normalizedTitle;
+            let targetDoc = null;
+
+            if (exactMatches.length > 0) {
+                targetDoc = exactMatches
+                    .slice()
+                    .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())[0];
+
+                const overwrite = window.confirm(
+                    'A document with the same title already exists.\n\n' +
+                    'Press OK to overwrite it.\n' +
+                    'Press Cancel to save as a new document with a numbered title.'
+                );
+
+                if (!overwrite) {
+                    resolvedTitle = getNextIndexedDbTitle(normalizedTitle, docs);
+                    targetDoc = null;
+                }
+            }
+
+            const doc = {
+                id: targetDoc ? targetDoc.id : 'doc_' + Date.now(),
+                title: resolvedTitle,
+                content: currentMarkdown,
+                folderId: targetDoc && targetDoc.folderId ? targetDoc.folderId : 'root',
+                updatedAt: new Date()
+            };
+
+            const tx = db.transaction('documents', 'readwrite');
+            tx.objectStore('documents').put(doc);
+            tx.oncomplete = () => {
+                showToast(targetDoc ? 'Existing inDB document overwritten.' : `Saved to inDB as "${resolvedTitle}".`);
+                renderDBList();
+                if (isSidebarHidden) toggleSidebarVisibility();
+            };
+        };
+    };
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    input.focus();
+}
+
 // Global exports for inline HTML handlers
 window.toggleTheme = toggleTheme;
 window.toggleEditorLightMode = toggleEditorLightMode;
@@ -2580,6 +2796,7 @@ window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
 window.insertUserInfoAtCursor = insertUserInfoAtCursor;
 window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
+window.insertHtmlImageAtCursor = insertHtmlImageAtCursor;
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
