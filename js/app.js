@@ -61,6 +61,7 @@ window.addEventListener('message', function (ev) {
             notebookLmEqualsHrPreprocess = scholarNotebookLm;
             applyScholarPaste(String(d.content));
             return;
+            return;
         }
         if ((d.readClipboard || d.useClipboard) && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
             navigator.clipboard.readText().then(function (text) {
@@ -266,21 +267,39 @@ window.onload = async () => {
         currentMarkdown = editorTextarea.value;
         performAutoSave();
     });
+    if (editorTextarea) {
+        editorTextarea.addEventListener('select', syncFindInputFromEditorSelectionIfNeeded);
+        editorTextarea.addEventListener('keyup', syncFindInputFromEditorSelectionIfNeeded);
+        editorTextarea.addEventListener('mouseup', syncFindInputFromEditorSelectionIfNeeded);
+    }
+    const findInput = document.getElementById('find-input');
+    if (findInput) {
+        findInput.addEventListener('input', function () {
+            lastFindIndex = -1;
+        });
+    }
 
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
+        const isAltGraph = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
+        // Ctrl + Alt + 1, 2, 3 for Headings
+        if (e.ctrlKey && e.altKey && (e.code === 'Digit1' || e.key === '1')) { e.preventDefault(); applyHeading(1); return; }
+        if (e.ctrlKey && e.altKey && (e.code === 'Digit2' || e.key === '2')) { e.preventDefault(); applyHeading(2); return; }
+        if (e.ctrlKey && e.altKey && (e.code === 'Digit3' || e.key === '3')) { e.preventDefault(); applyHeading(3); return; }
         // Alt + 1 for Edit mode
-        if (e.altKey && e.key === '1') {
+        if (e.altKey && !e.ctrlKey && !isAltGraph && (e.code === 'Digit1' || e.key === '1')) {
             e.preventDefault();
             if (!isEditMode) toggleMode('edit');
+            return;
         }
-        // Alt + 2 for View mode
-        if (e.altKey && e.key === '2') {
+        // Alt + V for View mode
+        if (e.altKey && !e.ctrlKey && !isAltGraph && (e.code === 'KeyV' || e.key === 'v' || e.key === 'V')) {
             e.preventDefault();
             if (isEditMode) toggleMode('view');
+            return;
         }
         // Alt + 4 for toggling dark/light mode
-        if (e.altKey && e.key === '4') {
+        if (e.altKey && !e.ctrlKey && !isAltGraph && (e.code === 'Digit4' || e.key === '4')) {
             e.preventDefault();
             toggleTheme();
             showToast("테마가 변경되었습니다.");
@@ -288,6 +307,26 @@ window.onload = async () => {
         if (e.ctrlKey && e.altKey && (e.key === 'a' || e.key === 'A')) {
             e.preventDefault();
             insertUserInfoAtCursor();
+            return;
+        }
+        if (e.ctrlKey && e.key === '7') {
+            e.preventDefault();
+            adjustPageScale(-0.1);
+            return;
+        }
+        if (e.ctrlKey && e.key === '8') {
+            e.preventDefault();
+            adjustPageScale(0.1);
+            return;
+        }
+        if (e.ctrlKey && e.key === '9') {
+            e.preventDefault();
+            adjustFontSize(-1);
+            return;
+        }
+        if (e.ctrlKey && e.key === '0') {
+            e.preventDefault();
+            adjustFontSize(1);
             return;
         }
         // Ctrl + H for Find/Replace
@@ -324,10 +363,6 @@ window.onload = async () => {
                 }
             }
         }
-        // Ctrl + Alt + 1, 2, 3 for Headings
-        if (e.ctrlKey && e.altKey && e.key === '1') { e.preventDefault(); applyHeading(1); }
-        if (e.ctrlKey && e.altKey && e.key === '2') { e.preventDefault(); applyHeading(2); }
-        if (e.ctrlKey && e.altKey && e.key === '3') { e.preventDefault(); applyHeading(3); }
     });
     } catch (e) {
         console.error('초기화 오류:', e);
@@ -1317,6 +1352,116 @@ function insertMarkdownImageAtCursor(imageUrl, altText) {
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
     showToast('이미지 마크다운을 삽입했습니다.');
+}
+
+function tidySeparatorSpacing(source) {
+    const expandedLines = [];
+    const sourceLines = String(source ?? '').split('\n');
+    let inFencedCodeBlock = false;
+
+    for (const sourceLine of sourceLines) {
+        const trimmedSourceLine = sourceLine.trim();
+        if (/^```/.test(trimmedSourceLine)) {
+            inFencedCodeBlock = !inFencedCodeBlock;
+            expandedLines.push(sourceLine);
+            continue;
+        }
+        if (inFencedCodeBlock || !trimmedSourceLine.startsWith('- ')) {
+            expandedLines.push(sourceLine);
+            continue;
+        }
+
+        const normalizedLine = sourceLine
+            .replace(/([:.;])\s+- (?=\S)/g, '$1\n- ')
+            .replace(/\s{2,}- (?=\S)/g, '\n- ');
+        expandedLines.push(...normalizedLine.split('\n'));
+    }
+
+    const lines = expandedLines;
+    let changed = false;
+    inFencedCodeBlock = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        if (/^```/.test(trimmed)) {
+            inFencedCodeBlock = !inFencedCodeBlock;
+            continue;
+        }
+        if (inFencedCodeBlock || !trimmed) continue;
+
+        const normalizedLine = lines[i].replace(/\s+$/, '') + '  ';
+        if (lines[i] !== normalizedLine) {
+            lines[i] = normalizedLine;
+            changed = true;
+        }
+
+        if (!/^-{20,}$/.test(trimmed)) continue;
+
+        for (const neighborIndex of [i - 1, i + 1]) {
+            if (neighborIndex < 0 || neighborIndex >= lines.length) continue;
+            const neighborTrimmed = lines[neighborIndex].trim();
+            if (!neighborTrimmed || /^```/.test(neighborTrimmed)) continue;
+            const normalizedNeighbor = lines[neighborIndex].replace(/\s+$/, '') + '  ';
+            if (lines[neighborIndex] !== normalizedNeighbor) {
+                lines[neighborIndex] = normalizedNeighbor;
+                changed = true;
+            }
+        }
+    }
+
+    return {
+        value: lines.join('\n'),
+        changed
+    };
+}
+
+function tidySeparatorSpacingInEditor() {
+    if (!isEditMode || !editorTextarea) {
+        showToast('편집 모드에서만 사용할 수 있습니다.');
+        return;
+    }
+
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const scrollTop = editorTextarea.scrollTop;
+    const scrollLeft = editorTextarea.scrollLeft;
+    const selectionDirection = editorTextarea.selectionDirection || 'none';
+    const hasSelection = start !== end;
+    const sourceText = hasSelection
+        ? editorTextarea.value.substring(start, end)
+        : editorTextarea.value;
+    const result = tidySeparatorSpacing(sourceText);
+
+    if (!result.changed) {
+        showToast('정리할 줄 끝 공백이 없습니다.');
+        return;
+    }
+
+    if (hasSelection) {
+        const fullText = editorTextarea.value;
+        editorTextarea.value = fullText.substring(0, start) + result.value + fullText.substring(end);
+        currentMarkdown = editorTextarea.value;
+    } else {
+        editorTextarea.value = result.value;
+        currentMarkdown = result.value;
+    }
+    editorTextarea.focus();
+    if (hasSelection) {
+        editorTextarea.setSelectionRange(start, start + result.value.length, selectionDirection);
+    } else {
+        editorTextarea.setSelectionRange(start, end, selectionDirection);
+    }
+    editorTextarea.scrollTop = scrollTop;
+    editorTextarea.scrollLeft = scrollLeft;
+    requestAnimationFrame(function () {
+        if (!editorTextarea) return;
+        editorTextarea.scrollTop = scrollTop;
+        editorTextarea.scrollLeft = scrollLeft;
+    });
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    showToast('문장 끝 공백 2칸 정리를 적용했습니다.');
 }
 
 // --- Helper Insertion (Modal) ---
@@ -2448,7 +2593,12 @@ function openFindReplace() {
     if (!bar) return;
     bar.classList.remove('hidden');
     if (!isEditMode) toggleMode('edit');
-    document.getElementById('find-input').focus();
+    const findInput = document.getElementById('find-input');
+    updateFindInputFromValue(getEditorSelectedText());
+    if (findInput) {
+        findInput.focus();
+        findInput.select();
+    }
 }
 
 function closeFindReplace() {
@@ -2458,6 +2608,167 @@ function closeFindReplace() {
 }
 
 let lastFindIndex = -1;
+
+function swapFindReplaceValues() {
+    const findInput = document.getElementById('find-input');
+    const replaceInput = document.getElementById('replace-input');
+    if (!findInput || !replaceInput) return;
+
+    const nextFindValue = replaceInput.value;
+    replaceInput.value = findInput.value;
+    findInput.value = nextFindValue;
+    lastFindIndex = -1;
+    findInput.focus();
+    findInput.select();
+}
+
+function getEditorSelectedText() {
+    if (!editorTextarea) return '';
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    if (typeof start !== 'number' || typeof end !== 'number' || start === end) return '';
+    return editorTextarea.value.substring(start, end);
+}
+
+function updateFindInputFromValue(value) {
+    const findInput = document.getElementById('find-input');
+    if (!findInput) return false;
+    if (!value) return false;
+    if (findInput.value === value) return false;
+    findInput.value = value;
+    lastFindIndex = -1;
+    return true;
+}
+
+function syncFindInputFromEditorSelectionIfNeeded() {
+    const bar = document.getElementById('find-replace-bar');
+    if (!bar || bar.classList.contains('hidden')) return false;
+    return updateFindInputFromValue(getEditorSelectedText());
+}
+
+const KOREAN_PARTICLE_RULES = [
+    { forms: ['이라도', '라도'], kind: 'batchim' },
+    { forms: ['이라고', '라고'], kind: 'batchim' },
+    { forms: ['이라면', '라면'], kind: 'batchim' },
+    { forms: ['이라서', '라서'], kind: 'batchim' },
+    { forms: ['이랑', '랑'], kind: 'batchim' },
+    { forms: ['이에요', '예요'], kind: 'batchim' },
+    { forms: ['이었', '였'], kind: 'batchim' },
+    { forms: ['이란', '란'], kind: 'batchim' },
+    { forms: ['이든지', '든지'], kind: 'batchim' },
+    { forms: ['이든', '든'], kind: 'batchim' },
+    { forms: ['이나', '나'], kind: 'batchim' },
+    { forms: ['이며', '며'], kind: 'batchim' },
+    { forms: ['으로', '로'], kind: 'ro' },
+    { forms: ['은', '는'], kind: 'batchim' },
+    { forms: ['이', '가'], kind: 'batchim' },
+    { forms: ['을', '를'], kind: 'batchim' },
+    { forms: ['과', '와'], kind: 'batchim' },
+    { forms: ['이라', '라'], kind: 'batchim' }
+];
+
+function isParticleAutoCorrectionEnabled() {
+    const checkbox = document.getElementById('particle-auto-correct');
+    return !!(checkbox && checkbox.checked);
+}
+
+function getFindDirectionMode() {
+    const checked = document.querySelector('input[name="find-direction"]:checked');
+    return checked ? checked.value : 'down';
+}
+
+function isHangulSyllable(ch) {
+    if (!ch) return false;
+    const code = ch.charCodeAt(0);
+    return code >= 0xAC00 && code <= 0xD7A3;
+}
+
+function getLastHangulSyllable(text) {
+    for (let i = text.length - 1; i >= 0; i--) {
+        if (isHangulSyllable(text[i])) return text[i];
+    }
+    return '';
+}
+
+function getHangulBatchimIndex(ch) {
+    if (!isHangulSyllable(ch)) return -1;
+    return (ch.charCodeAt(0) - 0xAC00) % 28;
+}
+
+function chooseKoreanParticle(rule, lastChar) {
+    const batchimIndex = getHangulBatchimIndex(lastChar);
+    if (batchimIndex < 0) return rule.forms[1];
+    if (rule.kind === 'ro') {
+        return batchimIndex === 0 || batchimIndex === 8 ? rule.forms[1] : rule.forms[0];
+    }
+    return batchimIndex === 0 ? rule.forms[1] : rule.forms[0];
+}
+
+function isParticleBoundaryChar(ch) {
+    if (!ch) return true;
+    if (/\s/.test(ch)) return true;
+    return '.,!?;:)]}"\'`>}/'.includes(ch);
+}
+
+function autoCorrectKoreanParticleAfter(text, anchorIndex) {
+    if (!isParticleAutoCorrectionEnabled()) {
+        return { text, changed: false };
+    }
+
+    const lastChar = getLastHangulSyllable(text.slice(0, anchorIndex));
+    if (!lastChar) {
+        return { text, changed: false };
+    }
+
+    const suffix = text.slice(anchorIndex);
+    for (const rule of KOREAN_PARTICLE_RULES) {
+        for (const form of rule.forms) {
+            if (!suffix.startsWith(form)) continue;
+            const boundaryChar = suffix[form.length] || '';
+            if (!isParticleBoundaryChar(boundaryChar)) continue;
+            const adjusted = chooseKoreanParticle(rule, lastChar);
+            if (adjusted === form) {
+                return { text, changed: false };
+            }
+            return {
+                text: text.slice(0, anchorIndex) + adjusted + text.slice(anchorIndex + form.length),
+                changed: true
+            };
+        }
+    }
+
+    return { text, changed: false };
+}
+
+function replaceRangeWithOptions(text, start, end, replacement) {
+    const replaced = text.slice(0, start) + replacement + text.slice(end);
+    const adjusted = autoCorrectKoreanParticleAfter(replaced, start + replacement.length);
+    return {
+        text: adjusted.text,
+        replacementStart: start,
+        replacementEnd: start + replacement.length
+    };
+}
+
+function getReplaceSearchBounds(text) {
+    const direction = getFindDirectionMode();
+    if (direction === 'up') {
+        return {
+            start: 0,
+            end: Math.max(0, editorTextarea.selectionStart)
+        };
+    }
+    if (direction === 'all') {
+        return {
+            start: 0,
+            end: text.length
+        };
+    }
+    return {
+        start: Math.max(0, editorTextarea.selectionEnd),
+        end: text.length
+    };
+}
 
 function findNext() {
     const term = document.getElementById('find-input').value;
@@ -2507,14 +2818,25 @@ function replaceCurrent() {
     const selectedText = editorTextarea.value.substring(start, end);
 
     if (selectedText.toLowerCase() === term.toLowerCase()) {
-        editorTextarea.setSelectionRange(start, end);
-        document.execCommand('insertText', false, replacement);
-        currentMarkdown = editorTextarea.value;
+        const scrollTop = editorTextarea.scrollTop;
+        const replaced = replaceRangeWithOptions(editorTextarea.value, start, end, replacement);
+        editorTextarea.value = replaced.text;
+        currentMarkdown = replaced.text;
+        editorTextarea.focus();
+        editorTextarea.setSelectionRange(replaced.replacementStart, replaced.replacementEnd);
+        editorTextarea.scrollTop = scrollTop;
         performAutoSave();
         if (activeSidebarTab === 'toc') renderTOC();
-        findNext();
+        if (getFindDirectionMode() === 'up') {
+            lastFindIndex = replaced.replacementStart;
+            findPrev();
+        } else {
+            lastFindIndex = Math.max(-1, replaced.replacementEnd - 1);
+            findNext();
+        }
     } else {
-        findNext();
+        if (getFindDirectionMode() === 'up') findPrev();
+        else findNext();
     }
 }
 
@@ -2523,21 +2845,35 @@ function replaceAll() {
     const replacement = document.getElementById('replace-input').value;
     if (!term) return;
 
+    const originalSelectionStart = editorTextarea.selectionStart;
+    const originalSelectionEnd = editorTextarea.selectionEnd;
+    const originalScrollTop = editorTextarea.scrollTop;
+    const originalScrollLeft = editorTextarea.scrollLeft;
+    const bounds = getReplaceSearchBounds(editorTextarea.value);
     let count = 0;
-    editorTextarea.focus();
-    editorTextarea.setSelectionRange(0, 0);
+    let workingText = editorTextarea.value;
+    let searchIndex = bounds.start;
+    let searchLimit = bounds.end;
 
-    while (true) {
-        let text = editorTextarea.value;
-        let idx = text.toLowerCase().indexOf(term.toLowerCase(), editorTextarea.selectionEnd);
-        if (idx === -1) break;
-        editorTextarea.setSelectionRange(idx, idx + term.length);
-        document.execCommand('insertText', false, replacement);
+    while (searchIndex <= searchLimit) {
+        const idx = workingText.toLowerCase().indexOf(term.toLowerCase(), searchIndex);
+        if (idx === -1 || idx >= searchLimit) break;
+
+        const replaced = replaceRangeWithOptions(workingText, idx, idx + term.length, replacement);
+        const delta = replaced.text.length - workingText.length;
+        workingText = replaced.text;
+        searchIndex = replaced.replacementEnd;
+        searchLimit += delta;
         count++;
     }
 
     if (count > 0) {
-        currentMarkdown = editorTextarea.value;
+        editorTextarea.value = workingText;
+        currentMarkdown = workingText;
+        editorTextarea.focus();
+        editorTextarea.setSelectionRange(originalSelectionStart, originalSelectionEnd);
+        editorTextarea.scrollTop = originalScrollTop;
+        editorTextarea.scrollLeft = originalScrollLeft;
         performAutoSave();
         if (activeSidebarTab === 'toc') renderTOC();
         showToast(`${count}개 항목이 바뀌었습니다.`);
@@ -2623,3 +2959,4 @@ window.findNext = findNext;
 window.findPrev = findPrev;
 window.replaceCurrent = replaceCurrent;
 window.replaceAll = replaceAll;
+window.swapFindReplaceValues = swapFindReplaceValues;

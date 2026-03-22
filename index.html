@@ -120,7 +120,7 @@
             </div>
 
             <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 sm:p-1 ml-0 sm:ml-1 md:ml-2 shrink-0">
-                <button onclick="toggleMode('view')" id="btn-view" title="Alt+2"
+                <button onclick="toggleMode('view')" id="btn-view" title="Alt+V"
                     class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">보기</button>
                 <button onclick="toggleMode('edit')" id="btn-edit" title="Alt+1"
                     class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400">편집</button>
@@ -382,6 +382,12 @@
                         title="이미지"><i data-lucide="image" class="w-3.5 h-3.5"></i></button>
                     <button onclick="insertAtCursor('br')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase">Enter</button>
+                    <button type="button" onclick="tidySeparatorSpacingInEditor()"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
+                        title="Tidy separator spacing">Tidy</button>
+                    <button type="button" onclick="openFindReplace()"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
+                        title="Find and replace">Find</button>
                     <button type="button" onclick="insertUserInfoAtCursor()"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
                         title="커서 위치에 저장된 사용자 정보 삽입 (Ctrl+Alt+A)">userIn</button>
@@ -414,9 +420,36 @@
                     class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">바꾸기</button>
                 <button onclick="replaceAll()"
                     class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">모두</button>
+                <button onclick="swapFindReplaceValues()"
+                    class="ml-auto px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">전환</button>
                 <button onclick="closeFindReplace()"
-                    class="ml-auto p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm transition-colors"><i
+                    class="p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm transition-colors"><i
                         data-lucide="x" class="w-4 h-4"></i></button>
+                <div class="basis-full flex flex-wrap items-center gap-x-4 gap-y-2 pt-1 text-xs text-slate-600 dark:text-slate-300">
+                    <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                        <input type="checkbox" id="particle-auto-correct" checked
+                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                        <span>조사 자동 교정</span>
+                    </label>
+                    <div class="inline-flex flex-wrap items-center gap-3">
+                        <span class="font-semibold">찾을 방향</span>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="radio" name="find-direction" value="down" checked
+                                class="border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                            <span>아래쪽</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="radio" name="find-direction" value="up"
+                                class="border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                            <span>위쪽</span>
+                        </label>
+                        <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
+                            <input type="radio" name="find-direction" value="all"
+                                class="border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                            <span>문서 전체</span>
+                        </label>
+                    </div>
+                </div>
             </div>
 
             <!-- Main Content Area -->
@@ -668,7 +701,7 @@
                             <span class="text-sm font-medium text-slate-600 dark:text-slate-400">보기 모드 전환</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
-                                <kbd>Alt</kbd> + <kbd>2</kbd>
+                                <kbd>Alt</kbd> + <kbd>V</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
