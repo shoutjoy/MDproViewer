@@ -34,6 +34,13 @@ const fileNameDisplay = document.getElementById('file-name-display');
 const dropZone = document.getElementById('drop-zone');
 const inputModal = document.getElementById('input-modal');
 
+// initDB 등 onload 대기 중 붙여넣기 → 이후 빈 문서 초기화에 덮이지 않도록
+if (editorTextarea) {
+    editorTextarea.addEventListener('paste', function () {
+        receivedExternalContent = true;
+    }, true);
+}
+
 /** NotebookLM 등 외부 앱에서 보낸 자료 (onload 전 도착분) */
 let pendingExternalContent = null;
 let receivedExternalContent = false;
@@ -44,9 +51,19 @@ window.addEventListener('message', function (ev) {
     const d = ev.data;
     if (!d || typeof d !== 'object') return;
 
-    // 1번: scholarToMDPaste — 확장 프로그램에서 postMessage로 전달
-    if (d.type === 'scholarToMDPaste' && d.content) {
-        applyScholarPaste(String(d.content));
+    // 1번: scholarToMDPaste — 확장에서 postMessage 또는 클립보드(readClipboard/useClipboard)
+    if (d.type === 'scholarToMDPaste') {
+        const hasContent = d.content != null && String(d.content).length > 0;
+        if (hasContent) {
+            applyScholarPaste(String(d.content));
+            return;
+        }
+        if ((d.readClipboard || d.useClipboard) && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
+            navigator.clipboard.readText().then(function (text) {
+                if (text != null && String(text).length) applyScholarPaste(String(text));
+            }).catch(function () {});
+            return;
+        }
         return;
     }
 
@@ -172,6 +189,13 @@ window.onload = async () => {
             const urlContent = tryLoadFromUrl();
             if (!urlContent) updateContent('');
         }
+
+        // 외부 붙여넣기가 onload보다 먼저 와서 textarea만 비어 있는 경우 동기화
+        if (editorTextarea && currentMarkdown !== editorTextarea.value) {
+            editorTextarea.value = currentMarkdown;
+        }
+        renderMarkdown();
+        renderTOC();
 
         if (isEditMode && editorTextarea) editorTextarea.focus();
 
@@ -303,11 +327,14 @@ function updateContent(md) {
     renderTOC();
 }
 
-/** 보기용: 숫자~숫자 → ～, **굵게** 선변환 후 marked */
+/** 보기용: 숫자~숫자 → ～, 긴 = 뒤 줄바꿈, **굵게** 선변환 후 marked */
 function preprocessMarkdownForView(raw) {
     let s = String(raw ?? '');
     if (typeof preprocessNumericRangeTilde === 'function') {
         s = preprocessNumericRangeTilde(s);
+    }
+    if (typeof preprocessLongEqualsLineBreaks === 'function') {
+        s = preprocessLongEqualsLineBreaks(s);
     }
     if (typeof MarkdownBold !== 'undefined' && MarkdownBold.preprocessBold) {
         s = MarkdownBold.preprocessBold(s) || s;
@@ -1062,13 +1089,15 @@ function performAutoSave() {
     });
 }
 
-/** 확장 프로그램 등에서 붙여넣기 (보기 전환 없이, input 이벤트 미발생) */
+/** 확장 프로그램 등에서 붙여넣기 (보기 전환 없이). 초기화 시 빈 문서로 덮이지 않도록 플래그 설정 */
 function applyScholarPaste(content) {
     if (content === undefined || content === null) return;
     const s = String(content);
+    receivedExternalContent = true;
     currentMarkdown = s;
     if (editorTextarea) {
         editorTextarea.value = s;
+        editorTextarea.dispatchEvent(new Event('input', { bubbles: true }));
     }
     renderMarkdown();
     renderTOC();
