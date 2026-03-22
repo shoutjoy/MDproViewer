@@ -520,6 +520,7 @@ function closeBackupModal() {
 
 let mergeListState = [];
 let mergeListSearchQuery = '';
+let mergeListSelectedOnly = false;
 
 async function openMergeModal() {
     if (!db) return;
@@ -530,6 +531,7 @@ async function openMergeModal() {
     const rootDocs = (docs || []).filter(d => d.folderId === 'root');
     mergeListState = rootDocs.map(d => ({ id: d.id, title: d.title, checked: true }));
     mergeListSearchQuery = '';
+    mergeListSelectedOnly = false;
     const searchInput = document.getElementById('merge-search-input');
     if (searchInput) searchInput.value = '';
     renderMergeList();
@@ -546,7 +548,14 @@ function filterMergeList(query) {
 
 function renderMergeList() {
     const listEl = document.getElementById('merge-list');
+    const selectedOnlyBtn = document.getElementById('merge-selected-only-btn');
     if (!listEl) return;
+    if (selectedOnlyBtn) {
+        selectedOnlyBtn.textContent = mergeListSelectedOnly ? '전체 보기' : '선택한것만 보기';
+        selectedOnlyBtn.className = mergeListSelectedOnly
+            ? 'flex-1 px-3 py-1.5 text-xs font-medium border border-indigo-600 dark:border-indigo-400 rounded-md text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60'
+            : 'flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700';
+    }
     if (mergeListState.length === 0) {
         listEl.innerHTML = '<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">내 문서(ROOT)에 문서가 없습니다.</p>';
         return;
@@ -554,9 +563,9 @@ function renderMergeList() {
     const q = mergeListSearchQuery;
     const filtered = mergeListState
         .map((item, idx) => ({ item, idx }))
-        .filter(({ item }) => !q || (item.title || '').toLowerCase().includes(q));
+        .filter(({ item }) => (!mergeListSelectedOnly || item.checked) && (!q || (item.title || '').toLowerCase().includes(q)));
     if (filtered.length === 0) {
-        listEl.innerHTML = '<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">검색 결과가 없습니다.</p>';
+        listEl.innerHTML = `<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">${mergeListSelectedOnly ? '선택된 문서가 없습니다.' : '검색 결과가 없습니다.'}</p>`;
         lucide.createIcons();
         return;
     }
@@ -596,12 +605,18 @@ function deselectAllMergeItems() {
 
 function toggleMergeItem(idx, checked) {
     if (mergeListState[idx]) mergeListState[idx].checked = !!checked;
+    if (mergeListSelectedOnly) renderMergeList();
 }
 
 function moveMergeItem(idx, dir) {
     const next = idx + dir;
     if (next < 0 || next >= mergeListState.length) return;
     [mergeListState[idx], mergeListState[next]] = [mergeListState[next], mergeListState[idx]];
+    renderMergeList();
+}
+
+function toggleSelectedOnlyMergeView() {
+    mergeListSelectedOnly = !mergeListSelectedOnly;
     renderMergeList();
 }
 
@@ -898,8 +913,8 @@ function getSelectedTextForSave() {
 
 function saveToDB() {
     const modal = document.getElementById('save-modal');
-    document.querySelector('#save-modal h3').textContent = '문서 저장';
-    document.querySelector('#save-modal label').textContent = '저장할 제목을 입력하세요';
+    document.querySelector('#save-modal h3').textContent = 'inDB저장';
+    document.querySelector('#save-modal label').textContent = 'inDB에 저장할 제목을 입력하세요';
     const input = document.getElementById('save-title-input');
     let defaultTitle = currentFileName.replace(/\.md$/i, '');
     const selected = getSelectedTextForSave();
@@ -919,7 +934,7 @@ function saveToDB() {
         const tx = db.transaction('documents', 'readwrite');
         tx.objectStore('documents').add(doc);
         tx.oncomplete = () => {
-            showToast("문서가 저장되었습니다.");
+            showToast("문서가 inDB에 저장되었습니다.");
             renderDBList();
             if (isSidebarHidden) toggleSidebarVisibility();
         };
@@ -2357,6 +2372,7 @@ window.moveMergeItem = moveMergeItem;
 window.filterMergeList = filterMergeList;
 window.selectAllMergeItems = selectAllMergeItems;
 window.deselectAllMergeItems = deselectAllMergeItems;
+window.toggleSelectedOnlyMergeView = toggleSelectedOnlyMergeView;
 window.exportZip = exportZip;
 window.exportMpv = exportMpv;
 window.saveApiKey = saveApiKey;
