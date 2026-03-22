@@ -74,18 +74,41 @@
             resize: none;
         }
 
+        .custom-scrollbar {
+            scrollbar-width: auto;
+            scrollbar-color: #94a3b8 #e2e8f0;
+        }
         .custom-scrollbar::-webkit-scrollbar {
-            width: 6px;
+            width: 16px;
+            height: 16px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-            background: #f1f5f9;
+            background: #e2e8f0;
+            border-left: 1px solid #cbd5e1;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #cbd5e1;
-            border-radius: 10px;
+            background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%);
+            border-radius: 999px;
+            border: 3px solid #e2e8f0;
+            min-height: 56px;
         }
-        .dark .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
-        .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%);
+        }
+        .dark .custom-scrollbar {
+            scrollbar-color: #cbd5e1 #0f172a;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0f172a;
+            border-left: 1px solid #334155;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #e2e8f0 0%, #94a3b8 100%);
+            border-color: #0f172a;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #f8fafc 0%, #cbd5e1 100%);
+        }
 
         /* 편집창 전용 라이트 모드 (버튼으로 토글) */
         #content-viewport.editor-light-mode {
@@ -100,7 +123,70 @@
             color: #94a3b8;
         }
         #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-track { background: #e2e8f0; }
-        #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; }
+        #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%); border-color: #e2e8f0; }
+
+        .scroll-jump-rail {
+            position: absolute;
+            top: 50%;
+            right: 14px;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 15;
+            pointer-events: none;
+        }
+
+        .scroll-jump-btn {
+            pointer-events: auto;
+            min-width: 52px;
+            padding: 10px 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(148, 163, 184, 0.6);
+            background: rgba(255, 255, 255, 0.92);
+            color: #0f172a;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+            backdrop-filter: blur(6px);
+            transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
+        }
+
+        .scroll-jump-btn:hover {
+            transform: translateX(-2px);
+            background: #ffffff;
+            border-color: rgba(59, 130, 246, 0.45);
+        }
+
+        .scroll-jump-btn:active {
+            transform: translateX(0);
+        }
+
+        .dark .scroll-jump-btn {
+            background: rgba(15, 23, 42, 0.88);
+            color: #f8fafc;
+            border-color: rgba(148, 163, 184, 0.35);
+            box-shadow: 0 10px 24px rgba(2, 6, 23, 0.35);
+        }
+
+        .dark .scroll-jump-btn:hover {
+            background: rgba(30, 41, 59, 0.96);
+            border-color: rgba(96, 165, 250, 0.5);
+        }
+
+        @media (max-width: 640px) {
+            .scroll-jump-rail {
+                right: 8px;
+                gap: 8px;
+            }
+
+            .scroll-jump-btn {
+                min-width: 46px;
+                padding: 9px 10px;
+                font-size: 11px;
+            }
+        }
         
         /* Sidebar Transitions */
         #sidebar {

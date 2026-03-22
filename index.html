@@ -421,6 +421,10 @@
 
             <!-- Main Content Area -->
             <main id="drop-zone" class="flex-1 overflow-hidden relative">
+                <div class="scroll-jump-rail no-print" aria-label="문서 빠른 이동">
+                    <button type="button" onclick="scrollToDocumentTop()" class="scroll-jump-btn" title="문서 처음으로 이동">Top</button>
+                    <button type="button" onclick="scrollToDocumentBottom()" class="scroll-jump-btn" title="문서 끝으로 이동">Dn</button>
+                </div>
                 <div id="viewer-container"
                     class="hidden h-full w-full overflow-y-auto custom-scrollbar p-8 sm:p-12 md:p-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
                     <div id="viewer" class="markdown-body w-full max-w-4xl print-area mx-auto">

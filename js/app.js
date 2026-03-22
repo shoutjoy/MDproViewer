@@ -345,8 +345,35 @@ function updateContent(md) {
 }
 
 /** 보기용: 숫자~숫자 → ～, 긴 = 뒤 줄바꿈, **굵게** 선변환 후 marked */
+function preprocessStandaloneHrAfterHardBreak(raw) {
+    const lines = String(raw ?? '').split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        const isStandaloneHr = /^([-*_])(?:\s*\1){2,}$/.test(trimmed);
+        if (!isStandaloneHr) {
+            out.push(line);
+            continue;
+        }
+        const prevLine = out.length ? out[out.length - 1] : '';
+        const prevTrimmed = prevLine.trim();
+        const prevHasHardBreak = /(?: {2,}|\\)$/.test(prevLine);
+        if (prevHasHardBreak && prevTrimmed) {
+            out.push('');
+        }
+        out.push(line);
+        const nextLine = lines[i + 1] ?? '';
+        if (prevHasHardBreak && nextLine.trim()) {
+            out.push('');
+        }
+    }
+    return out.join('\n');
+}
+
 function preprocessMarkdownForView(raw) {
     let s = String(raw ?? '');
+    s = preprocessStandaloneHrAfterHardBreak(s);
     if (typeof preprocessNumericRangeTilde === 'function') {
         s = preprocessNumericRangeTilde(s);
     }
@@ -1478,6 +1505,24 @@ function showToast(msg) {
     setTimeout(() => { toast.style.opacity = "0"; }, 3000);
 }
 
+function getActiveScrollTarget() {
+    if (isEditMode && editorTextarea) return editorTextarea;
+    if (viewerContainer) return viewerContainer;
+    return null;
+}
+
+function scrollToDocumentTop() {
+    const target = getActiveScrollTarget();
+    if (!target) return;
+    target.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function scrollToDocumentBottom() {
+    const target = getActiveScrollTarget();
+    if (!target) return;
+    target.scrollTo({ top: target.scrollHeight, behavior: 'smooth' });
+}
+
 // --- Settings ---
 function initSettings() {
     const savedBg = localStorage.getItem('md_viewer_code_bg');
@@ -2360,6 +2405,8 @@ window.confirmModalInsert = confirmModalInsert;
 window.adjustPageScale = adjustPageScale;
 window.adjustFontSize = adjustFontSize;
 window.showToast = showToast;
+window.scrollToDocumentTop = scrollToDocumentTop;
+window.scrollToDocumentBottom = scrollToDocumentBottom;
 window.closeSaveModal = closeSaveModal;
 window.confirmSaveModal = confirmSaveModal;
 window.openBackupModal = openBackupModal;
