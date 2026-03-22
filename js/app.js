@@ -802,9 +802,40 @@ function saveFile() {
     showToast("파일을 내보냈습니다.");
 }
 
+function syncPrintRootFromViewer() {
+    const printRoot = document.getElementById('print-root');
+    if (!printRoot || !viewer) return false;
+    printRoot.innerHTML = '';
+    const printable = document.createElement('div');
+    printable.className = 'markdown-body print-area';
+    printable.innerHTML = viewer.innerHTML;
+    printRoot.appendChild(printable);
+    return true;
+}
+
+function clearPrintRoot() {
+    const printRoot = document.getElementById('print-root');
+    if (!printRoot) return;
+    printRoot.innerHTML = '';
+}
+
 function printPage() {
     if (isEditMode) toggleMode('view');
-    setTimeout(() => window.print(), 500);
+    setTimeout(() => {
+        if (!syncPrintRootFromViewer()) {
+            showToast('인쇄용 문서를 준비하지 못했습니다.');
+            return;
+        }
+        document.body.classList.add('printing-active');
+        const cleanup = function () {
+            document.body.classList.remove('printing-active');
+            clearPrintRoot();
+            window.removeEventListener('afterprint', cleanup);
+        };
+        window.addEventListener('afterprint', cleanup, { once: true });
+        window.print();
+        setTimeout(cleanup, 1000);
+    }, 120);
 }
 
 // --- Sidebar Visibility & Collapse Logic ---
@@ -2212,6 +2243,11 @@ if (!window.__aiSidebarResizeBound) {
 }
 
 let sidebarAILoaded = false;
+
+function getDocumentBaseUrl() {
+    return document.baseURI || window.location.href;
+}
+
 function ensureSidebarAILoaded() {
     if (sidebarAILoaded) return;
     sidebarAILoaded = true;
@@ -2365,11 +2401,11 @@ function ensureSidebarAILoaded() {
         }
     };
     const script = document.createElement('script');
-    const base = (document.querySelector('base') && document.querySelector('base').href) || (window.location.origin + '/');
+    const base = getDocumentBaseUrl();
     try {
-        script.src = new URL('sidebarAI/sidebar-ai.js', base).href;
+        script.src = new URL('./sidebarAI/sidebar-ai.js', base).href;
     } catch (e) {
-        script.src = base.replace(/\/$/, '') + '/sidebarAI/sidebar-ai.js';
+        script.src = './sidebarAI/sidebar-ai.js';
     }
     script.charset = 'utf-8';
     script.onerror = function () {
@@ -2394,11 +2430,11 @@ function injectSidebarAIHtml() {
         });
     };
     var base = '';
-    const baseUrl = (document.querySelector('base') && document.querySelector('base').href) || (window.location.origin + '/');
+    const baseUrl = getDocumentBaseUrl();
     try {
-        base = new URL('sidebarAI/sidebar-ai.html', baseUrl).href;
+        base = new URL('./sidebarAI/sidebar-ai.html', baseUrl).href;
     } catch (e2) {
-        base = baseUrl.replace(/\/$/, '') + '/sidebarAI/sidebar-ai.html';
+        base = './sidebarAI/sidebar-ai.html';
     }
     return tryFetch(base)
         .catch(function () { return tryFetch('./sidebarAI/sidebar-ai.html'); })

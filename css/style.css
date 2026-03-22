@@ -64,9 +64,44 @@
 
         @media print {
             .no-print { display: none !important; }
+            html, body {
+                height: auto !important;
+                overflow: visible !important;
+                background-color: white !important;
+            }
+            body.printing-active > *:not(#print-root) { display: none !important; }
+            body.printing-active #print-root { display: block !important; }
             body, .markdown-body { background-color: white !important; color: #1e293b !important; }
             .print-area { padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: none !important; }
             .sidebar-container { display: none !important; }
+            #print-root {
+                position: static !important;
+                inset: auto !important;
+                width: auto !important;
+                min-height: auto !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                overflow: visible !important;
+                background: white !important;
+            }
+            #print-root .markdown-body {
+                width: auto !important;
+                max-width: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+            #print-root pre,
+            #print-root blockquote,
+            #print-root table,
+            #print-root img {
+                break-inside: avoid;
+                page-break-inside: avoid;
+            }
+        }
+
+        #print-root {
+            display: none;
         }
 
         #editor-textarea {
