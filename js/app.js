@@ -44,6 +44,8 @@ if (editorTextarea) {
 /** NotebookLM 등 외부 앱에서 보낸 자료 (onload 전 도착분) */
 let pendingExternalContent = null;
 let receivedExternalContent = false;
+/** NotebookLM·동일 확장에서 넘어온 현재 문서만 보기 시 '=' 구분선을 '-'로 치환 */
+let notebookLmEqualsHrPreprocess = false;
 const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
 const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
 
@@ -53,14 +55,19 @@ window.addEventListener('message', function (ev) {
 
     // 1번: scholarToMDPaste — 확장에서 postMessage 또는 클립보드(readClipboard/useClipboard)
     if (d.type === 'scholarToMDPaste') {
+        const scholarNotebookLm = d.notebookLm !== false;
         const hasContent = d.content != null && String(d.content).length > 0;
         if (hasContent) {
+            notebookLmEqualsHrPreprocess = scholarNotebookLm;
             applyScholarPaste(String(d.content));
             return;
         }
         if ((d.readClipboard || d.useClipboard) && navigator.clipboard && typeof navigator.clipboard.readText === 'function') {
             navigator.clipboard.readText().then(function (text) {
-                if (text != null && String(text).length) applyScholarPaste(String(text));
+                if (text != null && String(text).length) {
+                    notebookLmEqualsHrPreprocess = scholarNotebookLm;
+                    applyScholarPaste(String(text));
+                }
             }).catch(function () {});
             return;
         }
@@ -73,11 +80,18 @@ window.addEventListener('message', function (ev) {
     const originOk = ev.origin && NOTEBOOKLM_ORIGINS.some(o => ev.origin.startsWith(o));
     const openerOk = window.opener && ev.source === window.opener; // 다른 앱에서 열었을 때
     if (!typeOk && !originOk && !openerOk) return;
-    const payload = { content: String(content), title: d.title ?? d.fileName ?? d.name ?? null };
+    const notebookLmSeparators = originOk
+        || String(d.type) === 'notebooklm'
+        || String(d.type) === 'notebooklm-export';
+    const payload = {
+        content: String(content),
+        title: d.title ?? d.fileName ?? d.name ?? null,
+        notebookLmSeparators
+    };
     pendingExternalContent = payload;
     receivedExternalContent = true;
     if (typeof loadFromExternalContent === 'function') {
-        loadFromExternalContent(payload.content, payload.title);
+        loadFromExternalContent(payload.content, payload.title, { notebookLmSeparators: payload.notebookLmSeparators });
         if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
     }
 });
@@ -182,7 +196,9 @@ window.onload = async () => {
 
         // 앱 시작 시 복구 모달 표시하지 않음 (NotebookLM 등 외부 자료 우선)
         if (pendingExternalContent) {
-            loadFromExternalContent(pendingExternalContent.content, pendingExternalContent.title);
+            loadFromExternalContent(pendingExternalContent.content, pendingExternalContent.title, {
+                notebookLmSeparators: !!pendingExternalContent.notebookLmSeparators
+            });
             pendingExternalContent = null;
             if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
         } else if (!receivedExternalContent) {
@@ -321,6 +337,7 @@ window.onload = async () => {
 
 // --- Core Functions ---
 function updateContent(md) {
+    notebookLmEqualsHrPreprocess = false;
     currentMarkdown = md;
     if (editorTextarea) editorTextarea.value = md;
     renderMarkdown();
@@ -335,6 +352,9 @@ function preprocessMarkdownForView(raw) {
     }
     if (typeof preprocessLongEqualsLineBreaks === 'function') {
         s = preprocessLongEqualsLineBreaks(s);
+    }
+    if (notebookLmEqualsHrPreprocess && typeof preprocessNotebookLmEqualsToHr === 'function') {
+        s = preprocessNotebookLmEqualsToHr(s);
     }
     if (typeof MarkdownBold !== 'undefined' && MarkdownBold.preprocessBold) {
         s = MarkdownBold.preprocessBold(s) || s;
@@ -1105,13 +1125,19 @@ function applyScholarPaste(content) {
     if (typeof showToast === 'function') showToast("내용을 받았습니다.");
 }
 
-/** 2번: 전역 함수 — content script가 window.acceptScholarPaste(content) 호출 */
-window.acceptScholarPaste = function (content) {
+/** 2번: 전역 함수 — content script가 window.acceptScholarPaste(content, notebookLm) 호출 (notebookLm===false 이면 '=' 치환 비활성) */
+window.acceptScholarPaste = function (content, notebookLm) {
+    notebookLmEqualsHrPreprocess = notebookLm !== false;
     applyScholarPaste(content);
 };
 
 /** URL 또는 postMessage로 전달된 외부 자료를 바로 로드 (복구 모달 없이) */
-function loadFromExternalContent(content, title) {
+function loadFromExternalContent(content, title, opts) {
+    if (opts && typeof opts === 'object' && Object.prototype.hasOwnProperty.call(opts, 'notebookLmSeparators')) {
+        notebookLmEqualsHrPreprocess = !!opts.notebookLmSeparators;
+    } else {
+        notebookLmEqualsHrPreprocess = false;
+    }
     if (content !== undefined && content !== null) {
         currentMarkdown = String(content);
         if (editorTextarea) editorTextarea.value = currentMarkdown;
@@ -1139,7 +1165,7 @@ function tryLoadFromUrl() {
             const decoded = (encoded === 'base64')
                 ? (typeof atob === 'function' ? atob(content) : content)
                 : decodeURIComponent(content);
-            loadFromExternalContent(decoded, title || null);
+            loadFromExternalContent(decoded, title || null, { notebookLmSeparators: false });
             if (typeof showToast === 'function') showToast("문서를 불러왔습니다.");
             return true;
         }

@@ -11,7 +11,7 @@
 body.viewer-in-app-fs .scholar-ai-sidebar,
 body.viewer-in-app-fs .ssp-ai-sidebar { display: none !important; }
 
-/* ========== ScholarAI Sidebar (좌측 확장) ========== */
+/* ========== ScholarAI Sidebar (우측 도킹 영역 안, 본문 오른쪽) ========== */
 .scholar-ai-sidebar {
   width: 0;
   min-width: 0;
@@ -168,7 +168,7 @@ body.theme-light .scholar-ai-history-item { background: #f1f5f9; border-color: #
 .scholar-ai-history-item .sa-h-del { padding: 2px 6px; font-size: 10px; cursor: pointer; border: none; border-radius: 4px; background: #64748b; color: #fff; }
 .scholar-ai-history-item .sa-h-del:hover { background: #ef4444; }
 
-/* ========== SSPAI Sidebar (좌측 확장) ========== */
+/* ========== SSPAI Sidebar (우측 도킹 영역 안, ScholarAI 오른쪽) ========== */
 .ssp-ai-sidebar {
   width: 0;
   min-width: 0;
