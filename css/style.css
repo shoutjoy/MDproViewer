@@ -45,6 +45,10 @@
         .markdown-body a { color: #3b82f6; text-decoration: underline; }
         .markdown-body b, .markdown-body strong { font-weight: 700; }
 
+        /* KaTeX (다크 모드에서도 본문과 대비) */
+        .markdown-body .katex { font-size: 1.05em; }
+        .dark .markdown-body .katex { color: #e2e8f0; }
+
         /* Dark mode markdown */
         .dark .markdown-body h1, .dark .markdown-body h2 { border-bottom-color: #334155; }
         .dark .markdown-body code { background-color: #334155; color: #e2e8f0; }

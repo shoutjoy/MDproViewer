@@ -439,12 +439,15 @@ function renderMarkdown() {
             out.then(function (h) {
                 viewer.innerHTML = h || '';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
+                if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(viewer);
             }).catch(function () {
                 viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
             });
             return;
         }
         viewer.innerHTML = out || '';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(viewer);
     } catch (e) {
         viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
     }
@@ -1946,11 +1949,13 @@ async function persistAiSettingsFromModal() {
     const verified = !!(s && s.verified);
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    const githubEl = document.getElementById('ai-github-enabled');
     const scholarOn = verified && scholarEl && scholarEl.checked;
     const sspimgOn = verified && sspimgEl && sspimgEl.checked;
     await setAiSettings({
         scholarAI: !!scholarOn,
-        sspimgAI: !!sspimgOn
+        sspimgAI: !!sspimgOn,
+        githubEnabled: !!(githubEl && githubEl.checked)
     });
 }
 
@@ -2582,8 +2587,10 @@ async function loadAiSettingsToUI() {
     }
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    const githubEl = document.getElementById('ai-github-enabled');
     if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
     if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
+    if (githubEl) githubEl.checked = !!settings.githubEnabled;
     updateAiScholarSspimgAvailability(verified);
     const nameEl = document.getElementById('ai-user-name');
     const idEl = document.getElementById('ai-user-id');
