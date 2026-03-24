@@ -11,6 +11,7 @@ const AUTH_REQUEST_EMAIL = 'shoutjoy1@yonsei.ac.kr';
 // State
 let currentMarkdown = "";
 let currentFileName = "새 문서.md";
+let currentFilePath = null;
 let isEditMode = true;
 let pageScale = 1.0;
 let fontSize = 16;
@@ -222,16 +223,14 @@ window.onload = async () => {
 
     if (window.electron && window.electron.ipcRenderer) {
         window.electron.ipcRenderer.on('open-external-file', (event, data) => {
-            currentFileName = data.fileName;
-            fileNameDisplay.textContent = currentFileName;
+            setCurrentDocumentInfo(data.fileName, data.filePath);
             updateContent(data.content);
             showToast("외부 문서를 열었습니다.");
         });
         // 앱이 파일로 처음 실행된 경우 (더블클릭으로 열기)
         window.electron.ipcRenderer.invoke('get-initial-file').then(function (data) {
             if (data && data.fileName && data.content !== undefined) {
-                currentFileName = data.fileName;
-                fileNameDisplay.textContent = currentFileName;
+                setCurrentDocumentInfo(data.fileName, data.filePath);
                 updateContent(data.content);
                 showToast("문서를 열었습니다.");
             }
@@ -292,8 +291,8 @@ window.onload = async () => {
             if (!isEditMode) toggleMode('edit');
             return;
         }
-        // Alt + V for View mode
-        if (e.altKey && !e.ctrlKey && !isAltGraph && (e.code === 'KeyV' || e.key === 'v' || e.key === 'V')) {
+        // Alt + 2 for View mode
+        if (e.altKey && !e.ctrlKey && !isAltGraph && (e.code === 'Digit2' || e.key === '2')) {
             e.preventDefault();
             if (isEditMode) toggleMode('view');
             return;
@@ -304,9 +303,14 @@ window.onload = async () => {
             toggleTheme();
             showToast("테마가 변경되었습니다.");
         }
-        if (e.ctrlKey && e.altKey && (e.key === 'a' || e.key === 'A')) {
+        if (e.shiftKey && e.altKey && !e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
             e.preventDefault();
             insertUserInfoAtCursor();
+            return;
+        }
+        if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.code === 'Digit7' || e.key === '7')) {
+            e.preventDefault();
+            convertSelectionPatternToTable();
             return;
         }
         if (e.ctrlKey && e.key === '7') {
@@ -338,8 +342,25 @@ window.onload = async () => {
             } else if (bar) {
                 closeFindReplace();
             }
+            return;
         }
-        // Ctrl + Z for Undo, Ctrl + Shift + Z / Ctrl + Y for Redo
+        if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'b') {
+            e.preventDefault();
+            if (isEditMode && editorTextarea) insertAtCursor('bold');
+            return;
+        }
+        if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'i') {
+            e.preventDefault();
+            if (isEditMode && editorTextarea) insertAtCursor('italic');
+            return;
+        }
+        const isSaveModifier = e.ctrlKey || e.metaKey;
+        if (isSaveModifier && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            if (e.shiftKey) saveFileAs();
+            else saveCurrentFile();
+            return;
+        }
         if (e.ctrlKey && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'y')) {
             setTimeout(() => {
                 currentMarkdown = editorTextarea.value;
@@ -512,8 +533,7 @@ function handleFileSelect(event) {
 
 function createNewFile() {
     currentMarkdown = "";
-    currentFileName = "새 문서.md";
-    fileNameDisplay.textContent = currentFileName;
+    setCurrentDocumentInfo("새 문서.md", null);
     updateContent("");
     performAutoSave();
     showToast("새 파일이 생성되었습니다.");
@@ -523,12 +543,35 @@ function createNewFile() {
 const MPV_FORMAT = 'mdviewer/mpv';
 const MPV_VERSION = 1;
 
+function setCurrentDocumentInfo(fileName, filePath = null) {
+    currentFileName = fileName;
+    currentFilePath = filePath || null;
+    fileNameDisplay.textContent = currentFileName;
+}
+
+function getSaveCandidateFileName() {
+    return currentFileName && String(currentFileName).trim()
+        ? currentFileName
+        : "document.md";
+}
+
+function downloadMarkdownFile() {
+    const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentFileName.endsWith('.md') ? currentFileName : currentFileName + ".md";
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 function readFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
         const name = (file.name || '').toLowerCase();
         const raw = e.target.result;
         if (name.endsWith('.mpv') || name.endsWith('.json')) {
+            currentFilePath = null;
             try {
                 const data = JSON.parse(raw);
                 if (data && data.format === MPV_FORMAT && Array.isArray(data.folders) && Array.isArray(data.documents)) {
@@ -537,8 +580,7 @@ function readFile(file) {
                 }
             } catch (_) {}
         }
-        currentFileName = file.name;
-        fileNameDisplay.textContent = currentFileName;
+        setCurrentDocumentInfo(file.name, file.path || null);
         updateContent(raw);
         showToast("파일을 불러왔습니다.");
     };
@@ -795,14 +837,48 @@ async function exportMpv() {
     showToast("MPV(JSON)로 저장했습니다. 확장자를 .json으로 바꿔도 호환됩니다.");
 }
 
+async function saveCurrentFile() {
+    if (!(window.electron && window.electron.ipcRenderer)) {
+        downloadMarkdownFile();
+        showToast("파일을 저장했습니다.");
+        return;
+    }
+    const result = await window.electron.ipcRenderer.invoke('save-current-file', {
+        filePath: currentFilePath,
+        fileName: getSaveCandidateFileName(),
+        content: currentMarkdown
+    });
+    if (!result || result.canceled) return;
+    if (result.error) {
+        showToast(`저장에 실패했습니다: ${result.error}`);
+        return;
+    }
+    setCurrentDocumentInfo(result.fileName, result.filePath);
+    showToast("파일을 저장했습니다.");
+}
+
+async function saveFileAs() {
+    if (!(window.electron && window.electron.ipcRenderer)) {
+        downloadMarkdownFile();
+        showToast("파일을 다른 이름으로 저장했습니다.");
+        return;
+    }
+    const result = await window.electron.ipcRenderer.invoke('save-file-as', {
+        filePath: currentFilePath,
+        fileName: getSaveCandidateFileName(),
+        content: currentMarkdown
+    });
+    if (!result || result.canceled) return;
+    if (result.error) {
+        showToast(`다른 이름 저장에 실패했습니다: ${result.error}`);
+        return;
+    }
+    setCurrentDocumentInfo(result.fileName, result.filePath);
+    showToast("파일을 다른 이름으로 저장했습니다.");
+}
+
 function saveFile() {
-    const blob = new Blob([currentMarkdown], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = currentFileName.endsWith('.md') ? currentFileName : currentFileName + ".md";
-    a.click();
-    showToast("파일을 내보냈습니다.");
+    return saveCurrentFile();
 }
 
 function syncPrintRootFromViewer() {
@@ -1642,6 +1718,112 @@ function handleTableInsertion() {
 
     currentMarkdown = editorTextarea.value;
     editorTextarea.scrollTop = scrollTop;
+    editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+}
+
+function convertSelectionPatternToTable() {
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const text = editorTextarea.value;
+    const selectedText = text.substring(start, end);
+
+    if (!selectedText || !selectedText.trim()) {
+        showToast('표로 변환할 영역을 먼저 선택해 주세요.');
+        return;
+    }
+
+    const lines = selectedText
+        .split('\n')
+        .map(function (line) { return line.trim(); })
+        .filter(function (line) { return line.length > 0; });
+
+    if (lines.length === 0) {
+        showToast('선택된 내용이 비어 있습니다.');
+        return;
+    }
+
+    function detectSeparator(rows) {
+        const hasPipe = rows.every(function (r) { return (r.match(/\|/g) || []).length >= 1; });
+        if (hasPipe) return 'pipe';
+        const hasTab = rows.every(function (r) { return r.includes('\t'); });
+        if (hasTab) return 'tab';
+        const hasComma = rows.every(function (r) { return r.includes(','); });
+        if (hasComma) return 'comma';
+        const hasSemicolon = rows.every(function (r) { return r.includes(';'); });
+        if (hasSemicolon) return 'semicolon';
+        const hasMultiSpace = rows.every(function (r) { return /\s{2,}/.test(r); });
+        if (hasMultiSpace) return 'multispace';
+        return 'space';
+    }
+
+    function splitCells(line, sep) {
+        let cells = [];
+        if (sep === 'pipe') {
+            const trimmed = line.replace(/^\|+/, '').replace(/\|+$/, '');
+            cells = trimmed.split('|');
+        } else if (sep === 'tab') {
+            cells = line.split('\t');
+        } else if (sep === 'comma') {
+            cells = line.split(',');
+        } else if (sep === 'semicolon') {
+            cells = line.split(';');
+        } else if (sep === 'multispace') {
+            cells = line.split(/\s{2,}/);
+        } else {
+            cells = line.split(/\s+/);
+        }
+
+        return cells
+            .map(function (c) { return c.trim().replace(/^["']|["']$/g, ''); })
+            .filter(function (c, idx, arr) { return c.length > 0 || idx < arr.length - 1; });
+    }
+
+    function isDividerRow(cells) {
+        if (!cells || cells.length === 0) return false;
+        return cells.every(function (cell) {
+            const t = cell.replace(/\s+/g, '');
+            return /^:?-{3,}:?$/.test(t);
+        });
+    }
+
+    const sep = detectSeparator(lines);
+    let rows = lines.map(function (line) { return splitCells(line, sep); }).filter(function (cells) { return cells.length > 0; });
+    if (rows.length === 0) {
+        showToast('표로 변환할 수 있는 패턴을 찾지 못했습니다.');
+        return;
+    }
+
+    if (rows.length >= 2 && isDividerRow(rows[1])) {
+        rows.splice(1, 1);
+    }
+
+    const maxCols = rows.reduce(function (max, row) { return Math.max(max, row.length); }, 0);
+    if (maxCols < 2) {
+        showToast('최소 2개 열이 필요합니다. 구분자(공백/탭/,/;/|)를 확인해 주세요.');
+        return;
+    }
+
+    rows = rows.map(function (row) {
+        const padded = row.slice(0, maxCols);
+        while (padded.length < maxCols) padded.push('');
+        return padded;
+    });
+
+    const header = rows[0];
+    const bodyRows = rows.slice(1);
+    const divider = '| ' + new Array(maxCols).fill('---').join(' | ') + ' |';
+    let replacement = '| ' + header.join(' | ') + ' |\n' + divider;
+    if (bodyRows.length > 0) {
+        replacement += '\n' + bodyRows.map(function (row) { return '| ' + row.join(' | ') + ' |'; }).join('\n');
+    }
+
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+
+    currentMarkdown = editorTextarea.value;
     editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
@@ -2782,6 +2964,8 @@ window.toggleMode = toggleMode;
 window.handleFileSelect = handleFileSelect;
 window.readFile = readFile;
 window.saveFile = saveFile;
+window.saveCurrentFile = saveCurrentFile;
+window.saveFileAs = saveFileAs;
 window.printPage = printPage;
 window.toggleSidebarVisibility = toggleSidebarVisibility;
 window.toggleSidebarCollapse = toggleSidebarCollapse;
@@ -2846,6 +3030,7 @@ window.renderTOC = renderTOC;
 window.scrollToLine = scrollToLine;
 window.applyHeading = applyHeading;
 window.handleTableInsertion = handleTableInsertion;
+window.convertSelectionPatternToTable = convertSelectionPatternToTable;
 
 // --- Advanced Edit Functions ---
 function openFindReplace() {

@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Markdown Pro Viewer & Editor</title>
+    <title>MDproViewer</title>
     <!-- Tailwind CSS for Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -14,7 +14,7 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <!-- JSZip for backup zip -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-    <!-- Markdown Bold: **텍스트** 특수문자 포함 시 <b> 선변환 (marked 파싱 실패 방지) -->
+    <!-- Markdown Bold: **????紐꾨쫯??* ??????釉먭텭?湲븐땡筌뚯뼚維????????<b> ?????(marked ??????????곌숯 ?熬곣뫖?삥납?) -->
     <script src="./js/Markdown_bold.js" charset="utf-8"></script>
     <script src="./js/md_numeric_range.js" charset="utf-8"></script>
     <script src="./js/md_long_equals.js" charset="utf-8"></script>
@@ -28,85 +28,85 @@
 
 <body class="h-screen flex flex-col overflow-hidden transition-colors duration-200">
 
-    <!-- Top Navigation Bar (반응형: 좁은 창에서 타이틀 축소·버튼 줄바꿈) -->
+    <!-- Top Navigation Bar (?熬곣뫖利???? ????ろ뀯? ?꿔꺂??????뜦??????? ???ㅻ쿋繹??繹??筌?????嚥싳쉶瑗ч뇡癒?낄???? -->
     <header
         class="app-header bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-2 sm:px-4 md:px-6 py-2 md:py-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3 z-30 no-print transition-colors shrink-0 min-w-0">
         <div class="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <button onclick="toggleSidebarVisibility()"
                 class="p-1.5 sm:p-2 shrink-0 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-600 dark:text-slate-300"
-                title="사이드바 숨기기/보이기">
+                title="?????嶺뚮Ĳ?????壤굿???????⑤슢????브퀣?쒐낼?>
                 <i data-lucide="menu" class="w-5 h-5 sm:w-[22px] sm:h-[22px]"></i>
             </button>
             <div class="bg-indigo-600 p-1.5 sm:p-2 rounded-lg text-white shrink-0">
                 <i data-lucide="file-text" class="w-4 h-4 sm:w-5 sm:h-5"></i>
             </div>
             <div class="min-w-0 flex-1 overflow-hidden">
-                <h1 class="app-header-title font-bold text-slate-800 dark:text-slate-100 leading-tight break-words hyphens-auto">Markdown Pro Viewer (박중희)</h1>
-                <p class="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate sm:whitespace-normal sm:break-words mt-0.5" id="file-name-display">새 문서: 문서명이 표시됩니다.</p>
+                <h1 class="app-header-title font-bold text-slate-800 dark:text-slate-100 leading-tight break-words hyphens-auto">MDproViewer</h1>
+                <p class="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate sm:whitespace-normal sm:break-words mt-0.5" id="file-name-display">?????戮?뜪?? ???戮?뜪??얜Ŋ?긷＄???⑤；瑗???嶺?筌??嶺뚮ㅎ????</p>
             </div>
         </div>
 
         <div class="app-header-actions flex flex-wrap items-center justify-end gap-x-0.5 gap-y-1 sm:gap-x-1 sm:gap-y-1.5 w-full lg:w-auto lg:flex-nowrap lg:justify-end min-w-0">
             <button onclick="createNewFile()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0"
-                title="새 파일">
+                title="???????>
                 <i data-lucide="file-plus" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
-                <span class="hidden xl:inline text-sm font-medium">새파일</span>
+                <span class="hidden xl:inline text-sm font-medium">?????욧틞??/span>
             </button>
             <button onclick="document.getElementById('file-input').click()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0"
-                title="파일 열기">
+                title="?????????源낇꺙">
                 <i data-lucide="folder-open" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
-                <span class="hidden xl:inline text-sm font-medium">열기</span>
+                <span class="hidden xl:inline text-sm font-medium">????源낇꺙</span>
             </button>
             <input type="file" id="file-input" class="hidden" accept=".md,.txt,.mpv,.json" onchange="handleFileSelect(event)">
 
             <button onclick="saveFile()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0"
-                title="다른 이름저장">
+                title="?????봔?????????>
                 <i data-lucide="download" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
-                <span class="hidden xl:inline text-sm font-medium">다른 이름저장</span>
+                <span class="hidden xl:inline text-sm font-medium">?????봔?????????/span>
             </button>
 
-            <!-- IndexedDB 저장 버튼 -->
+            <!-- IndexedDB ?????筌?????-->
             <button onclick="saveToDB()"
                 class="p-1.5 sm:p-2 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-md transition-colors flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 shrink-0"
-                title="inDB에 저장">
+                title="inDB??????>
                 <i data-lucide="database" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
-                <span class="hidden xl:inline text-sm font-bold">inDB저장</span>
+                <span class="hidden xl:inline text-sm font-bold">inDB????/span>
             </button>
 
             <div class="hidden sm:block h-6 w-px bg-slate-200 dark:bg-slate-600 mx-1 sm:mx-2 shrink-0"></div>
 
             <button onclick="toggleTheme()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 shrink-0"
-                title="다크/라이트 모드 전환">
+                title="???熬곣뫗逾???濚밸Ŧ?????꿔꺂??袁ㅻ븶???????꾣뤃??>
                 <i data-lucide="sun" id="theme-icon-sun" class="w-[18px] h-[18px] sm:w-5 sm:h-5 hidden dark:block"></i>
                 <i data-lucide="moon" id="theme-icon-moon" class="w-[18px] h-[18px] sm:w-5 sm:h-5 block dark:hidden"></i>
             </button>
 
             <button onclick="printPage()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 shrink-0"
-                title="인쇄">
+                title="?癲ル슢????>
                 <i data-lucide="printer" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
             </button>
 
             <!-- Settings Button -->
             <button onclick="openSettingsModal()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 shrink-0"
-                title="설정">
+                title="???繹먮냱??>
                 <i data-lucide="settings" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
             </button>
 
-            <!-- 확대/축소·폰트 (좁은 화면에서 다음 줄로) -->
+            <!-- ?癲?/???ㅻ쿋繹??繹????關履싩뛾?(????ろ뀯? ???됰Ŧ六?????????繹먮굞??嚥싳쉶瑗ч뇡癒?낄濚? -->
             <div id="header-zoom-font" class="flex items-center gap-1 sm:gap-2 ml-0 sm:ml-1 md:ml-2 basis-full sm:basis-auto justify-center sm:justify-start flex-wrap sm:flex-nowrap py-1 sm:py-0 border-t border-slate-200/80 dark:border-slate-700/80 sm:border-t-0 w-full sm:w-auto">
-                <span class="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">화면</span>
+                <span class="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">???됰Ŧ六??/span>
                 <div class="flex items-center gap-1">
                     <button onclick="adjustPageScale(-0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="minus" class="w-4 h-4"></i></button>
                     <span id="scale-display" class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">100%</span>
                     <button onclick="adjustPageScale(0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="plus" class="w-4 h-4"></i></button>
                 </div>
-                <span class="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider ml-1 sm:ml-2">폰트</span>
+                <span class="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider ml-1 sm:ml-2">???關履싩뛾?/span>
                 <div class="flex items-center gap-1">
                     <button onclick="adjustFontSize(-2)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="type" class="w-4 h-4 scale-75"></i></button>
                     <span id="font-size-display" class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">16px</span>
@@ -114,17 +114,17 @@
                 </div>
             </div>
 
-            <!-- AI 버튼 (인증 후 표시) -->
+            <!-- AI ?筌?????(?癲ル슢???먥꼻?????嶺?筌? -->
             <div id="header-ai-btns" class="hidden items-center gap-1 ml-0 sm:ml-2 shrink-0 flex-wrap justify-end">
                 <button type="button" id="btn-scholar-ai" onclick="typeof openScholarAIFromHeader==='function'&&openScholarAIFromHeader()" class="px-2 py-1 sm:px-3 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600">ScholarAI</button>
                 <button type="button" id="btn-sspimg-ai" onclick="typeof openSspimgAIFromHeader==='function'&&openSspimgAIFromHeader()" class="px-2 py-1 sm:px-3 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600">sspimgAI</button>
             </div>
 
             <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 sm:p-1 ml-0 sm:ml-1 md:ml-2 shrink-0">
-                <button onclick="toggleMode('view')" id="btn-view" title="Alt+V"
-                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">보기</button>
                 <button onclick="toggleMode('edit')" id="btn-edit" title="Alt+1"
-                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400">편집</button>
+                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400">?癲ル슢???밸퉲?/button>
+                <button onclick="toggleMode('view')" id="btn-view" title="Alt+2"
+                    class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100">??⑤슢?????/button>
             </div>
         </div>
     </header>
@@ -137,13 +137,13 @@
                 <div class="flex items-center gap-2 mb-2 sidebar-text">
                     <button onclick="openBackupModal()"
                         class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
-                        title="내문서 백업">
+                        title="???????熬곣뫖利??筌?>
                         <i data-lucide="archive" class="w-3.5 h-3.5"></i>
                         <span>BackUP</span>
                     </button>
                     <button onclick="openMergeModal()"
                         class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
-                        title="문서 묶기">
+                        title="???戮?뜪?????戮?퓝??>
                         <i data-lucide="layers" class="w-3.5 h-3.5"></i>
                         <span>merge</span>
                     </button>
@@ -151,19 +151,19 @@
                 <div class="flex items-center justify-between sidebar-header-btns">
                     <div class="flex bg-slate-200 dark:bg-slate-800 rounded p-1 w-full mr-2 sidebar-text">
                         <button onclick="switchSidebarTab('files')" id="tab-files"
-                            class="flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors">파일</button>
+                            class="flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors">?????/button>
                         <button onclick="switchSidebarTab('toc')" id="tab-toc"
-                            class="flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">목차</button>
+                            class="flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">?꿔꺂??袁ㅻ븶?關苡?/button>
                     </div>
                     <div class="flex gap-1 shrink-0">
                         <button onclick="createNewFolder()" id="btn-new-folder"
                             class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400"
-                            title="폴더 생성">
+                            title="????????꾩룆???>
                             <i data-lucide="folder-plus" class="w-4 h-4"></i>
                         </button>
                         <button onclick="toggleSidebarCollapse()"
                             class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400"
-                            title="사이드바 축소/확장">
+                            title="?????嶺뚮Ĳ??????ㅻ쿋繹???癲ル슢캉???>
                             <i id="collapse-icon" data-lucide="chevron-left" class="w-4 h-4"></i>
                         </button>
                     </div>
@@ -171,7 +171,7 @@
                 <div class="relative search-container" id="search-container">
                     <i data-lucide="search"
                         class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 search-icon-only"></i>
-                    <input type="text" id="db-search" oninput="renderDBList()" placeholder="문서 검색..."
+                    <input type="text" id="db-search" oninput="renderDBList()" placeholder="???戮?뜪???嚥▲굧????.."
                         class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
             </div>
@@ -183,50 +183,53 @@
             </div>
         </aside>
 
-        <!-- AI 우측 사이드바 (ScholarAI, sspimgAI) — 본문 오른쪽에 표시 -->
+        <!-- AI ?????? ?????嶺뚮Ĳ???(ScholarAI, sspimgAI) ????⑤슢?뽫춯??쒐뙴??????봔饔낃퀣????놁몝????嶺?筌?-->
         <div id="ai-right-sidebar-wrap" class="order-3 hidden shrink-0 relative z-10 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 overflow-visible" style="width:0;display:none">
             <div id="ai-right-sidebar-inner" class="h-full flex flex-row items-stretch overflow-hidden min-w-0">
-                <!-- sidebarAI/sidebar-ai.html + sidebar-ai.js에서 주입 -->
+                <!-- sidebarAI/sidebar-ai.html + sidebar-ai.js????????녿뮝???-->
             </div>
         </div>
 
         <div class="order-2 flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-            <!-- Sub Toolbar (편집 시 편집 도구 가운데) -->
+            <!-- Sub Toolbar (?癲ル슢???밸퉲????癲ル슢???밸퉲?????꾤뙴????醫딆쓧?????? -->
             <div id="toolbar"
                 class="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-2 sm:px-4 md:px-6 py-1.5 sm:py-2 flex flex-wrap items-center justify-center gap-1.5 sm:gap-3 md:gap-4 no-print transition-colors">
-                <!-- Edit Toolbar: 가운데 정렬 -->
+                <!-- Edit Toolbar: ??醫딆쓧???????癲ル슢??節??-->
                 <div id="edit-tools" class="flex flex-wrap items-center justify-center gap-2">
                     <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
                     <button onclick="insertAtCursor('bold')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="굵게">B</button>
+                        title="????뺢콛???>B</button>
                     <button onclick="insertAtCursor('italic')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm italic"
-                        title="기울임꼴">I</button>
+                        title="???뚯???????꾤뙴洹잙빝?>I</button>
 
                     <button onclick="applyHeading(1)"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="제목 1 (H1)">H1</button>
+                        title="??嶺뚮Ŋ猷꾥굜?1 (H1)">H1</button>
                     <button onclick="applyHeading(2)"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="제목 2 (H2)">H2</button>
+                        title="??嶺뚮Ŋ猷꾥굜?2 (H2)">H2</button>
                     <button onclick="applyHeading(3)"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="제목 3 (H3)">H3</button>
+                        title="??嶺뚮Ŋ猷꾥굜?3 (H3)">H3</button>
 
                     <button onclick="insertAtCursor('quote')"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="인용구"><i data-lucide="quote" class="w-3.5 h-3.5"></i></button>
+                        title="Quote"><i data-lucide="quote" class="w-3.5 h-3.5"></i></button>
                     <button onclick="handleTableInsertion()"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="표 삽입"><i data-lucide="table" class="w-3.5 h-3.5"></i></button>
+                        title="Table insert"><i data-lucide="table" class="w-3.5 h-3.5"></i></button>
+                    <button onclick="convertSelectionPatternToTable()"
+                        class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
+                        title="Convert selected pattern to table (Alt+7)">A7Tbl</button>
 
                     <button onclick="openLinkModal('link')"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="링크"><i data-lucide="link" class="w-3.5 h-3.5"></i></button>
+                        title="?꿔꺂???疫뀀９臾?><i data-lucide="link" class="w-3.5 h-3.5"></i></button>
                     <button onclick="openLinkModal('image')"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
-                        title="이미지"><i data-lucide="image" class="w-3.5 h-3.5"></i></button>
+                        title="?????꿔꺂???"><i data-lucide="image" class="w-3.5 h-3.5"></i></button>
                     <button onclick="insertAtCursor('br')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase">Enter</button>
                     <button type="button" onclick="tidySeparatorSpacingInEditor()"
@@ -237,14 +240,14 @@
                         title="Find and replace">Find</button>
                     <button type="button" onclick="insertUserInfoAtCursor()"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="커서 위치에 저장된 사용자 정보 삽입 (Ctrl+Alt+A)">userIn</button>
+                        title="Insert saved user info at cursor (Shift+Alt+A)">userIn</button>
                     <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-2"></div>
                     <button type="button" id="btn-editor-light" onclick="toggleEditorLightMode()"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300 flex items-center gap-1"
-                        title="편집창 라이트/다크 전환">
+                        title="?癲ル슢???밸퉲??뽯븸???濚밸Ŧ???????熬곣뫗逾?????꾣뤃??>
                         <i data-lucide="sun" id="editor-light-icon-sun" class="w-3.5 h-3.5 hidden"></i>
                         <i data-lucide="moon" id="editor-light-icon-moon" class="w-3.5 h-3.5"></i>
-                        <span class="text-[10px] sm:text-xs font-medium max-[380px]:hidden sm:inline" id="editor-light-label">편집창 라이트</span>
+                        <span class="text-[10px] sm:text-xs font-medium max-[380px]:hidden sm:inline" id="editor-light-label">?癲ル슢???밸퉲??뽯븸???濚밸Ŧ????/span>
                     </button>
                 </div>
             </div>
@@ -252,23 +255,23 @@
             <!-- Find & Replace Toolbar -->
             <div id="find-replace-bar"
                 class="hidden bg-indigo-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-2 flex flex-wrap items-center gap-3 text-sm no-print transition-colors">
-                <span class="font-bold text-slate-600 dark:text-slate-300">찾기</span>
-                <input type="text" id="find-input" placeholder="검색어..."
+                <span class="font-bold text-slate-600 dark:text-slate-300">?꿔꺂????녺솒?뗫렓?/span>
+                <input type="text" id="find-input" placeholder="?嚥▲굧????濚밸Ŧ援욆땻?.."
                     class="px-3 py-1.5 border border-indigo-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 shadow-sm">
-                <span class="font-bold text-slate-600 dark:text-slate-300 ml-2">바꾸기</span>
-                <input type="text" id="replace-input" placeholder="바꿀 내용..."
+                <span class="font-bold text-slate-600 dark:text-slate-300 ml-2">?熬곣뫖利?????/span>
+                <input type="text" id="replace-input" placeholder="?熬곣뫖利?? ????ㅼ굡獒?.."
                     class="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 w-48 shadow-sm">
                 <div class="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
                 <button onclick="findNext()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">다음</button>
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">???繹먮굞??/button>
                 <button onclick="findPrev()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">이전</button>
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">????ㅼ굣??/button>
                 <button onclick="replaceCurrent()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">바꾸기</button>
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">?熬곣뫖利?????/button>
                 <button onclick="replaceAll()"
-                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">모두</button>
+                    class="px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">?꿔꺂??袁ㅻ븶?癲?/button>
                 <button onclick="swapFindReplaceValues()"
-                    class="ml-auto px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">전환</button>
+                    class="ml-auto px-3 py-1.5 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded hover:bg-slate-100 dark:hover:bg-slate-600 font-medium text-slate-700 dark:text-slate-200 shadow-sm transition-colors">????꾣뤃??/button>
                 <button onclick="closeFindReplace()"
                     class="p-1.5 text-slate-400 hover:text-red-500 dark:hover:text-red-400 bg-white dark:bg-slate-700 hover:bg-slate-100 rounded-full border border-slate-200 dark:border-slate-600 shadow-sm transition-colors"><i
                         data-lucide="x" class="w-4 h-4"></i></button>
@@ -276,24 +279,24 @@
                     <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
                         <input type="checkbox" id="particle-auto-correct" checked
                             class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                        <span>조사 자동 교정</span>
+                        <span>??됰슦??影?곸뮏????嶺???????/span>
                     </label>
                     <div class="inline-flex flex-wrap items-center gap-3">
-                        <span class="font-semibold">찾을 방향</span>
+                        <span class="font-semibold">?꿔꺂???????熬곣뫖?삥납????/span>
                         <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
                             <input type="radio" name="find-direction" value="down" checked
                                 class="border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                            <span>아래쪽</span>
+                            <span>????썹땟???껊븸?/span>
                         </label>
                         <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
                             <input type="radio" name="find-direction" value="up"
                                 class="border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                            <span>위쪽</span>
+                            <span>????썼짆?⑹퀪?/span>
                         </label>
                         <label class="inline-flex items-center gap-1.5 cursor-pointer select-none">
                             <input type="radio" name="find-direction" value="all"
                                 class="border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                            <span>문서 전체</span>
+                            <span>???戮?뜪??????썹땟??/span>
                         </label>
                     </div>
                 </div>
@@ -301,9 +304,9 @@
 
             <!-- Main Content Area -->
             <main id="drop-zone" class="flex-1 overflow-hidden relative">
-                <div class="scroll-jump-rail no-print" aria-label="문서 빠른 이동">
-                    <button type="button" onclick="scrollToDocumentTop()" class="scroll-jump-btn" title="문서 처음으로 이동">Top</button>
-                    <button type="button" onclick="scrollToDocumentBottom()" class="scroll-jump-btn" title="문서 끝으로 이동">Dn</button>
+                <div class="scroll-jump-rail no-print" aria-label="???戮?뜪????辱???????>
+                    <button type="button" onclick="scrollToDocumentTop()" class="scroll-jump-btn" title="???戮?뜪???꿔꺂??節뉖き?????Β???????>Top</button>
+                    <button type="button" onclick="scrollToDocumentBottom()" class="scroll-jump-btn" title="???戮?뜪???????嶺뚮ㅏ諭???????>Dn</button>
                 </div>
                 <div id="viewer-container"
                     class="hidden h-full w-full overflow-y-auto custom-scrollbar p-8 sm:p-12 md:p-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
@@ -311,7 +314,7 @@
                         <div
                             class="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
                             <i data-lucide="file-up" class="w-16 h-16 mb-4 opacity-20"></i>
-                            <p class="text-lg">파일을 드래그하거나 열기 버튼을 클릭하세요</p>
+                            <p class="text-lg">????????嶺뚮Ĳ?됪뤃???녾컯嶺??????좎돦???살퓚??????源낇꺙 ?筌????????????嶺뚮슣堉???/p>
                         </div>
                     </div>
                 </div>
@@ -319,7 +322,7 @@
                 <div id="content-viewport" class="h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 p-8 sm:p-12 md:p-16 viewer-edit-active">
                     <textarea id="viewer-edit-ta" spellcheck="false"
                         class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
-                        placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
+                        placeholder="????猷삳???꿔꺂????癒?Ъ???繹먮굝? ????ㅼ굡獒??????怨몄７??嶺뚮슣堉???.."></textarea>
                 </div>
             </main>
         </div>
@@ -330,28 +333,28 @@
     <div id="input-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
         <div
             class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in duration-200">
-            <h3 id="modal-title" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">링크 삽입</h3>
+            <h3 id="modal-title" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">?꿔꺂???疫뀀９臾???????/h3>
             <div class="space-y-4">
                 <div>
                     <label id="label-text"
-                        class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">표시
-                        텍스트</label>
+                        class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">??嶺?筌?
+                        ????紐꾨쫯??/label>
                     <input type="text" id="input-display-text"
                         class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
                 </div>
                 <div>
                     <label id="label-url"
                         class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">URL
-                        주소</label>
+                        ???녿뮝???/label>
                     <input type="text" id="input-url"
                         class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
                 </div>
             </div>
             <div class="flex gap-2 mt-6">
                 <button onclick="closeModal()"
-                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">취소</button>
+                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">??????/button>
                 <button onclick="confirmModalInsert()"
-                    class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 transition-colors">삽입하기</button>
+                    class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 transition-colors">?????????袁⑦꺙</button>
             </div>
         </div>
     </div>
@@ -359,71 +362,71 @@
     <!-- Move to Folder Modal -->
     <div id="move-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">문서 이동</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">이동할 대상 폴더를 선택하세요.</p>
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">???戮?뜪???????/h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">????????????????쒕늅??????ｋ???嶺뚮슣堉???</p>
             <div id="folder-choice-list"
                 class="max-h-60 overflow-y-auto space-y-1 mb-6 border border-slate-100 dark:border-slate-600 rounded-lg p-2">
                 <!-- Folders listed here -->
             </div>
             <div class="flex gap-2">
                 <button onclick="closeMoveModal()"
-                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
+                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">??????/button>
             </div>
         </div>
     </div>
 
-    <!-- Backup Modal (내문서 백업) -->
+    <!-- Backup Modal (???????熬곣뫖利??筌? -->
     <div id="backup-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4">
             <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2 flex items-center gap-2">
-                <i data-lucide="archive" class="w-5 h-5"></i> 내문서 백업
+                <i data-lucide="archive" class="w-5 h-5"></i> ???????熬곣뫖利??筌?
             </h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">저장된 문서를 한 번에 내려받습니다.</p>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-4">???逆곷틳爰덂퐲????戮?뜪??얜Ŋ?욅춯????筌?????곕뜦????????????????딅젩.</p>
             <div class="flex flex-col gap-2">
                 <button onclick="exportZip()" class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center justify-center gap-2 transition-colors">
-                    <i data-lucide="file-archive" class="w-4 h-4"></i> ZIP 저장 (모든 문서 다운로드)
+                    <i data-lucide="file-archive" class="w-4 h-4"></i> ZIP ????(?꿔꺂??袁ㅻ븶??????戮?뜪?????繹먮굝??汝??吏??좉텣?
                 </button>
                 <button onclick="exportMpv()" class="w-full px-4 py-3 bg-indigo-100 dark:bg-indigo-900/40 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 rounded-lg text-sm font-medium text-indigo-700 dark:text-indigo-200 flex items-center justify-center gap-2 transition-colors">
-                    <i data-lucide="file-json" class="w-4 h-4"></i> MPV 저장 (.mpv / .json 호환)
+                    <i data-lucide="file-json" class="w-4 h-4"></i> MPV ????(.mpv / .json ?癲ル슢?뤸뤃??
                 </button>
             </div>
             <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
-                <button onclick="closeBackupModal()" class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
+                <button onclick="closeBackupModal()" class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">??????/button>
             </div>
         </div>
     </div>
 
-    <!-- Merge Modal (문서 묶기) -->
+    <!-- Merge Modal (???戮?뜪?????戮?퓝?? -->
     <div id="merge-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
             <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0">
-                <i data-lucide="layers" class="w-5 h-5"></i> 문서 묶기
+                <i data-lucide="layers" class="w-5 h-5"></i> ???戮?뜪?????戮?퓝??
             </h3>
             <div class="flex gap-2 mb-3 shrink-0">
-                <input type="text" id="merge-bundle-name" placeholder="새로운 묶음 파일"
+                <input type="text" id="merge-bundle-name" placeholder="????沅?????戮?깯???????
                     class="flex-1 px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
                 <button type="button" onclick="bindMerge()"
                     class="px-4 py-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-800 rounded-md text-sm font-bold border border-slate-700 dark:border-slate-300 hover:bg-slate-700 dark:hover:bg-slate-300">Bind</button>
             </div>
             <div class="mb-3 shrink-0 space-y-2">
-                <input type="text" id="merge-search-input" placeholder="문서 검색..."
+                <input type="text" id="merge-search-input" placeholder="???戮?뜪???嚥▲굧????.."
                     oninput="filterMergeList(this.value)"
                     class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
                 <div class="flex gap-2">
                     <button type="button" onclick="selectAllMergeItems()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체선택</button>
+                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">????썹땟?????ｋ??/button>
                     <button type="button" onclick="deselectAllMergeItems()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체 해제</button>
+                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">????썹땟??????ㅼ굣??/button>
                     <button type="button" id="merge-selected-only-btn" onclick="toggleSelectedOnlyMergeView()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700">선택한것만 보기</button>
+                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700">????ｋ??????????⑤슢?????/button>
                 </div>
             </div>
             <div id="merge-list" class="flex-1 overflow-y-auto space-y-2 min-h-0 custom-scrollbar">
-                <!-- 문서 목록 동적 생성 -->
+                <!-- ???戮?뜪???꿔꺂??袁ㅻ븶筌믠뫀萸?????源녿굶 ???꾩룆???-->
             </div>
             <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600 shrink-0">
                 <button type="button" onclick="closeMergeModal()"
-                    class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
+                    class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">??????/button>
             </div>
         </div>
     </div>
@@ -431,19 +434,19 @@
     <!-- Save Modal -->
     <div id="save-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">inDB저장</h3>
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">inDB????/h3>
             <div>
-                <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">inDB에 저장할 제목을
-                    입력하세요</label>
+                <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">inDB?????嚥싳쇎紐????嶺뚮Ŋ猷꾥굜??
+                    ????怨몄７??嶺뚮슣堉???/label>
                 <input type="text" id="save-title-input"
                     onkeydown="if(event.key==='Enter'){event.preventDefault();confirmSaveModal();}"
                     class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
             </div>
             <div class="flex gap-2 mt-6">
                 <button type="button" onclick="closeSaveModal()"
-                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
+                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">??????/button>
                 <button type="button" onclick="setTimeout(confirmSaveModal,0)"
-                    class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700">inDB저장</button>
+                    class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700">inDB????/button>
             </div>
         </div>
     </div>
@@ -455,13 +458,13 @@
                 class="w-16 h-16 bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i data-lucide="alert-circle" class="w-8 h-8"></i>
             </div>
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">문서를 삭제할까요?</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">지우면 복구가 불가능합니다.</p>
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">???戮?뜪??얜Ŋ?욅춯????????ャ렑???</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">?꿔꺂???????쎈뼕????⑤슢?뽫뵓嫄붋????? ???곗뵯???嚥싳쇎紐???????딅젩.</p>
             <div class="flex gap-2">
                 <button onclick="closeDeleteModal()"
-                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
+                    class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">??????/button>
                 <button onclick="confirmDeleteModal()"
-                    class="flex-1 px-4 py-2 bg-red-600 rounded-md text-sm font-medium text-white hover:bg-red-700">삭제하기</button>
+                    class="flex-1 px-4 py-2 bg-red-600 rounded-md text-sm font-medium text-white hover:bg-red-700">???????袁⑦꺙</button>
             </div>
         </div>
     </div>
@@ -473,17 +476,17 @@
                 class="w-16 h-16 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i data-lucide="alert-triangle" class="w-8 h-8"></i>
             </div>
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">복구 가능한 작업이 있습니다</h3>
-            <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">마지막으로 편집하던 내용을 복구할까요?</p>
+            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">??⑤슢?뽫뵓嫄붋????醫딆쓧??嚥싳쇎紐???????????????????딅젩</h3>
+            <p class="text-sm text-slate-500 dark:text-slate-400 mb-6">?꿔꺂?????꿔꺂???彛??????癲ル슢???밸퉲???β뼯爰껓쭕?????ㅼ굡獒????⑤슢?뽫뵓嫄붋?????ャ렑???</p>
             <div class="flex flex-col gap-2">
                 <div class="flex gap-2">
                     <button type="button" onclick="dismissRecovery()"
-                        class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">아니오</button>
+                        class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">????썹땟????/button>
                     <button type="button" onclick="applyRecovery()"
-                        class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700">복구하기</button>
+                        class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700">??⑤슢?뽫뵓嫄붋?????袁⑦꺙</button>
                 </div>
                 <button type="button" onclick="pasteFromClipboardAndDismiss()"
-                    class="w-full px-4 py-2 border border-emerald-200 dark:border-emerald-700 rounded-md text-sm font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30">새로 입력하기</button>
+                    class="w-full px-4 py-2 border border-emerald-200 dark:border-emerald-700 rounded-md text-sm font-medium text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30">????沅?????怨몄７????袁⑦꺙</button>
             </div>
         </div>
     </div>
@@ -491,7 +494,7 @@
     <!-- Toast Notification -->
     <div id="toast"
         class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white px-4 py-2 rounded-full shadow-lg text-sm opacity-0 transition-opacity pointer-events-none z-50">
-        알림 메시지
+        ??????꿔꺂????????
     </div>
 
     <!-- Settings Modal -->
@@ -499,7 +502,7 @@
         <div
             class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 max-h-[90vh] flex flex-col">
             <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0">
-                <i data-lucide="settings" class="w-5 h-5"></i> 환경 설정
+                <i data-lucide="settings" class="w-5 h-5"></i> ?????ъ졒 ???繹먮냱??
             </h3>
 
             <div class="space-y-4 mb-6 overflow-y-auto custom-scrollbar flex-1 pr-2">
@@ -508,16 +511,16 @@
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
                     <h4
                         class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
-                        코드창 (Code Block) 색상</h4>
+                        ??ш끽維??????(Code Block) ??濚밸Þ?볟퐲?/h4>
 
                     <div class="flex items-center justify-between mb-3">
-                        <label class="text-sm font-semibold text-slate-600 dark:text-slate-400">배경 색상</label>
+                        <label class="text-sm font-semibold text-slate-600 dark:text-slate-400">?熬곣뫖利???볝걤???濚밸Þ?볟퐲?/label>
                         <input type="color" id="code-bg-color" oninput="applyCodeColorSettings()" value="#1e293b"
                             class="w-10 h-10 p-0.5 rounded cursor-pointer border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
                     </div>
 
                     <div class="flex items-center justify-between">
-                        <label class="text-sm font-semibold text-slate-600 dark:text-slate-400">텍스트 색상</label>
+                        <label class="text-sm font-semibold text-slate-600 dark:text-slate-400">????紐꾨쫯????濚밸Þ?볟퐲?/label>
                         <input type="color" id="code-text-color" oninput="applyCodeColorSettings()" value="#f8fafc"
                             class="w-10 h-10 p-0.5 rounded cursor-pointer border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800">
                     </div>
@@ -525,7 +528,7 @@
                     <div class="mt-4 flex justify-end">
                         <button onclick="resetCodeColorSettings()"
                             class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline-offset-2 hover:underline">
-                            기본값으로 초기화
+                            ???뚯????嶺뚳퐢?껓㎗???嫄???潁??용끏???
                         </button>
                     </div>
                 </div>
@@ -535,45 +538,59 @@
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
                     <h4
                         class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
-                        단축키 안내</h4>
+                        ??濚????????</h4>
                     <div class="space-y-2">
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">편집 모드 전환</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">?癲ル슢???밸퉲??꿔꺂??袁ㅻ븶???????꾣뤃??/span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Alt</kbd> + <kbd>1</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">보기 모드 전환</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">??⑤슢??????꿔꺂??袁ㅻ븶???????꾣뤃??/span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
-                                <kbd>Alt</kbd> + <kbd>V</kbd>
+                                <kbd>Alt</kbd> + <kbd>2</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">다크/라이트 모드 전환</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">????뺢콛???????쇨덫??(Bold)</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Ctrl</kbd> + <kbd>B</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">???뚯?????????쇨덫??(Italic)</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Ctrl</kbd> + <kbd>I</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">???熬곣뫗逾???濚밸Ŧ?????꿔꺂??袁ㅻ븶???????꾣뤃??/span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Alt</kbd> + <kbd>4</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">제목(H1) 적용</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">??嶺뚮Ŋ猷꾥굜?H1) ????쇨덫??/span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>1</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">제목(H2) 적용</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">??嶺뚮Ŋ猷꾥굜?H2) ????쇨덫??/span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>2</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">제목(H3) 적용</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">??嶺뚮Ŋ猷꾥굜?H3) ????쇨덫??/span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>3</kbd>
@@ -581,35 +598,49 @@
                         </div>
                         <!-- Settings Modal Content Continued -->
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">찾기/바꾸기 열기</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">?꿔꺂????녺솒?뗫렓??熬곣뫖利?????????源낇꺙</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Ctrl</kbd> + <kbd>H</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">줄 위아래로 이동</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">Pattern selection to table</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
-                                <kbd>Alt</kbd> + <kbd>↑</kbd> <kbd>↓</kbd>
+                                <kbd>Alt</kbd> + <kbd>7</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">줄 아래로 복사</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">Insert userIn</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
-                                <kbd>Shift</kbd> + <kbd>Alt</kbd> + <kbd>↓</kbd>
+                                <kbd>Shift</kbd> + <kbd>Alt</kbd> + <kbd>A</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">실행 취소 (Undo)</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">嚥?????썹땟????????????/span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Alt</kbd> + <kbd>??/kbd> <kbd>??/kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">嚥?????썹땟??關????⑤슢?뽫뵓怨???/span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Shift</kbd> + <kbd>Alt</kbd> + <kbd>??/kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">?????덊떀 ??????(Undo)</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Ctrl</kbd> + <kbd>Z</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">다시 실행 (Redo)</span>
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">????⑤베鍮??????덊떀 (Redo)</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd>
@@ -618,16 +649,16 @@
                     </div>
                 </div>
 
-                <!-- AI API Key Settings (단축키 안내 아래) -->
+                <!-- AI API Key Settings (??濚???????? ????썹땟?? -->
                 <div
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
                     <h4
                         class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
-                        AI 연동 설정</h4>
+                        AI ????살퓢嶺????繹먮냱??/h4>
                     <div class="space-y-3">
                         <div>
                             <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">AI Studio API Key</label>
-                            <input type="password" id="ai-api-key" placeholder="API 키를 입력하세요..." autocomplete="off"
+                            <input type="password" id="ai-api-key" placeholder="API ??? ????怨몄７??嶺뚮슣堉???.." autocomplete="off"
                                 oninput="validateApiKeyInputUI()"
                                 class="ai-api-key-input w-full px-3 py-1.5 border rounded-md focus:outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors">
                             <p id="ai-api-key-feedback" class="text-xs mt-1 min-h-[1.25rem]" aria-live="polite"></p>
@@ -635,52 +666,52 @@
                         <div class="flex items-center justify-end gap-2">
                             <a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer"
                                 class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
-                                API 키 발급
+                                API ???熬곣뫖利든뜏??
                             </a>
                             <button onclick="saveApiKey()"
                                 class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm">
-                                API 키 저장
+                                API ??????
                             </button>
                         </div>
 
-                        <!-- 사용자 정보 (인공지능 사용과 무관, 항상 표시) -->
+                        <!-- ??????癲ル슢???ъ쒜?(?癲ル슢?ο㎖?살쒜??껊븸??됱삩???????筌뚮??????類ｌ꽀?, ??????嶺?筌? -->
                         <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
-                            <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">사용자 정보 · 인증번호 요청 메일</p>
-                            <p class="text-[11px] text-slate-500 dark:text-slate-500">편집창 userIn / Ctrl+Alt+A 삽입에도 사용됩니다.</p>
+                            <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">??????癲ル슢???ъ쒜????癲ル슢???먥꼻熬곥끇???ㅻ쿋??????됰Ŋ????꿔꺂?????/p>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-500">?癲ル슢???밸퉲??뽯븸?userIn / Shift+Alt+A ????????嶺??????嶺뚮ㅎ????</p>
                             <div class="bg-slate-100 dark:bg-slate-800/80 rounded p-3 space-y-2">
-                                <input type="text" id="ai-user-name" placeholder="이름" class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
-                                <input type="text" id="ai-user-id" placeholder="학번" class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
-                                <input type="text" id="ai-user-major" placeholder="전공" class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
-                                <input type="text" id="ai-user-contact" placeholder="연락처" class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
-                                <input type="email" id="ai-user-email" placeholder="이메일" autocomplete="email" class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
+                                <input type="text" id="ai-user-name" placeholder="????? class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
+                                <input type="text" id="ai-user-id" placeholder="?????苡? class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
+                                <input type="text" id="ai-user-major" placeholder="????꾤뙴??쒜? class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
+                                <input type="text" id="ai-user-contact" placeholder="????산뭐???? class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
+                                <input type="email" id="ai-user-email" placeholder="???癲?? autocomplete="email" class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
                                 <div class="flex flex-col sm:flex-row gap-2">
                                     <button type="button" onclick="saveAiUserInfo()"
                                         class="flex-1 px-2 py-1.5 border border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 rounded text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
-                                        사용자 정보 저장
+                                        ??????癲ル슢???ъ쒜?????
                                     </button>
                                     <button type="button" onclick="sendAuthRequestMail()"
                                         class="flex-1 px-2 py-1.5 bg-slate-600 dark:bg-slate-700 text-white rounded text-xs font-medium hover:bg-slate-700 dark:hover:bg-slate-600">
-                                        인증번호 요청 메일 보내기
+                                        ?癲ル슢???먥꼻熬곥끇???ㅻ쿋??????됰Ŋ????꿔꺂???????⑤슢????寃?洹잙닱?
                                     </button>
                                 </div>
                                 <p id="ai-user-info-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                             </div>
                         </div>
 
-                        <!-- 인공지능 사용: 비번 + ScholarAI/sspimgAI -->
+                        <!-- ?癲ル슢?ο㎖?살쒜??껊븸??됱삩??????? ??????+ ScholarAI/sspimgAI -->
                         <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
-                            <div class="flex items-center gap-2" role="group" aria-label="인공지능 사용">
+                            <div class="flex items-center gap-2" role="group" aria-label="?癲ル슢?ο㎖?살쒜??껊븸??됱삩???????>
                                 <input type="checkbox" id="ai-use-checkbox" onclick="setTimeout(toggleAiPasswordSection,0)"
                                     class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                <label for="ai-use-checkbox" class="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">인공지능 사용</label>
+                                <label for="ai-use-checkbox" class="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">?癲ル슢?ο㎖?살쒜??껊븸??됱삩???????/label>
                             </div>
                             <div id="ai-password-section" class="hidden space-y-3 pl-6">
-                                <p class="text-xs text-amber-600 dark:text-amber-400">박중희 교수님에게 인증번호를 받으세요.</p>
+                                <p class="text-xs text-amber-600 dark:text-amber-400">?熬곣뫖利당뵓寃몃섰??????????嶺뚮슣?㎬キ???癲ル슢???먥꼻熬곥끇???ㅻ쿋???沃섃뮧嫄??熬곣뫖利???癲ル슢????</p>
                                 <div class="flex items-center gap-2 flex-wrap">
-                                    <input type="password" id="ai-password-input" placeholder="인증번호 입력"
+                                    <input type="password" id="ai-password-input" placeholder="?癲ル슢???먥꼻熬곥끇???ㅻ쿋???????怨몄７"
                                         class="flex-1 min-w-[120px] px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors border-slate-200 dark:border-slate-600">
                                     <button type="button" onclick="saveAiPassword()"
-                                        class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700">저장</button>
+                                        class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700">????/button>
                                 </div>
                                 <p id="ai-password-feedback" class="text-xs min-h-[1.25rem]" aria-live="polite"></p>
                                 <p id="ai-scholar-sspimg-hint" class="text-xs text-amber-600 dark:text-amber-400"></p>
@@ -710,7 +741,7 @@
             <div class="flex gap-2">
                 <button type="button" onclick="closeSettingsModal()"
                     class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm">
-                    닫기
+                    ???????
                 </button>
             </div>
         </div>
@@ -720,6 +751,7 @@
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous" defer></script>
     <script src="./js/md_katex_render.js" charset="utf-8" defer></script>
+    <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
     <script src="./js/app.js" charset="utf-8" defer></script>
 </body>
 

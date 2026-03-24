@@ -44,6 +44,23 @@
         .markdown-body img { max-width: 100%; border-radius: 0.5rem; margin: 1rem 0; }
         .markdown-body a { color: #3b82f6; text-decoration: underline; }
         .markdown-body b, .markdown-body strong { font-weight: 700; }
+        .markdown-body table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1rem;
+            border: 2px solid #94a3b8;
+        }
+        .markdown-body th,
+        .markdown-body td {
+            border: 1px solid #94a3b8;
+            padding: 0.45rem 0.65rem;
+            text-align: left;
+            vertical-align: top;
+        }
+        .markdown-body thead th {
+            background-color: #e2e8f0;
+            font-weight: 700;
+        }
 
         /* KaTeX (다크 모드에서도 본문과 대비) */
         .markdown-body .katex { font-size: 1.05em; }
@@ -56,6 +73,16 @@
         .dark .markdown-body pre code { background-color: transparent !important; padding: 0; color: inherit; }
         .dark .markdown-body blockquote { border-left-color: #475569; color: #94a3b8; }
         .dark .markdown-body a { color: #60a5fa; }
+        .dark .markdown-body table {
+            border-color: #64748b;
+        }
+        .dark .markdown-body th,
+        .dark .markdown-body td {
+            border-color: #64748b;
+        }
+        .dark .markdown-body thead th {
+            background-color: #1e293b;
+        }
 
         #drop-zone.drag-over {
             background-color: rgba(59, 130, 246, 0.1);

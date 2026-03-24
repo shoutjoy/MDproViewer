@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MD Viewer Hotkeys</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --bg: #f8fafc;
+            --fg: #0f172a;
+            --muted: #475569;
+            --line: #64748b;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #0f172a;
+                --fg: #e2e8f0;
+                --muted: #94a3b8;
+                --line: #94a3b8;
+            }
+        }
+        body {
+            margin: 0;
+            padding: 24px;
+            font-family: "Segoe UI", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+        }
+        h1 {
+            margin: 0 0 16px 0;
+            font-size: 22px;
+        }
+        p {
+            margin: 0 0 20px 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: transparent;
+            border: 2px solid var(--line);
+            table-layout: fixed;
+        }
+        th, td {
+            border: 2px solid var(--line);
+            padding: 10px 12px;
+            text-align: left;
+            font-size: 14px;
+            vertical-align: top;
+        }
+        th {
+            font-weight: 700;
+        }
+        code {
+            font-family: Consolas, "Courier New", monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>Hotkey Guide</h1>
+    <p>`hotkey.js`에 정의된 단축키를 이 문서에서 그대로 보여줍니다.</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Action</th>
+                <th>Shortcut</th>
+            </tr>
+        </thead>
+        <tbody id="hotkey-table-body"></tbody>
+    </table>
+
+    <script src="./hotkey.js"></script>
+    <script>
+        (function () {
+            var tbody = document.getElementById('hotkey-table-body');
+            if (window.MDViewerHotkey && typeof window.MDViewerHotkey.renderHotkeyTable === 'function') {
+                window.MDViewerHotkey.renderHotkeyTable(tbody);
+            }
+        })();
+    </script>
+</body>
+</html>
