@@ -97,6 +97,11 @@
                 title="설정">
                 <i data-lucide="settings" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
             </button>
+            <div id="header-scholar-search-wrap" class="hidden items-center gap-1 shrink-0">
+                <button type="button" onclick="openScholarSearchModal()"
+                    class="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
+                    title="학술검색 입력창 열기 (Alt+S)">학술검색</button>
+            </div>
 
             <!-- 확대/축소·폰트 (좁은 화면에서 다음 줄로) -->
             <div id="header-zoom-font" class="flex items-center gap-1 sm:gap-2 ml-0 sm:ml-1 md:ml-2 basis-full sm:basis-auto justify-center sm:justify-start flex-wrap sm:flex-nowrap py-1 sm:py-0 border-t border-slate-200/80 dark:border-slate-700/80 sm:border-t-0 w-full sm:w-auto">
@@ -219,15 +224,27 @@
                       <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
                       <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
                     </select>
+                    <label for="scholar-ai-tone-select" style="font-size:10px;margin:8px 0 4px">문체 설정</label>
+                    <select id="scholar-ai-tone-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
+                      <option value="academic_ida">학술체 (-이다)</option>
+                      <option value="academic_eumham">학술체 (-음, -함)</option>
+                      <option value="general_polite">일반체 (존댓말)</option>
+                    </select>
                   </div>
                   <label>입력된 지문 (선택한 텍스트)</label>
-                  <textarea id="scholar-ai-selected" placeholder="문서에서 텍스트를 선택하면 여기에 표시됩니다. 붙여넣은 후 추가 입력 가능."></textarea>
+                  <div class="scholar-ai-selected-wrap" id="scholar-ai-selected-wrap">
+                    <textarea id="scholar-ai-selected" placeholder="문서에서 텍스트를 선택하면 여기에 표시됩니다. 붙여넣은 후 추가 입력 가능."></textarea>
+                    <div class="scholar-ai-selected-resize-handle" id="scholar-ai-selected-resize-handle" title="드래그하여 입력된 지문 높이 조절"></div>
+                  </div>
                   <div class="scholar-ai-prompt-wrap" id="scholar-ai-prompt-wrap">
                     <label>프롬프트 작성 창</label>
                     <textarea id="scholar-ai-prompt" placeholder="선택한 지문에 대한 질문이나 지시를 입력하세요."></textarea>
                     <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="드래그하여 프롬프트창 높이 조절"></div>
                   </div>
-                  <button type="button" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>
+                  <div style="display:flex;gap:8px;align-items:center">
+                    <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>
+                    <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>중지</button>
+                  </div>
                   <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
                     <label>결과창</label>
                     <textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="실행 후 결과가 표시됩니다. 편집 가능합니다."></textarea>
@@ -254,10 +271,20 @@
                   <div class="scholar-ai-result-zoom-box" onclick="event.stopPropagation()">
                     <div class="scholar-ai-result-zoom-header">
                       <span>인공지능 실행 결과 — 크게 보기</span>
-                      <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">닫기</button>
+                      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                        <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(-10)" style="font-size:12px">-</button>
+                        <span id="scholar-ai-zoom-label" style="font-size:11px;min-width:42px;text-align:center;color:#94a3b8">100%</span>
+                        <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(10)" style="font-size:12px">+</button>
+                        <span style="display:inline-block;width:1px;height:16px;background:#334155;opacity:.6"></span>
+                        <button type="button" id="scholar-ai-zoom-mode-edit" class="sa-btn ghost" onclick="scholarAISetZoomMode('edit')" style="font-size:12px">편집</button>
+                        <button type="button" id="scholar-ai-zoom-mode-view" class="sa-btn ghost" onclick="scholarAISetZoomMode('view')" style="font-size:12px">보기</button>
+                        <button type="button" class="sa-btn" onclick="scholarAICopyZoomMarkdown()" style="font-size:12px">결과복사</button>
+                        <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">닫기</button>
+                      </div>
                     </div>
                     <div class="scholar-ai-result-zoom-body">
-                      <textarea id="scholar-ai-result-zoom-ta" placeholder="결과가 여기에 표시됩니다."></textarea>
+                      <textarea id="scholar-ai-result-zoom-ta" placeholder="결과가 여기에 표시됩니다." oninput="if(window.__scholarAIZoomMode==='view'){scholarAIRenderZoomMarkdown()}"></textarea>
+                      <div id="scholar-ai-result-zoom-view" class="scholar-ai-result-zoom-view hidden"></div>
                     </div>
                   </div>
                 </div>
@@ -374,6 +401,12 @@
                     <button onclick="applyHeading(3)"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
                         title="제목 3 (H3)">H3</button>
+                    <button type="button" onclick="insertListAtSelection('bullet')"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                        title="항목 목록 (Alt+5)">[-list]</button>
+                    <button type="button" onclick="insertListAtSelection('number')"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                        title="번호 목록 (Alt+6)">[1.list]</button>
 
                     <button onclick="insertAtCursor('quote')"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
@@ -413,7 +446,7 @@
                         title="편집 프리뷰 새 창 열기">[PV]</button>
                     <button type="button" onclick="insertFootnoteTemplate()"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
-                        title="각주 템플릿 삽입">[^1]</button>
+                        title="각주 템플릿 삽입 (Ctrl+Alt+E)">[^1]</button>
                     <button type="button" onclick="insertUserInfoAtCursor()"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
                         title="커서 위치에 저장된 사용자 정보 삽입 (Shift+Alt+A)">userIn</button>
@@ -498,6 +531,10 @@
                         class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
                         placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
                 </div>
+                <div class="scroll-jump-rail no-print" aria-label="문서 빠른 이동">
+                    <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentTop()" title="맨 위로 이동">맨위</button>
+                    <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentBottom()" title="맨 아래로 이동">맨아래</button>
+                </div>
             </main>
         </div>
     </div>
@@ -507,7 +544,17 @@
     <div id="input-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
         <div
             class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 animate-in fade-in zoom-in duration-200">
-            <h3 id="modal-title" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4">링크 삽입</h3>
+            <div class="flex items-center justify-between gap-2 mb-4">
+                <h3 id="modal-title" class="text-lg font-bold text-slate-800 dark:text-slate-100">링크 삽입</h3>
+                <div id="image-link-shortcuts" class="hidden items-center gap-1">
+                    <button type="button" onclick="openImageInsertExternalLink('google')"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300"
+                        title="구글 이미지 검색 열기">구글이미지</button>
+                    <button type="button" onclick="openImageInsertExternalLink('imgbb')"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300"
+                        title="imgBB 이미지 저장소 열기">이미지저장소</button>
+                </div>
+            </div>
             <div class="space-y-4">
                 <div>
                     <label id="label-text"
@@ -734,6 +781,13 @@
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">학술검색 열기</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Alt</kbd> + <kbd>S</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
                             <span class="text-sm font-medium text-slate-600 dark:text-slate-400">제목(H1) 적용</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
@@ -754,6 +808,34 @@
                                 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>3</kbd>
                             </span>
                         </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">제목(H4) 적용</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>4</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">제목(H5) 적용</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>5</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">항목 목록(-) 적용</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Alt</kbd> + <kbd>5</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">번호 목록(1.) 적용</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Alt</kbd> + <kbd>6</kbd>
+                            </span>
+                        </div>
                         <!-- Settings Modal Content Continued -->
                         <div class="flex items-center justify-between">
                             <span class="text-sm font-medium text-slate-600 dark:text-slate-400">찾기/바꾸기 열기</span>
@@ -767,6 +849,13 @@
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
                                 <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">각주 삽입</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>E</kbd>
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
@@ -907,6 +996,11 @@
                             </div>
                             <div class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="scholar-search-visible" onclick="setTimeout(toggleScholarSearchSection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">학술검색 보이기</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="image-upload-enabled" onclick="setTimeout(toggleImageUploadSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">이미지 업로드 사용</span>
@@ -935,6 +1029,59 @@
                     class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm">
                     닫기
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scholar Search Modal -->
+    <div id="scholar-search-modal" class="fixed inset-0 bg-transparent hidden items-start justify-end z-50 no-print pointer-events-none">
+        <div id="scholar-search-panel" class="pointer-events-auto mt-20 mr-5 bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-2xl p-4 w-full max-w-xl border border-slate-200 dark:border-slate-700 backdrop-blur-[1px]">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100">학술검색</h3>
+                <div class="flex items-center gap-2">
+                    <button type="button" id="scholar-search-shrink-btn" onclick="toggleScholarSearchShrink()"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">축소</button>
+                    <button type="button" id="scholar-search-dock-btn" onclick="toggleScholarSearchDockRight()"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">≫</button>
+                    <button type="button" onclick="closeScholarSearchModal()"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">닫기</button>
+                </div>
+            </div>
+            <div id="scholar-search-body" class="space-y-3">
+                <label for="scholar-search-query" class="block text-xs font-semibold text-slate-500 dark:text-slate-400">검색어 (논문 제목, 저자, 키워드 등)</label>
+                <div class="flex items-center gap-2">
+                    <input type="text" id="scholar-search-query" placeholder="예) structural equation modeling education Korea"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();runScholarSearchFromModal();}"
+                        class="flex-1 px-3 py-2 border border-indigo-400 dark:border-indigo-500 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <button type="button" onclick="runScholarSearchFromModal()"
+                        class="px-4 py-2 bg-indigo-600 rounded-md text-sm font-semibold text-white hover:bg-indigo-700">검색 →</button>
+                </div>
+                <div class="pt-1">
+                    <div class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">검색 옵션</div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <label class="text-xs text-slate-700 dark:text-slate-300">언어:</label>
+                        <select id="scholar-search-lang"
+                            class="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100">
+                            <option value="ko">한국어 우선</option>
+                            <option value="en">영어 우선</option>
+                            <option value="all">모든 언어</option>
+                        </select>
+                        <label class="text-xs text-slate-700 dark:text-slate-300 ml-1">기간:</label>
+                        <select id="scholar-search-period"
+                            class="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100">
+                            <option value="">전체 기간</option>
+                            <option value="1">최근 1년</option>
+                            <option value="5">최근 5년</option>
+                            <option value="10">최근 10년</option>
+                        </select>
+                        <label class="inline-flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300 ml-1">
+                            <input type="checkbox" id="scholar-search-review"
+                                class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                            리뷰 논문만
+                        </label>
+                    </div>
+                </div>
+                <p class="text-[11px] text-amber-600 dark:text-amber-400">검색 결과는 새 창에서 열립니다.</p>
             </div>
         </div>
     </div>

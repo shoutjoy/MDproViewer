@@ -211,15 +211,27 @@
           <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
         </select>
+        <label for="scholar-ai-tone-select" style="font-size:10px;margin:8px 0 4px">문체 설정</label>
+        <select id="scholar-ai-tone-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
+          <option value="academic_ida">학술체 (-이다)</option>
+          <option value="academic_eumham">학술체 (-음, -함)</option>
+          <option value="general_polite">일반체 (존댓말)</option>
+        </select>
       </div>
       <label>선택 텍스트</label>
-      <textarea id="scholar-ai-selected" placeholder="문서에서 선택한 내용이 여기에 들어옵니다."></textarea>
+      <div class="scholar-ai-selected-wrap" id="scholar-ai-selected-wrap">
+        <textarea id="scholar-ai-selected" placeholder="문서에서 선택한 내용이 여기에 들어옵니다."></textarea>
+        <div class="scholar-ai-selected-resize-handle" id="scholar-ai-selected-resize-handle" title="Resize selected text"></div>
+      </div>
       <div class="scholar-ai-prompt-wrap" id="scholar-ai-prompt-wrap">
         <label>질문 / 지시</label>
         <textarea id="scholar-ai-prompt" placeholder="요약, 설명, 비교, 문제 생성 등 원하는 작업을 입력하세요."></textarea>
         <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="Resize prompt"></div>
       </div>
-      <button type="button" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>
+        <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>중지</button>
+      </div>
       <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
         <label>결과</label>
         <textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="실행 결과가 여기에 표시됩니다."></textarea>
@@ -246,10 +258,20 @@
       <div class="scholar-ai-result-zoom-box" onclick="event.stopPropagation()">
         <div class="scholar-ai-result-zoom-header">
           <span>결과 크게 보기</span>
-          <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">닫기</button>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(-10)" style="font-size:12px">-</button>
+            <span id="scholar-ai-zoom-label" style="font-size:11px;min-width:42px;text-align:center;color:#94a3b8">100%</span>
+            <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(10)" style="font-size:12px">+</button>
+            <span style="font-size:11px;color:#94a3b8;margin:0 4px">mode</span>
+            <button type="button" id="scholar-ai-zoom-mode-edit" class="sa-btn ghost" onclick="scholarAISetZoomMode('edit')" style="font-size:12px">편집</button>
+            <button type="button" id="scholar-ai-zoom-mode-view" class="sa-btn ghost" onclick="scholarAISetZoomMode('view')" style="font-size:12px">보기</button>
+            <button type="button" class="sa-btn" onclick="scholarAICopyZoomMarkdown()" style="font-size:12px">결과복사</button>
+            <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">닫기</button>
+          </div>
         </div>
         <div class="scholar-ai-result-zoom-body">
-          <textarea id="scholar-ai-result-zoom-ta" placeholder="결과가 여기에 표시됩니다."></textarea>
+          <textarea id="scholar-ai-result-zoom-ta" placeholder="결과가 여기에 표시됩니다." oninput="if(window.__scholarAIZoomMode==='view'){scholarAIRenderZoomMarkdown()}"></textarea>
+          <div id="scholar-ai-result-zoom-view" class="scholar-ai-result-zoom-view hidden"></div>
         </div>
       </div>
     </div>
@@ -349,12 +371,17 @@
 </div>`;
 
   var __scholarAISelStart = null, __scholarAISelEnd = null, __scholarAICursorPos = null, __scholarAIResultFontSize = 13;
+  var __scholarAIZoomPercent = 100, __scholarAIZoomMode = 'edit';
+  window.__scholarAIZoomMode = __scholarAIZoomMode;
+  var __scholarAIRunning = false;
   var __scholarAIHistory = [];
   var __viewerSSPSeedImage = null, __viewerSSPResultImage = null, __viewerSSPRatio = '1:1';
   var __viewerSSPImgbbUploading = false;
   var __viewerSSPImgHistory = [];
   var LS_SSP_IMG_HISTORY = 'ss_viewer_ssp_img_history';
   var LS_SSP_PANEL_SPLIT = 'ss_viewer_ssp_panel_split';
+  var LS_SA_TONE_PRESET = 'ss_viewer_scholar_ai_tone_preset';
+  var SA_TONE_DEFAULT = 'academic_ida';
   var SSP_IMG_HISTORY_MAX = 10;
   var __viewerFsScale = 1, __viewerFsTx = 0, __viewerFsTy = 0;
   var __viewerFsStartX = 0, __viewerFsStartY = 0, __viewerFsStartTx = 0, __viewerFsStartTy = 0, __viewerFsDragging = false;
@@ -781,6 +808,7 @@
       scholarAIInitResize();
       scholarAILoadPrePrompt();
       scholarAIInitModelSelect();
+      scholarAIInitToneSelect();
     } else {
       el.classList.remove('fullscreen');
       var inner = document.getElementById('ai-right-sidebar-inner');
@@ -848,6 +876,7 @@
       p.style.display = open ? 'block' : 'none';
       if (btn) btn.classList.toggle('active', p.style.display !== 'none');
       scholarAIInitModelSelect();
+      scholarAIInitToneSelect();
       if (open && p.scrollIntoView) {
         requestAnimationFrame(function () {
           try { p.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch (e) { p.scrollIntoView(true); }
@@ -880,6 +909,36 @@
     sel.onchange = function () {
       var setter = getCallback('setScholarAIModelId');
       if (typeof setter === 'function') setter(sel.value);
+    };
+  }
+  function scholarAIGetTonePreset() {
+    try {
+      var v = localStorage.getItem(LS_SA_TONE_PRESET) || SA_TONE_DEFAULT;
+      if (v === 'academic_ida' || v === 'academic_eumham' || v === 'general_polite') return v;
+    } catch (e) {}
+    return SA_TONE_DEFAULT;
+  }
+  function scholarAISaveTonePreset(v) {
+    var next = (v === 'academic_ida' || v === 'academic_eumham' || v === 'general_polite') ? v : SA_TONE_DEFAULT;
+    try { localStorage.setItem(LS_SA_TONE_PRESET, next); } catch (e) {}
+    return next;
+  }
+  function scholarAIGetToneInstruction(v) {
+    var tone = (v === 'academic_ida' || v === 'academic_eumham' || v === 'general_polite') ? v : SA_TONE_DEFAULT;
+    if (tone === 'academic_eumham') {
+      return 'Tone preset: Academic style. Use Korean ending forms such as "-음/-함" consistently and avoid casual speech.';
+    }
+    if (tone === 'general_polite') {
+      return 'Tone preset: General polite Korean. Use courteous endings such as "-습니다/-요". Keep readability high.';
+    }
+    return 'Tone preset: Academic declarative Korean style. Prefer concise sentence endings in "-이다".';
+  }
+  function scholarAIInitToneSelect() {
+    var sel = document.getElementById('scholar-ai-tone-select');
+    if (!sel) return;
+    sel.value = scholarAIGetTonePreset();
+    sel.onchange = function () {
+      scholarAISaveTonePreset(sel.value);
     };
   }
   function scholarAIFullscreen() {
@@ -915,11 +974,11 @@
     var html = '';
     for (var i = 0; i < items.length; i++) {
       var idx = __scholarAIHistory.indexOf(items[i]);
-      var raw = items[i].prompt || items[i].result || '(??????';
+      var raw = items[i].prompt || items[i].result || 'Untitled history item';
       var lbl = raw.replace(/</g, '&lt;').substring(0, 36) + (raw.length > 36 ? '...' : '');
-      html += '<div class="scholar-ai-history-item" data-idx="' + idx + '"><span class="sa-h-label" onclick="scholarAIHistoryShowResult(' + idx + ')" title="??????耀붾굝??????筌뤾퍓彛???????????????濾??????????????????????롮쾸?椰?癲ル슢?ｆ쾮??????????????>' + lbl.replace(/'/g, "\\'") + '</span><button type="button" class="sa-h-save" onclick="scholarAIHistorySaveMd(' + idx + ')" title="MD ????>????/button><button type="button" class="sa-h-del" onclick="scholarAIHistoryDelete(' + idx + ')" title="????>??/button></div>';
+      html += '<div class="scholar-ai-history-item" data-idx="' + idx + '"><span class="sa-h-label" onclick="scholarAIHistoryShowResult(' + idx + ')" title="Show this result">' + lbl.replace(/'/g, "\\'") + '</span><button type="button" class="sa-h-save" onclick="scholarAIHistorySaveMd(' + idx + ')" title="Save as Markdown">MD</button><button type="button" class="sa-h-del" onclick="scholarAIHistoryDelete(' + idx + ')" title="Delete">X</button></div>';
     }
-    if (list) list.innerHTML = html || '<span style="font-size:11px;color:#94a3b8">????????????????耀붾굝??????筌뤾퍓彛????????????????椰????????? ?????????????????????????嶺??</span>';
+    if (list) list.innerHTML = html || '<span style="font-size:11px;color:#94a3b8">No ScholarAI history yet.</span>';
   }
   function scholarAIHistoryShowResult(idx) {
     var h = __scholarAIHistory[idx];
@@ -934,38 +993,70 @@
   }
   function scholarAIHistorySaveMd(idx) {
     var h = __scholarAIHistory[idx];
-    if (!h || !h.result) { alert('?????????????????⑤벡瑜???????????????????????????????????????????????????????????嶺??'); return; }
+    if (!h || !h.result) { alert('No result available to save.'); return; }
     var a = document.createElement('a');
     a.href = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(h.result);
     a.download = 'ScholarAI_' + (h.at || '').slice(0, 10) + '_' + idx + '.md';
     a.click();
   }
   function scholarAIHistorySaveAll() {
-    if (__scholarAIHistory.length === 0) { alert('?????????????????⑤벡瑜???????????????????????怨뺤떪????????????????????????嶺???????????????????????쎛 ????????????????????????????????????嶺??'); return; }
+    if (__scholarAIHistory.length === 0) { alert('No ScholarAI history to save yet.'); return; }
     var parts = [];
     for (var i = 0; i < __scholarAIHistory.length; i++) {
       var h = __scholarAIHistory[i];
-      parts.push('## ' + (i + 1) + '. ' + (h.at || '').slice(0, 19) + '\n\n' + (h.prompt ? '**?????????????????????????????????????** ' + h.prompt + '\n\n' : '') + h.result);
+      parts.push('## ' + (i + 1) + '. ' + (h.at || '').slice(0, 19) + '\n\n' + (h.prompt ? '**Prompt** ' + h.prompt + '\n\n' : '') + h.result);
     }
     var a = document.createElement('a');
     a.href = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(parts.join('\n\n---\n\n'));
-    a.download = 'ScholarAI_???????????????怨뺤떪???????????????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦??' + new Date().toISOString().slice(0, 10) + '.md';
+    a.download = 'ScholarAI_history_' + new Date().toISOString().slice(0, 10) + '.md';
     a.click();
-    alert('???????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦??' + __scholarAIHistory.length + '????????????????????????????遺얘턁??????嶺뚮ㅎ?볟퐲??????????거???????????MD ?????????????????????????????????????????????????????袁⑤뜳?????????????????????????嶺??');
+    alert('Saved ' + __scholarAIHistory.length + ' ScholarAI history item(s) as a Markdown file.');
   }
+
+  function scholarAISetRunningState(running) {
+    __scholarAIRunning = !!running;
+    var runBtn = document.getElementById('scholar-ai-run-btn');
+    var stopBtn = document.getElementById('scholar-ai-stop-btn');
+    if (runBtn) {
+      runBtn.disabled = __scholarAIRunning;
+      runBtn.style.opacity = __scholarAIRunning ? '0.75' : '1';
+    }
+    if (stopBtn) {
+      stopBtn.disabled = !__scholarAIRunning;
+      stopBtn.style.opacity = __scholarAIRunning ? '1' : '0.6';
+    }
+  }
+
+  function scholarAIStop() {
+    if (!__scholarAIRunning) return;
+    var abortFn = getCallback('abortCurrentTask');
+    if (typeof abortFn === 'function') {
+      try { abortFn(); } catch (e) {}
+    }
+    var resultEl = document.getElementById('scholar-ai-result');
+    if (resultEl && resultEl.value === 'Running ScholarAI...') {
+      resultEl.value = 'Stopped by user.';
+    }
+    scholarAISetRunningState(false);
+  }
+
   async function scholarAIRun() {
     var sel = document.getElementById('scholar-ai-selected');
     var promptEl = document.getElementById('scholar-ai-prompt');
     var resultEl = document.getElementById('scholar-ai-result');
     var passage = (sel && sel.value) ? sel.value.trim() : '';
     var userQ = (promptEl && promptEl.value) ? promptEl.value.trim() : '';
-    if (!passage) { alert('??????????????????????椰???????????? ??????????????????????????????????癲??????????????????????筌????'); return; }
+    if (!passage) { alert('Please provide selected text to analyze.'); return; }
     var callGemini = getCallback('callGemini');
-    if (typeof callGemini !== 'function') { alert('???????????????????????????????????????????????????????????????????API?????????????????????????????????????????????嶺??'); return; }
-    if (resultEl) resultEl.value = '?????????????????????????거???????????猷몄굣??????????..';
+    if (typeof callGemini !== 'function') { alert('ScholarAI API is not available. Please check your settings.'); return; }
+    if (resultEl) resultEl.value = 'Running ScholarAI...';
+    scholarAISetRunningState(true);
     try {
-      var fullPrompt = passage + '\n\n??????????????????????????????????????????????? ' + (userQ || '??????????????????????????????????????????????????????????거?????????????????????????꾩룆梨띰쭕?뚢뵾???????????????????');
+      var fullPrompt = passage + '\n\nQuestion/Instruction: ' + (userQ || 'Please summarize and explain the passage clearly.');
       var sys = invokeSync('getScholarAISystemInstruction') || 'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage.';
+      var tonePreset = scholarAIGetTonePreset();
+      var toneInstruction = scholarAIGetToneInstruction(tonePreset);
+      if (toneInstruction) sys += '\n\n' + toneInstruction;
       var modelId = invokeSync('getScholarAIModelId') || null;
       var res = await callGemini(fullPrompt, sys, false, modelId);
       var text = res && res.text ? res.text : (res || '');
@@ -973,15 +1064,21 @@
       scholarAIHistoryAdd(userQ || passage.substring(0, 80), resultEl ? resultEl.value : '');
       scholarAIHistoryRender();
     } catch (e) {
-      if (resultEl) resultEl.value = '???????????????? ' + (e.message || e);
+      var msg = (e && e.message) ? String(e.message) : String(e || '');
+      if (resultEl) {
+        if ((e && e.name === 'AbortError') || /aborted|abort/i.test(msg)) resultEl.value = 'Stopped by user.';
+        else resultEl.value = 'Error: ' + msg;
+      }
+    } finally {
+      scholarAISetRunningState(false);
     }
   }
   function scholarAICopyResult() {
     var el = document.getElementById('scholar-ai-result');
     if (el && el.value) {
-      navigator.clipboard.writeText(el.value).then(function () { alert('???뀀맩鍮???癲????????????????????????????????????????ㅻ깹???轅붽틓??????????????????????ㅼ굣塋?'); }).catch(function () { alert('???????ㅻ깹???轅붽틓?????????? ????釉먮폁???????????????????'); });
+      navigator.clipboard.writeText(el.value).then(function () { alert('Result copied to clipboard.'); }).catch(function () { alert('Failed to copy result.'); });
     } else {
-      alert('?????????????怨뺤떪?????????嫄???????????????????耀붾굝??????筌뤾퍓彛????????????????椰????????? ????????????????????????????????????嶺??');
+      alert('There is no result to copy yet.');
     }
   }
   function scholarAIClearResult() {
@@ -994,6 +1091,76 @@
     __scholarAIResultFontSize = Math.max(10, Math.min(24, __scholarAIResultFontSize + delta));
     el.style.fontSize = __scholarAIResultFontSize + 'px';
   }
+  function scholarAIApplyZoomUi() {
+    var ta = document.getElementById('scholar-ai-result-zoom-ta');
+    var view = document.getElementById('scholar-ai-result-zoom-view');
+    var label = document.getElementById('scholar-ai-zoom-label');
+    var editBtn = document.getElementById('scholar-ai-zoom-mode-edit');
+    var viewBtn = document.getElementById('scholar-ai-zoom-mode-view');
+    var sizePx = Math.max(10, Math.min(42, Math.round(16 * (__scholarAIZoomPercent / 100))));
+    if (ta) ta.style.fontSize = sizePx + 'px';
+    if (view) view.style.fontSize = sizePx + 'px';
+    if (label) label.textContent = __scholarAIZoomPercent + '%';
+    if (editBtn) {
+      editBtn.style.borderColor = __scholarAIZoomMode === 'edit' ? '#4f8ef7' : '';
+      editBtn.style.color = __scholarAIZoomMode === 'edit' ? '#4f8ef7' : '';
+    }
+    if (viewBtn) {
+      viewBtn.style.borderColor = __scholarAIZoomMode === 'view' ? '#4f8ef7' : '';
+      viewBtn.style.color = __scholarAIZoomMode === 'view' ? '#4f8ef7' : '';
+    }
+  }
+  function scholarAIRenderZoomMarkdown() {
+    var ta = document.getElementById('scholar-ai-result-zoom-ta');
+    var view = document.getElementById('scholar-ai-result-zoom-view');
+    if (!ta || !view) return;
+    var raw = ta.value || '';
+    if (typeof marked !== 'undefined' && marked.parse) {
+      try {
+        var out = marked.parse(raw);
+        if (out && typeof out.then === 'function') {
+          out.then(function (html) { view.innerHTML = html || ''; }).catch(function () {
+            view.innerHTML = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(raw) + '</pre>';
+          });
+        } else {
+          view.innerHTML = out || '';
+        }
+      } catch (e) {
+        view.innerHTML = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(raw) + '</pre>';
+      }
+      return;
+    }
+    view.innerHTML = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(raw) + '</pre>';
+  }
+  function scholarAISetZoomMode(mode) {
+    var ta = document.getElementById('scholar-ai-result-zoom-ta');
+    var view = document.getElementById('scholar-ai-result-zoom-view');
+    __scholarAIZoomMode = mode === 'view' ? 'view' : 'edit';
+    window.__scholarAIZoomMode = __scholarAIZoomMode;
+    if (!ta || !view) return;
+    var useView = __scholarAIZoomMode === 'view';
+    ta.style.display = useView ? 'none' : 'block';
+    view.style.display = useView ? 'block' : 'none';
+    ta.setAttribute('aria-hidden', useView ? 'true' : 'false');
+    view.setAttribute('aria-hidden', useView ? 'false' : 'true');
+    if (useView) scholarAIRenderZoomMarkdown();
+    scholarAIApplyZoomUi();
+  }
+  function scholarAIAdjustZoom(delta) {
+    var d = Number(delta || 0);
+    __scholarAIZoomPercent = Math.max(60, Math.min(220, __scholarAIZoomPercent + d));
+    scholarAIApplyZoomUi();
+  }
+  function scholarAICopyZoomMarkdown() {
+    var ta = document.getElementById('scholar-ai-result-zoom-ta');
+    var txt = ta && typeof ta.value === 'string' ? ta.value : '';
+    if (!txt.trim()) { alert('No content to copy.'); return; }
+    navigator.clipboard.writeText(txt).then(function () {
+      alert('Markdown copied to clipboard.');
+    }).catch(function () {
+      alert('Failed to copy markdown.');
+    });
+  }
   function scholarAIResultZoomOpen() {
     var resultEl = document.getElementById('scholar-ai-result');
     var overlay = document.getElementById('scholar-ai-result-zoom-overlay');
@@ -1001,6 +1168,9 @@
     if (!resultEl || !overlay || !zoomTa) return;
     zoomTa.value = resultEl.value || '';
     overlay.classList.add('open');
+    window.__scholarAIZoomMode = __scholarAIZoomMode;
+    scholarAISetZoomMode(__scholarAIZoomMode);
+    scholarAIApplyZoomUi();
     zoomTa.focus();
     function onEsc(e) {
       if (e.key === 'Escape') {
@@ -1022,32 +1192,80 @@
     if (resultEl && zoomTa) resultEl.value = zoomTa.value;
     if (overlay) overlay.classList.remove('open');
   }
-  function scholarAIPromptWrapInitResize() {
-    var handle = document.getElementById('scholar-ai-prompt-resize-handle');
-    var wrap = document.getElementById('scholar-ai-prompt-wrap');
+  function scholarAISelectedWrapInitResize() {
+    var handle = document.getElementById('scholar-ai-selected-resize-handle');
+    var wrap = document.getElementById('scholar-ai-selected-wrap');
     if (!handle || !wrap) return;
+    if (handle._saResizeBound) return;
+    handle._saResizeBound = true;
     var minH = 80;
-    var maxH = 300;
+    var maxH = 520;
     var startY = 0;
     var startH = 0;
+    var dragging = false;
     function onMove(e) {
+      if (!dragging) return;
       var dy = e.clientY - startY;
       var h = Math.max(minH, Math.min(maxH, startH + dy));
       wrap.style.height = h + 'px';
       wrap.style.minHeight = h + 'px';
     }
     function onUp() {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      if (!dragging) return;
+      dragging = false;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
-    handle.addEventListener('mousedown', function (e) {
+    handle.addEventListener('pointerdown', function (e) {
       e.preventDefault();
+      dragging = true;
       startY = e.clientY;
       startH = wrap.offsetHeight;
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+      document.body.style.cursor = 'row-resize';
+      document.body.style.userSelect = 'none';
+    });
+  }
+  function scholarAIPromptWrapInitResize() {
+    var handle = document.getElementById('scholar-ai-prompt-resize-handle');
+    var wrap = document.getElementById('scholar-ai-prompt-wrap');
+    if (!handle || !wrap) return;
+    if (handle._saResizeBound) return;
+    handle._saResizeBound = true;
+    var minH = 80;
+    var maxH = 520;
+    var startY = 0;
+    var startH = 0;
+    var dragging = false;
+    function onMove(e) {
+      if (!dragging) return;
+      var dy = e.clientY - startY;
+      var h = Math.max(minH, Math.min(maxH, startH + dy));
+      wrap.style.height = h + 'px';
+      wrap.style.minHeight = h + 'px';
+    }
+    function onUp() {
+      if (!dragging) return;
+      dragging = false;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+    handle.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      dragging = true;
+      startY = e.clientY;
+      startH = wrap.offsetHeight;
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
       document.body.style.cursor = 'row-resize';
       document.body.style.userSelect = 'none';
     });
@@ -1056,28 +1274,37 @@
     var handle = document.getElementById('scholar-ai-result-resize-handle');
     var wrap = document.getElementById('scholar-ai-result-wrap');
     if (!handle || !wrap) return;
+    if (handle._saResizeBound) return;
+    handle._saResizeBound = true;
     var minH = 160;
-    var maxH = 600;
+    var maxH = 900;
     var startY = 0;
     var startH = 0;
+    var dragging = false;
     function onMove(e) {
+      if (!dragging) return;
       var dy = e.clientY - startY;
       var h = Math.max(minH, Math.min(maxH, startH + dy));
       wrap.style.height = h + 'px';
       wrap.style.minHeight = h + 'px';
     }
     function onUp() {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
+      if (!dragging) return;
+      dragging = false;
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     }
-    handle.addEventListener('mousedown', function (e) {
+    handle.addEventListener('pointerdown', function (e) {
       e.preventDefault();
+      dragging = true;
       startY = e.clientY;
       startH = wrap.offsetHeight;
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
       document.body.style.cursor = 'row-resize';
       document.body.style.userSelect = 'none';
     });
@@ -1086,7 +1313,7 @@
     var viewerSwitchToEdit = typeof window.viewerSwitchToEdit === 'function' ? window.viewerSwitchToEdit : function () {};
     var viewerBuildNav = typeof window.viewerBuildNav === 'function' ? window.viewerBuildNav : function () {};
     var isEdit = document.getElementById('content-viewport') && document.getElementById('content-viewport').classList.contains('viewer-edit-active');
-    if (!isEdit) { alert('???????椰??????????????꾩룆梨띰쭕?뚢뵾?????????????????濾??????????????濾????????????????????嫄???????????????????살몝????'); if (viewerSwitchToEdit) viewerSwitchToEdit(); return; }
+    if (!isEdit) { alert('Switching to edit mode first.'); if (viewerSwitchToEdit) viewerSwitchToEdit(); return; }
     var ta = document.getElementById('viewer-edit-ta');
     if (ta) __scholarAICursorPos = ta.selectionStart;
     toggleScholarAIInsertMenu();
@@ -1102,7 +1329,7 @@
   function scholarAIInsertDoc(mode) {
     var resultEl = document.getElementById('scholar-ai-result');
     var resultText = resultEl && resultEl.value ? resultEl.value.trim() : '';
-    if (!resultText) { alert('?????????????耀붾굝??????筌뤾퍓彛????????????????椰????????? ????????????????????????????????????嶺??'); return; }
+    if (!resultText) { alert('There is no ScholarAI result to insert.'); return; }
     var ta = document.getElementById('viewer-edit-ta');
     var isEdit = document.getElementById('content-viewport') && document.getElementById('content-viewport').classList.contains('viewer-edit-active');
     var viewerSwitchToEdit = typeof window.viewerSwitchToEdit === 'function' ? window.viewerSwitchToEdit : function () {};
@@ -1908,9 +2135,14 @@
   window.scholarAIHistorySaveMd = scholarAIHistorySaveMd;
   window.scholarAIHistorySaveAll = scholarAIHistorySaveAll;
   window.scholarAIRun = scholarAIRun;
+  window.scholarAIStop = scholarAIStop;
   window.scholarAICopyResult = scholarAICopyResult;
   window.scholarAIClearResult = scholarAIClearResult;
   window.scholarAIResultFont = scholarAIResultFont;
+  window.scholarAIRenderZoomMarkdown = scholarAIRenderZoomMarkdown;
+  window.scholarAIAdjustZoom = scholarAIAdjustZoom;
+  window.scholarAISetZoomMode = scholarAISetZoomMode;
+  window.scholarAICopyZoomMarkdown = scholarAICopyZoomMarkdown;
   window.scholarAIResultZoomOpen = scholarAIResultZoomOpen;
   window.scholarAIResultZoomClose = scholarAIResultZoomClose;
   window.handleScholarAIInsertClick = handleScholarAIInsertClick;
@@ -1945,11 +2177,14 @@
   window.getSidebarAIHtml = getSidebarAIHtml;
 
   window.sidebarAIInit = function () {
+    scholarAISelectedWrapInitResize();
     scholarAIPromptWrapInitResize();
     scholarAIResultWrapInitResize();
+    scholarAIInitToneSelect();
     scholarAIHistoryRender();
     var resTa = document.getElementById('scholar-ai-result');
     if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + 'px';
+    scholarAISetRunningState(false);
     var histSearch = document.getElementById('scholar-ai-history-search');
     if (histSearch) histSearch.addEventListener('input', scholarAIHistoryRender);
     /* ????????????????????????????????????????????????????????嫄???????????饔낅챷維?????곌퇈?????⑤슦瑗??ScholarAI ???????????????怨뺤떪?????????????????????(???????????????????) */

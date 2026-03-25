@@ -3,15 +3,21 @@
         { action: 'Edit mode', keys: ['Alt', '1'] },
         { action: 'View mode', keys: ['Alt', '2'] },
         { action: 'Theme toggle', keys: ['Alt', '4'] },
+        { action: 'Scholar search', keys: ['Alt', 'S'] },
         { action: 'Pattern to table', keys: ['Alt', '7'] },
         { action: 'Text style modal', keys: ['Alt', 'L'] },
         { action: 'Heading H1', keys: ['Ctrl', 'Alt', '1'] },
         { action: 'Heading H2', keys: ['Ctrl', 'Alt', '2'] },
         { action: 'Heading H3', keys: ['Ctrl', 'Alt', '3'] },
+        { action: 'Heading H4', keys: ['Ctrl', 'Alt', '4'] },
+        { action: 'Heading H5', keys: ['Ctrl', 'Alt', '5'] },
+        { action: 'Bullet list', keys: ['Alt', '5'] },
+        { action: 'Number list', keys: ['Alt', '6'] },
         { action: 'Find/Replace', keys: ['Ctrl', 'H'] },
         { action: 'Bold', keys: ['Ctrl', 'B'] },
         { action: 'Italic', keys: ['Ctrl', 'I'] },
         { action: 'Tidy', keys: ['Ctrl', 'Alt', 'T'] },
+        { action: 'Insert footnote', keys: ['Ctrl', 'Alt', 'E'] },
         { action: 'MD to HTML', keys: ['Shift', 'Alt', 'H'] },
         { action: 'Insert <br>', keys: ['Ctrl', 'Shift', 'Enter'] },
         { action: 'Insert &nbsp;', keys: ['Ctrl', 'Shift', 'Space'] },
@@ -51,6 +57,16 @@
                 if (typeof deps.applyHeading === 'function') deps.applyHeading(3);
                 return;
             }
+            if (e.ctrlKey && e.altKey && isDigitKey(e, 4)) {
+                e.preventDefault();
+                if (typeof deps.applyHeading === 'function') deps.applyHeading(4);
+                return;
+            }
+            if (e.ctrlKey && e.altKey && isDigitKey(e, 5)) {
+                e.preventDefault();
+                if (typeof deps.applyHeading === 'function') deps.applyHeading(5);
+                return;
+            }
 
             if (e.altKey && !e.ctrlKey && !isAltGraph && isDigitKey(e, 1)) {
                 e.preventDefault();
@@ -66,6 +82,21 @@
                 e.preventDefault();
                 if (typeof deps.toggleTheme === 'function') deps.toggleTheme();
                 if (typeof deps.showThemeToggleToast === 'function') deps.showThemeToggleToast();
+                return;
+            }
+            if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyS' || e.key === 's' || e.key === 'S')) {
+                e.preventDefault();
+                if (typeof deps.openScholarSearchModal === 'function') deps.openScholarSearchModal();
+                return;
+            }
+            if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && isDigitKey(e, 5)) {
+                e.preventDefault();
+                if (typeof deps.insertListAtSelection === 'function') deps.insertListAtSelection('bullet');
+                return;
+            }
+            if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && isDigitKey(e, 6)) {
+                e.preventDefault();
+                if (typeof deps.insertListAtSelection === 'function') deps.insertListAtSelection('number');
                 return;
             }
             if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyL' || e.key === 'l' || e.key === 'L')) {
@@ -87,6 +118,11 @@
             if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 't' || e.key === 'T')) {
                 e.preventDefault();
                 if (typeof deps.tidySeparatorSpacingInEditor === 'function') deps.tidySeparatorSpacingInEditor();
+                return;
+            }
+            if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 'e' || e.key === 'E')) {
+                e.preventDefault();
+                if (typeof deps.insertFootnoteTemplate === 'function') deps.insertFootnoteTemplate();
                 return;
             }
             if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === 'Enter' || e.key === 'Enter')) {

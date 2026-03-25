@@ -31,15 +31,27 @@
           <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
         </select>
+        <label for="scholar-ai-tone-select" style="font-size:10px;margin:8px 0 4px">문체 설정</label>
+        <select id="scholar-ai-tone-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
+          <option value="academic_ida">학술체 (-이다)</option>
+          <option value="academic_eumham">학술체 (-음, -함)</option>
+          <option value="general_polite">일반체 (존댓말)</option>
+        </select>
       </div>
       <label>Selected text</label>
-      <textarea id="scholar-ai-selected" placeholder="The selected passage from the current document appears here."></textarea>
+      <div class="scholar-ai-selected-wrap" id="scholar-ai-selected-wrap">
+        <textarea id="scholar-ai-selected" placeholder="The selected passage from the current document appears here."></textarea>
+        <div class="scholar-ai-selected-resize-handle" id="scholar-ai-selected-resize-handle" title="Resize selected text"></div>
+      </div>
       <div class="scholar-ai-prompt-wrap" id="scholar-ai-prompt-wrap">
         <label>Prompt / Question</label>
         <textarea id="scholar-ai-prompt" placeholder="Ask for a summary, explanation, comparison, outline, or question set."></textarea>
         <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="Resize prompt"></div>
       </div>
-      <button type="button" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">Run</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">Run</button>
+        <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>Stop</button>
+      </div>
       <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
         <label>Result</label>
         <textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="The generated result will appear here."></textarea>
@@ -66,10 +78,20 @@
       <div class="scholar-ai-result-zoom-box" onclick="event.stopPropagation()">
         <div class="scholar-ai-result-zoom-header">
           <span>Zoomed result view</span>
-          <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">Close</button>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(-10)" style="font-size:12px">-</button>
+            <span id="scholar-ai-zoom-label" style="font-size:11px;min-width:42px;text-align:center;color:#94a3b8">100%</span>
+            <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(10)" style="font-size:12px">+</button>
+            <span style="display:inline-block;width:1px;height:16px;background:#334155;opacity:.6"></span>
+            <button type="button" id="scholar-ai-zoom-mode-edit" class="sa-btn ghost" onclick="scholarAISetZoomMode('edit')" style="font-size:12px">Edit</button>
+            <button type="button" id="scholar-ai-zoom-mode-view" class="sa-btn ghost" onclick="scholarAISetZoomMode('view')" style="font-size:12px">View</button>
+            <button type="button" class="sa-btn" onclick="scholarAICopyZoomMarkdown()" style="font-size:12px">Copy MD</button>
+            <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">Close</button>
+          </div>
         </div>
         <div class="scholar-ai-result-zoom-body">
-          <textarea id="scholar-ai-result-zoom-ta" placeholder="The result will appear here."></textarea>
+          <textarea id="scholar-ai-result-zoom-ta" placeholder="The result will appear here." oninput="if(window.__scholarAIZoomMode==='view'){scholarAIRenderZoomMarkdown()}"></textarea>
+          <div id="scholar-ai-result-zoom-view" class="scholar-ai-result-zoom-view hidden"></div>
         </div>
       </div>
     </div>
