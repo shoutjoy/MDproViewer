@@ -260,19 +260,19 @@ body.theme-light .ssp-ai-sidebar .ssp-img-history-item .ssp-h-label { color: #64
 .viewer-fs-area:active { cursor: grabbing; }
 .viewer-fs-wrap { transform-origin: center center; transition: transform 0.08s ease-out; line-height: 0; }
 .viewer-fs-wrap img { max-width: min(95vw, calc(100vw - 32px)); max-height: min(95vh, calc(100vh - 80px)); width: auto; height: auto; object-fit: contain; display: block; pointer-events: none; border-radius: 8px; box-shadow: 0 8px 40px rgba(0,0,0,0.4); background: #fff; }
-.viewer-fs-imgbb-info { position: absolute; top: 74px; right: 16px; left: auto; width: min(460px, calc(100vw - 280px)); z-index: 10000; display: none; padding: 10px; border-radius: 10px; background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(148, 163, 184, 0.35); color: #e2e8f0; box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26); backdrop-filter: blur(10px); }
-.viewer-fs-overlay.gallery-hidden .viewer-fs-imgbb-info { width: min(460px, calc(100vw - 32px)); }
-.viewer-fs-imgbb-title { font-size: 10px; font-weight: 800; margin-bottom: 6px; letter-spacing: 0.02em; }
-.viewer-fs-link-grid { display: grid; gap: 8px; }
-.viewer-fs-link-field { display: grid; gap: 3px; }
-.viewer-fs-link-label { font-size: 9px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.04em; }
-.viewer-fs-link-input-wrap { display: flex; gap: 6px; align-items: center; }
-.viewer-fs-link-input-wrap input { flex: 1; min-width: 0; max-width: 260px; padding: 4px 6px; border-radius: 6px; border: 1px solid rgba(148, 163, 184, 0.45); background: rgba(15, 23, 42, 0.72); color: #f8fafc; font-size: 9px; line-height: 1.2; }
-.viewer-fs-link-insert { flex-shrink: 0; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(45, 212, 191, 0.45); color: #99f6e4; background: rgba(13, 148, 136, 0.12); text-decoration: none; font-size: 9px; font-weight: 700; cursor: pointer; }
+.viewer-fs-imgbb-info { position: absolute; top: 68px; right: 14px; left: auto; width: min(390px, calc(100vw - 284px)); z-index: 10000; display: none; padding: 8px; border-radius: 9px; background: rgba(15, 23, 42, 0.92); border: 1px solid rgba(148, 163, 184, 0.3); color: #e2e8f0; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.22); backdrop-filter: blur(10px); }
+.viewer-fs-overlay.gallery-hidden .viewer-fs-imgbb-info { width: min(390px, calc(100vw - 28px)); }
+.viewer-fs-imgbb-title { font-size: 9px; font-weight: 800; margin-bottom: 5px; letter-spacing: 0.02em; }
+.viewer-fs-link-grid { display: grid; gap: 6px; }
+.viewer-fs-link-field { display: grid; gap: 2px; }
+.viewer-fs-link-label { font-size: 8px; font-weight: 700; color: #cbd5e1; text-transform: uppercase; letter-spacing: 0.04em; }
+.viewer-fs-link-input-wrap { display: flex; gap: 5px; align-items: center; }
+.viewer-fs-link-input-wrap input { flex: 1; min-width: 0; max-width: none; height: 20px; padding: 1px 6px; border-radius: 5px; border: 1px solid rgba(148, 163, 184, 0.42); background: rgba(15, 23, 42, 0.72); color: #f8fafc; font-size: 8px; line-height: 1.1; }
+.viewer-fs-link-insert { flex-shrink: 0; height: 20px; padding: 0 7px; border-radius: 5px; border: 1px solid rgba(45, 212, 191, 0.45); color: #99f6e4; background: rgba(13, 148, 136, 0.12); text-decoration: none; font-size: 8px; font-weight: 700; cursor: pointer; }
 .viewer-fs-link-insert:hover { background: rgba(13, 148, 136, 0.22); color: #ccfbf1; }
-.viewer-fs-link-open { flex-shrink: 0; padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(96, 165, 250, 0.45); color: #bfdbfe; text-decoration: none; font-size: 9px; font-weight: 700; }
+.viewer-fs-link-open { flex-shrink: 0; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0 7px; border-radius: 5px; border: 1px solid rgba(96, 165, 250, 0.45); color: #bfdbfe; text-decoration: none; font-size: 8px; font-weight: 700; }
 .viewer-fs-link-open:hover { background: rgba(59, 130, 246, 0.16); color: #dbeafe; }
-.viewer-fs-imgbb-saved { margin-top: 6px; font-size: 9px; color: #cbd5e1; }
+.viewer-fs-imgbb-saved { margin-top: 5px; font-size: 8px; color: #cbd5e1; }
 
 @media (max-width: 640px) {
   .ssp-img-link-row { grid-template-columns: 1fr; }
