@@ -17,6 +17,18 @@ let pageScale = 1.0;
 let fontSize = 16;
 let modalMode = 'link';
 let movingDocId = null;
+let previewPopupWindow = null;
+let previewPopupScale = 1.0;
+let previewPopupFontSize = 16;
+let previewPopupRenderToken = 0;
+let imageInsertCurrentDataUrl = '';
+let imageInsertCropWindow = null;
+let imageInsertCropBound = false;
+let imageInsertDockRight = false;
+let imageInsertDragBound = false;
+let imageInsertDragging = false;
+let imageInsertDragOffsetX = 0;
+let imageInsertDragOffsetY = 0;
 
 // Sidebar states
 let isSidebarHidden = true;
@@ -265,12 +277,34 @@ window.onload = async () => {
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
         performAutoSave();
+        updatePreviewPopupContent();
     });
     if (editorTextarea) {
         editorTextarea.addEventListener('select', syncFindInputFromEditorSelectionIfNeeded);
         editorTextarea.addEventListener('keyup', syncFindInputFromEditorSelectionIfNeeded);
         editorTextarea.addEventListener('mouseup', syncFindInputFromEditorSelectionIfNeeded);
     }
+    document.addEventListener('paste', function (e) {
+        const modal = document.getElementById('image-insert-modal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') >= 0) {
+                const file = items[i].getAsFile();
+                if (!file) continue;
+                const reader = new FileReader();
+                reader.onload = function () {
+                    imageInsertCurrentDataUrl = String(reader.result || '');
+                    setImageInsertPreview(imageInsertCurrentDataUrl);
+                    setImageInsertStatus('클립보드 이미지 붙여넣기 완료', false);
+                };
+                reader.readAsDataURL(file);
+                e.preventDefault();
+                break;
+            }
+        }
+    });
     const findInput = document.getElementById('find-input');
     if (findInput) {
         findInput.addEventListener('input', function () {
@@ -303,9 +337,34 @@ window.onload = async () => {
             toggleTheme();
             showToast("테마가 변경되었습니다.");
         }
+        if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyL' || e.key === 'l' || e.key === 'L')) {
+            e.preventDefault();
+            openTextStyleModal();
+            return;
+        }
         if (e.shiftKey && e.altKey && !e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
             e.preventDefault();
             insertUserInfoAtCursor();
+            return;
+        }
+        if (e.shiftKey && e.altKey && !e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
+            e.preventDefault();
+            convertSelectionMarkdownToHtml();
+            return;
+        }
+        if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 't' || e.key === 'T')) {
+            e.preventDefault();
+            tidySeparatorSpacingInEditor();
+            return;
+        }
+        if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === 'Enter' || e.key === 'Enter')) {
+            e.preventDefault();
+            insertLiteralAtCursor('<br>');
+            return;
+        }
+        if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar')) {
+            e.preventDefault();
+            insertLiteralAtCursor('&nbsp;');
             return;
         }
         if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.code === 'Digit7' || e.key === '7')) {
@@ -385,6 +444,7 @@ window.onload = async () => {
             }
         }
     });
+    window.addEventListener('beforeunload', closePreviewPopupWindow);
     } catch (e) {
         console.error('초기화 오류:', e);
         if (typeof showToast === 'function') showToast('초기화 중 오류가 발생했습니다. 콘솔을 확인하세요.');
@@ -398,6 +458,7 @@ function updateContent(md) {
     if (editorTextarea) editorTextarea.value = md;
     renderMarkdown();
     renderTOC();
+    updatePreviewPopupContent();
 }
 
 /** 보기용: 숫자~숫자 → ～, 긴 = 뒤 줄바꿈, **굵게** 선변환 후 marked */
@@ -429,6 +490,9 @@ function preprocessStandaloneHrAfterHardBreak(raw) {
 
 function preprocessMarkdownForView(raw) {
     let s = String(raw ?? '');
+    if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForRender === 'function') {
+        s = specialTRT.prepareForRender(s);
+    }
     s = preprocessStandaloneHrAfterHardBreak(s);
     if (typeof preprocessNumericRangeTilde === 'function') {
         s = preprocessNumericRangeTilde(s);
@@ -461,17 +525,165 @@ function renderMarkdown() {
                 viewer.innerHTML = h || '';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
                 if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(viewer);
+                updatePreviewPopupContent();
             }).catch(function () {
                 viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+                updatePreviewPopupContent();
             });
             return;
         }
         viewer.innerHTML = out || '';
         if (typeof lucide !== 'undefined') lucide.createIcons();
         if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(viewer);
+        updatePreviewPopupContent();
     } catch (e) {
         viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+        updatePreviewPopupContent();
     }
+}
+
+function isPreviewPopupAlive() {
+    return !!(previewPopupWindow && !previewPopupWindow.closed);
+}
+
+function onPreviewPopupClosed() {
+    previewPopupWindow = null;
+}
+
+function closePreviewPopupWindow() {
+    if (!isPreviewPopupAlive()) {
+        previewPopupWindow = null;
+        return;
+    }
+    previewPopupWindow.close();
+    previewPopupWindow = null;
+}
+
+function escapeHtmlForPreview(text) {
+    return String(text ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function getPreviewPopupDocumentHtml() {
+    return '<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MDproViewer Preview</title><style>'
+        + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;}'
+        + '#pv-root{display:flex;flex-direction:column;height:100%;}'
+        + '#pv-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#e2e8f0;border-bottom:1px solid #cbd5e1;position:sticky;top:0;z-index:10;}'
+        + '#pv-toolbar button{padding:4px 10px;border:1px solid #94a3b8;background:#fff;border-radius:6px;font-weight:700;color:#1e293b;cursor:pointer;}'
+        + '#pv-toolbar .label{font-size:12px;color:#334155;min-width:48px;text-align:center;font-weight:700;}'
+        + '#pv-viewport{flex:1;overflow:auto;padding:20px;}'
+        + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;}'
+        + '#pv-content h1{font-size:2.25rem;font-weight:800;margin-top:1.5rem;margin-bottom:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:.5rem;}'
+        + '#pv-content h2{font-size:1.875rem;font-weight:700;margin-top:1.25rem;margin-bottom:.75rem;border-bottom:1px solid #e2e8f0;padding-bottom:.3rem;}'
+        + '#pv-content h3{font-size:1.5rem;font-weight:600;margin-top:1rem;margin-bottom:.5rem;}'
+        + '#pv-content p{margin-bottom:1rem;}#pv-content ul,#pv-content ol{margin-bottom:1rem;padding-left:1.5rem;}'
+        + '#pv-content code{padding:.2rem .4rem;border-radius:.25rem;background:#e2e8f0;color:#1e293b;font-family:Consolas,monospace;}'
+        + '#pv-content pre{background:#e2e8f0;color:#1e293b;padding:1rem;border-radius:.5rem;overflow:auto;margin-bottom:1rem;}'
+        + '#pv-content pre code{background:transparent;padding:0;color:inherit;}'
+        + '#pv-content table{border-collapse:collapse;width:100%;margin-bottom:1rem;border:2px solid #94a3b8;}'
+        + '#pv-content th,#pv-content td{border:1px solid #94a3b8;padding:.45rem .65rem;text-align:left;vertical-align:top;}'
+        + '#pv-content th[align=\"left\"],#pv-content td[align=\"left\"]{text-align:left;}'
+        + '#pv-content th[align=\"center\"],#pv-content td[align=\"center\"]{text-align:center;}'
+        + '#pv-content th[align=\"right\"],#pv-content td[align=\"right\"]{text-align:right;}'
+        + '#pv-content thead th{background:#e2e8f0;font-weight:700;}'
+        + '</style></head><body><div id=\"pv-root\"><div id=\"pv-toolbar\">'
+        + '<strong style=\"margin-right:6px\">Preview</strong>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">화면-</button>'
+        + '<span id=\"pv-scale-label\" class=\"label\">100%</span>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(0.1)\">화면+</button>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(-1)\">폰트-</button>'
+        + '<span id=\"pv-font-label\" class=\"label\">16px</span>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(1)\">폰트+</button>'
+        + '<button type=\"button\" style=\"margin-left:auto\" onclick=\"window.close()\">닫기</button>'
+        + '</div><div id=\"pv-viewport\"><div id=\"pv-content\"></div></div></div>'
+        + '<script>window.addEventListener(\"beforeunload\",function(){try{if(window.opener&&typeof window.opener.onPreviewPopupClosed===\"function\"){window.opener.onPreviewPopupClosed();}}catch(e){}});<\/script>'
+        + '</body></html>';
+}
+
+function applyPreviewPopupViewport() {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const content = doc.getElementById('pv-content');
+    const scaleLabel = doc.getElementById('pv-scale-label');
+    const fontLabel = doc.getElementById('pv-font-label');
+    if (!content) return;
+
+    const scale = Math.max(0.3, Math.min(3, Number(previewPopupScale) || 1));
+    const fs = Math.max(8, Math.min(72, Number(previewPopupFontSize) || 16));
+    previewPopupScale = scale;
+    previewPopupFontSize = fs;
+
+    content.style.transform = 'scale(' + scale + ')';
+    content.style.width = (100 / scale) + '%';
+    content.style.fontSize = fs + 'px';
+    if (scaleLabel) scaleLabel.textContent = Math.round(scale * 100) + '%';
+    if (fontLabel) fontLabel.textContent = fs + 'px';
+}
+
+function previewPopupAdjustScale(delta) {
+    previewPopupScale = (Number(previewPopupScale) || 1) + Number(delta || 0);
+    applyPreviewPopupViewport();
+}
+
+function previewPopupAdjustFontSize(delta) {
+    previewPopupFontSize = (Number(previewPopupFontSize) || 16) + Number(delta || 0);
+    applyPreviewPopupViewport();
+}
+
+async function updatePreviewPopupContent() {
+    if (!isPreviewPopupAlive()) return;
+    const token = ++previewPopupRenderToken;
+    const raw = String(editorTextarea ? editorTextarea.value : currentMarkdown);
+    let html = '';
+
+    try {
+        const preprocessed = preprocessMarkdownForView(raw);
+        if (typeof marked === 'undefined' || !marked.parse) {
+            html = '<p>' + escapeHtmlForPreview(raw).replace(/\n/g, '<br>') + '</p>';
+        } else {
+            const out = marked.parse(preprocessed);
+            html = (out != null && typeof out.then === 'function') ? await out : out;
+            html = html || '';
+        }
+    } catch (e) {
+        html = '<p>' + escapeHtmlForPreview(raw).replace(/\n/g, '<br>') + '</p>';
+    }
+
+    if (token !== previewPopupRenderToken || !isPreviewPopupAlive()) return;
+    const target = previewPopupWindow.document.getElementById('pv-content');
+    if (!target) return;
+    target.innerHTML = html;
+    if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(target);
+    applyPreviewPopupViewport();
+}
+
+function openPreviewPopupWindow() {
+    if (isPreviewPopupAlive()) {
+        previewPopupWindow.focus();
+        updatePreviewPopupContent();
+        return;
+    }
+
+    const features = 'popup=yes,width=1100,height=820,left=120,top=80,resizable=yes,scrollbars=yes';
+    previewPopupWindow = window.open('', 'mdproviewer_preview_popup', features);
+    if (!previewPopupWindow) {
+        showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요.');
+        return;
+    }
+
+    try {
+        previewPopupWindow.document.open();
+        previewPopupWindow.document.write(getPreviewPopupDocumentHtml());
+        previewPopupWindow.document.close();
+    } catch (e) {
+        showToast('프리뷰 창 초기화 중 오류가 발생했습니다.');
+        return;
+    }
+
+    if (previewPopupWindow) previewPopupWindow.focus();
+    updatePreviewPopupContent();
 }
 
 function toggleMode(mode) {
@@ -1490,6 +1702,272 @@ function insertHtmlImageAtCursor(imageUrl, altText) {
     showToast('이미지 HTML 태그를 삽입했습니다.');
 }
 
+function getImageAltTextFromUrl(imageUrl) {
+    const u = String(imageUrl || '').trim();
+    if (!u) return 'image';
+    try {
+        const path = u.split('?')[0].split('#')[0];
+        const name = decodeURIComponent(path.substring(path.lastIndexOf('/') + 1) || 'image')
+            .replace(/\.[^.]+$/, '')
+            .trim();
+        return name || 'image';
+    } catch (e) {
+        return 'image';
+    }
+}
+
+function setImageInsertStatus(msg, isError) {
+    const el = document.getElementById('img-insert-status');
+    if (!el) return;
+    el.textContent = String(msg || '');
+    el.className = 'mt-3 text-xs ' + (isError ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400');
+}
+
+function setImageInsertPreview(dataUrl) {
+    const img = document.getElementById('img-insert-preview');
+    if (!img) return;
+    if (!dataUrl) {
+        img.classList.add('hidden');
+        img.removeAttribute('src');
+        return;
+    }
+    img.src = dataUrl;
+    img.classList.remove('hidden');
+}
+
+function openImageInsertModal() {
+    const modal = document.getElementById('image-insert-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    applyImageInsertPanelLayout();
+    bindImageInsertModalDrag();
+    if (!imageInsertCropBound) {
+        imageInsertCropBound = true;
+        window.addEventListener('message', function (ev) {
+            if (!ev || !ev.data || !imageInsertCropWindow || ev.source !== imageInsertCropWindow) return;
+            if (ev.data.type === 'crop-ready') {
+                if (!imageInsertCurrentDataUrl) return;
+                try { imageInsertCropWindow.postMessage({ type: 'crop', image: imageInsertCurrentDataUrl }, '*'); } catch (e) {}
+                return;
+            }
+            if (ev.data.type === 'aiimg-cropped' && ev.data.dataUrl) {
+                imageInsertCurrentDataUrl = String(ev.data.dataUrl);
+                setImageInsertPreview(imageInsertCurrentDataUrl);
+                setImageInsertStatus('Crop 적용 완료', false);
+                try { imageInsertCropWindow.postMessage({ type: 'crop-applied' }, '*'); } catch (e) {}
+            }
+        });
+    }
+    setImageInsertStatus('Upload 또는 Ctrl+V로 이미지를 넣으세요.', false);
+}
+
+function closeImageInsertModal() {
+    const modal = document.getElementById('image-insert-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    const panel = document.getElementById('image-insert-panel');
+    if (panel) {
+        panel.style.left = '';
+        panel.style.top = '';
+        panel.style.margin = '';
+    }
+    imageInsertDragging = false;
+}
+
+function applyImageInsertPanelLayout() {
+    const modal = document.getElementById('image-insert-modal');
+    const panel = document.getElementById('image-insert-panel');
+    if (!modal || !panel) return;
+    if (imageInsertDockRight) {
+        modal.classList.remove('justify-center');
+        modal.classList.add('justify-end');
+        panel.classList.remove('max-w-2xl');
+        panel.classList.add('max-w-xl');
+        panel.style.marginRight = '12px';
+    } else {
+        modal.classList.remove('justify-end');
+        modal.classList.add('justify-center');
+        panel.classList.remove('max-w-xl');
+        panel.classList.add('max-w-2xl');
+        panel.style.marginRight = '';
+    }
+}
+
+function toggleImageInsertDockRight() {
+    imageInsertDockRight = !imageInsertDockRight;
+    applyImageInsertPanelLayout();
+}
+
+function bindImageInsertModalDrag() {
+    if (imageInsertDragBound) return;
+    imageInsertDragBound = true;
+    const header = document.getElementById('image-insert-header');
+    const panel = document.getElementById('image-insert-panel');
+    if (!header || !panel) return;
+
+    header.addEventListener('mousedown', function (e) {
+        const target = e.target;
+        if (target && (target.closest('button') || target.tagName === 'BUTTON')) return;
+        imageInsertDragging = true;
+        const rect = panel.getBoundingClientRect();
+        imageInsertDragOffsetX = e.clientX - rect.left;
+        imageInsertDragOffsetY = e.clientY - rect.top;
+        panel.style.position = 'fixed';
+        panel.style.margin = '0';
+        panel.style.left = rect.left + 'px';
+        panel.style.top = rect.top + 'px';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!imageInsertDragging) return;
+        const panelEl = document.getElementById('image-insert-panel');
+        if (!panelEl) return;
+        const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - imageInsertDragOffsetX));
+        const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - imageInsertDragOffsetY));
+        panelEl.style.left = nextLeft + 'px';
+        panelEl.style.top = nextTop + 'px';
+    });
+
+    document.addEventListener('mouseup', function () {
+        imageInsertDragging = false;
+    });
+}
+
+function focusImageInsertPasteZone() {
+    setImageInsertStatus('이미지를 복사한 뒤 Ctrl+V를 누르세요.', false);
+}
+
+function handleImageInsertFile(event) {
+    const file = event && event.target && event.target.files ? event.target.files[0] : null;
+    if (!file) return;
+    readImageFileForInsertModal(file);
+    if (event && event.target) event.target.value = '';
+}
+
+function readImageFileForInsertModal(file) {
+    if (!file || String(file.type || '').indexOf('image') !== 0) {
+        setImageInsertStatus('이미지 파일만 업로드할 수 있습니다.', true);
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function () {
+        imageInsertCurrentDataUrl = String(reader.result || '');
+        setImageInsertPreview(imageInsertCurrentDataUrl);
+        setImageInsertStatus('이미지를 불러왔습니다.', false);
+    };
+    reader.readAsDataURL(file);
+}
+
+function onImageInsertUploadDragOver(event) {
+    if (!event) return;
+    event.preventDefault();
+    const zone = document.getElementById('img-insert-upload-zone');
+    if (zone) {
+        zone.classList.add('bg-indigo-50');
+        zone.classList.add('dark:bg-indigo-900/30');
+    }
+}
+
+function onImageInsertUploadDragLeave(event) {
+    if (event) event.preventDefault();
+    const zone = document.getElementById('img-insert-upload-zone');
+    if (zone) {
+        zone.classList.remove('bg-indigo-50');
+        zone.classList.remove('dark:bg-indigo-900/30');
+    }
+}
+
+function onImageInsertUploadDrop(event) {
+    if (!event) return;
+    event.preventDefault();
+    onImageInsertUploadDragLeave(event);
+    const file = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files[0] : null;
+    if (!file) {
+        setImageInsertStatus('드롭된 파일이 없습니다.', true);
+        return;
+    }
+    readImageFileForInsertModal(file);
+}
+
+function getCropPageUrlForImageInsert() {
+    try {
+        return new URL('crop.html', document.baseURI || window.location.href).href;
+    } catch (e) {
+        return './crop.html';
+    }
+}
+
+function cropImageInsertCurrent() {
+    if (!imageInsertCurrentDataUrl) {
+        setImageInsertStatus('Crop할 이미지를 먼저 넣으세요.', true);
+        return;
+    }
+    imageInsertCropWindow = window.open(getCropPageUrlForImageInsert(), 'img_insert_crop', 'width=700,height=620,scrollbars=yes,resizable=yes');
+    if (!imageInsertCropWindow) {
+        setImageInsertStatus('Crop 창을 열 수 없습니다. 팝업 차단을 확인하세요.', true);
+        return;
+    }
+    try { imageInsertCropWindow.focus(); } catch (e) {}
+    try { imageInsertCropWindow.postMessage({ type: 'crop', image: imageInsertCurrentDataUrl }, '*'); } catch (e) {}
+}
+
+async function uploadImageInsertToImgbb() {
+    if (!imageInsertCurrentDataUrl || imageInsertCurrentDataUrl.indexOf('data:image') !== 0) {
+        setImageInsertStatus('업로드할 이미지를 먼저 준비하세요.', true);
+        return;
+    }
+    const apiKey = String(getImgbbApiKey() || '').trim();
+    if (!apiKey) {
+        setImageInsertStatus('imgBB API 키가 없습니다. 설정 또는 sspimgAI에서 입력하세요.', true);
+        return;
+    }
+    setImageInsertStatus('imgBB 업로드 중...', false);
+    try {
+        const comma = imageInsertCurrentDataUrl.indexOf(',');
+        const base64Data = comma >= 0 ? imageInsertCurrentDataUrl.slice(comma + 1) : imageInsertCurrentDataUrl;
+        const form = new FormData();
+        form.append('image', base64Data);
+        form.append('name', 'img_insert_' + Date.now());
+        const response = await fetch('https://api.imgbb.com/1/upload?key=' + encodeURIComponent(apiKey), {
+            method: 'POST',
+            body: form
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload || payload.success === false) {
+            const msg = payload && payload.error && payload.error.message ? payload.error.message : ('imgBB upload failed (' + response.status + ')');
+            throw new Error(msg);
+        }
+        const data = payload.data || {};
+        const directUrl = data.url || (data.image && data.image.url) || data.display_url || '';
+        const input = document.getElementById('img-insert-url');
+        if (input) input.value = directUrl;
+        setImageInsertStatus('imgBB 업로드 완료', false);
+    } catch (e) {
+        setImageInsertStatus('imgBB 업로드 오류: ' + (e && e.message ? e.message : e), true);
+    }
+}
+
+function insertImageFromModal(type) {
+    if (!isEditMode) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+    const urlInput = document.getElementById('img-insert-url');
+    const url = String(urlInput && urlInput.value ? urlInput.value : '').trim();
+    const source = url || imageInsertCurrentDataUrl;
+    if (!source) {
+        setImageInsertStatus('삽입할 URL 또는 이미지가 없습니다.', true);
+        return;
+    }
+    const alt = getImageAltTextFromUrl(source);
+    if (type === 'html') insertHtmlImageAtCursor(source, alt);
+    else insertMarkdownImageAtCursor(source, alt);
+    closeImageInsertModal();
+}
+
 function tidySeparatorSpacing(source) {
     const expandedLines = [];
     const sourceLines = String(source ?? '').split('\n');
@@ -1545,8 +2023,36 @@ function tidySeparatorSpacing(source) {
         }
     }
 
+    // Setext underline(====) 앞에는 빈 줄 1개를 강제하여 렌더 안정화
+    inFencedCodeBlock = false;
+    for (let i = 1; i < lines.length; i++) {
+        const curTrimmed = lines[i].trim();
+        if (/^```/.test(curTrimmed)) {
+            inFencedCodeBlock = !inFencedCodeBlock;
+            continue;
+        }
+        if (inFencedCodeBlock) continue;
+        if (!/^=+$/.test(curTrimmed)) continue;
+
+        const prevTrimmed = lines[i - 1].trim();
+        const prev2Trimmed = i >= 2 ? lines[i - 2].trim() : '';
+        if (!prevTrimmed) continue; // 이미 빈 줄이 있거나 이전 줄이 비어있음
+        if (prev2Trimmed) {
+            lines.splice(i, 0, '');
+            changed = true;
+            i += 1;
+        }
+    }
+
+    let value = lines.join('\n');
+    if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForTidy === 'function') {
+        const trtValue = specialTRT.prepareForTidy(value);
+        if (trtValue !== value) changed = true;
+        value = trtValue;
+    }
+
     return {
-        value: lines.join('\n'),
+        value,
         changed
     };
 }
@@ -1723,6 +2229,53 @@ function handleTableInsertion() {
     if (activeSidebarTab === 'toc') renderTOC();
 }
 
+function insertLiteralAtCursor(literal) {
+    if (!isEditMode || !editorTextarea) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const currentScrollTop = editorTextarea.scrollTop;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, literal);
+    currentMarkdown = editorTextarea.value;
+    editorTextarea.scrollTop = currentScrollTop;
+    editorTextarea.setSelectionRange(start + literal.length, start + literal.length);
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+}
+
+function insertFootnoteTemplate() {
+    if (!isEditMode || !editorTextarea) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+
+    const marker = '[^1]';
+    const footnoteDef = '[^1]: <span style=\"font-size:9pt\">각주 내용.</span>';
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const text = editorTextarea.value;
+
+    const withMarker = text.substring(0, start) + marker + text.substring(end);
+    let finalText = withMarker;
+    if (!/\[\^1\]:/.test(withMarker)) {
+        const suffix = withMarker.endsWith('\n') ? '' : '\n';
+        finalText = withMarker + suffix + '\n' + footnoteDef;
+    }
+
+    editorTextarea.value = finalText;
+    currentMarkdown = finalText;
+    const newPos = start + marker.length;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(newPos, newPos);
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    showToast('각주 템플릿을 삽입했습니다.');
+}
+
 function convertSelectionPatternToTable() {
     const start = editorTextarea.selectionStart;
     const end = editorTextarea.selectionEnd;
@@ -1827,6 +2380,109 @@ function convertSelectionPatternToTable() {
     editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
+}
+
+function convertSelectionMarkdownToHtml() {
+    if (!isEditMode || !editorTextarea) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+    if (typeof marked === 'undefined' || typeof marked.parse !== 'function') {
+        showToast('Markdown parser를 찾을 수 없습니다.');
+        return;
+    }
+
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    if (start === end) {
+        showToast('HTML로 변환할 영역을 먼저 선택해 주세요.');
+        return;
+    }
+
+    const selectedText = editorTextarea.value.substring(start, end);
+    const convertedHtml = String(marked.parse(selectedText)).trim();
+    if (!convertedHtml) {
+        showToast('변환할 내용이 없습니다.');
+        return;
+    }
+
+    const scrollTop = editorTextarea.scrollTop;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, convertedHtml);
+
+    currentMarkdown = editorTextarea.value;
+    editorTextarea.scrollTop = scrollTop;
+    editorTextarea.setSelectionRange(start, start + convertedHtml.length);
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    showToast('선택 영역을 HTML 코드로 변환했습니다.');
+}
+
+function openTextStyleModal() {
+    const modal = document.getElementById('text-style-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeTextStyleModal() {
+    const modal = document.getElementById('text-style-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function applyTextStyleToSelection() {
+    if (!isEditMode || !editorTextarea) {
+        showToast('편집 모드에서 사용하세요.');
+        return;
+    }
+
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    if (start === end) {
+        showToast('서식을 적용할 텍스트를 먼저 선택해 주세요.');
+        return;
+    }
+
+    const fontSizeEnabled = !!document.getElementById('style-enable-font-size')?.checked;
+    const fontSizeValue = document.getElementById('style-font-size')?.value || '';
+    const textColorEnabled = !!document.getElementById('style-enable-text-color')?.checked;
+    const textColorValue = document.getElementById('style-text-color')?.value || '#000000';
+    const bgColorEnabled = !!document.getElementById('style-enable-highlight')?.checked;
+    const bgColorValue = document.getElementById('style-highlight-color')?.value || '#fff59d';
+    const boldEnabled = !!document.getElementById('style-enable-bold')?.checked;
+    const italicEnabled = !!document.getElementById('style-enable-italic')?.checked;
+
+    const selected = editorTextarea.value.substring(start, end);
+    const escaped = selected
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>');
+
+    let html = escaped;
+    const styleParts = [];
+    if (fontSizeEnabled && fontSizeValue) styleParts.push('font-size:' + fontSizeValue);
+    if (textColorEnabled) styleParts.push('color:' + textColorValue);
+    if (bgColorEnabled) styleParts.push('background-color:' + bgColorValue);
+
+    if (styleParts.length > 0) {
+        html = '<span style="' + styleParts.join(';') + ';">' + html + '</span>';
+    }
+    if (boldEnabled) html = '<strong>' + html + '</strong>';
+    if (italicEnabled) html = '<em>' + html + '</em>';
+
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, html);
+    currentMarkdown = editorTextarea.value;
+    editorTextarea.setSelectionRange(start, start + html.length);
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    closeTextStyleModal();
+    showToast('선택 텍스트에 HTML 서식을 적용했습니다.');
 }
 
 function openLinkModal(mode) {
@@ -2013,7 +2669,50 @@ async function saveImgbbApiKey(key) {
     await setAiSettings({ imgbbApiKey: value });
     if (value) localStorage.setItem('ss_imgbb_api_key', value);
     else localStorage.removeItem('ss_imgbb_api_key');
+    syncImgbbApiKeyInputs(value);
     return value;
+}
+
+function getImageUploadEnabledFromSettings(settings) {
+    if (!settings) return false;
+    return settings.imageUploadEnabled === true;
+}
+
+function applyImageUploadFeatureVisibility(settings) {
+    const enabled = getImageUploadEnabledFromSettings(settings || {});
+    const imgBtn = document.getElementById('btn-image-insert');
+    if (imgBtn) imgBtn.style.display = enabled ? '' : 'none';
+    const imgUpBtn = document.getElementById('btn-image-upload-tool');
+    if (imgUpBtn) imgUpBtn.style.display = enabled ? '' : 'none';
+
+    const section = document.getElementById('image-upload-settings');
+    const check = document.getElementById('image-upload-enabled');
+    if (section && check) section.classList.toggle('hidden', !check.checked);
+}
+
+async function toggleImageUploadSection() {
+    const check = document.getElementById('image-upload-enabled');
+    const enabled = !!(check && check.checked);
+    await setAiSettings({ imageUploadEnabled: enabled });
+    const s = await getAiSettings();
+    applyImageUploadFeatureVisibility(s || { imageUploadEnabled: enabled });
+}
+
+async function saveImgbbApiKeyFromModal() {
+    const input = document.getElementById('ai-imgbb-api-key');
+    const feedback = document.getElementById('ai-imgbb-feedback');
+    const value = (input && input.value) ? input.value.trim() : '';
+    await saveImgbbApiKey(value);
+    if (feedback) feedback.textContent = value ? 'imgBB API 키를 저장했습니다.' : 'imgBB API 키를 비웠습니다.';
+    showToast(value ? 'imgBB API 키 저장 완료' : 'imgBB API 키를 삭제했습니다.');
+}
+
+function syncImgbbApiKeyInputs(value) {
+    const v = String(value || '');
+    const settingsInput = document.getElementById('ai-imgbb-api-key');
+    if (settingsInput && settingsInput.value !== v) settingsInput.value = v;
+    const sspInput = document.getElementById('ssp-imgbb-api-key');
+    if (sspInput && sspInput.value !== v) sspInput.value = v;
 }
 
 function setAiPasswordVerifiedUI(state) {
@@ -2134,11 +2833,19 @@ async function persistAiSettingsFromModal() {
     const githubEl = document.getElementById('ai-github-enabled');
     const scholarOn = verified && scholarEl && scholarEl.checked;
     const sspimgOn = verified && sspimgEl && sspimgEl.checked;
+    const imageUploadEl = document.getElementById('image-upload-enabled');
+    const imageUploadEnabled = !!(imageUploadEl && imageUploadEl.checked);
+    const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
+    const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     await setAiSettings({
         scholarAI: !!scholarOn,
         sspimgAI: !!sspimgOn,
-        githubEnabled: !!(githubEl && githubEl.checked)
+        githubEnabled: !!(githubEl && githubEl.checked),
+        imageUploadEnabled: imageUploadEnabled,
+        imgbbApiKey: imgbbKey
     });
+    if (imgbbKey) localStorage.setItem('ss_imgbb_api_key', imgbbKey);
+    else localStorage.removeItem('ss_imgbb_api_key');
 }
 
 async function closeSettingsModal() {
@@ -2253,6 +2960,7 @@ async function applyAiFeatureVisibility() {
         }
     }
     if (showAi) ensureSidebarAILoaded();
+    applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
 }
 
 function setAiSidebarWrapVisible(w, isLoading) {
@@ -2454,9 +3162,39 @@ function openSspimgAIFromHeader() {
     });
 }
 
+function openImageUploadTool() {
+    setAiSidebarWrapVisible(400, true);
+    ensureSidebarAILoaded();
+    ensureSidebarAILoadedThen(function () {
+        var ssp = document.getElementById('ssp-ai-sidebar');
+        if (!ssp) return;
+        if (!ssp.classList.contains('open') && typeof toggleViewerSSP === 'function') toggleViewerSSP();
+        refreshAiRightSidebarWrap();
+        requestAnimationFrame(function () {
+            var uploadZone = document.getElementById('ssp-upload-zone');
+            if (uploadZone && typeof uploadZone.scrollIntoView === 'function') {
+                uploadZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
+    });
+}
+
+function viewerSSPCropFromPanel() {
+    const resultImg = document.getElementById('ssp-result-img');
+    const src = resultImg && resultImg.src ? resultImg.src : '';
+    if (!src) {
+        showToast('먼저 이미지를 생성하거나 업로드하세요.');
+        return;
+    }
+    if (typeof window.viewerSSPOpenFullscreen === 'function') window.viewerSSPOpenFullscreen(src);
+    if (typeof window.viewerSSPFsCrop === 'function') window.viewerSSPFsCrop();
+}
+
 window.__onAiSidebarPanelClosed = refreshAiRightSidebarWrap;
 window.openScholarAIFromHeader = openScholarAIFromHeader;
 window.openSspimgAIFromHeader = openSspimgAIFromHeader;
+window.openImageUploadTool = openImageUploadTool;
+window.viewerSSPCropFromPanel = viewerSSPCropFromPanel;
 window.refreshAiRightSidebarWrap = refreshAiRightSidebarWrap;
 if (!window.__aiSidebarResizeBound) {
     window.__aiSidebarResizeBound = true;
@@ -2487,6 +3225,7 @@ function ensureSidebarAILoaded() {
             getApiKey: function () { return localStorage.getItem('ss_gemini_api_key') || ''; },
             getImgbbApiKey: function () { return getImgbbApiKey(); },
             setImgbbApiKey: async function (key) { return saveImgbbApiKey(key); },
+            getImageUploadEnabled: function () { return true; },
             callGemini: async function (prompt, systemInstruction, useSearch, modelOverride) {
                 const key = localStorage.getItem('ss_gemini_api_key') || '';
                 const modelId = modelOverride || 'gemini-2.5-flash';
@@ -2661,6 +3400,9 @@ function injectSidebarAIHtml() {
         inner.style.overflow = 'hidden';
         inner.className = 'h-full flex flex-row items-stretch overflow-hidden min-w-0';
         inner.innerHTML = html;
+        getAiSettings().then(function (s) {
+            applyImageUploadFeatureVisibility(s || { imageUploadEnabled: false });
+        });
         if (typeof lucide !== 'undefined') lucide.createIcons();
         return true;
     };
@@ -2738,13 +3480,24 @@ function injectSidebarAIHtml() {
 async function loadAiSettingsToUI() {
     const settings = await getAiSettings();
     if (!settings) {
+        const imageCheckEmpty = document.getElementById('image-upload-enabled');
+        if (imageCheckEmpty) imageCheckEmpty.checked = false;
+        const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
+        if (imageInputEmpty) imageInputEmpty.value = '';
+        syncImgbbApiKeyInputs('');
         updateAiScholarSspimgAvailability(false);
+        applyImageUploadFeatureVisibility({ imageUploadEnabled: false });
         return;
     }
     const apiInput = document.getElementById('ai-api-key');
     if (apiInput && settings.apiKey) apiInput.value = settings.apiKey;
     if (settings.imgbbApiKey) localStorage.setItem('ss_imgbb_api_key', settings.imgbbApiKey);
     else localStorage.removeItem('ss_imgbb_api_key');
+    const imageCheck = document.getElementById('image-upload-enabled');
+    if (imageCheck) imageCheck.checked = settings.imageUploadEnabled === true;
+    const imageKeyInput = document.getElementById('ai-imgbb-api-key');
+    if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
+    syncImgbbApiKeyInputs(settings.imgbbApiKey || '');
     if (typeof validateApiKeyInputUI === 'function') validateApiKeyInputUI();
     const useCheck = document.getElementById('ai-use-checkbox');
     const section = document.getElementById('ai-password-section');
@@ -2786,6 +3539,7 @@ async function loadAiSettingsToUI() {
         if (contactEl) contactEl.value = settings.userInfo.contact || '';
         if (emailEl) emailEl.value = settings.userInfo.email || '';
     }
+    applyImageUploadFeatureVisibility(settings);
 }
 
 async function initAiVisibility() {
@@ -2806,6 +3560,7 @@ async function initAiVisibility() {
         if (sspimgEl) sspimgEl.checked = false;
     }
     updateAiScholarSspimgAvailability(verified);
+    applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     await applyAiFeatureVisibility();
 }
 
@@ -2988,6 +3743,17 @@ window.insertAtCursor = insertAtCursor;
 window.insertUserInfoAtCursor = insertUserInfoAtCursor;
 window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
 window.insertHtmlImageAtCursor = insertHtmlImageAtCursor;
+window.openImageInsertModal = openImageInsertModal;
+window.closeImageInsertModal = closeImageInsertModal;
+window.toggleImageInsertDockRight = toggleImageInsertDockRight;
+window.focusImageInsertPasteZone = focusImageInsertPasteZone;
+window.handleImageInsertFile = handleImageInsertFile;
+window.onImageInsertUploadDragOver = onImageInsertUploadDragOver;
+window.onImageInsertUploadDragLeave = onImageInsertUploadDragLeave;
+window.onImageInsertUploadDrop = onImageInsertUploadDrop;
+window.cropImageInsertCurrent = cropImageInsertCurrent;
+window.uploadImageInsertToImgbb = uploadImageInsertToImgbb;
+window.insertImageFromModal = insertImageFromModal;
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
@@ -3031,6 +3797,12 @@ window.scrollToLine = scrollToLine;
 window.applyHeading = applyHeading;
 window.handleTableInsertion = handleTableInsertion;
 window.convertSelectionPatternToTable = convertSelectionPatternToTable;
+window.convertSelectionMarkdownToHtml = convertSelectionMarkdownToHtml;
+window.insertLiteralAtCursor = insertLiteralAtCursor;
+window.insertFootnoteTemplate = insertFootnoteTemplate;
+window.openTextStyleModal = openTextStyleModal;
+window.closeTextStyleModal = closeTextStyleModal;
+window.applyTextStyleToSelection = applyTextStyleToSelection;
 
 // --- Advanced Edit Functions ---
 function openFindReplace() {

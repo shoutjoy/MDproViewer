@@ -32,10 +32,20 @@
         .markdown-body h1 { font-size: 2.25rem; font-weight: 800; margin-top: 1.5rem; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
         .markdown-body h2 { font-size: 1.875rem; font-weight: 700; margin-top: 1.25rem; margin-bottom: 0.75rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.3rem; }
         .markdown-body h3 { font-size: 1.5rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.5rem; }
+        .markdown-body h4 { font-size: 1.25rem; font-weight: 600; margin-top: 0.9rem; margin-bottom: 0.45rem; }
+        .markdown-body h5 { font-size: 1.1rem; font-weight: 600; margin-top: 0.85rem; margin-bottom: 0.4rem; }
         .markdown-body p { margin-bottom: 1rem; }
         .markdown-body ul, .markdown-body ol { margin-bottom: 1rem; padding-left: 1.5rem; list-style-position: outside; }
         .markdown-body ul { list-style-type: disc; }
         .markdown-body ol { list-style-type: decimal; }
+        .markdown-body li.task-list-item {
+            list-style: none;
+            margin-left: -1.25rem;
+        }
+        .markdown-body li.task-list-item input[type="checkbox"] {
+            margin-right: 0.45rem;
+            vertical-align: middle;
+        }
         /* 라이트 모드: 코드 블록 회색 배경, 검정 글씨. 형광펜 효과 제거 */
         .markdown-body code { padding: 0.2rem 0.4rem; border-radius: 0.25rem; font-family: 'JetBrains Mono', monospace; font-size: 0.9em; background-color: #e2e8f0; color: #1e293b; }
         .markdown-body pre { background-color: #e2e8f0; color: #1e293b; padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin-bottom: 1rem; }
@@ -57,6 +67,12 @@
             text-align: left;
             vertical-align: top;
         }
+        .markdown-body th[align="left"],
+        .markdown-body td[align="left"] { text-align: left; }
+        .markdown-body th[align="center"],
+        .markdown-body td[align="center"] { text-align: center; }
+        .markdown-body th[align="right"],
+        .markdown-body td[align="right"] { text-align: right; }
         .markdown-body thead th {
             background-color: #e2e8f0;
             font-weight: 700;

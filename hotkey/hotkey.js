@@ -4,12 +4,17 @@
         { action: 'View mode', keys: ['Alt', '2'] },
         { action: 'Theme toggle', keys: ['Alt', '4'] },
         { action: 'Pattern to table', keys: ['Alt', '7'] },
+        { action: 'Text style modal', keys: ['Alt', 'L'] },
         { action: 'Heading H1', keys: ['Ctrl', 'Alt', '1'] },
         { action: 'Heading H2', keys: ['Ctrl', 'Alt', '2'] },
         { action: 'Heading H3', keys: ['Ctrl', 'Alt', '3'] },
         { action: 'Find/Replace', keys: ['Ctrl', 'H'] },
         { action: 'Bold', keys: ['Ctrl', 'B'] },
         { action: 'Italic', keys: ['Ctrl', 'I'] },
+        { action: 'Tidy', keys: ['Ctrl', 'Alt', 'T'] },
+        { action: 'MD to HTML', keys: ['Shift', 'Alt', 'H'] },
+        { action: 'Insert <br>', keys: ['Ctrl', 'Shift', 'Enter'] },
+        { action: 'Insert &nbsp;', keys: ['Ctrl', 'Shift', 'Space'] },
         { action: 'Undo', keys: ['Ctrl', 'Z'] },
         { action: 'Redo', keys: ['Ctrl', 'Shift', 'Z'], alt: ['Ctrl', 'Y'] },
         { action: 'Move line up', keys: ['Alt', 'ArrowUp'] },
@@ -63,10 +68,35 @@
                 if (typeof deps.showThemeToggleToast === 'function') deps.showThemeToggleToast();
                 return;
             }
+            if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyL' || e.key === 'l' || e.key === 'L')) {
+                e.preventDefault();
+                if (typeof deps.openTextStyleModal === 'function') deps.openTextStyleModal();
+                return;
+            }
 
             if (e.altKey && !e.ctrlKey && !e.shiftKey && isDigitKey(e, 7)) {
                 e.preventDefault();
                 if (typeof deps.convertSelectionPatternToTable === 'function') deps.convertSelectionPatternToTable();
+                return;
+            }
+            if (e.shiftKey && e.altKey && !e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
+                e.preventDefault();
+                if (typeof deps.convertSelectionMarkdownToHtml === 'function') deps.convertSelectionMarkdownToHtml();
+                return;
+            }
+            if (e.ctrlKey && e.altKey && !e.shiftKey && (e.key === 't' || e.key === 'T')) {
+                e.preventDefault();
+                if (typeof deps.tidySeparatorSpacingInEditor === 'function') deps.tidySeparatorSpacingInEditor();
+                return;
+            }
+            if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === 'Enter' || e.key === 'Enter')) {
+                e.preventDefault();
+                if (typeof deps.insertLiteralAtCursor === 'function') deps.insertLiteralAtCursor('<br>');
+                return;
+            }
+            if (e.ctrlKey && e.shiftKey && !e.altKey && (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar')) {
+                e.preventDefault();
+                if (typeof deps.insertLiteralAtCursor === 'function') deps.insertLiteralAtCursor('&nbsp;');
                 return;
             }
 

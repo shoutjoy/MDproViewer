@@ -117,6 +117,7 @@
       <label><input type="checkbox" id="ssp-no-text"> Pure image (no text)</label>
       <div class="ssp-action-row">
         <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">Generate</button>
+        <button type="button" class="sa-btn ghost ssp-btn-crop" onclick="viewerSSPCropFromPanel()" title="Crop current result">Crop</button>
         <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="Upload to imgBB">[imgBB] Upload</button>
         <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB settings">Settings</button>
       </div>
@@ -127,6 +128,9 @@
           <button type="button" class="sa-btn ghost" onclick="viewerSSPSaveImgbbSettings()">Save</button>
         </div>
         <div id="ssp-imgbb-settings-status" style="margin-top:6px;font-size:10px;color:#64748b">Enter your imgBB API key to enable direct uploads.</div>
+        <div style="margin-top:8px;font-size:11px">
+          <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline">Get API key: https://api.imgbb.com/</a>
+        </div>
       </div>
       <label class="ssp-img-link-label">Image URL -> Insert (Markdown / HTML)</label>
       <div class="ssp-img-link-row">
