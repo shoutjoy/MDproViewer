@@ -2917,9 +2917,17 @@ function adjustFontSize(delta) {
     document.getElementById('font-size-display').textContent = `${fontSize}px`;
 }
 
+function sanitizeUiMessage(msg) {
+    const text = String(msg == null ? '' : msg);
+    if (!text) return '';
+    const qCount = (text.match(/\?/g) || []).length;
+    const bad = text.includes('�') || text.includes('???') || (text.length >= 12 && (qCount / text.length) > 0.2);
+    return bad ? 'Message unavailable due to encoding issue.' : text;
+}
+
 function showToast(msg) {
     const toast = document.getElementById('toast');
-    toast.textContent = msg;
+    toast.textContent = sanitizeUiMessage(msg);
     toast.style.opacity = "1";
     setTimeout(() => { toast.style.opacity = "0"; }, 3000);
 }
