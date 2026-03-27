@@ -2,11 +2,10 @@
 md-electron/
 Release/
 Docs/
+# 복구용 파일 제외 
+
+index복구용.html
 
 # 업로드 자동화 제외 
 push.bat
 push.py
-
-# local broken-backup files
-index_깨짐
-index_깨짐*

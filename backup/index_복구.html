@@ -59,7 +59,7 @@
                 <i data-lucide="folder-open" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
                 <span class="hidden xl:inline text-sm font-medium">열기</span>
             </button>
-            <input type="file" id="file-input" class="hidden" accept=".md,.txt,.mpv,.json,.zip,.mdd" onchange="handleFileSelect(event)">
+            <input type="file" id="file-input" class="hidden" accept=".md,.txt,.mpv,.json" onchange="handleFileSelect(event)">
 
             <button onclick="saveFile()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0"
@@ -194,14 +194,6 @@
             </div>
             <div id="toc-list" class="hidden flex-1 overflow-y-auto custom-scrollbar p-2">
                 <!-- TOC Items loaded here -->
-            </div>
-            <div class="p-2 border-t border-slate-200 dark:border-slate-700">
-                <button type="button" onclick="clearUnusedCache()"
-                    class="w-full flex items-center justify-center gap-2 px-3 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded-md text-xs font-semibold text-slate-700 dark:text-slate-200 transition-colors"
-                    title="Clear temporary cache">
-                    <i data-lucide="refresh-ccw" class="w-3.5 h-3.5"></i>
-                    <span class="sidebar-text">Clear Cache</span>
-                </button>
             </div>
         </aside>
 
@@ -1039,11 +1031,6 @@
                 <button type="button" onclick="closeSettingsModal()"
                     class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm">
                     닫기
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Scholar Search Modal -->
     <div id="scholar-search-modal" class="fixed inset-0 bg-transparent hidden items-start justify-end z-50 no-print pointer-events-none">
         <div id="scholar-search-panel" class="pointer-events-auto mt-20 mr-5 bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-2xl p-4 w-full max-w-xl border border-slate-200 dark:border-slate-700 backdrop-blur-[1px]">
@@ -1093,6 +1080,12 @@
                     </div>
                 </div>
                 <p id="scholar-search-help" class="text-[11px] text-amber-600 dark:text-amber-400">Results open in a new browser tab.</p>
+            </div>
+        </div>
+    </div>
+                    </div>
+                </div>
+                <p class="text-[11px] text-amber-600 dark:text-amber-400">검색 결과는 새 창에서 열립니다.</p>
             </div>
         </div>
     </div>
@@ -1157,23 +1150,23 @@
             </div>
             <input type="file" id="img-insert-file" accept="image/*" class="hidden" onchange="handleImageInsertFile(event)">
 
-            <div class="grid grid-cols-2 gap-0 rounded-xl border border-slate-200/80 dark:border-slate-600/80 bg-slate-100/70 dark:bg-slate-800/70 mb-4 overflow-hidden">
+            <div class="grid grid-cols-2 gap-0 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 mb-4 overflow-hidden">
                 <button type="button" id="img-insert-upload-zone"
                     onclick="document.getElementById('img-insert-file').click()"
                     ondragover="onImageInsertUploadDragOver(event)"
                     ondragleave="onImageInsertUploadDragLeave(event)"
                     ondrop="onImageInsertUploadDrop(event)"
-                    class="h-32 border-2 border-dashed border-slate-300/70 dark:border-slate-500/70 border-r border-r-slate-200/70 dark:border-r-slate-600/70 rounded-none flex flex-col items-center justify-center gap-1 text-indigo-600/85 dark:text-indigo-300/85 bg-slate-50/45 dark:bg-slate-700/20 transition-colors">
-                    <i data-lucide="image-up" class="w-5 h-5 opacity-90"></i>
-                    <div class="text-sm sm:text-base font-bold tracking-tight leading-tight">이미지 업로드</div>
-                    <div class="text-[10px] font-medium text-slate-500/80 dark:text-slate-300/80">JPG, PNG, GIF, WebP</div>
-                    <div class="text-[10px] font-medium text-slate-500/80 dark:text-slate-300/80">드래그 앤 드롭</div>
+                    class="h-44 border-2 border-dashed border-slate-300 dark:border-slate-500 border-r border-r-slate-200 dark:border-r-slate-600 rounded-none flex flex-col items-center justify-center gap-1 text-indigo-600 dark:text-indigo-300 bg-slate-50/60 dark:bg-slate-700/30 transition-colors">
+                    <i data-lucide="image-up" class="w-8 h-8"></i>
+                    <div class="text-3xl font-extrabold leading-none">이미지 업로드</div>
+                    <div class="text-sm font-semibold text-slate-500 dark:text-slate-300">JPG, PNG, GIF, WebP</div>
+                    <div class="text-sm font-semibold text-slate-500 dark:text-slate-300">드래그 앤 드롭</div>
                 </button>
                 <button type="button" id="img-insert-paste-zone" onclick="focusImageInsertPasteZone()"
-                    class="h-32 border-2 border-dashed border-slate-300/70 dark:border-slate-500/70 rounded-none flex flex-col items-center justify-center gap-1 text-slate-600/85 dark:text-slate-300/85 bg-slate-50/45 dark:bg-slate-700/20">
-                    <i data-lucide="clipboard" class="w-5 h-5 text-amber-500/90"></i>
-                    <div class="text-sm sm:text-base font-bold tracking-tight leading-tight">이 공간 클릭 후</div>
-                    <div class="text-sm sm:text-base font-bold tracking-tight leading-tight"><span class="px-1 py-0.5 rounded bg-slate-200/70 dark:bg-slate-600/70">Ctrl+V</span> 로 이미지 붙여넣기</div>
+                    class="h-44 border-2 border-dashed border-slate-300 dark:border-slate-500 rounded-none flex flex-col items-center justify-center gap-2 text-slate-500 dark:text-slate-300 bg-slate-50/60 dark:bg-slate-700/30">
+                    <i data-lucide="clipboard" class="w-8 h-8 text-amber-500"></i>
+                    <div class="text-3xl font-extrabold leading-none">이 공간 클릭 후</div>
+                    <div class="text-3xl font-extrabold leading-none"><span class="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-600">Ctrl+V</span> 로 이미지 붙여넣기</div>
                 </button>
             </div>
 
@@ -1204,8 +1197,6 @@
     <script src="./js/md_katex_render.js" charset="utf-8" defer></script>
     <script src="./trt/special_trt.js" charset="utf-8" defer></script>
     <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
-    <script src="./imageDB/imageDB.js" charset="utf-8" defer></script>
-    <script src="./js/extendFiles/extend-files.js" charset="utf-8" defer></script>
     <script src="./js/app.js" charset="utf-8" defer></script>
 </body>
 

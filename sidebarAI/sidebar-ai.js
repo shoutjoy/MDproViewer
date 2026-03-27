@@ -19,191 +19,32 @@
   window.__sidebarAILoaded = true;
 
   var SIDEBAR_AI_HTML = String.raw`
-<div class="scholar-ai-sidebar" id="scholar-ai-sidebar">
-  <div class="scholar-ai-resize-handle" id="scholar-ai-resize-handle" title="????????癲????????????????????????????????????????????????????????></div>
-  <div class="scholar-ai-inner">
-    <div class="scholar-ai-header">
-      <h3>ScholarAI</h3>
-      <span>
-        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="???????????????ㅻ깹?????>&gt;???????????????ㅻ깹?????/button>
-        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="?????????????????怨뺤떪???????>???????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦??????????/button>
-      </span>
-    </div>
-    <div class="scholar-ai-body">
-      <div class="scholar-ai-options-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-        <button type="button" class="sa-btn ghost" id="sa-pre-prompt-btn" onclick="toggleScholarAIPrePrompt()" style="font-size:11px">??????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦?????????????????????????/button>
-        <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">?????????????????????????????????????????/button>
-      </div>
-      <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
-        <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="???????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦?????????????????????????????????????????????????????????????????????????ш끽維뽳쭩?뱀땡???얩맪??????????????????????癲??????????????????????筌???? ???????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦???????????????????????ㅻ깹??????????????????????????????嶺??" style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
-      </div>
-      <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
-        <label style="font-size:10px;margin-bottom:4px">???????????????????????????/label>
-        <select id="scholar-ai-model-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
-          <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-          <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-          <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
-          <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
-          <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
-        </select>
-      </div>
-      <label>???????????????????????????????????????????????????????????椰???????????</label>
-      <textarea id="scholar-ai-selected" placeholder="??????????????????????椰???????????? ??????????????????????????????????????癲?????????? ?????????????????????????癲??????????"></textarea>
-      <div class="scholar-ai-prompt-wrap" id="scholar-ai-prompt-wrap">
-        <label>???????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦?????????????????????????????????/label>
-        <textarea id="scholar-ai-prompt" placeholder="???????????????????????????????????????????????????????????????????????????????????? ???????????????????????癲??????????????????????筌????></textarea>
-        <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="????????癲?????????????????????????????????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦????????????????????????????????????????????????????됰Ŧ???????????????????????></div>
-      </div>
-      <button type="button" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">????????</button>
-      <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
-        <label>??????耀붾굝??????筌뤾퍓彛???????????????濾??????????????????????롮쾸?椰?癲ル슢?ｆ쾮????/label>
-        <textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="???????? ????????耀붾굝??????筌뤾퍓彛????????????????椰????????? ?????????????癲?????????? ???????????????????????ш끽維뽳쭩?뱀땡???얩맪?????????????????????????????????????????⑤벡瑜?????????????????????????嶺??"></textarea>
-        <div class="scholar-ai-result-resize-handle" id="scholar-ai-result-resize-handle" title="????????癲????????????????????????????????????耀붾굝??????筌뤾퍓彛???????????????濾??????????????????????롮쾸?椰?癲ル슢?ｆ쾮???????????????????????????됰Ŧ???????????????????????></div>
-      </div>
-    </div>
-    <div class="scholar-ai-footer">
-      <div class="scholar-ai-insert-wrap">
-        <button type="button" class="sa-btn ghost" onclick="handleScholarAIInsertClick()">?????????????/button>
-        <div class="scholar-ai-insert-menu" id="scholar-ai-insert-menu">
-          <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">????????????????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦???????/button>
-          <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">????????????????????諛몃마嶺뚮?????????????硫λ젒?????????????????????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦???????/button>
-          <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">?????????????????????????????????/button>
-        </div>
-      </div>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="??????耀붾굝??????筌뤾퍓彛???????????????????????????????????怨뺤떪???????>????????耀붾굝??????筌뤾퍓彛??????????????????????????怨뺤떪???????/button>
-      <span class="sa-font">font</span>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">-</button>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(1)">+</button>
-      <button type="button" class="sa-btn" onclick="scholarAICopyResult()">??????耀붾굝??????筌뤾퍓彛?????????????????????癲됱빖???嶺??亦껋꼦????????/button>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIClearResult()" title="??????耀붾굝??????筌뤾퍓彛???????????????濾??????????????????????롮쾸?椰?癲ル슢?ｆ쾮???????????????????????????????????????????????ㅻ깹?????>??????耀붾굝??????筌뤾퍓彛???????????????濾??????????????????????롮쾸?椰?癲ル슢?ｆ쾮?????????????????????????????????ㅻ깹?????/button>
-    </div>
-    <div id="scholar-ai-result-zoom-overlay" class="scholar-ai-result-zoom-overlay" onclick="if(event.target.id==='scholar-ai-result-zoom-overlay') scholarAIResultZoomClose()">
-      <div class="scholar-ai-result-zoom-box" onclick="event.stopPropagation()">
-        <div class="scholar-ai-result-zoom-header">
-          <span>???????? ??????耀붾굝??????筌뤾퍓彛??????????????????????????怨뺤떪???????/span>
-          <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">???????/button>
-        </div>
-        <div class="scholar-ai-result-zoom-body">
-          <textarea id="scholar-ai-result-zoom-ta" placeholder="??????耀붾굝??????筌뤾퍓彛????????????????椰????????? ??????????????????癲??????????"></textarea>
-        </div>
-      </div>
-    </div>
-    <div class="scholar-ai-history">
-      <label>???????????????怨뺤떪????????????/label>
-      <input type="text" id="scholar-ai-history-search" placeholder="???????????????怨뺤떪??????????????????耀붾굝??????筌뤾퍓彛?????????." class="scholar-ai-history-search">
-      <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()" style="margin-top:4px">???????????????怨뺤떪???????????????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦?????/button>
-    </div>
-  </div>
-</div>
+<!--
+  sidebarAI - ScholarAI & SSPAI HTML Fragments
+  Include these fragments inside the right-side AI panel host.
+-->
 
-<div class="ssp-ai-sidebar" id="ssp-ai-sidebar">
-  <div class="ssp-inner">
-    <div class="ssp-header">
-      <h3>???SSP ?????????????????? ????????????諛몃마嶺뚮?????????????硫λ젒????????????/h3>
-      <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">X ???????/button>
-    </div>
-    <div class="ssp-main">
-      <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="??????????????????癲?????????????????????????????????????>
-        ?????????????????? ???????(JPG, PNG, GIF, WebP)<br><small>?????Ctrl+V ????????????????????椰????????????/small>
-      </div>
-      <input type="file" id="ssp-file-input" accept="image/*" style="display:none">
-      <label>???????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦?????????????????????????1 (???????????????癲??????????????????????????? ????????????????????????????怨뺤떪??????</label>
-      <textarea id="ssp-prompt" placeholder="?? ??????????????????泥???????????????????????????嶺?????????????????????????????????????怨뺤떪??????></textarea>
-      <label>???????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦?????????????????????????2 (???????????????ㅻ깹???? ???????????????? ???????? ??1+2 ??????????????????????</label>
-      <textarea id="ssp-prompt-2" placeholder="?? ???????????꾩룆梨띰쭕?뚢뵾??????????????嶺뚮죭?댁젘????????????????????怨뺤떪????????? ?????????????????? ????????????거????????????? ?????></textarea>
-      <label>?????????????????? ????????????諛몃마嶺뚮?????????????硫λ젒??????????????????????????????????????/label>
-      <select id="ssp-model">
-        <option value="gemini-3.1-flash-image-preview">Nano Banana 2</option>
-        <option value="gemini-2.5-flash-image">Nano Banana</option>
-        <option value="gemini-3-pro-image-preview">Nano Banana Pro</option>
-        <option value="imagen-4.0-generate-001">Imagen 4</option>
-      </select>
-      <label>?????????????????? ?????/label>
-      <div class="ssp-ratio-wrap">
-        <button type="button" class="ssp-ratio-btn active" data-ratio="1:1">1:1</button>
-        <button type="button" class="ssp-ratio-btn" data-ratio="16:9">16:9</button>
-        <button type="button" class="ssp-ratio-btn" data-ratio="9:16">9:16</button>
-        <button type="button" class="ssp-ratio-btn" data-ratio="4:3">4:3</button>
-        <button type="button" class="ssp-ratio-btn" data-ratio="3:4">3:4</button>
-      </div>
-      <label style="font-size:10px;color:#64748b;display:block;margin-bottom:4px">???????? ??????????????????泥????????????????????????????/label>
-      <label><input type="checkbox" id="ssp-no-text"> ???????????????????????? (??????????椰?????????????????????????????????????</label>
-      <div class="ssp-action-row">
-        <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">???AI ?????/button>
-        <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="imgBB??????????????諛몃마嶺뚮?????????????硫λ젒????????????????????????????????????????????????????????????>[imgBB] ???????/button>
-        <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB API ??????????????????>????????????????/button>
-      </div>
-      <div id="ssp-imgbb-settings" class="ssp-imgbb-settings" style="display:none;margin:8px 0;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:rgba(248,250,252,0.9)">
-        <label for="ssp-imgbb-api-key" style="display:block;font-size:11px;font-weight:700;color:#334155;margin-bottom:6px">imgBB API ??/label>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-          <input type="password" id="ssp-imgbb-api-key" class="ssp-image-link-input" placeholder="imgBB API key" autocomplete="off" spellcheck="false" style="flex:1 1 220px;min-width:180px">
-          <button type="button" class="sa-btn ghost" onclick="viewerSSPSaveImgbbSettings()">????/button>
-        </div>
-        <div id="ssp-imgbb-settings-status" style="margin-top:6px;font-size:10px;color:#64748b">API ??? ?????????????????⑤벡瑜??????????????????????諛몃마嶺뚮?????????????硫λ젒??????????????????????????????????????????꾩룆梨띰쭕?뚢뵾??????????????嶺뚮죭?댁젘????????????imgBB???????????????????????????????????????嶺??</div>
-      </div>
-      <label class="ssp-img-link-label">?????????????????? URL ??????????????????????????????????? ??????(???????????????????????ш끽維뽳쭩?뱀땡???얩맪??????????????????????????????????????????</label>
-      <div class="ssp-img-link-row">
-        <input type="url" id="ssp-image-link-url" class="ssp-image-link-input" placeholder="https://i.ibb.co/??(imgBB ??" inputmode="url">
-        <button type="button" class="sa-btn ghost ssp-btn-insert-md" onclick="sspInsertImageMarkdown()">??????/button>
-      </div>
-      <div id="ssp-progress-wrap" class="ssp-progress-wrap">
-        <div class="ssp-progress-bar">
-          <div id="ssp-progress-fill" class="ssp-progress-fill"></div>
-        </div>
-        <div class="ssp-progress-row">
-          <span id="ssp-progress-pct" style="font-size:10px;color:#94a3b8">0%</span>
-          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="viewerSSPAbort()">????????????諛몃마嶺뚮?????????????硫λ젒?????????????????????????</button>
-        </div>
-      </div>
-      <div id="ssp-status" class="ssp-status"></div>
-      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="????????????諛몃마嶺뚮?????????????硫λ젒?????????????????耀붾굝??????筌뤾퍓彛????????? onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="???????????????????????????怨뺤떪???????>
-      <button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>????????????????????????????????????????/button>
-    </div>
-    <div class="ssp-img-history" style="margin-top:12px;border-top:1px solid #2e3447;padding-top:8px">
-      <label style="font-size:10px;color:#94a3b8;display:block;margin-bottom:6px">?????????????????? ????????????諛몃마嶺뚮?????????????硫λ젒??????????????????????????怨뺤떪????????????/label>
-      <div id="ssp-img-history-list" class="ssp-img-history-list"></div>
-    </div>
-  </div>
-</div>
-
-<div id="viewer-fs-overlay" class="viewer-fs-overlay" onclick="if(event.target.id==='viewer-fs-overlay'||event.target.id==='viewer-fs-area') viewerSSPCloseFullscreen()">
-  <div class="viewer-fs-toolbar" onclick="event.stopPropagation()">
-    <button type="button" onclick="viewerSSPFsZoom(-0.25)" title="???????????????ㅻ깹?????>-</button>
-    <span id="viewer-fs-zoom-val" style="min-width:40px;text-align:center;font-size:12px">100%</span>
-    <button type="button" onclick="viewerSSPFsZoom(0.25)" title="???">+</button>
-    <button type="button" onclick="viewerSSPFsDownload()" title="Download">Download</button>
-    <button type="button" class="viewer-fs-imgbb-btn" onclick="viewerSSPFsUploadImgbb()" title="Upload to imgBB">imgBB Upload</button>
-    <button type="button" class="viewer-fs-insert-btn" onclick="viewerSSPFsInsert()" title="Insert into document">Insert</button>
-    <button type="button" onclick="viewerSSPFsCrop()" title="Crop">Crop</button>
-    <button type="button" onclick="viewerSSPCloseFullscreen()" title="Close">Close</button>
-  </div>
-  <div class="viewer-fs-area" id="viewer-fs-area">
-    <div class="viewer-fs-wrap" id="viewer-fs-wrap"><img id="viewer-fs-img" alt=""></div>
-  </div>
-</div>`;
-
-  var CLEAN_SIDEBAR_AI_HTML = String.raw`
+<!-- ScholarAI Sidebar -->
 <div class="scholar-ai-sidebar" id="scholar-ai-sidebar">
   <div class="scholar-ai-resize-handle" id="scholar-ai-resize-handle" title="Drag to resize"></div>
   <div class="scholar-ai-inner">
     <div class="scholar-ai-header">
       <h3>ScholarAI</h3>
       <span>
-        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;축소</button>
-        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">전체화면</button>
+        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
+        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">Fullscreen</button>
       </span>
     </div>
     <div class="scholar-ai-body">
       <div class="scholar-ai-options-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-        <button type="button" class="sa-btn ghost" id="sa-pre-prompt-btn" onclick="toggleScholarAIPrePrompt()" style="font-size:11px">사전프롬프트</button>
-        <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">모델선택</button>
+        <button type="button" class="sa-btn ghost" id="sa-pre-prompt-btn" onclick="toggleScholarAIPrePrompt()" style="font-size:11px">Pre-prompt</button>
+        <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">Model</button>
       </div>
       <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
-        <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="시스템 지침이나 자주 쓰는 프롬프트를 적어두세요." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
+        <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
       </div>
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
-        <label style="font-size:10px;margin-bottom:4px">모델</label>
+        <label style="font-size:10px;margin-bottom:4px">Model</label>
         <select id="scholar-ai-model-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
           <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
           <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
@@ -211,102 +52,103 @@
           <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
         </select>
-        <label for="scholar-ai-tone-select" style="font-size:10px;margin:8px 0 4px">문체 설정</label>
+        <label for="scholar-ai-tone-select" style="font-size:10px;margin:8px 0 4px">Writing tone</label>
         <select id="scholar-ai-tone-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
-          <option value="academic_ida">학술체 (-이다)</option>
-          <option value="academic_eumham">학술체 (-음, -함)</option>
-          <option value="general_polite">일반체 (존댓말)</option>
+          <option value="academic_ida">Academic (-ida)</option>
+          <option value="academic_eumham">Academic (-eum/-ham)</option>
+          <option value="general_polite">General polite</option>
         </select>
       </div>
-      <label>선택 텍스트</label>
+      <label>Selected text</label>
       <div class="scholar-ai-selected-wrap" id="scholar-ai-selected-wrap">
-        <textarea id="scholar-ai-selected" placeholder="문서에서 선택한 내용이 여기에 들어옵니다."></textarea>
+        <textarea id="scholar-ai-selected" placeholder="The selected passage from the current document appears here."></textarea>
         <div class="scholar-ai-selected-resize-handle" id="scholar-ai-selected-resize-handle" title="Resize selected text"></div>
       </div>
       <div class="scholar-ai-prompt-wrap" id="scholar-ai-prompt-wrap">
-        <label>질문 / 지시</label>
-        <textarea id="scholar-ai-prompt" placeholder="요약, 설명, 비교, 문제 생성 등 원하는 작업을 입력하세요."></textarea>
+        <label>Prompt / Question</label>
+        <textarea id="scholar-ai-prompt" placeholder="Ask for a summary, explanation, comparison, outline, or question set."></textarea>
         <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="Resize prompt"></div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>
-        <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>중지</button>
+        <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">Run</button>
+        <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>Stop</button>
       </div>
       <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
-        <label>결과</label>
-        <textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="실행 결과가 여기에 표시됩니다."></textarea>
+        <label>Result</label>
+        <textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="The generated result will appear here."></textarea>
         <div class="scholar-ai-result-resize-handle" id="scholar-ai-result-resize-handle" title="Resize result"></div>
       </div>
     </div>
     <div class="scholar-ai-footer">
       <div class="scholar-ai-insert-wrap">
-        <button type="button" class="sa-btn ghost" onclick="handleScholarAIInsertClick()">문서삽입</button>
+        <button type="button" class="sa-btn ghost" onclick="handleScholarAIInsertClick()">Insert into document</button>
         <div class="scholar-ai-insert-menu" id="scholar-ai-insert-menu">
-          <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">커서 위치</button>
-          <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">문서 끝</button>
-          <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">선택 대체</button>
+          <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
+          <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
+          <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
         </div>
       </div>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Zoom result">결과 크게보기</button>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
       <span class="sa-font">font</span>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">-</button>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(1)">+</button>
-      <button type="button" class="sa-btn" onclick="scholarAICopyResult()">복사</button>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIClearResult()" title="Clear result">지우기</button>
+      <button type="button" class="sa-btn" onclick="scholarAICopyResult()">Copy result</button>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIClearResult()" title="Clear the result">Clear result</button>
     </div>
     <div id="scholar-ai-result-zoom-overlay" class="scholar-ai-result-zoom-overlay" onclick="if(event.target.id==='scholar-ai-result-zoom-overlay') scholarAIResultZoomClose()">
       <div class="scholar-ai-result-zoom-box" onclick="event.stopPropagation()">
         <div class="scholar-ai-result-zoom-header">
-          <span>결과 크게 보기</span>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span>Zoomed result view</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
             <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(-10)" style="font-size:12px">-</button>
             <span id="scholar-ai-zoom-label" style="font-size:11px;min-width:42px;text-align:center;color:#94a3b8">100%</span>
             <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(10)" style="font-size:12px">+</button>
-            <span style="font-size:11px;color:#94a3b8;margin:0 4px">mode</span>
-            <button type="button" id="scholar-ai-zoom-mode-edit" class="sa-btn ghost" onclick="scholarAISetZoomMode('edit')" style="font-size:12px">편집</button>
-            <button type="button" id="scholar-ai-zoom-mode-view" class="sa-btn ghost" onclick="scholarAISetZoomMode('view')" style="font-size:12px">보기</button>
-            <button type="button" class="sa-btn" onclick="scholarAICopyZoomMarkdown()" style="font-size:12px">결과복사</button>
-            <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">닫기</button>
+            <span style="display:inline-block;width:1px;height:16px;background:#334155;opacity:.6"></span>
+            <button type="button" id="scholar-ai-zoom-mode-edit" class="sa-btn ghost" onclick="scholarAISetZoomMode('edit')" style="font-size:12px">Edit</button>
+            <button type="button" id="scholar-ai-zoom-mode-view" class="sa-btn ghost" onclick="scholarAISetZoomMode('view')" style="font-size:12px">View</button>
+            <button type="button" class="sa-btn" onclick="scholarAICopyZoomMarkdown()" style="font-size:12px">Copy MD</button>
+            <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">Close</button>
           </div>
         </div>
         <div class="scholar-ai-result-zoom-body">
-          <textarea id="scholar-ai-result-zoom-ta" placeholder="결과가 여기에 표시됩니다." oninput="if(window.__scholarAIZoomMode==='view'){scholarAIRenderZoomMarkdown()}"></textarea>
+          <textarea id="scholar-ai-result-zoom-ta" placeholder="The result will appear here." oninput="if(window.__scholarAIZoomMode==='view'){scholarAIRenderZoomMarkdown()}"></textarea>
           <div id="scholar-ai-result-zoom-view" class="scholar-ai-result-zoom-view hidden"></div>
         </div>
       </div>
     </div>
     <div class="scholar-ai-history">
-      <label>히스토리</label>
-      <input type="text" id="scholar-ai-history-search" placeholder="히스토리 검색" class="scholar-ai-history-search">
+      <label>History</label>
+      <input type="text" id="scholar-ai-history-search" placeholder="Search history..." class="scholar-ai-history-search">
       <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()" style="margin-top:4px">전체 저장</button>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()" style="margin-top:4px">Save all history</button>
     </div>
   </div>
 </div>
 
+<!-- SSPAI Sidebar -->
 <div class="ssp-ai-sidebar" id="ssp-ai-sidebar">
   <div class="ssp-inner">
     <div class="ssp-header">
-      <h3>SSP 이미지 생성기</h3>
-      <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">닫기</button>
+      <h3>SSP Image Generator</h3>
+      <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">Close</button>
     </div>
     <div class="ssp-main">
-      <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload">
-        이미지 업로드 (JPG, PNG, GIF, WebP)<br><small>또는 Ctrl+V 붙여넣기</small>
+      <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload an image">
+        Image upload (JPG, PNG, GIF, WebP)<br><small>or Ctrl+V paste</small>
       </div>
       <input type="file" id="ssp-file-input" accept="image/*" style="display:none">
-      <label>프롬프트 1</label>
-      <textarea id="ssp-prompt" placeholder="예: 학술용 다이어그램 스타일로 변환"></textarea>
-      <label>프롬프트 2</label>
-      <textarea id="ssp-prompt-2" placeholder="예: 배경은 흰색, 설명은 한글로"></textarea>
-      <label>이미지 생성 모델</label>
+      <label>Prompt 1 (used for variation when a seed image is provided)</label>
+      <textarea id="ssp-prompt" placeholder="Example: Convert this into a lecture diagram style."></textarea>
+      <label>Prompt 2 (optional, used together with Prompt 1)</label>
+      <textarea id="ssp-prompt-2" placeholder="Example: Use a dark blue background and English labels."></textarea>
+      <label>Image generation model</label>
       <select id="ssp-model">
         <option value="gemini-3.1-flash-image-preview">Nano Banana 2</option>
         <option value="gemini-2.5-flash-image">Nano Banana</option>
         <option value="gemini-3-pro-image-preview">Nano Banana Pro</option>
         <option value="imagen-4.0-generate-001">Imagen 4</option>
       </select>
-      <label>이미지 비율</label>
+      <label>Image ratio</label>
       <div class="ssp-ratio-wrap">
         <button type="button" class="ssp-ratio-btn active" data-ratio="1:1">1:1</button>
         <button type="button" class="ssp-ratio-btn" data-ratio="16:9">16:9</button>
@@ -314,25 +156,30 @@
         <button type="button" class="ssp-ratio-btn" data-ratio="4:3">4:3</button>
         <button type="button" class="ssp-ratio-btn" data-ratio="3:4">3:4</button>
       </div>
-      <label style="font-size:10px;color:#64748b;display:block;margin-bottom:4px">기본: 학술/논문용 도표 스타일</label>
-      <label><input type="checkbox" id="ssp-no-text"> 순수 이미지 (텍스트 없음)</label>
+      <label style="font-size:10px;color:#64748b;display:block;margin-bottom:4px">Default: academic / document-style visual</label>
+      <label><input type="checkbox" id="ssp-no-text"> Pure image (no text)</label>
       <div class="ssp-action-row">
-        <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">AI 생성</button>
-        <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="Upload to imgBB">[imgBB] 업로드</button>
-        <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB settings">설정</button>
+        <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">Generate</button>
+        <button type="button" class="sa-btn ghost ssp-btn-crop" onclick="viewerSSPCropFromPanel()" title="Crop current result">Crop</button>
+        <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="Upload to imgBB">[imgBB] Upload</button>
+        <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB settings">Settings</button>
       </div>
       <div id="ssp-imgbb-settings" class="ssp-imgbb-settings" style="display:none;margin:8px 0;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:rgba(248,250,252,0.9)">
-        <label for="ssp-imgbb-api-key" style="display:block;font-size:11px;font-weight:700;color:#334155;margin-bottom:6px">imgBB API 키</label>
+        <label for="ssp-imgbb-api-key" style="display:block;font-size:11px;font-weight:700;color:#334155;margin-bottom:6px">imgBB API Key</label>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <input type="password" id="ssp-imgbb-api-key" class="ssp-image-link-input" placeholder="imgBB API key" autocomplete="off" spellcheck="false" style="flex:1 1 220px;min-width:180px">
-          <button type="button" class="sa-btn ghost" onclick="viewerSSPSaveImgbbSettings()">저장</button>
+          <button type="button" class="sa-btn ghost" onclick="viewerSSPSaveImgbbSettings()">Save</button>
         </div>
-        <div id="ssp-imgbb-settings-status" style="margin-top:6px;font-size:10px;color:#64748b">API 키를 저장하면 imgBB 업로드를 바로 사용할 수 있습니다.</div>
+        <div id="ssp-imgbb-settings-status" style="margin-top:6px;font-size:10px;color:#64748b">Enter your imgBB API key to enable direct uploads.</div>
+        <div style="margin-top:8px;font-size:11px">
+          <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline">Get API key: https://api.imgbb.com/</a>
+        </div>
       </div>
-      <label class="ssp-img-link-label">Image URL - Insert (Markdown / HTML)</label>
+      <label class="ssp-img-link-label">Image URL -> Insert (Markdown / HTML)</label>
       <div class="ssp-img-link-row">
-        <input type="url" id="ssp-image-link-url" class="ssp-image-link-input" placeholder="https://i.ibb.co/... (imgBB)" inputmode="url">
+        <input type="url" id="ssp-image-link-url" class="ssp-image-link-input" placeholder="https://i.ibb.co/... (imgBB direct link)" inputmode="url">
         <button type="button" class="sa-btn ghost ssp-btn-insert-md" onclick="sspInsertImageMarkdown()">Markdown</button>
+        <button type="button" class="sa-btn ghost ssp-btn-insert-html" onclick="sspInsertImageHtml()">HTML</button>
       </div>
       <div id="ssp-progress-wrap" class="ssp-progress-wrap">
         <div class="ssp-progress-bar">
@@ -340,20 +187,22 @@
         </div>
         <div class="ssp-progress-row">
           <span id="ssp-progress-pct" style="font-size:10px;color:#94a3b8">0%</span>
-          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="viewerSSPAbort()">생성중지</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="viewerSSPAbort()">Abort</button>
         </div>
       </div>
       <div id="ssp-status" class="ssp-status"></div>
       <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="Open fullscreen">
-      <button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>다운로드</button>
+      <button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>Download</button>
     </div>
+    <div class="ssp-history-resizer" title="Drag to resize history"></div>
     <div class="ssp-img-history" style="margin-top:12px;border-top:1px solid #2e3447;padding-top:8px">
-      <label style="font-size:10px;color:#94a3b8;display:block;margin-bottom:6px">이미지 히스토리</label>
+      <label style="font-size:10px;color:#94a3b8;display:block;margin-bottom:6px">Image History</label>
       <div id="ssp-img-history-list" class="ssp-img-history-list"></div>
     </div>
   </div>
 </div>
 
+<!-- SSP Fullscreen Overlay -->
 <div id="viewer-fs-overlay" class="viewer-fs-overlay" onclick="if(event.target.id==='viewer-fs-overlay'||event.target.id==='viewer-fs-area') viewerSSPCloseFullscreen()">
   <div class="viewer-fs-toolbar" onclick="event.stopPropagation()">
     <button type="button" onclick="viewerSSPFsZoom(-0.25)" title="Zoom out">-</button>
@@ -365,10 +214,223 @@
     <button type="button" onclick="viewerSSPFsCrop()" title="Crop">Crop</button>
     <button type="button" onclick="viewerSSPCloseFullscreen()" title="Close">Close</button>
   </div>
+  <aside id="viewer-fs-gallery" class="viewer-fs-gallery" onclick="event.stopPropagation()">
+    <div class="viewer-fs-gallery-title">History Gallery</div>
+    <div id="viewer-fs-gallery-list" class="viewer-fs-gallery-list"></div>
+  </aside>
+  <div id="viewer-fs-imgbb-info" class="viewer-fs-imgbb-info"></div>
   <div class="viewer-fs-area" id="viewer-fs-area">
     <div class="viewer-fs-wrap" id="viewer-fs-wrap"><img id="viewer-fs-img" alt=""></div>
   </div>
-</div>`;
+</div>
+`;
+
+  var CLEAN_SIDEBAR_AI_HTML = String.raw`
+<!--
+  sidebarAI - ScholarAI & SSPAI HTML Fragments
+  Include these fragments inside the right-side AI panel host.
+-->
+
+<!-- ScholarAI Sidebar -->
+<div class="scholar-ai-sidebar" id="scholar-ai-sidebar">
+  <div class="scholar-ai-resize-handle" id="scholar-ai-resize-handle" title="Drag to resize"></div>
+  <div class="scholar-ai-inner">
+    <div class="scholar-ai-header">
+      <h3>ScholarAI</h3>
+      <span>
+        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
+        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">Fullscreen</button>
+      </span>
+    </div>
+    <div class="scholar-ai-body">
+      <div class="scholar-ai-options-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <button type="button" class="sa-btn ghost" id="sa-pre-prompt-btn" onclick="toggleScholarAIPrePrompt()" style="font-size:11px">Pre-prompt</button>
+        <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">Model</button>
+      </div>
+      <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
+        <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
+      </div>
+      <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
+        <label style="font-size:10px;margin-bottom:4px">Model</label>
+        <select id="scholar-ai-model-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
+          <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+          <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+          <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
+          <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
+          <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
+        </select>
+        <label for="scholar-ai-tone-select" style="font-size:10px;margin:8px 0 4px">Writing tone</label>
+        <select id="scholar-ai-tone-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
+          <option value="academic_ida">Academic (-ida)</option>
+          <option value="academic_eumham">Academic (-eum/-ham)</option>
+          <option value="general_polite">General polite</option>
+        </select>
+      </div>
+      <label>Selected text</label>
+      <div class="scholar-ai-selected-wrap" id="scholar-ai-selected-wrap">
+        <textarea id="scholar-ai-selected" placeholder="The selected passage from the current document appears here."></textarea>
+        <div class="scholar-ai-selected-resize-handle" id="scholar-ai-selected-resize-handle" title="Resize selected text"></div>
+      </div>
+      <div class="scholar-ai-prompt-wrap" id="scholar-ai-prompt-wrap">
+        <label>Prompt / Question</label>
+        <textarea id="scholar-ai-prompt" placeholder="Ask for a summary, explanation, comparison, outline, or question set."></textarea>
+        <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="Resize prompt"></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">Run</button>
+        <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>Stop</button>
+      </div>
+      <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
+        <label>Result</label>
+        <textarea id="scholar-ai-result" class="scholar-ai-result" placeholder="The generated result will appear here."></textarea>
+        <div class="scholar-ai-result-resize-handle" id="scholar-ai-result-resize-handle" title="Resize result"></div>
+      </div>
+    </div>
+    <div class="scholar-ai-footer">
+      <div class="scholar-ai-insert-wrap">
+        <button type="button" class="sa-btn ghost" onclick="handleScholarAIInsertClick()">Insert into document</button>
+        <div class="scholar-ai-insert-menu" id="scholar-ai-insert-menu">
+          <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
+          <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
+          <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
+        </div>
+      </div>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
+      <span class="sa-font">font</span>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">-</button>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(1)">+</button>
+      <button type="button" class="sa-btn" onclick="scholarAICopyResult()">Copy result</button>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIClearResult()" title="Clear the result">Clear result</button>
+    </div>
+    <div id="scholar-ai-result-zoom-overlay" class="scholar-ai-result-zoom-overlay" onclick="if(event.target.id==='scholar-ai-result-zoom-overlay') scholarAIResultZoomClose()">
+      <div class="scholar-ai-result-zoom-box" onclick="event.stopPropagation()">
+        <div class="scholar-ai-result-zoom-header">
+          <span>Zoomed result view</span>
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(-10)" style="font-size:12px">-</button>
+            <span id="scholar-ai-zoom-label" style="font-size:11px;min-width:42px;text-align:center;color:#94a3b8">100%</span>
+            <button type="button" class="sa-btn ghost" onclick="scholarAIAdjustZoom(10)" style="font-size:12px">+</button>
+            <span style="display:inline-block;width:1px;height:16px;background:#334155;opacity:.6"></span>
+            <button type="button" id="scholar-ai-zoom-mode-edit" class="sa-btn ghost" onclick="scholarAISetZoomMode('edit')" style="font-size:12px">Edit</button>
+            <button type="button" id="scholar-ai-zoom-mode-view" class="sa-btn ghost" onclick="scholarAISetZoomMode('view')" style="font-size:12px">View</button>
+            <button type="button" class="sa-btn" onclick="scholarAICopyZoomMarkdown()" style="font-size:12px">Copy MD</button>
+            <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomClose()" style="font-size:12px">Close</button>
+          </div>
+        </div>
+        <div class="scholar-ai-result-zoom-body">
+          <textarea id="scholar-ai-result-zoom-ta" placeholder="The result will appear here." oninput="if(window.__scholarAIZoomMode==='view'){scholarAIRenderZoomMarkdown()}"></textarea>
+          <div id="scholar-ai-result-zoom-view" class="scholar-ai-result-zoom-view hidden"></div>
+        </div>
+      </div>
+    </div>
+    <div class="scholar-ai-history">
+      <label>History</label>
+      <input type="text" id="scholar-ai-history-search" placeholder="Search history..." class="scholar-ai-history-search">
+      <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
+      <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()" style="margin-top:4px">Save all history</button>
+    </div>
+  </div>
+</div>
+
+<!-- SSPAI Sidebar -->
+<div class="ssp-ai-sidebar" id="ssp-ai-sidebar">
+  <div class="ssp-inner">
+    <div class="ssp-header">
+      <h3>SSP Image Generator</h3>
+      <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">Close</button>
+    </div>
+    <div class="ssp-main">
+      <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload an image">
+        Image upload (JPG, PNG, GIF, WebP)<br><small>or Ctrl+V paste</small>
+      </div>
+      <input type="file" id="ssp-file-input" accept="image/*" style="display:none">
+      <label>Prompt 1 (used for variation when a seed image is provided)</label>
+      <textarea id="ssp-prompt" placeholder="Example: Convert this into a lecture diagram style."></textarea>
+      <label>Prompt 2 (optional, used together with Prompt 1)</label>
+      <textarea id="ssp-prompt-2" placeholder="Example: Use a dark blue background and English labels."></textarea>
+      <label>Image generation model</label>
+      <select id="ssp-model">
+        <option value="gemini-3.1-flash-image-preview">Nano Banana 2</option>
+        <option value="gemini-2.5-flash-image">Nano Banana</option>
+        <option value="gemini-3-pro-image-preview">Nano Banana Pro</option>
+        <option value="imagen-4.0-generate-001">Imagen 4</option>
+      </select>
+      <label>Image ratio</label>
+      <div class="ssp-ratio-wrap">
+        <button type="button" class="ssp-ratio-btn active" data-ratio="1:1">1:1</button>
+        <button type="button" class="ssp-ratio-btn" data-ratio="16:9">16:9</button>
+        <button type="button" class="ssp-ratio-btn" data-ratio="9:16">9:16</button>
+        <button type="button" class="ssp-ratio-btn" data-ratio="4:3">4:3</button>
+        <button type="button" class="ssp-ratio-btn" data-ratio="3:4">3:4</button>
+      </div>
+      <label style="font-size:10px;color:#64748b;display:block;margin-bottom:4px">Default: academic / document-style visual</label>
+      <label><input type="checkbox" id="ssp-no-text"> Pure image (no text)</label>
+      <div class="ssp-action-row">
+        <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">Generate</button>
+        <button type="button" class="sa-btn ghost ssp-btn-crop" onclick="viewerSSPCropFromPanel()" title="Crop current result">Crop</button>
+        <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="Upload to imgBB">[imgBB] Upload</button>
+        <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB settings">Settings</button>
+      </div>
+      <div id="ssp-imgbb-settings" class="ssp-imgbb-settings" style="display:none;margin:8px 0;padding:10px;border:1px solid #cbd5e1;border-radius:10px;background:rgba(248,250,252,0.9)">
+        <label for="ssp-imgbb-api-key" style="display:block;font-size:11px;font-weight:700;color:#334155;margin-bottom:6px">imgBB API Key</label>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="password" id="ssp-imgbb-api-key" class="ssp-image-link-input" placeholder="imgBB API key" autocomplete="off" spellcheck="false" style="flex:1 1 220px;min-width:180px">
+          <button type="button" class="sa-btn ghost" onclick="viewerSSPSaveImgbbSettings()">Save</button>
+        </div>
+        <div id="ssp-imgbb-settings-status" style="margin-top:6px;font-size:10px;color:#64748b">Enter your imgBB API key to enable direct uploads.</div>
+        <div style="margin-top:8px;font-size:11px">
+          <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer" style="color:#2563eb;text-decoration:underline">Get API key: https://api.imgbb.com/</a>
+        </div>
+      </div>
+      <label class="ssp-img-link-label">Image URL -> Insert (Markdown / HTML)</label>
+      <div class="ssp-img-link-row">
+        <input type="url" id="ssp-image-link-url" class="ssp-image-link-input" placeholder="https://i.ibb.co/... (imgBB direct link)" inputmode="url">
+        <button type="button" class="sa-btn ghost ssp-btn-insert-md" onclick="sspInsertImageMarkdown()">Markdown</button>
+        <button type="button" class="sa-btn ghost ssp-btn-insert-html" onclick="sspInsertImageHtml()">HTML</button>
+      </div>
+      <div id="ssp-progress-wrap" class="ssp-progress-wrap">
+        <div class="ssp-progress-bar">
+          <div id="ssp-progress-fill" class="ssp-progress-fill"></div>
+        </div>
+        <div class="ssp-progress-row">
+          <span id="ssp-progress-pct" style="font-size:10px;color:#94a3b8">0%</span>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="viewerSSPAbort()">Abort</button>
+        </div>
+      </div>
+      <div id="ssp-status" class="ssp-status"></div>
+      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="Open fullscreen">
+      <button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>Download</button>
+    </div>
+    <div class="ssp-history-resizer" title="Drag to resize history"></div>
+    <div class="ssp-img-history" style="margin-top:12px;border-top:1px solid #2e3447;padding-top:8px">
+      <label style="font-size:10px;color:#94a3b8;display:block;margin-bottom:6px">Image History</label>
+      <div id="ssp-img-history-list" class="ssp-img-history-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SSP Fullscreen Overlay -->
+<div id="viewer-fs-overlay" class="viewer-fs-overlay" onclick="if(event.target.id==='viewer-fs-overlay'||event.target.id==='viewer-fs-area') viewerSSPCloseFullscreen()">
+  <div class="viewer-fs-toolbar" onclick="event.stopPropagation()">
+    <button type="button" onclick="viewerSSPFsZoom(-0.25)" title="Zoom out">-</button>
+    <span id="viewer-fs-zoom-val" style="min-width:40px;text-align:center;font-size:12px">100%</span>
+    <button type="button" onclick="viewerSSPFsZoom(0.25)" title="Zoom in">+</button>
+    <button type="button" onclick="viewerSSPFsDownload()" title="Download">Download</button>
+    <button type="button" class="viewer-fs-imgbb-btn" onclick="viewerSSPFsUploadImgbb()" title="Upload to imgBB">imgBB Upload</button>
+    <button type="button" class="viewer-fs-insert-btn" onclick="viewerSSPFsInsert()" title="Insert into document">Insert</button>
+    <button type="button" onclick="viewerSSPFsCrop()" title="Crop">Crop</button>
+    <button type="button" onclick="viewerSSPCloseFullscreen()" title="Close">Close</button>
+  </div>
+  <aside id="viewer-fs-gallery" class="viewer-fs-gallery" onclick="event.stopPropagation()">
+    <div class="viewer-fs-gallery-title">History Gallery</div>
+    <div id="viewer-fs-gallery-list" class="viewer-fs-gallery-list"></div>
+  </aside>
+  <div id="viewer-fs-imgbb-info" class="viewer-fs-imgbb-info"></div>
+  <div class="viewer-fs-area" id="viewer-fs-area">
+    <div class="viewer-fs-wrap" id="viewer-fs-wrap"><img id="viewer-fs-img" alt=""></div>
+  </div>
+</div>
+`;
 
   var __scholarAISelStart = null, __scholarAISelEnd = null, __scholarAICursorPos = null, __scholarAIResultFontSize = 13;
   var __scholarAIZoomPercent = 100, __scholarAIZoomMode = 'edit';
@@ -399,7 +461,7 @@
     if (h && typeof h[name] === 'function') return h[name].apply(h, args);
     return undefined;
   }
-  /** ???????????袁⑸즴筌?씛彛???돗??????????????癲ル슢二??곸젞???????????????????????????????????????????????????????????????????????????????????ㅻ깹?????????????????????????????????????嫄??????????筌띯뫔????????壤굿??띾????(??????????????????? ?????????????????????. async API??????????븐뼐????傭?끆?????Β?ｊ콞???????????븐뼐??????????????????????????????????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦??*/
+  
   function getCallback(name) {
     var c = getConfig();
     if (c.callbacks && typeof c.callbacks[name] === 'function') return c.callbacks[name];
@@ -675,8 +737,8 @@
     var input = document.getElementById('ssp-imgbb-api-key');
     var key = getImgbbApiKeyValue();
     if (input) input.value = key;
-    if (key) setImgbbSettingsStatus('????????????????????????됰Ŧ?????????????imgBB API ??? ???????????????ㅻ깹????????????癲????????????????????????????????嶺??', false);
-    else setImgbbSettingsStatus('API ??? ?????????????????⑤벡瑜??????????????????????諛몃마嶺뚮?????????????硫λ젒??????????????????????????????????????????꾩룆梨띰쭕?뚢뵾??????????????嶺뚮죭?댁젘????????????imgBB???????????????????????????????????????嶺??', false);
+    if (key) setImgbbSettingsStatus('imgBB API key is loaded. You can upload images directly to imgBB.', false);
+    else setImgbbSettingsStatus('No API key saved. Enter your imgBB API key to enable direct uploads.', false);
   }
 
   function viewerSSPToggleImgbbSettings(forceOpen) {
@@ -733,11 +795,11 @@
         if (key) localStorage.setItem('ss_imgbb_api_key', key);
         else localStorage.removeItem('ss_imgbb_api_key');
       }
-      setImgbbSettingsStatus(key ? 'imgBB API ??? ????????????꿔꺂???⑸븶????????????????????' : 'imgBB API ??? ??????????', false);
-      notifyUser(key ? 'imgBB API ??? ????????????꿔꺂???⑸븶????????????????????' : 'imgBB API ??? ??????????????????????????????????????嶺??', false);
+      setImgbbSettingsStatus(key ? 'imgBB API key saved.' : 'imgBB API key cleared.', false);
+      notifyUser(key ? 'imgBB API key saved.' : 'imgBB API key cleared.', false);
     } catch (e) {
-      setImgbbSettingsStatus('imgBB API ?????????????????????????????????? ???????????꾩룆梨띰쭕?뚢뵾??????????????嶺뚮죭?댁젘?????????????????????됰Ŧ????????????????????????????????????嶺??', true);
-      notifyUser('imgBB API ?????????????????????????????????? ???????????꾩룆梨띰쭕?뚢뵾??????????????嶺뚮죭?댁젘?????????????????????됰Ŧ????????????????????????????????????嶺??', true);
+      setImgbbSettingsStatus('Failed to save imgBB API key. Please try again.', true);
+      notifyUser('Failed to save imgBB API key. Please try again.', true);
     }
   }
 
@@ -746,7 +808,7 @@
   }
 
   var __aiDocSelTimer = null;
-  /** ?????????????怨뺤떪???????#viewer) ????????????????????????????ш끽維뽳쭩?뱀땡???얩맪???????????????textarea)???????????????????????????????椰?????????????ScholarAI ????????????????+ SSP ???????????熬곣뫖利당춯??쎾퐲???????????????????꿔꺂?㏘틠??怨몄젦?????????????????????????*/
+ 
   function syncAiPanelsFromDocumentSelection() {
     var viewer = getViewerMarkdownRoot();
     var editTa = document.getElementById('viewer-edit-ta');
@@ -778,12 +840,13 @@
         text = sel.toString().trim();
       }
     }
-    if (!text) {
-      if (taPassage && (window.__contentType || '') === 'summary' && (!taPassage.value || !String(taPassage.value).trim())) {
-        taPassage.value = '??????????椰???????????? ??????????????????????癲???????????????????곕춴?????????????嫄????????????????????????????????????癲??????????from ????????癲????????????????????????????꾩룆梨띰쭕?뚢뵾??????????????嶺뚮죭?댁젘???????????????熬곣뫖利당춯??쎾퐲?????????????????????癲ル슢?싩땟???????????釉랁닑??????????????.';
-      }
-      return;
-    }
+if (!text) {
+  if (taPassage && (window.__contentType || '') === 'summary' && (!taPassage.value || !String(taPassage.value).trim())) {
+    // 깨진 문자열 대신 아래 문구를 삽입
+    taPassage.value = 'Select a passage from the document to start the AI analysis.';
+  }
+  return;
+}
     if (fromEditor) {
       __scholarAISelStart = edStart;
       __scholarAISelEnd = edEnd;
@@ -1449,11 +1512,12 @@
       a.click();
     }
   }
-  function viewerSSPFsUploadImgbb() {
+function viewerSSPFsUploadImgbb() {
     var img = document.getElementById('viewer-fs-img');
     if (!img || !img.src) {
-      notifyUser('?????????????????怨뺤떪???????????????????????????????????? ????????????????????????????????????嶺??', true);
-      return;
+        // 깨진 문자열 대신 사용자에게 알림을 띄웁니다.
+        notifyUser('No image found. Please capture or select an image first.', true);
+        return;
     }
     viewerSSPUploadToImgbb(img.src);
   }
@@ -1901,9 +1965,9 @@
   function sspInsertImageMarkdown() {
     var el = document.getElementById('ssp-image-link-url');
     var u = el && el.value.trim();
-    if (!u) { alert('?????????????????? URL???????????????????????????????꾩룆梨띰쭕?뚢뵾???????????????????'); return; }
+    if (!u) { alert('이미지 URL을 먼저 입력해 주세요.'); return; }
     if (typeof window.insertMarkdownImageAtCursor !== 'function') {
-      alert('??????????????????????????????????????????????????????????????????嶺??');
+      alert('Markdown image insertion is not available.');
       return;
     }
     window.insertMarkdownImageAtCursor(u, getSspImageAltText(u));
@@ -1911,9 +1975,9 @@
   function sspInsertImageHtml() {
     var el = document.getElementById('ssp-image-link-url');
     var u = el && el.value.trim();
-    if (!u) { alert('?????????????????? URL???????????????????????????????꾩룆梨띰쭕?뚢뵾???????????????????'); return; }
+    if (!u) { alert('이미지 URL을 먼저 입력해 주세요.'); return; }
     if (typeof window.insertHtmlImageAtCursor !== 'function') {
-      alert('??????????????????????????????????????????????????????????????????嶺??');
+      alert('HTML image insertion is not available.');
       return;
     }
     window.insertHtmlImageAtCursor(u, getSspImageAltText(u));
@@ -1925,7 +1989,7 @@
         return;
       }
     }
-    notifyUser('???????????????怨뺤떪???????????????????????????????????????????????? ???????????????????????????', true);
+    notifyUser('선택한 이미지를 히스토리에서 찾을 수 없습니다.', true);
   }
   function viewerSSPImgHistoryLoad() {
     try {
@@ -1953,7 +2017,10 @@
   function viewerSSPImgHistoryRender() {
     var list = document.getElementById('ssp-img-history-list');
     if (!list) return;
-    if (__viewerSSPImgHistory.length === 0) { list.innerHTML = '<span style="font-size:10px;color:#94a3b8">????????????諛몃마嶺뚮?????????????硫λ젒????????????????????????????????????????? ?????????????????????????嶺??</span>'; return; }
+  if (__viewerSSPImgHistory.length === 0) { 
+    list.innerHTML = '<span style="font-size:10px;color:#94a3b8">No image history available. Your generated images will appear here.</span>'; 
+    return; 
+}
     var html = '';
     for (var i = 0; i < __viewerSSPImgHistory.length; i++) {
       var h = __viewerSSPImgHistory[i];
@@ -2187,7 +2254,7 @@
     scholarAISetRunningState(false);
     var histSearch = document.getElementById('scholar-ai-history-search');
     if (histSearch) histSearch.addEventListener('input', scholarAIHistoryRender);
-    /* ????????????????????????????????????????????????????????嫄???????????饔낅챷維?????곌퇈?????⑤슦瑗??ScholarAI ???????????????怨뺤떪?????????????????????(???????????????????) */
+   
     try {
       var SA_CLEAR_FLAG = 'ss_viewer_scholar_ai_history_cleared_v1';
       if (!localStorage.getItem(SA_CLEAR_FLAG)) {

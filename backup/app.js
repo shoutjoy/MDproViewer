@@ -1,6 +1,6 @@
 // IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 3;
+const DB_VERSION = 2;
 let db;
 
 const AI_SETTINGS_KEY = 'ai_settings';
@@ -21,11 +21,6 @@ let previewPopupScale = 1.0;
 let previewPopupFontSize = 16;
 let previewPopupRenderToken = 0;
 let imageInsertCurrentDataUrl = '';
-let imageInsertCurrentFileName = '';
-let imageInsertSavedInternalId = '';
-let imageInsertSavedInternalUrl = '';
-let imageInsertSavedFingerprint = '';
-let imageInsertChangedByCrop = false;
 let imageInsertCropWindow = null;
 let imageInsertCropBound = false;
 let imageInsertDockRight = false;
@@ -37,9 +32,6 @@ let scholarSearchDockRight = true;
 let scholarSearchShrink = false;
 let viewClickMappedCaretPos = null;
 let lastEditCaretPos = 0;
-let viewerInternalImageObjectUrls = [];
-let previewInternalImageObjectUrls = [];
-let lastPersistedContent = '';
 
 // Sidebar states
 let isSidebarHidden = true;
@@ -69,7 +61,6 @@ let receivedExternalContent = false;
 let notebookLmEqualsHrPreprocess = false;
 const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
 const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
-const ROOT_FOLDER_NAME = 'ROOT';
 
 window.addEventListener('message', function (ev) {
     const d = ev.data;
@@ -140,9 +131,6 @@ function initDB() {
             }
             if (!db.objectStoreNames.contains('ai_settings')) {
                 db.createObjectStore('ai_settings', { keyPath: 'id' });
-            }
-            if (!db.objectStoreNames.contains('images')) {
-                db.createObjectStore('images', { keyPath: 'id' });
             }
         };
     });
@@ -235,7 +223,6 @@ window.onload = async () => {
         }
         renderMarkdown();
         renderTOC();
-        markPersistedState();
 
         if (isEditMode && editorTextarea) editorTextarea.focus();
 
@@ -244,22 +231,15 @@ window.onload = async () => {
         initAiVisibility();
 
     if (window.electron && window.electron.ipcRenderer) {
-        window.electron.ipcRenderer.on('open-external-file', async (event, data) => {
-            const canProceed = await confirmSaveBeforeOpeningAnotherFile();
-            if (!canProceed) {
-                showToast('Open canceled.');
-                return;
-            }
+        window.electron.ipcRenderer.on('open-external-file', (event, data) => {
             setCurrentDocumentInfo(data.fileName, data.filePath);
             updateContent(data.content);
-            markPersistedState();
             showToast("Opened external file.");
         });
         window.electron.ipcRenderer.invoke('get-initial-file').then(function (data) {
             if (data && data.fileName && data.content !== undefined) {
                 setCurrentDocumentInfo(data.fileName, data.filePath);
                 updateContent(data.content);
-                markPersistedState();
                 showToast("Loaded initial file.");
             }
         }).catch(function () {});
@@ -282,12 +262,12 @@ window.onload = async () => {
         dropZone.classList.remove('drag-over');
     });
 
-    document.addEventListener('drop', async (e) => {
+    document.addEventListener('drop', (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (dropZone) dropZone.classList.remove('drag-over');
         const file = e.dataTransfer.files[0];
-        if (file) await readFile(file);
+        if (file) readFile(file);
     });
 
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
@@ -312,11 +292,7 @@ window.onload = async () => {
                 const reader = new FileReader();
                 reader.onload = function () {
                     imageInsertCurrentDataUrl = String(reader.result || '');
-                    imageInsertCurrentFileName = file.name || ('pasted_' + Date.now() + '.png');
-                    clearImageInsertInternalSavedState();
-                    imageInsertChangedByCrop = false;
                     setImageInsertPreview(imageInsertCurrentDataUrl);
-                    renderImageInsertInternalInfo();
                     setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
                 };
                 reader.readAsDataURL(file);
@@ -513,11 +489,6 @@ window.onload = async () => {
         }
     });
     window.addEventListener('beforeunload', closePreviewPopupWindow);
-    window.addEventListener('beforeunload', function (e) {
-        if (!isDocumentDirty()) return;
-        e.preventDefault();
-        e.returnValue = '';
-    });
     } catch (e) {
         console.error('Initialization failed.', e);
         if (typeof showToast === 'function') showToast('Initialization failed. Please refresh and try again.');
@@ -532,72 +503,6 @@ function updateContent(md) {
     renderMarkdown();
     renderTOC();
     updatePreviewPopupContent();
-}
-
-function syncCurrentMarkdownFromEditor() {
-    if (editorTextarea && typeof editorTextarea.value === 'string') {
-        currentMarkdown = editorTextarea.value;
-    }
-}
-
-function markPersistedState() {
-    syncCurrentMarkdownFromEditor();
-    lastPersistedContent = String(currentMarkdown ?? '');
-}
-
-function isDocumentDirty() {
-    syncCurrentMarkdownFromEditor();
-    return String(currentMarkdown ?? '') !== String(lastPersistedContent ?? '');
-}
-
-async function confirmSaveBeforeOpeningAnotherFile() {
-    if (!isDocumentDirty()) return true;
-    let action = 'cancel';
-    if (window.ExtendFiles && typeof window.ExtendFiles.showCloseActionDialog === 'function') {
-        action = await window.ExtendFiles.showCloseActionDialog();
-    } else {
-        const shouldSave = window.confirm('You have unsaved changes. Press OK to export before opening, or Cancel to stop.');
-        action = shouldSave ? 'export' : 'cancel';
-    }
-    if (action === 'cancel') return false;
-    if (action === 'indb') return await saveCurrentToInDbAuto();
-    if (action === 'export') return await saveCurrentFile();
-    return false;
-}
-
-async function saveCurrentToInDbAuto() {
-    if (!db) {
-        showToast('Database is not ready yet. Please try again.');
-        return false;
-    }
-    syncCurrentMarkdownFromEditor();
-    const baseTitle = String((currentFileName || 'Untitled').replace(/\.md$/i, '')).trim() || 'Untitled';
-    const docs = await new Promise(function (resolve) {
-        const req = db.transaction('documents', 'readonly').objectStore('documents').getAll();
-        req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
-        req.onerror = function () { resolve([]); };
-    });
-    const title = typeof getNextIndexedDbTitle === 'function'
-        ? getNextIndexedDbTitle(baseTitle, docs)
-        : baseTitle;
-    const doc = {
-        id: 'doc_' + Date.now(),
-        title: title,
-        content: String(currentMarkdown || ''),
-        folderId: 'root',
-        updatedAt: new Date()
-    };
-    await new Promise(function (resolve, reject) {
-        const tx = db.transaction('documents', 'readwrite');
-        tx.objectStore('documents').put(doc);
-        tx.oncomplete = resolve;
-        tx.onerror = function () { reject(tx.error || new Error('Failed to save to inDB.')); };
-    });
-    renderDBList();
-    if (isSidebarHidden) toggleSidebarVisibility();
-    markPersistedState();
-    showToast('Saved to inDB.');
-    return true;
 }
 
 function preprocessStandaloneHrAfterHardBreak(raw) {
@@ -741,16 +646,13 @@ function renderMarkdown() {
     function runPostRenderHooks() {
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
         try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
-        try { hydrateInternalImagesInElement(viewer, registerViewerInternalObjectUrl); } catch (e) {}
         try { if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(viewer); } catch (e) {}
         try { updatePreviewPopupContent(); } catch (e) {}
     }
-    revokeObjectUrls(viewerInternalImageObjectUrls);
-    resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
     try {
-        preprocessed = preprocessMarkdownForView(resolvedRaw);
+        preprocessed = preprocessMarkdownForView(raw);
         if (typeof marked === 'undefined' || !marked.parse) {
-            viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+            viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
             return;
         }
         const out = marked.parse(preprocessed);
@@ -760,21 +662,21 @@ function renderMarkdown() {
                 runPostRenderHooks();
             }).catch(function () {
                 try {
-                    const fallback = marked.parse(resolvedRaw);
+                    const fallback = marked.parse(raw);
                     viewer.innerHTML = (fallback && typeof fallback.then === 'function') ? '' : (fallback || '');
                     if (fallback && typeof fallback.then === 'function') {
                         fallback.then(function (html) {
                             viewer.innerHTML = html || '';
                             runPostRenderHooks();
                         }).catch(function () {
-                            viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+                            viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
                             runPostRenderHooks();
                         });
                         return;
                     }
                     runPostRenderHooks();
                 } catch (e) {
-                    viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+                    viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
                     runPostRenderHooks();
                 }
             });
@@ -785,13 +687,13 @@ function renderMarkdown() {
     } catch (e) {
         try {
             if (typeof marked !== 'undefined' && marked.parse) {
-                const fallback = marked.parse(resolvedRaw);
+                const fallback = marked.parse(raw);
                 if (fallback != null && typeof fallback.then === 'function') {
                     fallback.then(function (h) {
                         viewer.innerHTML = h || '';
                         runPostRenderHooks();
                     }).catch(function () {
-                        viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+                        viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
                         runPostRenderHooks();
                     });
                     return;
@@ -801,12 +703,9 @@ function renderMarkdown() {
                 return;
             }
         } catch (innerErr) {}
-        viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+        viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
         runPostRenderHooks();
     }
-    }).catch(function () {
-        viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-    });
 }
 
 function isPreviewPopupAlive() {
@@ -815,18 +714,15 @@ function isPreviewPopupAlive() {
 
 function onPreviewPopupClosed() {
     previewPopupWindow = null;
-    revokeObjectUrls(previewInternalImageObjectUrls);
 }
 
 function closePreviewPopupWindow() {
     if (!isPreviewPopupAlive()) {
         previewPopupWindow = null;
-        revokeObjectUrls(previewInternalImageObjectUrls);
         return;
     }
     previewPopupWindow.close();
     previewPopupWindow = null;
-    revokeObjectUrls(previewInternalImageObjectUrls);
 }
 
 function escapeHtmlForPreview(text) {
@@ -913,11 +809,9 @@ async function updatePreviewPopupContent() {
     let html = '';
 
     try {
-        revokeObjectUrls(previewInternalImageObjectUrls);
-        const resolvedRaw = await resolveInternalMarkdownImagesForPreview(raw);
-        const preprocessed = preprocessMarkdownForView(resolvedRaw);
+        const preprocessed = preprocessMarkdownForView(raw);
         if (typeof marked === 'undefined' || !marked.parse) {
-            html = '<p>' + escapeHtmlForPreview(resolvedRaw).replace(/\n/g, '<br>') + '</p>';
+            html = '<p>' + escapeHtmlForPreview(raw).replace(/\n/g, '<br>') + '</p>';
         } else {
             const out = marked.parse(preprocessed);
             html = (out != null && typeof out.then === 'function') ? await out : out;
@@ -931,7 +825,6 @@ async function updatePreviewPopupContent() {
     const target = previewPopupWindow.document.getElementById('pv-content');
     if (!target) return;
     target.innerHTML = html;
-    try { await hydrateInternalImagesInElement(target, registerPreviewInternalObjectUrl); } catch (e) {}
     if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(target);
     applyPreviewPopupViewport();
 }
@@ -1083,18 +976,15 @@ function toggleMode(mode) {
     }
 }
 
-async function handleFileSelect(event) {
-    const input = event && event.target ? event.target : null;
-    const file = input && input.files ? input.files[0] : null;
-    if (file) await readFile(file);
-    if (input) input.value = '';
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) readFile(file);
 }
 
 function createNewFile() {
     currentMarkdown = "";
     setCurrentDocumentInfo("untitled.md", null);
     updateContent("");
-    markPersistedState();
     performAutoSave();
     showToast("New document created.");
     if (isEditMode) editorTextarea.focus();
@@ -1115,109 +1005,21 @@ function getSaveCandidateFileName() {
         : "document.md";
 }
 
-function downloadMarkdownFile(markdown, fileName) {
-    const content = markdown == null ? currentMarkdown : String(markdown);
-    const name = String(fileName || currentFileName || 'document.md');
+function downloadMarkdownFile() {
     const bom = '\uFEFF';
-    const blob = new Blob([bom, content], { type: 'text/markdown;charset=utf-8' });
+    const blob = new Blob([bom, currentMarkdown], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = name.endsWith('.md') ? name : name + ".md";
+    a.download = currentFileName.endsWith('.md') ? currentFileName : currentFileName + ".md";
     a.click();
     URL.revokeObjectURL(url);
 }
 
-function downloadBlobFile(blob, fileName) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = String(fileName || 'download.bin');
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-function getZipSaveFileName() {
-    const base = String(getSaveCandidateFileName() || 'document.md').replace(/\.md$/i, '');
-    return base + '.zip';
-}
-
-function getMddSaveFileName() {
-    const base = String(getSaveCandidateFileName() || 'document.md').replace(/\.md$/i, '');
-    return base + '.mdd';
-}
-
-async function exportCurrentDocumentAsZipWithInternalImages() {
-    if (!db || !window.ImageDB || typeof window.ImageDB.exportMarkdownToZip !== 'function') {
-        throw new Error('ImageDB ZIP export is not available.');
-    }
-    const out = await window.ImageDB.exportMarkdownToZip(db, String(currentMarkdown || ''), 'doc.md');
-    downloadBlobFile(out.blob, getZipSaveFileName());
-}
-
-async function exportCurrentDocumentAsMdd() {
-    if (!db || !window.ExtendFiles || typeof window.ExtendFiles.exportMdd !== 'function') {
-        throw new Error('MDD export is not available.');
-    }
-    const out = await window.ExtendFiles.exportMdd(db, String(currentMarkdown || ''), getMddSaveFileName());
-    downloadBlobFile(out.blob, out.fileName || getMddSaveFileName());
-}
-
-async function chooseExportType() {
-    if (window.ExtendFiles && typeof window.ExtendFiles.showExportTypeDialog === 'function') {
-        return await window.ExtendFiles.showExportTypeDialog();
-    }
-    const pick = String(window.prompt('Export type: md / mdd / zip (cancel = empty)', 'md') || '').trim().toLowerCase();
-    if (!pick) return 'cancel';
-    if (pick === 'md' || pick === 'mdd' || pick === 'zip') return pick;
-    return 'cancel';
-}
-
-async function exportCurrentDocumentByChoice() {
-    const choice = await chooseExportType();
-    if (choice === 'cancel') return false;
-    if (choice === 'zip') {
-        await exportCurrentDocumentAsZipWithInternalImages();
-        showToast('ZIP exported.');
-        markPersistedState();
-        return true;
-    }
-    if (choice === 'mdd') {
-        await exportCurrentDocumentAsMdd();
-        showToast('MDD exported.');
-        markPersistedState();
-        return true;
-    }
-    downloadMarkdownFile();
-    showToast('MD exported.');
-    markPersistedState();
-    return true;
-}
-
-async function readFile(file, options) {
-    const opts = options || {};
-    if (!opts.skipSavePrompt) {
-        const canProceed = await confirmSaveBeforeOpeningAnotherFile();
-        if (!canProceed) {
-            showToast('Open canceled.');
-            return;
-        }
-    }
-    const name = (file && file.name ? file.name : '').toLowerCase();
-    if (name.endsWith('.mdd')) {
-        importMddDocumentFile(file).catch(function (e) {
-            showToast('Failed to import MDD: ' + (e && e.message ? e.message : e));
-        });
-        return;
-    }
-    if (name.endsWith('.zip')) {
-        importZipDocumentFile(file).catch(function (e) {
-            showToast('Failed to import ZIP: ' + (e && e.message ? e.message : e));
-        });
-        return;
-    }
+function readFile(file) {
     const reader = new FileReader();
     reader.onload = (e) => {
+        const name = (file.name || '').toLowerCase();
         const raw = e.target.result;
         if (name.endsWith('.mpv') || name.endsWith('.json')) {
             currentFilePath = null;
@@ -1231,50 +1033,9 @@ async function readFile(file, options) {
         }
         setCurrentDocumentInfo(file.name, file.path || null);
         updateContent(raw);
-        markPersistedState();
         showToast("File loaded successfully.");
     };
     reader.readAsText(file, 'UTF-8');
-}
-
-async function importMddDocumentFile(file) {
-    if (!db) {
-        showToast('Database is not ready yet. Please try again.');
-        return;
-    }
-    if (!window.ExtendFiles || typeof window.ExtendFiles.importMddToIndexedDb !== 'function') {
-        showToast('MDD import is not available.');
-        return;
-    }
-    const text = await file.text();
-    const imported = await window.ExtendFiles.importMddToIndexedDb(db, text);
-    const md = imported && typeof imported.markdown === 'string' ? imported.markdown : '';
-    const title = imported && imported.fileName ? imported.fileName : ((file.name || 'document').replace(/\.mdd$/i, '.md'));
-    setCurrentDocumentInfo(title, null);
-    updateContent(md);
-    markPersistedState();
-    performAutoSave();
-    showToast('MDD imported. Internal images restored.');
-}
-
-async function importZipDocumentFile(file) {
-    if (!db) {
-        showToast('Database is not ready yet. Please try again.');
-        return;
-    }
-    if (!window.ImageDB || typeof window.ImageDB.importZipToIndexedDb !== 'function') {
-        showToast('ImageDB ZIP import is not available.');
-        return;
-    }
-    const buf = await file.arrayBuffer();
-    const imported = await window.ImageDB.importZipToIndexedDb(db, buf);
-    const md = imported && typeof imported.markdown === 'string' ? imported.markdown : '';
-    const title = imported && imported.docName ? imported.docName : ((file.name || 'document').replace(/\.zip$/i, '.md'));
-    setCurrentDocumentInfo(title, null);
-    updateContent(md);
-    markPersistedState();
-    performAutoSave();
-    showToast('ZIP imported. Internal images restored.');
 }
 
 async function restoreFromMpv(data) {
@@ -1529,52 +1290,42 @@ async function exportMpv() {
 
 async function saveCurrentFile() {
     if (!(window.electron && window.electron.ipcRenderer)) {
-        try {
-            return await exportCurrentDocumentByChoice();
-        } catch (e) {
-            showToast('Export failed: ' + (e && e.message ? e.message : e));
-            return false;
-        }
+        downloadMarkdownFile();
+        showToast("File saved.");
+        return;
     }
     const result = await window.electron.ipcRenderer.invoke('save-current-file', {
         filePath: currentFilePath,
         fileName: getSaveCandidateFileName(),
         content: currentMarkdown
     });
-    if (!result || result.canceled) return false;
+    if (!result || result.canceled) return;
     if (result.error) {
         showToast(`Failed to save file: ${result.error}`);
-        return false;
+        return;
     }
     setCurrentDocumentInfo(result.fileName, result.filePath);
     showToast("File saved.");
-    markPersistedState();
-    return true;
 }
 
 async function saveFileAs() {
     if (!(window.electron && window.electron.ipcRenderer)) {
-        try {
-            return await exportCurrentDocumentByChoice();
-        } catch (e) {
-            showToast('Export failed: ' + (e && e.message ? e.message : e));
-            return false;
-        }
+        downloadMarkdownFile();
+        showToast("File saved as new file.");
+        return;
     }
     const result = await window.electron.ipcRenderer.invoke('save-file-as', {
         filePath: currentFilePath,
         fileName: getSaveCandidateFileName(),
         content: currentMarkdown
     });
-    if (!result || result.canceled) return false;
+    if (!result || result.canceled) return;
     if (result.error) {
         showToast(`Failed to save file as: ${result.error}`);
-        return false;
+        return;
     }
     setCurrentDocumentInfo(result.fileName, result.filePath);
     showToast("File saved as new file.");
-    markPersistedState();
-    return true;
 }
 
 function saveFile() {
@@ -1615,102 +1366,6 @@ function printPage() {
         window.print();
         setTimeout(cleanup, 1000);
     }, 120);
-}
-
-function revokeObjectUrls(list) {
-    if (!Array.isArray(list) || list.length === 0) return;
-    while (list.length > 0) {
-        const url = list.pop();
-        try { URL.revokeObjectURL(url); } catch (e) {}
-    }
-}
-
-function registerViewerInternalObjectUrl(url) {
-    if (!url) return;
-    viewerInternalImageObjectUrls.push(url);
-}
-
-function registerPreviewInternalObjectUrl(url) {
-    if (!url) return;
-    previewInternalImageObjectUrls.push(url);
-}
-
-function getImageInsertFingerprint(dataUrl) {
-    const s = String(dataUrl || '');
-    if (!s) return '';
-    return String(s.length) + ':' + s.slice(0, 48) + ':' + s.slice(-48);
-}
-
-function clearImageInsertInternalSavedState() {
-    imageInsertSavedInternalId = '';
-    imageInsertSavedInternalUrl = '';
-    imageInsertSavedFingerprint = '';
-}
-
-function renderImageInsertInternalInfo() {
-    const box = document.getElementById('img-insert-internal-box');
-    const linkEl = document.getElementById('img-insert-internal-link');
-    const delBtn = document.getElementById('img-insert-internal-delete');
-    if (!box || !linkEl || !delBtn) return;
-    if (!imageInsertSavedInternalUrl) {
-        box.classList.add('hidden');
-        linkEl.textContent = '';
-        return;
-    }
-    box.classList.remove('hidden');
-    linkEl.textContent = imageInsertSavedInternalUrl;
-    delBtn.disabled = false;
-}
-
-function resetImageInsertForNewImage(isCropChanged) {
-    imageInsertChangedByCrop = !!isCropChanged;
-    if (isCropChanged) {
-        clearImageInsertInternalSavedState();
-        const urlInput = document.getElementById('img-insert-url');
-        if (urlInput && String(urlInput.value || '').trim().startsWith('internal://')) urlInput.value = '';
-    }
-    renderImageInsertInternalInfo();
-}
-
-async function resolveInternalMarkdownImagesForViewer(raw) {
-    const source = String(raw ?? '');
-    if (!source.includes('internal://') || !window.ImageDB || !db) return source;
-    try {
-        const resolved = await window.ImageDB.resolveInternalUrlsInMarkdown(db, source, registerViewerInternalObjectUrl);
-        return resolved && typeof resolved.markdown === 'string' ? resolved.markdown : source;
-    } catch (e) {
-        return source;
-    }
-}
-
-async function resolveInternalMarkdownImagesForPreview(raw) {
-    const source = String(raw ?? '');
-    if (!source.includes('internal://') || !window.ImageDB || !db) return source;
-    try {
-        const resolved = await window.ImageDB.resolveInternalUrlsInMarkdown(db, source, registerPreviewInternalObjectUrl);
-        return resolved && typeof resolved.markdown === 'string' ? resolved.markdown : source;
-    } catch (e) {
-        return source;
-    }
-}
-
-async function hydrateInternalImagesInElement(rootEl, collector) {
-    if (!rootEl || !db || !window.ImageDB || typeof window.ImageDB.getImage !== 'function') return;
-    const nodes = rootEl.querySelectorAll('img[src^="internal://"]');
-    for (let i = 0; i < nodes.length; i++) {
-        const img = nodes[i];
-        const src = String(img.getAttribute('src') || '');
-        const id = window.ImageDB.parseInternalUrl ? window.ImageDB.parseInternalUrl(src) : src.replace(/^internal:\/\//, '');
-        if (!id) continue;
-        try {
-            const rec = await window.ImageDB.getImage(db, id);
-            if (!rec || !rec.blob) continue;
-            const objectUrl = URL.createObjectURL(rec.blob);
-            if (typeof collector === 'function') collector(objectUrl);
-            img.src = objectUrl;
-            img.setAttribute('data-internal-id', id);
-        } catch (e) {}
-    }
 }
 
 function fallbackCopyHtmlFromViewer(html) {
@@ -1895,17 +1550,7 @@ async function ensureRootFolder() {
     return new Promise((res) => {
         const req = store.get('root');
         req.onsuccess = () => {
-            const current = req.result;
-            if (!current) {
-                store.add({ id: 'root', name: ROOT_FOLDER_NAME });
-                res();
-                return;
-            }
-            const currentName = String(current.name || '').trim();
-            const looksBroken = !currentName || currentName.includes('?') || currentName.includes('�');
-            if (looksBroken || currentName.toUpperCase() !== ROOT_FOLDER_NAME) {
-                store.put({ ...current, name: ROOT_FOLDER_NAME });
-            }
+            if (!req.result) store.add({ id: 'root', name: 'Root' });
             res();
         };
     });
@@ -2015,16 +1660,13 @@ async function renderDBList() {
 
     folders.forEach(folder => {
         const folderDocs = docs.filter(d => d.folderId === folder.id && d.title.toLowerCase().includes(searchTerm));
-        const folderDisplayName = folder.id === 'root'
-            ? ROOT_FOLDER_NAME
-            : String(folder.name || 'Folder');
 
         const folderDiv = document.createElement('div');
         folderDiv.className = "mb-2";
         folderDiv.innerHTML = `
             <div class="flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter ${isSidebarCollapsed ? 'justify-center' : ''}">
                 <i data-lucide="folder" class="w-3 h-3"></i> 
-                <span class="sidebar-text">${folderDisplayName}</span>
+                <span class="sidebar-text">${folder.name}</span>
             </div>
         `;
 
@@ -2073,7 +1715,6 @@ async function loadFromDB(id) {
         currentFileName = doc.title + ".md";
         fileNameDisplay.textContent = currentFileName;
         updateContent(doc.content);
-        markPersistedState();
         showToast("Loaded from inDB.");
         if (window.innerWidth < 1024 && !isSidebarHidden) toggleSidebarVisibility();
     }
@@ -2166,56 +1807,6 @@ function performAutoSave() {
     });
 }
 
-async function clearUnusedCache() {
-    const ok = window.confirm('Clear temporary cache now?\nDocuments/folders/settings will not be deleted.');
-    if (!ok) return;
-
-    let removedCaches = 0;
-    let removedAutosave = false;
-
-    try {
-        if (db) {
-            const tx = db.transaction('autosave', 'readwrite');
-            tx.objectStore('autosave').delete('last_work');
-            await new Promise((resolve, reject) => {
-                tx.oncomplete = resolve;
-                tx.onerror = () => reject(tx.error);
-            });
-            removedAutosave = true;
-        }
-    } catch (e) {}
-
-    try {
-        if (typeof caches !== 'undefined' && caches.keys) {
-            const names = await caches.keys();
-            for (let i = 0; i < names.length; i++) {
-                try {
-                    const deleted = await caches.delete(names[i]);
-                    if (deleted) removedCaches += 1;
-                } catch (e) {}
-            }
-        }
-    } catch (e) {}
-
-    try { revokeObjectUrls(viewerInternalImageObjectUrls); } catch (e) {}
-    try { revokeObjectUrls(previewInternalImageObjectUrls); } catch (e) {}
-    try {
-        const preview = document.getElementById('img-insert-preview');
-        if (preview) {
-            preview.removeAttribute('src');
-            preview.classList.add('hidden');
-        }
-    } catch (e) {}
-    try { clearImageInsertInternalSavedState(); } catch (e) {}
-    try { setImageInsertStatus('Temporary cache cleared.', false); } catch (e) {}
-
-    const parts = [];
-    if (removedAutosave) parts.push('autosave');
-    if (removedCaches > 0) parts.push('browser cache ' + removedCaches + '개');
-    if (parts.length === 0) parts.push('temporary object cache');
-    showToast('Cache cleared: ' + parts.join(', '));
-}
-
 function applyScholarPaste(content) {
     if (content === undefined || content === null) return;
     const s = String(content);
@@ -2256,7 +1847,6 @@ function loadFromExternalContent(content, title, opts) {
         const tx = db.transaction('autosave', 'readwrite');
         tx.objectStore('autosave').delete('last_work');
     }
-    markPersistedState();
 }
 
 function tryLoadFromUrl() {
@@ -2297,7 +1887,6 @@ function applyRecovery() {
             currentFileName = data.title;
             fileNameDisplay.textContent = currentFileName;
             updateContent(data.content);
-            markPersistedState();
             showToast("Recovered unsaved work from the previous session.");
         }
         dismissRecovery();
@@ -2429,18 +2018,6 @@ function setImageInsertStatus(msg, isError) {
     el.className = 'mt-3 text-xs ' + (isError ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400');
 }
 
-function setImageUploadProgress(pct, active) {
-    const wrap = document.getElementById('img-insert-progress-wrap');
-    const fill = document.getElementById('img-insert-progress-fill');
-    const text = document.getElementById('img-insert-progress-text');
-    if (!wrap || !fill || !text) return;
-    const safe = Math.max(0, Math.min(100, Number(pct) || 0));
-    fill.style.width = safe + '%';
-    text.textContent = safe + '%';
-    if (active) wrap.classList.remove('hidden');
-    else if (safe >= 100 || safe <= 0) setTimeout(function () { wrap.classList.add('hidden'); }, 700);
-}
-
 function setImageInsertPreview(dataUrl) {
     const img = document.getElementById('img-insert-preview');
     if (!img) return;
@@ -2471,16 +2048,12 @@ function openImageInsertModal() {
             }
             if (ev.data.type === 'aiimg-cropped' && ev.data.dataUrl) {
                 imageInsertCurrentDataUrl = String(ev.data.dataUrl);
-                imageInsertCurrentFileName = 'cropped_' + Date.now() + '.png';
-                resetImageInsertForNewImage(true);
                 setImageInsertPreview(imageInsertCurrentDataUrl);
                 setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
                 try { imageInsertCropWindow.postMessage({ type: 'crop-applied' }, '*'); } catch (e) {}
             }
         });
     }
-    setImageUploadProgress(0, false);
-    renderImageInsertInternalInfo();
     setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
 }
 
@@ -2496,7 +2069,6 @@ function closeImageInsertModal() {
         panel.style.margin = '';
     }
     imageInsertDragging = false;
-    setImageUploadProgress(0, false);
 }
 
 function applyImageInsertPanelLayout() {
@@ -2594,11 +2166,7 @@ function readImageFileForInsertModal(file) {
     const reader = new FileReader();
     reader.onload = function () {
         imageInsertCurrentDataUrl = String(reader.result || '');
-        imageInsertCurrentFileName = file.name || ('upload_' + Date.now() + '.png');
-        clearImageInsertInternalSavedState();
-        imageInsertChangedByCrop = false;
         setImageInsertPreview(imageInsertCurrentDataUrl);
-        renderImageInsertInternalInfo();
         setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
     };
     reader.readAsDataURL(file);
@@ -2667,114 +2235,29 @@ async function uploadImageInsertToImgbb() {
         setImageInsertStatus('imgBB API key is missing. Please save it in settings first.', true);
         return;
     }
-    setImageInsertStatus('Uploading to imgBB...', false);
-    setImageUploadProgress(0, true);
+    setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
     try {
         const comma = imageInsertCurrentDataUrl.indexOf(',');
         const base64Data = comma >= 0 ? imageInsertCurrentDataUrl.slice(comma + 1) : imageInsertCurrentDataUrl;
         const form = new FormData();
         form.append('image', base64Data);
         form.append('name', 'img_insert_' + Date.now());
-
-        const payload = await new Promise(function (resolve, reject) {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', 'https://api.imgbb.com/1/upload?key=' + encodeURIComponent(apiKey), true);
-            xhr.upload.onprogress = function (ev) {
-                if (!ev || !ev.lengthComputable) return;
-                const pct = Math.round((ev.loaded / ev.total) * 100);
-                setImageUploadProgress(pct, true);
-                setImageInsertStatus('Uploading to imgBB... ' + pct + '%', false);
-            };
-            xhr.onload = function () {
-                try {
-                    const data = JSON.parse(xhr.responseText || '{}');
-                    if (xhr.status >= 200 && xhr.status < 300 && data && data.success !== false) resolve(data);
-                    else {
-                        const msg = data && data.error && data.error.message ? data.error.message : ('imgBB upload failed (' + xhr.status + ')');
-                        reject(new Error(msg));
-                    }
-                } catch (e) {
-                    reject(e);
-                }
-            };
-            xhr.onerror = function () { reject(new Error('Network error during imgBB upload.')); };
-            xhr.send(form);
+        const response = await fetch('https://api.imgbb.com/1/upload?key=' + encodeURIComponent(apiKey), {
+            method: 'POST',
+            body: form
         });
-
+        const payload = await response.json();
+        if (!response.ok || !payload || payload.success === false) {
+            const msg = payload && payload.error && payload.error.message ? payload.error.message : ('imgBB upload failed (' + response.status + ')');
+            throw new Error(msg);
+        }
         const data = payload.data || {};
         const directUrl = data.url || (data.image && data.image.url) || data.display_url || '';
         const input = document.getElementById('img-insert-url');
-        if (input) input.value = directUrl || '';
-        setImageUploadProgress(100, false);
-        setImageInsertStatus(directUrl ? ('Upload complete: ' + directUrl) : 'Upload complete.', false);
+        if (input) input.value = '';
+        setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
     } catch (e) {
-        setImageUploadProgress(0, false);
         setImageInsertStatus('imgBB upload failed: ' + (e && e.message ? e.message : e), true);
-    }
-}
-
-async function saveImageInsertToInternalDb() {
-    if (!db) {
-        setImageInsertStatus('Database is not ready yet.', true);
-        return;
-    }
-    if (!window.ImageDB || typeof window.ImageDB.saveDataUrl !== 'function') {
-        setImageInsertStatus('ImageDB module is not available.', true);
-        return;
-    }
-    if (!imageInsertCurrentDataUrl || imageInsertCurrentDataUrl.indexOf('data:image') !== 0) {
-        setImageInsertStatus('Select or paste an image before saving internally.', true);
-        return;
-    }
-    const nowFingerprint = getImageInsertFingerprint(imageInsertCurrentDataUrl);
-    if (imageInsertSavedInternalUrl) {
-        if (imageInsertSavedFingerprint === nowFingerprint) {
-            const inputEl = document.getElementById('img-insert-url');
-            if (inputEl) inputEl.value = imageInsertSavedInternalUrl;
-            setImageInsertStatus('Already saved internally. Reusing the existing internal link.', false);
-            renderImageInsertInternalInfo();
-            return;
-        }
-        if (!imageInsertChangedByCrop) {
-            setImageInsertStatus('An internal link already exists. Delete the saved internal image first to save a new one.', true);
-            return;
-        }
-    }
-    try {
-        const saved = await window.ImageDB.saveDataUrl(db, imageInsertCurrentDataUrl, {
-            name: imageInsertCurrentFileName || ('internal_' + Date.now() + '.png')
-        });
-        const input = document.getElementById('img-insert-url');
-        if (input) input.value = saved.url;
-        imageInsertSavedInternalId = saved.id;
-        imageInsertSavedInternalUrl = saved.url;
-        imageInsertSavedFingerprint = nowFingerprint;
-        imageInsertChangedByCrop = false;
-        renderImageInsertInternalInfo();
-        setImageInsertStatus('Saved to internal image DB. Insert with Markdown/HTML buttons.', false);
-        showToast('Image saved to internal DB.');
-    } catch (e) {
-        setImageInsertStatus('Failed to save image internally: ' + (e && e.message ? e.message : e), true);
-    }
-}
-
-async function deleteSavedInternalImage() {
-    if (!db || !imageInsertSavedInternalId) return;
-    try {
-        const tx = db.transaction('images', 'readwrite');
-        tx.objectStore('images').delete(imageInsertSavedInternalId);
-        await new Promise(function (resolve, reject) {
-            tx.oncomplete = resolve;
-            tx.onerror = function () { reject(tx.error || new Error('Failed to delete image.')); };
-        });
-        clearImageInsertInternalSavedState();
-        imageInsertChangedByCrop = false;
-        const input = document.getElementById('img-insert-url');
-        if (input && String(input.value || '').trim().startsWith('internal://')) input.value = '';
-        renderImageInsertInternalInfo();
-        setImageInsertStatus('Deleted saved internal image. You can save a new internal image now.', false);
-    } catch (e) {
-        setImageInsertStatus('Failed to delete saved internal image: ' + (e && e.message ? e.message : e), true);
     }
 }
 
@@ -4709,7 +4192,6 @@ async function initAiVisibility() {
 }
 
 function openSettingsModal() {
-    closeScholarSearchModal();
     document.getElementById('settings-modal').classList.remove('hidden');
     document.getElementById('settings-modal').classList.add('flex');
     loadAiSettingsToUI();
@@ -4900,7 +4382,6 @@ window.onImageInsertUploadDragLeave = onImageInsertUploadDragLeave;
 window.onImageInsertUploadDrop = onImageInsertUploadDrop;
 window.cropImageInsertCurrent = cropImageInsertCurrent;
 window.uploadImageInsertToImgbb = uploadImageInsertToImgbb;
-window.saveImageInsertToInternalDb = saveImageInsertToInternalDb;
 window.insertImageFromModal = insertImageFromModal;
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
@@ -4946,7 +4427,6 @@ window.openSettingsModal = openSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
 window.applyCodeColorSettings = applyCodeColorSettings;
 window.resetCodeColorSettings = resetCodeColorSettings;
-window.clearUnusedCache = clearUnusedCache;
 window.switchSidebarTab = switchSidebarTab;
 window.renderTOC = renderTOC;
 window.scrollToLine = scrollToLine;
