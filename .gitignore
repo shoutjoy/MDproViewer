@@ -2,6 +2,7 @@
 md-electron/
 Release/
 Docs/
+backup/
 # 복구용 파일 제외 
 
 index복구용.html

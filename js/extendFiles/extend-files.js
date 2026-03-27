@@ -146,9 +146,9 @@
       '저장되지 않은 변경사항',
       '현재 문서를 닫기 전에 작업을 어떻게 처리할까요?',
       [
-        { key: 'indb', label: '[ ] 저장(inDB)' },
-        { key: 'export', label: '[ ] 내보내기' },
-        { key: 'cancel', label: '[취소]' }
+        { key: 'indb', label: '저장(inDB)' },
+        { key: 'export', label: '내보내기' },
+        { key: 'cancel', label: '취소' }
       ],
       'cancel'
     );
@@ -162,7 +162,7 @@
         { key: 'md', label: 'md파일' },
         { key: 'mdd', label: 'mdd파일(통합문서)' },
         { key: 'zip', label: 'Zip파일' },
-        { key: 'cancel', label: '[취소]' }
+        { key: 'cancel', label: '취소' }
       ],
       'cancel'
     );
