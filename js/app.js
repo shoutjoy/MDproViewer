@@ -4262,15 +4262,25 @@ function applyScholarSearchPanelLayout() {
     if (scholarSearchDockRight) {
         modal.classList.remove('items-center', 'justify-center');
         modal.classList.add('items-start', 'justify-end');
-        panel.style.marginTop = '80px';
-        panel.style.marginRight = '12px';
+        panel.style.position = 'fixed';
+        panel.style.top = '80px';
+        panel.style.right = '12px';
+        panel.style.left = 'auto';
+        panel.style.margin = '0';
+        panel.style.marginTop = '0';
+        panel.style.marginRight = '0';
         panel.style.maxWidth = scholarSearchShrink ? '320px' : '760px';
     } else {
         modal.classList.remove('items-start', 'justify-end');
         modal.classList.add('items-center', 'justify-center');
+        panel.style.position = '';
+        panel.style.top = '';
+        panel.style.right = '';
+        panel.style.left = '';
+        panel.style.margin = '';
         panel.style.marginTop = '0';
         panel.style.marginRight = '0';
-        panel.style.maxWidth = scholarSearchShrink ? '320px' : '760px';
+        panel.style.maxWidth = '760px';
     }
 
     if (title) title.classList.toggle('text-sm', scholarSearchShrink);
@@ -4279,23 +4289,30 @@ function applyScholarSearchPanelLayout() {
     if (title) title.style.wordBreak = 'keep-all';
 
     if (body) body.classList.remove('hidden');
-    if (queryLabel) queryLabel.classList.toggle('hidden', scholarSearchShrink);
-    if (options) options.classList.toggle('hidden', scholarSearchShrink);
-    if (help) help.classList.toggle('hidden', scholarSearchShrink);
+    const canShrink = scholarSearchDockRight;
+    const isShrinked = canShrink && scholarSearchShrink;
+    if (queryLabel) queryLabel.classList.toggle('hidden', isShrinked);
+    if (options) options.classList.toggle('hidden', isShrinked);
+    if (help) help.classList.toggle('hidden', isShrinked);
 
     if (inputRow) {
         inputRow.style.display = 'flex';
         inputRow.style.gap = '8px';
-        inputRow.style.flexDirection = scholarSearchShrink ? 'column' : 'row';
-        inputRow.style.alignItems = scholarSearchShrink ? 'stretch' : 'center';
+        inputRow.style.flexDirection = isShrinked ? 'column' : 'row';
+        inputRow.style.alignItems = isShrinked ? 'stretch' : 'center';
     }
     if (queryInput) queryInput.style.width = '100%';
     if (runBtn) {
-        runBtn.style.width = scholarSearchShrink ? '100%' : '';
+        runBtn.style.width = isShrinked ? '100%' : '';
         runBtn.textContent = 'Search';
     }
 
-    if (shrinkBtn) shrinkBtn.textContent = scholarSearchShrink ? 'Expand' : 'Shrink';
+    if (shrinkBtn) {
+        shrinkBtn.textContent = isShrinked ? '[<<]' : '[>>]';
+        shrinkBtn.disabled = !canShrink;
+        shrinkBtn.classList.toggle('opacity-40', !canShrink);
+        shrinkBtn.classList.toggle('cursor-not-allowed', !canShrink);
+    }
     if (dockBtn) dockBtn.textContent = scholarSearchDockRight ? 'Undock' : 'Dock Right';
 }
 
@@ -4458,10 +4475,12 @@ function clearAllScholarRefs() {
 
 function toggleScholarSearchDockRight() {
     scholarSearchDockRight = !scholarSearchDockRight;
+    if (!scholarSearchDockRight) scholarSearchShrink = false;
     applyScholarSearchPanelLayout();
 }
 
 function toggleScholarSearchShrink() {
+    if (!scholarSearchDockRight) return;
     scholarSearchShrink = !scholarSearchShrink;
     applyScholarSearchPanelLayout();
 }
