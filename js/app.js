@@ -1374,7 +1374,7 @@ async function openMergeModal() {
     mergeListSearchQuery = '';
     mergeListSelectedOnly = false;
     const searchInput = document.getElementById('merge-search-input');
-    if (searchInput) searchinput.value = '';
+    if (searchInput) searchInput.value = '';
     renderMergeList();
     document.getElementById('merge-bundle-name').value = '';
     document.getElementById('merge-modal').classList.remove('hidden');
