@@ -1494,7 +1494,7 @@ function renderMergeList() {
     const selectedOnlyBtn = document.getElementById('merge-selected-only-btn');
     if (!listEl) return;
     if (selectedOnlyBtn) {
-        selectedOnlyBtn.textContent = mergeListSelectedOnly ? 'Selected only' : 'Show all';
+        selectedOnlyBtn.textContent = mergeListSelectedOnly ? '전체보기' : '선택보기';
         selectedOnlyBtn.className = mergeListSelectedOnly
             ? 'flex-1 px-3 py-1.5 text-xs font-medium border border-indigo-600 dark:border-indigo-400 rounded-md text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60'
             : 'flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700';

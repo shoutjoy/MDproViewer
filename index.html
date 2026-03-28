@@ -150,12 +150,6 @@
                         <i data-lucide="archive" class="w-3.5 h-3.5"></i>
                         <span>BackUP</span>
                     </button>
-                    <button onclick="document.getElementById('file-input').click()"
-                        class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
-                        title="mpv/프로젝트 파일 불러오기">
-                        <i data-lucide="folder-open" class="w-3.5 h-3.5"></i>
-                        <span>mpv</span>
-                    </button>
                     <button onclick="openMergeModal()"
                         class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
                         title="문서 묶기">
@@ -627,6 +621,10 @@
                 </button>
             </div>
             <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600">
+                <button onclick="closeBackupModal(); document.getElementById('file-input').click()"
+                    class="w-full mb-2 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center gap-2">
+                    <i data-lucide="folder-open" class="w-4 h-4"></i> MVP 열기
+                </button>
                 <button onclick="closeBackupModal()" class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
             </div>
         </div>
@@ -653,6 +651,8 @@
                         class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체선택</button>
                     <button type="button" onclick="deselectAllMergeItems()"
                         class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체 해제</button>
+                    <button type="button" id="merge-selected-only-btn" onclick="toggleSelectedOnlyMergeView()"
+                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700">선택보기</button>
                 </div>
             </div>
             <div id="merge-list" class="flex-1 overflow-y-auto space-y-2 min-h-0 custom-scrollbar">
