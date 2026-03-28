@@ -1058,7 +1058,7 @@
     <!-- Scholar Search Modal -->
     <div id="scholar-search-modal" class="fixed inset-0 bg-transparent hidden items-start justify-end z-50 no-print pointer-events-none">
         <div id="scholar-search-panel" class="pointer-events-auto mt-20 mr-5 bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-2xl p-4 w-full max-w-xl border border-slate-200 dark:border-slate-700 backdrop-blur-[1px]">
-            <div class="flex items-center justify-between mb-3 gap-2">
+            <div id="scholar-search-header" class="flex items-center justify-between mb-3 gap-2 cursor-move select-none">
                 <h3 id="scholar-search-title" class="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">Scholar Search</h3>
                 <div class="flex items-center gap-2 shrink-0">
                     <button type="button" id="scholar-search-shrink-btn" onclick="toggleScholarSearchShrink()"
@@ -1160,7 +1160,10 @@
                                 <button type="button" class="scholarref-secondary" onclick="insertAllScholarRefSection()">참고문헌 섹션 삽입</button>
                                 <button type="button" class="scholarref-secondary" onclick="downloadScholarRefTxt()">TXT 다운로드</button>
                                 <button type="button" class="scholarref-secondary" onclick="downloadScholarRefMd()">MD 다운로드</button>
+                                <button type="button" class="scholarref-secondary" onclick="openScholarRefMdImport()">MD 불러오기</button>
+                                <button type="button" class="scholarref-secondary" onclick="openScholarRefListWindow()">새창목록</button>
                                 <button type="button" class="scholarref-danger" onclick="clearAllScholarRefs()">전체 삭제</button>
+                                <input type="file" id="scholarref-md-file" accept=".md,.txt" class="hidden" onchange="importScholarRefMd(event)">
                             </div>
                         </div>
                         <div id="scholarref-saved-list" class="scholarref-list"></div>
