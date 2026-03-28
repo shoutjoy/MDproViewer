@@ -76,9 +76,95 @@ if (editorTextarea) {
 let pendingExternalContent = null;
 let receivedExternalContent = false;
 let notebookLmEqualsHrPreprocess = false;
+let lastExternalOpenSignature = '';
 const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
 const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
 const ROOT_FOLDER_NAME = 'ROOT';
+
+function getNameFromPath(pathValue) {
+    const p = String(pathValue || '').trim();
+    if (!p) return '';
+    const parts = p.split(/[\\/]/);
+    return parts[parts.length - 1] || '';
+}
+
+function normalizeExternalOpenPayload(raw) {
+    if (!raw) return { path: '', text: '', hasText: false, fileName: '' };
+    if (typeof raw === 'string') return { path: String(raw), text: '', hasText: false, fileName: '' };
+    const path = String(raw.path || raw.filePath || '').trim();
+    const textCandidate = raw.text ?? raw.content ?? raw.markdown;
+    const hasText = textCandidate !== undefined && textCandidate !== null;
+    const text = hasText ? String(textCandidate) : '';
+    const fileName = String(raw.fileName || raw.name || '').trim();
+    return { path, text, hasText, fileName };
+}
+
+function buildExternalOpenSignature(payload) {
+    const p = normalizeExternalOpenPayload(payload);
+    return [p.path, p.fileName, p.hasText ? p.text.length : -1, p.hasText ? p.text.slice(0, 64) : ''].join('|');
+}
+
+async function tryLoadFromElectronSessionStorage() {
+    try {
+        const p = sessionStorage.getItem('web2electronOpenPath') || '';
+        const t = sessionStorage.getItem('web2electronOpenText');
+        if (!p && (t == null || t === '')) return null;
+        sessionStorage.removeItem('web2electronOpenPath');
+        sessionStorage.removeItem('web2electronOpenText');
+        return {
+            path: p || '',
+            text: t == null ? '' : String(t),
+            hasText: t != null
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
+async function tryGetOpenedFileViaElectronApi() {
+    if (!(window.electron && window.electron.ipcRenderer && typeof window.electron.ipcRenderer.invoke === 'function')) return null;
+    try {
+        const r = await window.electron.ipcRenderer.invoke('web2electron:get-opened-file');
+        if (!r) return null;
+        return normalizeExternalOpenPayload(r);
+    } catch (e) {
+        return null;
+    }
+}
+
+async function applyIncomingOpenedFile(rawPayload, options) {
+    const opts = options || {};
+    let payload = normalizeExternalOpenPayload(rawPayload);
+
+    if (!payload.hasText) {
+        const viaApi = await tryGetOpenedFileViaElectronApi();
+        if (viaApi && viaApi.hasText) payload = viaApi;
+    }
+
+    if (!payload.hasText) {
+        if (opts.showMissingTextToast) showToast('파일 경로는 전달되었지만 본문(text)이 없어 열지 못했습니다.');
+        return false;
+    }
+
+    const sig = buildExternalOpenSignature(payload);
+    if (sig && sig === lastExternalOpenSignature) return true;
+
+    if (opts.askBeforeReplace) {
+        const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+        if (!canProceed) {
+            showToast('Open canceled.');
+            return false;
+        }
+    }
+
+    const fileName = payload.fileName || getNameFromPath(payload.path) || currentFileName || 'document.md';
+    setCurrentDocumentInfo(fileName, payload.path || null);
+    updateContent(payload.text);
+    markPersistedState();
+    lastExternalOpenSignature = sig;
+    if (opts.toastMessage) showToast(opts.toastMessage);
+    return true;
+}
 
 window.addEventListener('message', function (ev) {
     const d = ev.data;
@@ -237,7 +323,23 @@ window.onload = async () => {
             });
             pendingExternalContent = null;
             if (typeof showToast === 'function') showToast("Content loaded from external source.");
-        } else if (!receivedExternalContent) {
+        } else {
+            const sessionOpened = await tryLoadFromElectronSessionStorage();
+            if (sessionOpened && sessionOpened.hasText) {
+                const loaded = await applyIncomingOpenedFile(sessionOpened, { askBeforeReplace: false, toastMessage: 'Opened external file.' });
+                if (loaded) receivedExternalContent = true;
+            }
+        }
+
+        if (!pendingExternalContent && !receivedExternalContent) {
+            const viaElectronApi = await tryGetOpenedFileViaElectronApi();
+            if (viaElectronApi && viaElectronApi.hasText) {
+                await applyIncomingOpenedFile(viaElectronApi, { askBeforeReplace: false, toastMessage: 'Loaded initial file.' });
+                receivedExternalContent = true;
+            }
+        }
+
+        if (!receivedExternalContent) {
             const urlContent = tryLoadFromUrl();
             if (!urlContent) updateContent('');
         }
@@ -263,25 +365,25 @@ window.onload = async () => {
 
         initAiVisibility();
 
+    window.addEventListener('electron-open-file', async function (ev) {
+        const detail = ev && ev.detail ? ev.detail : null;
+        await applyIncomingOpenedFile(detail, {
+            askBeforeReplace: true,
+            toastMessage: 'Opened external file.',
+            showMissingTextToast: true
+        });
+    });
+
     if (window.electron && window.electron.ipcRenderer) {
         window.electron.ipcRenderer.on('open-external-file', async (event, data) => {
-            const canProceed = await confirmSaveBeforeOpeningAnotherFile();
-            if (!canProceed) {
-                showToast('Open canceled.');
-                return;
-            }
-            setCurrentDocumentInfo(data.fileName, data.filePath);
-            updateContent(data.content);
-            markPersistedState();
-            showToast("Opened external file.");
+            await applyIncomingOpenedFile(data, {
+                askBeforeReplace: true,
+                toastMessage: 'Opened external file.',
+                showMissingTextToast: true
+            });
         });
         window.electron.ipcRenderer.invoke('get-initial-file').then(function (data) {
-            if (data && data.fileName && data.content !== undefined) {
-                setCurrentDocumentInfo(data.fileName, data.filePath);
-                updateContent(data.content);
-                markPersistedState();
-                showToast("Loaded initial file.");
-            }
+            applyIncomingOpenedFile(data, { askBeforeReplace: false, toastMessage: 'Loaded initial file.' });
         }).catch(function () {});
     }
 
