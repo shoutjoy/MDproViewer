@@ -23,6 +23,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="./css/style.css" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css" charset="utf-8">
+    <link rel="stylesheet" href="./Scholarref/scholarref.css" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
 </head>
 
@@ -929,7 +930,7 @@
                     </div>
                     <div class="mt-3 p-2 rounded border border-slate-200 dark:border-slate-700 bg-white/70 dark:bg-slate-900/40">
                         <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                            <input type="checkbox" id="enter-button-insert-br"
+                            <input type="checkbox" id="enter-button-insert-br" onchange="toggleEnterButtonInsertBrSetting(this.checked)"
                                 class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                             <span>툴바 Enter 버튼을 <code>&lt;br&gt;</code>로 삽입</span>
                         </label>
@@ -1103,6 +1104,68 @@
                     </div>
                 </div>
                 <p id="scholar-search-help" class="text-[11px] text-amber-600 dark:text-amber-400">Results open in a new browser tab.</p>
+                <div class="pt-1 flex justify-end">
+                    <button type="button" id="scholarref-toggle-btn" class="scholarref-toggle-btn" onclick="toggleScholarRefPanel()">Reference management</button>
+                </div>
+                <div id="scholarref-panel" class="scholarref-panel hidden">
+                    <div class="scholarref-tab-menu">
+                        <button type="button" class="scholarref-tab active" data-tab="0" onclick="switchScholarRefTab(0)">① 참고문헌 추가</button>
+                        <button type="button" class="scholarref-tab" data-tab="1" onclick="switchScholarRefTab(1)">② 인용 삽입</button>
+                        <button type="button" class="scholarref-tab" data-tab="2" onclick="switchScholarRefTab(2)">④ 저장된 목록</button>
+                    </div>
+
+                    <div id="scholarref-tab-0" class="scholarref-tab-content active">
+                        <div class="scholarref-row">
+                            <button type="button" id="scholarref-method-blank" class="scholarref-method-btn active" onclick="setScholarRefInputMode('blank')">빈 줄 구분</button>
+                            <button type="button" id="scholarref-method-line" class="scholarref-method-btn" onclick="setScholarRefInputMode('line')">엔터 구분</button>
+                        </div>
+                        <label class="scholarref-label" for="scholarref-input">APA 형식 참고문헌 붙여넣기</label>
+                        <textarea id="scholarref-input" class="scholarref-textarea" placeholder="여기에 참고문헌을 붙여넣으세요..."></textarea>
+                        <div class="scholarref-row">
+                            <button type="button" class="scholarref-primary" onclick="scholarRefApplyInput()">앱에서 사용하기</button>
+                            <button type="button" class="scholarref-secondary" onclick="scholarRefClearInput()">지우기</button>
+                            <button type="button" class="scholarref-secondary" onclick="openScholarRefTxtImport()">TXT 불러오기</button>
+                            <input type="file" id="scholarref-txt-file" accept=".txt,.md" class="hidden" onchange="importScholarRefTxt(event)">
+                        </div>
+                        <p id="scholarref-status" class="scholarref-help">현재: 빈 줄 구분</p>
+                    </div>
+
+                    <div id="scholarref-tab-1" class="scholarref-tab-content">
+                        <div class="scholarref-row">
+                            <input type="text" id="scholarref-search" class="scholarref-search" placeholder="저자, 연도, 키워드로 검색..." oninput="renderScholarRefSelectionList()">
+                            <button type="button" class="scholarref-secondary" onclick="selectAllScholarRefs()">전체 선택</button>
+                            <button type="button" class="scholarref-secondary" onclick="clearScholarRefSelection()">선택 해제</button>
+                        </div>
+                        <div id="scholarref-select-list" class="scholarref-list"></div>
+                        <div class="scholarref-row scholarref-wrap">
+                            <label class="scholarref-inline">삽입 형식
+                                <select id="scholarref-insert-format" class="scholarref-select">
+                                    <option value="inline">인라인: (저자, 연도)</option>
+                                    <option value="narrative">서술형: 저자(연도)</option>
+                                </select>
+                            </label>
+                            <label class="scholarref-inline"><input type="checkbox" id="scholarref-append-section"> 문서 끝 References(APA) 추가</label>
+                            <label class="scholarref-inline"><input type="checkbox" id="scholarref-number-link"> 번호(링크)로 삽입</label>
+                            <span id="scholarref-selected-count" class="scholarref-count">0개 선택됨</span>
+                        </div>
+                        <div class="scholarref-row scholarref-center">
+                            <button type="button" class="scholarref-primary" onclick="insertSelectedScholarRefs()">선택한 인용 삽입</button>
+                        </div>
+                    </div>
+
+                    <div id="scholarref-tab-2" class="scholarref-tab-content">
+                        <div class="scholarref-row scholarref-between">
+                            <div class="scholarref-count">저장 <span id="scholarref-total-count">0건</span></div>
+                            <div class="scholarref-row">
+                                <button type="button" class="scholarref-secondary" onclick="insertAllScholarRefSection()">참고문헌 섹션 삽입</button>
+                                <button type="button" class="scholarref-secondary" onclick="downloadScholarRefTxt()">TXT 다운로드</button>
+                                <button type="button" class="scholarref-secondary" onclick="downloadScholarRefMd()">MD 다운로드</button>
+                                <button type="button" class="scholarref-danger" onclick="clearAllScholarRefs()">전체 삭제</button>
+                            </div>
+                        </div>
+                        <div id="scholarref-saved-list" class="scholarref-list"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1230,6 +1293,7 @@
     <script src="./trt/special_trt.js" charset="utf-8" defer></script>
     <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
     <script src="./imageDB/imageDB.js" charset="utf-8" defer></script>
+    <script src="./Scholarref/scholarref.js" charset="utf-8" defer></script>
     <script src="./js/extendFiles/extend-files.js" charset="utf-8" defer></script>
     <script src="./js/app.js" charset="utf-8" defer></script>
 </body>

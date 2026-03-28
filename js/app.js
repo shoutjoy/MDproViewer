@@ -1,11 +1,12 @@
 // IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 let db;
 
 const AI_SETTINGS_KEY = 'ai_settings';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
 const AUTH_REQUEST_EMAIL = 'shoutjoy1@yonsei.ac.kr';
+const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 
 // State
 let currentMarkdown = "";
@@ -148,6 +149,9 @@ function initDB() {
             if (!db.objectStoreNames.contains('images')) {
                 db.createObjectStore('images', { keyPath: 'id' });
             }
+            if (!db.objectStoreNames.contains('scholar_refs')) {
+                db.createObjectStore('scholar_refs', { keyPath: 'id' });
+            }
         };
     });
 }
@@ -244,6 +248,14 @@ window.onload = async () => {
         if (isEditMode && editorTextarea) editorTextarea.focus();
 
         if (sidebar) sidebar.style.display = 'none';
+
+        if (window.ScholarRef && typeof window.ScholarRef.init === 'function') {
+            await window.ScholarRef.init({
+                dbGetter: function () { return db; },
+                getEditor: function () { return editorTextarea; },
+                showToast: showToast
+            });
+        }
 
         initAiVisibility();
 
@@ -3969,6 +3981,22 @@ function getImgbbApiKey() {
     return localStorage.getItem('ss_imgbb_api_key') || '';
 }
 
+function getEnterButtonInsertBrFromLocal() {
+    return localStorage.getItem(ENTER_BUTTON_BR_KEY) === '1';
+}
+
+function setEnterButtonInsertBrToLocal(enabled) {
+    if (enabled) localStorage.setItem(ENTER_BUTTON_BR_KEY, '1');
+    else localStorage.removeItem(ENTER_BUTTON_BR_KEY);
+}
+
+async function toggleEnterButtonInsertBrSetting(enabled) {
+    const on = !!enabled;
+    enterButtonInsertBr = on;
+    setEnterButtonInsertBrToLocal(on);
+    try { await setAiSettings({ enterButtonInsertBr: on }); } catch (e) {}
+}
+
 async function saveImgbbApiKey(key) {
     const value = String(key || '').trim();
     await setAiSettings({ imgbbApiKey: value });
@@ -4151,6 +4179,108 @@ function applyScholarSearchPanelLayout() {
     if (dockBtn) dockBtn.textContent = scholarSearchDockRight ? 'Undock' : 'Dock Right';
 }
 
+function toggleScholarRefPanel() {
+    if (window.ScholarRef && typeof window.ScholarRef.togglePanel === 'function') {
+        window.ScholarRef.togglePanel();
+    }
+}
+
+function switchScholarRefTab(index) {
+    if (window.ScholarRef && typeof window.ScholarRef.switchTab === 'function') {
+        window.ScholarRef.switchTab(index);
+    }
+}
+
+function setScholarRefInputMode(mode) {
+    if (window.ScholarRef && typeof window.ScholarRef.setInputMode === 'function') {
+        window.ScholarRef.setInputMode(mode);
+    }
+}
+
+function scholarRefApplyInput() {
+    if (window.ScholarRef && typeof window.ScholarRef.applyInput === 'function') {
+        window.ScholarRef.applyInput();
+    }
+}
+
+function scholarRefClearInput() {
+    if (window.ScholarRef && typeof window.ScholarRef.clearInput === 'function') {
+        window.ScholarRef.clearInput();
+    }
+}
+
+function openScholarRefTxtImport() {
+    if (window.ScholarRef && typeof window.ScholarRef.openTxtImport === 'function') {
+        window.ScholarRef.openTxtImport();
+    }
+}
+
+function importScholarRefTxt(event) {
+    if (window.ScholarRef && typeof window.ScholarRef.importTxt === 'function') {
+        window.ScholarRef.importTxt(event);
+    }
+}
+
+function renderScholarRefSelectionList() {
+    if (window.ScholarRef && typeof window.ScholarRef.renderSelectionList === 'function') {
+        window.ScholarRef.renderSelectionList();
+    }
+}
+
+function toggleScholarRefPick(id, checked) {
+    if (window.ScholarRef && typeof window.ScholarRef.togglePick === 'function') {
+        window.ScholarRef.togglePick(id, checked);
+    }
+}
+
+function selectAllScholarRefs() {
+    if (window.ScholarRef && typeof window.ScholarRef.selectAllFiltered === 'function') {
+        window.ScholarRef.selectAllFiltered();
+    }
+}
+
+function clearScholarRefSelection() {
+    if (window.ScholarRef && typeof window.ScholarRef.clearSelection === 'function') {
+        window.ScholarRef.clearSelection();
+    }
+}
+
+function insertSelectedScholarRefs() {
+    if (window.ScholarRef && typeof window.ScholarRef.insertSelected === 'function') {
+        window.ScholarRef.insertSelected();
+    }
+}
+
+function insertAllScholarRefSection() {
+    if (window.ScholarRef && typeof window.ScholarRef.insertAllSection === 'function') {
+        window.ScholarRef.insertAllSection();
+    }
+}
+
+function downloadScholarRefTxt() {
+    if (window.ScholarRef && typeof window.ScholarRef.downloadTxt === 'function') {
+        window.ScholarRef.downloadTxt();
+    }
+}
+
+function downloadScholarRefMd() {
+    if (window.ScholarRef && typeof window.ScholarRef.downloadMd === 'function') {
+        window.ScholarRef.downloadMd();
+    }
+}
+
+function deleteScholarRefItem(id) {
+    if (window.ScholarRef && typeof window.ScholarRef.deleteOne === 'function') {
+        window.ScholarRef.deleteOne(id);
+    }
+}
+
+function clearAllScholarRefs() {
+    if (window.ScholarRef && typeof window.ScholarRef.clearAll === 'function') {
+        window.ScholarRef.clearAll();
+    }
+}
+
 function toggleScholarSearchDockRight() {
     scholarSearchDockRight = !scholarSearchDockRight;
     applyScholarSearchPanelLayout();
@@ -4306,6 +4436,10 @@ async function onAiFeatureCheckboxChange() {
 }
 
 async function persistAiSettingsFromModal() {
+    const enterBrEl = document.getElementById('enter-button-insert-br');
+    const enterButtonInsertBrEnabled = !!(enterBrEl && enterBrEl.checked);
+    enterButtonInsertBr = enterButtonInsertBrEnabled;
+    setEnterButtonInsertBrToLocal(enterButtonInsertBrEnabled);
     if (!db) return;
     const s = await getAiSettings();
     const verified = !!(s && s.verified);
@@ -4318,8 +4452,6 @@ async function persistAiSettingsFromModal() {
     const imageUploadEnabled = !!(imageUploadEl && imageUploadEl.checked);
     const scholarSearchVisibleEl = document.getElementById('scholar-search-visible');
     const scholarSearchVisible = !!(scholarSearchVisibleEl && scholarSearchVisibleEl.checked);
-    const enterBrEl = document.getElementById('enter-button-insert-br');
-    const enterButtonInsertBrEnabled = !!(enterBrEl && enterBrEl.checked);
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     await setAiSettings({
@@ -4331,7 +4463,6 @@ async function persistAiSettingsFromModal() {
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         imgbbApiKey: imgbbKey
     });
-    enterButtonInsertBr = enterButtonInsertBrEnabled;
     if (imgbbKey) localStorage.setItem('ss_imgbb_api_key', imgbbKey);
     else localStorage.removeItem('ss_imgbb_api_key');
 }
@@ -4983,8 +5114,9 @@ async function loadAiSettingsToUI() {
         const scholarSearchCheckEmpty = document.getElementById('scholar-search-visible');
         if (scholarSearchCheckEmpty) scholarSearchCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
-        if (enterBrCheckEmpty) enterBrCheckEmpty.checked = false;
-        enterButtonInsertBr = false;
+        const localEnterBr = getEnterButtonInsertBrFromLocal();
+        if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
+        enterButtonInsertBr = localEnterBr;
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
         syncImgbbApiKeyInputs('');
@@ -5002,8 +5134,9 @@ async function loadAiSettingsToUI() {
     const scholarSearchCheck = document.getElementById('scholar-search-visible');
     if (scholarSearchCheck) scholarSearchCheck.checked = settings.scholarSearchVisible === true;
     const enterBrCheck = document.getElementById('enter-button-insert-br');
-    if (enterBrCheck) enterBrCheck.checked = settings.enterButtonInsertBr === true;
-    enterButtonInsertBr = settings.enterButtonInsertBr === true;
+    const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
+    if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
+    enterButtonInsertBr = enterBrEnabled;
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
     syncImgbbApiKeyInputs(settings.imgbbApiKey || '');
@@ -5069,7 +5202,7 @@ async function initAiVisibility() {
         if (scholarEl) scholarEl.checked = false;
         if (sspimgEl) sspimgEl.checked = false;
     }
-    enterButtonInsertBr = !!(settings && settings.enterButtonInsertBr === true);
+    enterButtonInsertBr = !!((settings && settings.enterButtonInsertBr === true) || getEnterButtonInsertBrFromLocal());
     updateAiScholarSspimgAvailability(verified);
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
@@ -5255,6 +5388,7 @@ window.loadFromExternalContent = loadFromExternalContent;
 window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
 window.insertUserInfoAtCursor = insertUserInfoAtCursor;
+window.toggleEnterButtonInsertBrSetting = toggleEnterButtonInsertBrSetting;
 window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
 window.insertHtmlImageAtCursor = insertHtmlImageAtCursor;
 window.openImageInsertModal = openImageInsertModal;
@@ -5282,6 +5416,23 @@ window.openScholarSearchModal = openScholarSearchModal;
 window.closeScholarSearchModal = closeScholarSearchModal;
 window.runScholarSearchFromModal = runScholarSearchFromModal;
 window.quickScholarSearchFromSelection = quickScholarSearchFromSelection;
+window.toggleScholarRefPanel = toggleScholarRefPanel;
+window.switchScholarRefTab = switchScholarRefTab;
+window.setScholarRefInputMode = setScholarRefInputMode;
+window.scholarRefApplyInput = scholarRefApplyInput;
+window.scholarRefClearInput = scholarRefClearInput;
+window.openScholarRefTxtImport = openScholarRefTxtImport;
+window.importScholarRefTxt = importScholarRefTxt;
+window.renderScholarRefSelectionList = renderScholarRefSelectionList;
+window.toggleScholarRefPick = toggleScholarRefPick;
+window.selectAllScholarRefs = selectAllScholarRefs;
+window.clearScholarRefSelection = clearScholarRefSelection;
+window.insertSelectedScholarRefs = insertSelectedScholarRefs;
+window.insertAllScholarRefSection = insertAllScholarRefSection;
+window.downloadScholarRefTxt = downloadScholarRefTxt;
+window.downloadScholarRefMd = downloadScholarRefMd;
+window.deleteScholarRefItem = deleteScholarRefItem;
+window.clearAllScholarRefs = clearAllScholarRefs;
 window.toggleScholarSearchDockRight = toggleScholarSearchDockRight;
 window.toggleScholarSearchShrink = toggleScholarSearchShrink;
 window.toggleScholarSearchSection = toggleScholarSearchSection;
