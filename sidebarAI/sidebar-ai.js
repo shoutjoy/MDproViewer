@@ -440,6 +440,7 @@
   var __viewerSSPSeedImage = null, __viewerSSPResultImage = null, __viewerSSPRatio = '1:1';
   var __viewerSSPImgbbUploading = false;
   var __viewerSSPImgHistory = [];
+  var __viewerSSPExternalFsGallery = [];
   var LS_SSP_IMG_HISTORY = 'ss_viewer_ssp_img_history';
   var LS_SSP_PANEL_SPLIT = 'ss_viewer_ssp_panel_split';
   var LS_SA_TONE_PRESET = 'ss_viewer_scholar_ai_tone_preset';
@@ -597,6 +598,43 @@
     }
     return null;
   }
+  function viewerSSPFindExternalGalleryEntryById(id) {
+    if (!id) return null;
+    for (var i = 0; i < __viewerSSPExternalFsGallery.length; i++) {
+      if (__viewerSSPExternalFsGallery[i] && __viewerSSPExternalFsGallery[i].id === id) return __viewerSSPExternalFsGallery[i];
+    }
+    return null;
+  }
+  function viewerSSPFindFullscreenGalleryEntryById(id) {
+    return viewerSSPFindExternalGalleryEntryById(id) || viewerSSPFindHistoryEntryById(id);
+  }
+  function viewerSSPGetFullscreenGallerySource() {
+    return (__viewerSSPExternalFsGallery && __viewerSSPExternalFsGallery.length)
+      ? __viewerSSPExternalFsGallery
+      : __viewerSSPImgHistory;
+  }
+  function viewerSSPSetFullscreenGallery(items, currentDataURL) {
+    var next = [];
+    if (Array.isArray(items)) {
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (!item) continue;
+        var src = String(item.dataURL || '').trim();
+        if (!src) continue;
+        next.push({
+          id: String(item.id || ('ext_' + i)),
+          dataURL: src,
+          prompt: item.prompt || item.label || '',
+          createdAt: item.createdAt || Date.now(),
+          imgbb: item.imgbb || null
+        });
+      }
+    }
+    __viewerSSPExternalFsGallery = next;
+    viewerSSPRenderFullscreenGallery(
+      currentDataURL || ((document.getElementById('viewer-fs-img') || {}).src || '')
+    );
+  }
   function viewerSSPEnsureFullscreenGallery() {
     var overlay = ensureViewerFsOverlayOnBody();
     if (!overlay) return null;
@@ -612,7 +650,7 @@
     return gallery;
   }
   function viewerSSPOpenHistoryFullscreen(id) {
-    var entry = viewerSSPFindHistoryEntryById(id);
+    var entry = viewerSSPFindFullscreenGalleryEntryById(id);
     if (!entry || !entry.dataURL) return;
     viewerSSPOpenFullscreen(entry.dataURL);
   }
@@ -621,15 +659,18 @@
     if (!gallery) return;
     var list = document.getElementById('viewer-fs-gallery-list');
     if (!list) return;
-    if (!__viewerSSPImgHistory.length) {
+    var source = viewerSSPGetFullscreenGallerySource();
+    if (!source.length) {
       gallery.style.display = 'none';
       list.innerHTML = '';
       return;
     }
+    var titleEl = gallery.querySelector('.viewer-fs-gallery-title');
+    if (titleEl) titleEl.textContent = __viewerSSPExternalFsGallery.length ? 'Gallery' : 'History Gallery';
     var html = '';
-    for (var i = 0; i < __viewerSSPImgHistory.length; i++) {
-      var item = __viewerSSPImgHistory[i];
-      var label = String(item.prompt || 'Untitled image').replace(/</g, '&lt;');
+    for (var i = 0; i < source.length; i++) {
+      var item = source[i];
+      var label = String(item.prompt || item.label || 'Untitled image').replace(/</g, '&lt;');
       label = label.substring(0, 26) + (label.length > 26 ? '...' : '');
       var timeText = '';
       try {
@@ -2230,6 +2271,7 @@ function viewerSSPFsUploadImgbb() {
   window.viewerSSPUploadHistoryImage = viewerSSPUploadHistoryImage;
   window.viewerSSPClearSeed = viewerSSPClearSeed;
   window.viewerSSPOpenHistoryFullscreen = viewerSSPOpenHistoryFullscreen;
+  window.viewerSSPSetFullscreenGallery = viewerSSPSetFullscreenGallery;
   window.viewerSSPOpenFullscreen = viewerSSPOpenFullscreen;
   window.viewerSSPCloseFullscreen = viewerSSPCloseFullscreen;
   window.viewerSSPImgHistoryRemove = viewerSSPImgHistoryRemove;

@@ -74,6 +74,21 @@
     return new Blob([bytes], { type: mime || 'application/octet-stream' });
   }
 
+  function safeMddFormat(payload) {
+    return String(payload && payload.format || '').trim().toLowerCase();
+  }
+
+  function makeSafeImageId(seed, index) {
+    var raw = String(seed || '').trim();
+    var base = raw.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._~-]/g, '_');
+    if (!base) base = 'img_' + Date.now() + '_' + index;
+    return base + '_' + Math.random().toString(36).slice(2, 8);
+  }
+
+  function escapeRegExp(s) {
+    return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   async function exportMdd(db, markdown, fileName) {
     var imageDb = ensureImageDb();
     var source = String(markdown || '');
@@ -115,27 +130,54 @@
   async function importMddToIndexedDb(db, textOrObject) {
     var imageDb = ensureImageDb();
     var payload = typeof textOrObject === 'string' ? JSON.parse(textOrObject) : textOrObject;
-    if (!payload || payload.format !== 'mdviewer/mdd') {
+    var format = safeMddFormat(payload);
+
+    if (format !== 'mdviewer/mdd' && format !== 'mdlive/mdd') {
       throw new Error('Invalid MDD format.');
     }
+
     var images = Array.isArray(payload.images) ? payload.images : [];
     var imported = 0;
+    var pathMap = {};
+
     for (var i = 0; i < images.length; i++) {
       var item = images[i] || {};
-      var id = String(item.id || '').trim();
       var base64 = String(item.base64 || '').trim();
-      if (!id || !base64) continue;
+      if (!base64) continue;
+
+      var seed = item.id || item.path || item.name || ('image_' + i);
+      var id = makeSafeImageId(seed, i);
       var blob = base64ToBlob(base64, item.mime || 'application/octet-stream');
+
       await imageDb.saveBlob(db, blob, {
         id: id,
-        name: item.name || id,
+        name: item.name || String(item.path || item.id || id),
         mime: item.mime || blob.type || 'application/octet-stream'
       });
       imported += 1;
+
+      if (item.path) pathMap[String(item.path)] = 'internal://' + encodeURIComponent(id);
+      if (item.id) pathMap[String(item.id)] = 'internal://' + encodeURIComponent(id);
     }
+
     var doc = payload.document || {};
+    var markdown = String(doc.content || '');
+
+    if (format === 'mdlive/mdd') {
+      Object.keys(pathMap).forEach(function (key) {
+        if (!key) return;
+        var target = pathMap[key];
+        markdown = markdown.replace(new RegExp(escapeRegExp('indb:' + key), 'g'), target);
+        markdown = markdown.replace(new RegExp(escapeRegExp(key), 'g'), function (m, offset, src) {
+          var pre = src.slice(Math.max(0, offset - 8), offset);
+          if (/internal:\/\/$/.test(pre)) return m;
+          return m;
+        });
+      });
+    }
+
     return {
-      markdown: String(doc.content || ''),
+      markdown: markdown,
       fileName: String(doc.fileName || 'document.md'),
       imageCount: imported
     };
@@ -143,12 +185,12 @@
 
   function showCloseActionDialog() {
     return showChoiceDialog(
-      '저장되지 않은 변경사항',
-      '현재 문서를 닫기 전에 작업을 어떻게 처리할까요?',
+      'Unsaved Changes',
+      'How do you want to proceed before closing current document?',
       [
-        { key: 'indb', label: '저장(inDB)' },
-        { key: 'export', label: '내보내기' },
-        { key: 'cancel', label: '취소' }
+        { key: 'indb', label: 'Save (inDB)' },
+        { key: 'export', label: 'Export' },
+        { key: 'cancel', label: 'Cancel' }
       ],
       'cancel'
     );
@@ -156,12 +198,24 @@
 
   function showExportTypeDialog() {
     return showChoiceDialog(
-      '내보내기 형식 선택',
-      '원하는 파일 형식을 선택하세요.',
+      'Export Format',
+      'MD: 문서만 저장(내부 이미지 미포함) / MDD: 문서+이미지 통합 저장 / ZIP: 문서+images 폴더 저장',
       [
-        { key: 'md', label: 'md파일' },
-        { key: 'mdd', label: 'mdd파일(통합문서)' },
-        { key: 'zip', label: 'Zip파일' },
+        { key: 'md', label: 'MD file' },
+        { key: 'mdd', label: 'MDD file (bundle)' },
+        { key: 'zip', label: 'ZIP file' },
+        { key: 'cancel', label: 'Cancel' }
+      ],
+      'cancel'
+    );
+  }
+
+  function showMdImageLossWarningDialog() {
+    return showChoiceDialog(
+      '이미지 포함 문서 안내',
+      'MD 파일로 저장하면 내부(IndexedDB) 이미지는 저장되지 않습니다.\nMDD는 문서+이미지를 통합 저장하고, ZIP은 문서와 images 폴더로 저장합니다.\nMD로 계속 저장하시겠습니까?',
+      [
+        { key: 'continue_md', label: 'MD로 계속 저장' },
         { key: 'cancel', label: '취소' }
       ],
       'cancel'
@@ -172,6 +226,7 @@
     showChoiceDialog: showChoiceDialog,
     showCloseActionDialog: showCloseActionDialog,
     showExportTypeDialog: showExportTypeDialog,
+    showMdImageLossWarningDialog: showMdImageLossWarningDialog,
     exportMdd: exportMdd,
     importMddToIndexedDb: importMddToIndexedDb
   };

@@ -33,8 +33,12 @@ let imageInsertDragBound = false;
 let imageInsertDragging = false;
 let imageInsertDragOffsetX = 0;
 let imageInsertDragOffsetY = 0;
+let imageInsertGalleryOpen = false;
+let imageInsertGalleryObjectUrls = [];
+let imageInsertGalleryDataUrlCache = new Map();
 let scholarSearchDockRight = true;
 let scholarSearchShrink = false;
+let enterButtonInsertBr = false;
 let viewClickMappedCaretPos = null;
 let lastEditCaretPos = 0;
 let viewerInternalImageObjectUrls = [];
@@ -1178,18 +1182,34 @@ async function exportCurrentDocumentByChoice() {
     if (choice === 'cancel') return false;
     if (choice === 'zip') {
         await exportCurrentDocumentAsZipWithInternalImages();
-        showToast('ZIP exported.');
+        showToast('ZIP exported. Document + images folder saved.');
         markPersistedState();
         return true;
     }
     if (choice === 'mdd') {
         await exportCurrentDocumentAsMdd();
-        showToast('MDD exported.');
+        showToast('MDD exported. Document + images saved in one bundle.');
         markPersistedState();
         return true;
     }
+    const hasInternalImages = !!(window.ImageDB
+        && typeof window.ImageDB.hasInternalImages === 'function'
+        && window.ImageDB.hasInternalImages(String(currentMarkdown || '')));
+    if (hasInternalImages) {
+        if (window.ExtendFiles && typeof window.ExtendFiles.showMdImageLossWarningDialog === 'function') {
+            const confirmMd = await window.ExtendFiles.showMdImageLossWarningDialog();
+            if (confirmMd !== 'continue_md') return false;
+        } else {
+            const ok = window.confirm('MD 파일은 문서 텍스트만 저장되며 내부 이미지(IndexedDB)는 포함되지 않습니다.\nMDD는 문서+이미지 통합 저장, ZIP은 문서+images 폴더 저장입니다.\nMD로 계속 저장하시겠습니까?');
+            if (!ok) return false;
+        }
+    }
     downloadMarkdownFile();
-    showToast('MD exported.');
+    if (hasInternalImages) {
+        showToast('MD exported (text only). Internal images are not included.');
+    } else {
+        showToast('MD exported.');
+    }
     markPersistedState();
     return true;
 }
@@ -1581,19 +1601,39 @@ function saveFile() {
     return saveCurrentFile();
 }
 
+function ensurePrintRootElement() {
+    let root = document.getElementById('print-root');
+    if (root) return root;
+    root = document.createElement('div');
+    root.id = 'print-root';
+    document.body.appendChild(root);
+    return root;
+}
+
 function syncPrintRootFromViewer() {
-    const printRoot = document.getElementById('print-root');
-    if (!printRoot || !viewer) return false;
+    const printRoot = ensurePrintRootElement();
+    const viewerEl = document.getElementById('viewer') || viewer;
+    if (!printRoot || !viewerEl) return false;
     printRoot.innerHTML = '';
     const printable = document.createElement('div');
     printable.className = 'markdown-body print-area';
-    printable.innerHTML = viewer.innerHTML;
+    printable.innerHTML = String(viewerEl.innerHTML || '').trim();
+    if (!printable.innerHTML.trim()) {
+        const raw = String(currentMarkdown || '');
+        if (!raw.trim()) return false;
+        printable.innerHTML = '<p>' + raw
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>') + '</p>';
+    }
     printRoot.appendChild(printable);
-    return true;
+    const hasRenderedNodes = printable.querySelector('*') !== null || printable.textContent.trim().length > 0;
+    return hasRenderedNodes;
 }
 
 function clearPrintRoot() {
-    const printRoot = document.getElementById('print-root');
+    const printRoot = ensurePrintRootElement();
     if (!printRoot) return;
     printRoot.innerHTML = '';
 }
@@ -2453,6 +2493,272 @@ function setImageInsertPreview(dataUrl) {
     img.classList.remove('hidden');
 }
 
+function revokeImageInsertGalleryObjectUrls() {
+    if (!Array.isArray(imageInsertGalleryObjectUrls) || imageInsertGalleryObjectUrls.length === 0) return;
+    imageInsertGalleryObjectUrls.forEach(function (u) {
+        try { URL.revokeObjectURL(u); } catch (e) {}
+    });
+    imageInsertGalleryObjectUrls = [];
+}
+
+function setImageInsertGalleryToggleActive(active) {
+    const btn = document.getElementById('img-insert-gallery-toggle');
+    if (!btn) return;
+    if (active) {
+        btn.classList.add('ring-2', 'ring-fuchsia-300');
+    } else {
+        btn.classList.remove('ring-2', 'ring-fuchsia-300');
+    }
+}
+
+function blobToDataUrlForImageInsert(blob) {
+    return new Promise(function (resolve, reject) {
+        const r = new FileReader();
+        r.onload = function () { resolve(String(r.result || '')); };
+        r.onerror = function () { reject(r.error || new Error('Failed to read blob')); };
+        r.readAsDataURL(blob);
+    });
+}
+
+async function ensureImageInsertDataUrlFromInternalSelection() {
+    if (imageInsertCurrentDataUrl && imageInsertCurrentDataUrl.indexOf('data:image') === 0) return true;
+    if (!db || !window.ImageDB || typeof window.ImageDB.getImage !== 'function') return false;
+    const id = String(imageInsertSavedInternalId || '').trim();
+    if (!id) return false;
+    const rec = await window.ImageDB.getImage(db, id);
+    if (!rec || !rec.blob) return false;
+    const dataUrl = await blobToDataUrlForImageInsert(rec.blob);
+    if (!dataUrl || dataUrl.indexOf('data:image') !== 0) return false;
+    imageInsertCurrentDataUrl = dataUrl;
+    imageInsertCurrentFileName = rec.name || ('gallery_' + id + '.png');
+    setImageInsertPreview(dataUrl);
+    return true;
+}
+
+async function getImageInsertGalleryDataUrl(id, blob) {
+    const key = String(id || '').trim();
+    if (!key || !blob) return '';
+    if (imageInsertGalleryDataUrlCache.has(key)) return imageInsertGalleryDataUrlCache.get(key) || '';
+    const dataUrl = await blobToDataUrlForImageInsert(blob);
+    imageInsertGalleryDataUrlCache.set(key, dataUrl);
+    return dataUrl;
+}
+
+async function syncImageInsertFullscreenGallery(items, currentId, currentDataUrl) {
+    if (typeof window.viewerSSPSetFullscreenGallery !== 'function') return;
+    const src = Array.isArray(items) ? items : [];
+    const list = src
+        .filter(function (it) { return it && it.blob && String(it.id || '').trim(); })
+        .slice(0, 80);
+    if (!list.length) {
+        window.viewerSSPSetFullscreenGallery([], '');
+        return;
+    }
+    const entries = [];
+    for (let i = 0; i < list.length; i++) {
+        const it = list[i];
+        const id = String(it.id || '').trim();
+        let dataUrl = '';
+        if (id === currentId && currentDataUrl && currentDataUrl.indexOf('data:image') === 0) dataUrl = currentDataUrl;
+        else {
+            try { dataUrl = await getImageInsertGalleryDataUrl(id, it.blob); } catch (e) { dataUrl = ''; }
+        }
+        if (!dataUrl || dataUrl.indexOf('data:image') !== 0) continue;
+        entries.push({
+            id: 'idb_' + encodeURIComponent(id),
+            dataURL: dataUrl,
+            prompt: String(it.name || id),
+            createdAt: Number(it.createdAt || Date.now())
+        });
+    }
+    window.viewerSSPSetFullscreenGallery(entries, currentDataUrl || '');
+}
+
+function openImageInsertGalleryFullscreen(src) {
+    const safeSrc = String(src || '').trim();
+    if (!safeSrc) return;
+    if (typeof window.viewerSSPOpenFullscreen === 'function') {
+        window.viewerSSPOpenFullscreen(safeSrc);
+        return;
+    }
+    try {
+        window.open(safeSrc, '_blank', 'noopener,noreferrer');
+    } catch (e) {}
+}
+
+async function loadImageInsertGallery() {
+    const panel = document.getElementById('img-insert-gallery-panel');
+    const list = document.getElementById('img-insert-gallery-list');
+    if (!panel || !list) return;
+    if (!db) {
+        list.innerHTML = '<div class="text-xs text-red-500">DB not ready.</div>';
+        return;
+    }
+
+    revokeImageInsertGalleryObjectUrls();
+    list.innerHTML = '<div class="text-xs text-slate-500">불러오는 중...</div>';
+
+    try {
+        const items = await new Promise(function (resolve, reject) {
+            const tx = db.transaction('images', 'readonly');
+            const req = tx.objectStore('images').getAll();
+            req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+            req.onerror = function () { reject(req.error || new Error('Failed to load images')); };
+        });
+
+        items.sort(function (a, b) { return Number(b && b.createdAt || 0) - Number(a && a.createdAt || 0); });
+
+        if (!items.length) {
+            list.innerHTML = '<div class="text-xs text-slate-500">IndexedDB 이미지가 없습니다.</div>';
+            return;
+        }
+
+        const html = [];
+        items.forEach(function (it, idx) {
+            const id = String(it && it.id || '').trim();
+            if (!id || !it.blob) return;
+            const objectUrl = URL.createObjectURL(it.blob);
+            imageInsertGalleryObjectUrls.push(objectUrl);
+            const title = String(it.name || id).replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            html.push(
+                '<button type="button" class="img-gallery-item rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-1 text-left" data-idx="' + idx + '" data-id="' + encodeURIComponent(id) + '" title="' + title + '">' +
+                '<img src="' + objectUrl + '" class="w-full h-20 object-contain rounded bg-slate-100 dark:bg-slate-900">' +
+                '<div class="mt-1 text-[10px] text-slate-600 dark:text-slate-300 truncate">' + title + '</div>' +
+                '</button>'
+            );
+        });
+        list.innerHTML = html.join('');
+
+        Array.from(list.querySelectorAll('.img-gallery-item')).forEach(function (btn) {
+            btn.addEventListener('click', async function () {
+                const encId = String(btn.getAttribute('data-id') || '');
+                const id = decodeURIComponent(encId);
+                const target = items.find(function (x) { return String(x && x.id || '') === id; });
+                if (!target) return;
+
+                const internalUrl = (window.ImageDB && typeof window.ImageDB.internalUrlFromId === 'function')
+                    ? window.ImageDB.internalUrlFromId(id)
+                    : ('internal://' + encodeURIComponent(id));
+
+                const input = document.getElementById('img-insert-url');
+                if (input) input.value = internalUrl;
+                imageInsertSavedInternalId = id;
+                imageInsertSavedInternalUrl = internalUrl;
+                imageInsertSavedFingerprint = '';
+                renderImageInsertInternalInfo();
+
+                try {
+                    const dataUrl = await getImageInsertGalleryDataUrl(id, target.blob);
+                    imageInsertCurrentDataUrl = dataUrl;
+                    imageInsertCurrentFileName = target.name || ('gallery_' + id + '.png');
+                    setImageInsertPreview(dataUrl);
+
+                    if (typeof window.viewerSSPSetFullscreenGallery === 'function') {
+                        window.viewerSSPSetFullscreenGallery([{
+                            id: 'idb_' + encodeURIComponent(id),
+                            dataURL: dataUrl,
+                            prompt: String(target.name || id),
+                            createdAt: Number(target.createdAt || Date.now())
+                        }], dataUrl);
+                    }
+                    openImageInsertGalleryFullscreen(dataUrl);
+                    syncImageInsertFullscreenGallery(items, id, dataUrl).catch(function () {});
+                } catch (e) {
+                    setImageInsertPreview('');
+                }
+
+                Array.from(list.querySelectorAll('.img-gallery-item')).forEach(function (el) {
+                    el.classList.remove('ring-2', 'ring-indigo-400');
+                });
+                btn.classList.add('ring-2', 'ring-indigo-400');
+
+                setImageInsertStatus('갤러리 이미지 선택됨: ' + internalUrl, false);
+            });
+        });
+    } catch (e) {
+        list.innerHTML = '<div class="text-xs text-red-500">갤러리 로드 실패</div>';
+        setImageInsertStatus('IndexedDB 갤러리 로드 실패: ' + (e && e.message ? e.message : e), true);
+    }
+}
+
+function refreshImageInsertGallery() {
+    if (!imageInsertGalleryOpen) return;
+    loadImageInsertGallery();
+}
+
+async function downloadImageInsertGalleryZip() {
+    if (!db || typeof JSZip === 'undefined') {
+        setImageInsertStatus('ZIP export is not available.', true);
+        return;
+    }
+    setImageInsertStatus('Preparing gallery ZIP...', false);
+    try {
+        const items = await new Promise(function (resolve, reject) {
+            const tx = db.transaction('images', 'readonly');
+            const req = tx.objectStore('images').getAll();
+            req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+            req.onerror = function () { reject(req.error || new Error('Failed to load images')); };
+        });
+        if (!items.length) {
+            setImageInsertStatus('No IndexedDB images to export.', true);
+            return;
+        }
+
+        const zip = new JSZip();
+        const used = new Set();
+        let added = 0;
+        items.forEach(function (it, idx) {
+            if (!it || !it.blob) return;
+            const id = String(it.id || ('img_' + idx));
+            const rawName = String(it.name || id || ('image_' + idx)).trim();
+            const extFromMime = (String(it.mime || it.blob.type || '').split('/')[1] || 'bin').replace(/[^a-zA-Z0-9]/g, '');
+            const safeBase = rawName.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim() || ('image_' + idx);
+            const hasExt = /\.[a-zA-Z0-9]{2,5}$/.test(safeBase);
+            const baseName = hasExt ? safeBase : (safeBase + '.' + extFromMime);
+            let fileName = baseName;
+            let seq = 2;
+            while (used.has(fileName.toLowerCase())) {
+                const dot = baseName.lastIndexOf('.');
+                if (dot > 0) fileName = baseName.slice(0, dot) + '_' + seq + baseName.slice(dot);
+                else fileName = baseName + '_' + seq;
+                seq += 1;
+            }
+            used.add(fileName.toLowerCase());
+            zip.file('images/' + fileName, it.blob);
+            added += 1;
+        });
+        if (!added) {
+            setImageInsertStatus('No valid images found for ZIP export.', true);
+            return;
+        }
+        zip.file('manifest.json', JSON.stringify({
+            format: 'mdviewer-indexeddb-gallery',
+            createdAt: new Date().toISOString(),
+            count: added
+        }, null, 2));
+
+        const blob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'indexeddb_gallery_' + new Date().toISOString().slice(0, 10) + '.zip';
+        a.click();
+        setTimeout(function () { URL.revokeObjectURL(url); }, 400);
+        setImageInsertStatus('Gallery ZIP downloaded (' + added + ' images).', false);
+    } catch (e) {
+        setImageInsertStatus('Failed to export gallery ZIP: ' + (e && e.message ? e.message : e), true);
+    }
+}
+
+function toggleImageInsertGallery() {
+    const panel = document.getElementById('img-insert-gallery-panel');
+    if (!panel) return;
+    imageInsertGalleryOpen = !imageInsertGalleryOpen;
+    panel.classList.toggle('hidden', !imageInsertGalleryOpen);
+    setImageInsertGalleryToggleActive(imageInsertGalleryOpen);
+    if (imageInsertGalleryOpen) loadImageInsertGallery();
+    else revokeImageInsertGalleryObjectUrls();
+}
 function openImageInsertModal() {
     const modal = document.getElementById('image-insert-modal');
     if (!modal) return;
@@ -2479,6 +2785,16 @@ function openImageInsertModal() {
             }
         });
     }
+
+    const galleryPanel = document.getElementById('img-insert-gallery-panel');
+    if (galleryPanel) {
+        galleryPanel.classList.toggle('hidden', !imageInsertGalleryOpen);
+    }
+    setImageInsertGalleryToggleActive(imageInsertGalleryOpen);
+    if (imageInsertGalleryOpen) {
+        loadImageInsertGallery();
+    }
+
     setImageUploadProgress(0, false);
     renderImageInsertInternalInfo();
     setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
@@ -2495,6 +2811,16 @@ function closeImageInsertModal() {
         panel.style.top = '';
         panel.style.margin = '';
     }
+
+    const galleryPanel = document.getElementById('img-insert-gallery-panel');
+    imageInsertGalleryOpen = false;
+    if (galleryPanel) {
+        galleryPanel.classList.add('hidden');
+    }
+    setImageInsertGalleryToggleActive(false);
+    revokeImageInsertGalleryObjectUrls();
+    imageInsertGalleryDataUrlCache.clear();
+
     imageInsertDragging = false;
     setImageUploadProgress(0, false);
 }
@@ -2659,6 +2985,9 @@ function cropImageInsertCurrent() {
 
 async function uploadImageInsertToImgbb() {
     if (!imageInsertCurrentDataUrl || imageInsertCurrentDataUrl.indexOf('data:image') !== 0) {
+        try { await ensureImageInsertDataUrlFromInternalSelection(); } catch (e) {}
+    }
+    if (!imageInsertCurrentDataUrl || imageInsertCurrentDataUrl.indexOf('data:image') !== 0) {
         setImageInsertStatus('Select or paste an image before uploading.', true);
         return;
     }
@@ -2752,6 +3081,7 @@ async function saveImageInsertToInternalDb() {
         imageInsertChangedByCrop = false;
         renderImageInsertInternalInfo();
         setImageInsertStatus('Saved to internal image DB. Insert with Markdown/HTML buttons.', false);
+        if (imageInsertGalleryOpen) loadImageInsertGallery();
         showToast('Image saved to internal DB.');
     } catch (e) {
         setImageInsertStatus('Failed to save image internally: ' + (e && e.message ? e.message : e), true);
@@ -2772,6 +3102,7 @@ async function deleteSavedInternalImage() {
         const input = document.getElementById('img-insert-url');
         if (input && String(input.value || '').trim().startsWith('internal://')) input.value = '';
         renderImageInsertInternalInfo();
+        if (imageInsertGalleryOpen) loadImageInsertGallery();
         setImageInsertStatus('Deleted saved internal image. You can save a new internal image now.', false);
     } catch (e) {
         setImageInsertStatus('Failed to delete saved internal image: ' + (e && e.message ? e.message : e), true);
@@ -2960,7 +3291,7 @@ function insertAtCursor(type) {
             placeholder = 'quote';
             break;
         case 'br':
-            before = '  \n';
+            before = enterButtonInsertBr ? '<br>' : '  \n';
             break;
         default:
             return;
@@ -3192,18 +3523,25 @@ function insertFootnoteTemplate() {
     const marker = '[^' + nextNumber + ']';
     const footnoteDef = marker + ': Footnote content.';
 
-    const withMarker = text.substring(0, start) + marker + text.substring(end);
-    let finalText = withMarker;
     const defRegex = new RegExp('^\\[\\^' + nextNumber + '\\]:', 'm');
-    if (!defRegex.test(withMarker)) {
-        const suffix = withMarker.endsWith('\n') ? '' : '\n';
-        finalText = withMarker + suffix + '\n' + footnoteDef;
+    editorTextarea.focus();
+
+    // Insert marker at current selection via undo-friendly path.
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, marker);
+    let workingText = editorTextarea.value;
+
+    // Append definition only when missing.
+    if (!defRegex.test(workingText)) {
+        const appendText = (workingText.endsWith('\n') ? '' : '\n') + '\n' + footnoteDef;
+        const tail = editorTextarea.value.length;
+        editorTextarea.setSelectionRange(tail, tail);
+        document.execCommand('insertText', false, appendText);
+        workingText = editorTextarea.value;
     }
 
-    editorTextarea.value = finalText;
-    currentMarkdown = finalText;
+    currentMarkdown = workingText;
     const newPos = start + marker.length;
-    editorTextarea.focus();
     editorTextarea.setSelectionRange(newPos, newPos);
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
@@ -3420,11 +3758,15 @@ function applyTextStyleToSelection() {
 
 function openLinkModal(mode) {
     modalMode = mode;
-    document.getElementById('modal-title').textContent = mode === 'link' ? 'Insert Link' : 'Insert Image';
-    document.getElementById('label-text').textContent = mode === 'link' ? 'Display text' : 'Image description';
+    const isLink = mode === 'link';
+    const isImage = mode === 'image';
+    const isId = mode === 'id';
+    document.getElementById('modal-title').textContent = isLink ? 'Insert Link' : (isImage ? 'Insert Image' : 'Insert ID Anchor');
+    document.getElementById('label-text').textContent = isLink ? 'Display text' : (isImage ? 'Image description' : 'ID');
     const shortcuts = document.getElementById('image-link-shortcuts');
+    const urlWrap = document.getElementById('input-url-wrap');
     if (shortcuts) {
-        if (mode === 'image') {
+        if (isImage) {
             shortcuts.classList.remove('hidden');
             shortcuts.classList.add('flex');
         } else {
@@ -3432,8 +3774,11 @@ function openLinkModal(mode) {
             shortcuts.classList.remove('flex');
         }
     }
-    document.getElementById('input-display-text').value = editorTextarea.value.substring(editorTextarea.selectionStart, editorTextarea.selectionEnd);
-    document.getElementById('input-url').value = '';
+    if (urlWrap) {
+        urlWrap.classList.toggle('hidden', isId);
+    }
+    document.getElementById('input-display-text').value = editorTextarea.value.substring(editorTextarea.selectionStart, editorTextarea.selectionEnd).trim();
+    document.getElementById('input-url').value = isId ? '' : '';
     inputModal.classList.remove('hidden');
     inputModal.classList.add('flex');
     document.getElementById('input-display-text').focus();
@@ -3445,16 +3790,28 @@ function closeModal() {
 }
 
 function confirmModalInsert() {
+    const isId = modalMode === 'id';
     const displayText = document.getElementById('input-display-text').value || (modalMode === 'link' ? 'link text' : 'image');
     const url = document.getElementById('input-url').value || 'https://';
     const start = editorTextarea.selectionStart;
     const end = editorTextarea.selectionEnd;
-    const text = editorTextarea.value;
     const currentScrollTop = editorTextarea.scrollTop;
 
-    const replacement = modalMode === 'link' ? `[${displayText}](${url})` : `![${displayText}](${url})`;
+    let replacement = '';
+    if (isId) {
+        const idValue = String(displayText || '').trim();
+        if (!idValue) {
+            showToast('ID를 입력해 주세요.');
+            return;
+        }
+        replacement = `<div id ="${idValue}"></div>\n[${idValue}]\n\n[${idValue}](#${idValue})`;
+    } else {
+        replacement = modalMode === 'link' ? `[${displayText}](${url})` : `![${displayText}](${url})`;
+    }
 
-    editorTextarea.value = text.substring(0, start) + replacement + text.substring(end);
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
     currentMarkdown = editorTextarea.value;
     closeModal();
     editorTextarea.scrollTop = currentScrollTop;
@@ -3961,6 +4318,8 @@ async function persistAiSettingsFromModal() {
     const imageUploadEnabled = !!(imageUploadEl && imageUploadEl.checked);
     const scholarSearchVisibleEl = document.getElementById('scholar-search-visible');
     const scholarSearchVisible = !!(scholarSearchVisibleEl && scholarSearchVisibleEl.checked);
+    const enterBrEl = document.getElementById('enter-button-insert-br');
+    const enterButtonInsertBrEnabled = !!(enterBrEl && enterBrEl.checked);
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     await setAiSettings({
@@ -3969,8 +4328,10 @@ async function persistAiSettingsFromModal() {
         githubEnabled: !!(githubEl && githubEl.checked),
         scholarSearchVisible: scholarSearchVisible,
         imageUploadEnabled: imageUploadEnabled,
+        enterButtonInsertBr: enterButtonInsertBrEnabled,
         imgbbApiKey: imgbbKey
     });
+    enterButtonInsertBr = enterButtonInsertBrEnabled;
     if (imgbbKey) localStorage.setItem('ss_imgbb_api_key', imgbbKey);
     else localStorage.removeItem('ss_imgbb_api_key');
 }
@@ -4621,6 +4982,9 @@ async function loadAiSettingsToUI() {
         if (imageCheckEmpty) imageCheckEmpty.checked = false;
         const scholarSearchCheckEmpty = document.getElementById('scholar-search-visible');
         if (scholarSearchCheckEmpty) scholarSearchCheckEmpty.checked = false;
+        const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
+        if (enterBrCheckEmpty) enterBrCheckEmpty.checked = false;
+        enterButtonInsertBr = false;
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
         syncImgbbApiKeyInputs('');
@@ -4637,6 +5001,9 @@ async function loadAiSettingsToUI() {
     if (imageCheck) imageCheck.checked = settings.imageUploadEnabled === true;
     const scholarSearchCheck = document.getElementById('scholar-search-visible');
     if (scholarSearchCheck) scholarSearchCheck.checked = settings.scholarSearchVisible === true;
+    const enterBrCheck = document.getElementById('enter-button-insert-br');
+    if (enterBrCheck) enterBrCheck.checked = settings.enterButtonInsertBr === true;
+    enterButtonInsertBr = settings.enterButtonInsertBr === true;
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
     syncImgbbApiKeyInputs(settings.imgbbApiKey || '');
@@ -4702,6 +5069,7 @@ async function initAiVisibility() {
         if (scholarEl) scholarEl.checked = false;
         if (sspimgEl) sspimgEl.checked = false;
     }
+    enterButtonInsertBr = !!(settings && settings.enterButtonInsertBr === true);
     updateAiScholarSspimgAvailability(verified);
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
@@ -4901,6 +5269,9 @@ window.onImageInsertUploadDrop = onImageInsertUploadDrop;
 window.cropImageInsertCurrent = cropImageInsertCurrent;
 window.uploadImageInsertToImgbb = uploadImageInsertToImgbb;
 window.saveImageInsertToInternalDb = saveImageInsertToInternalDb;
+window.toggleImageInsertGallery = toggleImageInsertGallery;
+window.refreshImageInsertGallery = refreshImageInsertGallery;
+window.downloadImageInsertGalleryZip = downloadImageInsertGalleryZip;
 window.insertImageFromModal = insertImageFromModal;
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
