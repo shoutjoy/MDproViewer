@@ -190,6 +190,7 @@
       [
         { key: 'indb', label: 'Save (inDB)' },
         { key: 'export', label: 'Export' },
+        { key: 'pass', label: 'Pass' },
         { key: 'cancel', label: 'Cancel' }
       ],
       'cancel'

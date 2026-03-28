@@ -571,15 +571,21 @@ function isDocumentDirty() {
 }
 
 async function confirmSaveBeforeOpeningAnotherFile() {
-    if (!isDocumentDirty()) return true;
+    const hasOpenedDocument = !!(
+        (currentFilePath && String(currentFilePath).trim())
+        || (currentFileName && String(currentFileName).trim().toLowerCase() !== 'untitled.md')
+        || (currentMarkdown && String(currentMarkdown).trim().length > 0)
+    );
+    if (!hasOpenedDocument) return true;
     let action = 'cancel';
     if (window.ExtendFiles && typeof window.ExtendFiles.showCloseActionDialog === 'function') {
         action = await window.ExtendFiles.showCloseActionDialog();
     } else {
-        const shouldSave = window.confirm('You have unsaved changes. Press OK to export before opening, or Cancel to stop.');
+        const shouldSave = window.confirm('A document is currently open. Press OK to export before opening another file, or Cancel to stop.');
         action = shouldSave ? 'export' : 'cancel';
     }
     if (action === 'cancel') return false;
+    if (action === 'pass') return true;
     if (action === 'indb') return await saveCurrentToInDbAuto();
     if (action === 'export') return await saveCurrentFile();
     return false;
@@ -2122,6 +2128,11 @@ async function renderDBList() {
 }
 
 async function loadFromDB(id) {
+    const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+    if (!canProceed) {
+        showToast('Open canceled.');
+        return;
+    }
     const tx = db.transaction('documents', 'readonly');
     const doc = await new Promise(r => {
         const req = tx.objectStore('documents').get(id);
