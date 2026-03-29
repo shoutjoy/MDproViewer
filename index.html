@@ -43,7 +43,6 @@
             </div>
             <div class="min-w-0 flex-1 overflow-hidden">
                 <h1 class="app-header-title font-bold text-slate-800 dark:text-slate-100 leading-tight break-words hyphens-auto">MDproViewer</h1>
-                <p class="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 truncate sm:whitespace-normal sm:break-words mt-0.5" id="file-name-display">새 문서: 문서명이 표시됩니다.</p>
             </div>
         </div>
 
@@ -129,6 +128,9 @@
             <button type="button" id="btn-copy-view-rich" onclick="copyViewFormattedToClipboard()"
                 class="hidden px-2 py-1 sm:px-3 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 shrink-0"
                 title="Copy formatted content from view mode">Copy Styled</button>
+            <button type="button" id="btn-export-gdocs" onclick="exportCurrentToGoogleDocs()"
+                class="hidden px-2 py-1 sm:px-3 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 shrink-0 border border-emerald-300 dark:border-emerald-700"
+                title="Send current document to Google Docs">GDocs</button>
             <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 sm:p-1 ml-0 sm:ml-1 md:ml-2 shrink-0">
                 <button onclick="toggleMode('edit')" id="btn-edit" title="Alt+1"
                     class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all bg-white dark:bg-slate-700 shadow-sm text-indigo-600 dark:text-indigo-400">편집</button>
@@ -137,6 +139,7 @@
             </div>
         </div>
     </header>
+
 
     <div class="flex flex-1 overflow-hidden relative">
         <!-- Sidebar Container -->
@@ -541,16 +544,26 @@
                     </div>
                 </div>
 
+
+                
+                
                 <div id="content-viewport" class="h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 p-8 sm:p-12 md:p-16 viewer-edit-active">
-                    <textarea id="viewer-edit-ta" spellcheck="false"
+                    
+                                    
+                    <div class="w-full max-w-4xl h-full mx-auto flex flex-col">
+                        <textarea id="viewer-edit-ta" spellcheck="false"
                         class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
                         placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
+                    </div>
                 </div>
                 <div class="scroll-jump-rail no-print" aria-label="문서 빠른 이동">
                     <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentTop()" title="맨 위로 이동">맨위</button>
                     <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentBottom()" title="맨 아래로 이동">맨아래</button>
                 </div>
             </main>
+            <div class="no-print border-t border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-3 sm:px-4 md:px-6 py-1.5">
+                <p id="file-name-display" class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate text-right">새 문서: 문서명이 표시됩니다.</p>
+            </div>
         </div>
     </div>
 
@@ -1034,6 +1047,11 @@
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Highlight 보이기</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="todocs-visible" onclick="setTimeout(toggleToDocsSection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">toDocs 보이기</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="image-upload-enabled" onclick="setTimeout(toggleImageUploadSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">이미지 업로드 사용</span>
@@ -1050,6 +1068,21 @@
                                     <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer"
                                         class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">API key 받기: https://api.imgbb.com/</a>
                                     <p id="ai-imgbb-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+                                </div>
+                                <div id="gdocs-settings" class="pl-6 pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                                    <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">Google Docs Export</p>
+                                    <input type="password" id="gdocs-client-id" placeholder="OAuth Client ID (...apps.googleusercontent.com)"
+                                        autocomplete="off"
+                                        oninput="validateGoogleDocsCredentialInputsUI()"
+                                        class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
+                                    <p id="gdocs-client-id-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <a href="https://developers.google.com/workspace/docs/api/quickstart/js" target="_blank" rel="noopener noreferrer"
+                                            class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Quickstart</a>
+                                        <button type="button" onclick="saveGoogleDocsCredentials()"
+                                            class="px-3 py-1.5 bg-emerald-600 rounded-md text-xs font-medium text-white hover:bg-emerald-700">Save GDocs</button>
+                                    </div>
+                                    <p id="gdocs-credentials-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                                 </div>
                             </div>
                         </div>
@@ -1336,7 +1369,10 @@
     <script src="./imageDB/imageDB.js" charset="utf-8" defer></script>
     <script src="./Scholarref/scholarref.js" charset="utf-8" defer></script>
     <script src="./js/extendFiles/extend-files.js" charset="utf-8" defer></script>
+    <script src="./googleDocs/googleDocs.js?v=20260330-1" charset="utf-8" defer></script>
     <script src="./js/app.js" charset="utf-8" defer></script>
+    <script src="https://apis.google.com/js/api.js" defer onload="onGoogleApiJsLoaded()"></script>
+    <script src="https://accounts.google.com/gsi/client" defer onload="onGoogleGisLoaded()"></script>
 </body>
 
 </html>

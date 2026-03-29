@@ -440,6 +440,9 @@ window.onload = async () => {
         currentMarkdown = editorTextarea.value;
         performAutoSave();
         updatePreviewPopupContent();
+        if (window.GoogleDocs && typeof window.GoogleDocs.handleEditorChanged === 'function') {
+            window.GoogleDocs.handleEditorChanged();
+        }
     });
     if (editorTextarea) {
         editorTextarea.addEventListener('select', syncFindInputFromEditorSelectionIfNeeded);
@@ -678,6 +681,9 @@ function updateContent(md) {
     renderMarkdown();
     renderTOC();
     updatePreviewPopupContent();
+    if (window.GoogleDocs && typeof window.GoogleDocs.handleEditorChanged === 'function') {
+        window.GoogleDocs.handleEditorChanged();
+    }
 }
 
 function syncCurrentMarkdownFromEditor() {
@@ -1169,6 +1175,7 @@ function toggleMode(mode) {
     const btnEdit = document.getElementById('btn-edit');
     const editTools = document.getElementById('edit-tools');
     const btnCopyViewRich = document.getElementById('btn-copy-view-rich');
+    const btnExportGdocs = document.getElementById('btn-export-gdocs');
     const activeClasses = ['bg-white', 'dark:bg-slate-700', 'shadow-sm', 'text-indigo-600', 'dark:text-indigo-400'];
     if (!vc || !ec) {
         console.warn('toggleMode: viewer-container or content-viewport not found.', { vc: !!vc, ec: !!ec });
@@ -1184,6 +1191,7 @@ function toggleMode(mode) {
         ec.classList.add('viewer-edit-active');
         if (editTools) editTools.classList.remove('hidden');
         if (btnCopyViewRich) btnCopyViewRich.classList.add('hidden');
+        if (btnExportGdocs) btnExportGdocs.classList.add('hidden');
         if (btnEdit) btnEdit.classList.add(...activeClasses);
         if (btnView) btnView.classList.remove(...activeClasses);
         applyEditorLightPreference();
@@ -1212,6 +1220,11 @@ function toggleMode(mode) {
         ec.classList.add('hidden');
         if (editTools) editTools.classList.add('hidden');
         if (btnCopyViewRich) btnCopyViewRich.classList.remove('hidden');
+        if (btnExportGdocs) {
+            const showToDocs = !!(window.GoogleDocs && typeof window.GoogleDocs.shouldShowInViewMode === 'function' && window.GoogleDocs.shouldShowInViewMode());
+            if (showToDocs) btnExportGdocs.classList.remove('hidden');
+            else btnExportGdocs.classList.add('hidden');
+        }
         if (btnView) btnView.classList.add(...activeClasses);
         if (btnEdit) btnEdit.classList.remove(...activeClasses);
         vc.classList.remove('hidden');
@@ -1954,13 +1967,14 @@ async function copyViewFormattedToClipboard() {
             });
             await navigator.clipboard.write([item]);
             showToast('Copied formatted content.');
-            return;
+            return true;
         }
     } catch (e) {}
 
     const fallbackOk = fallbackCopyHtmlFromViewer(html || text);
     if (fallbackOk) showToast('Copied formatted content.');
     else showToast('Copy failed. Please allow clipboard access.');
+    return fallbackOk;
 }
 
 // --- Sidebar Visibility & Collapse Logic ---
@@ -4164,6 +4178,7 @@ function getHighlightVisibleFromSettings(settings) {
     return settings.highlightVisible === true;
 }
 
+
 function applyScholarSearchVisibility(settings) {
     const enabled = getScholarSearchVisibleFromSettings(settings || {});
     const wrap = document.getElementById('header-scholar-search-wrap');
@@ -4190,6 +4205,7 @@ function applyHighlightVisibility(settings) {
         closeHighlightPopup();
     }
 }
+
 
 async function toggleScholarSearchSection() {
     const check = document.getElementById('scholar-search-visible');
@@ -5096,6 +5112,7 @@ async function applyAiFeatureVisibility() {
     if (showAi) ensureSidebarAILoaded();
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
+    applyToDocsVisibility(settings || { toDocsVisible: false });
 }
 
 function setAiSidebarWrapVisible(w, isLoading) {
@@ -5637,6 +5654,9 @@ async function loadAiSettingsToUI() {
         enterButtonInsertBr = localEnterBr;
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
+        if (window.GoogleDocs && typeof window.GoogleDocs.resetGoogleDocsSettingsUI === 'function') {
+            window.GoogleDocs.resetGoogleDocsSettingsUI();
+        }
         syncImgbbApiKeyInputs('');
         updateAiScholarSspimgAvailability(false);
         applyImageUploadFeatureVisibility({ imageUploadEnabled: false });
@@ -5660,6 +5680,9 @@ async function loadAiSettingsToUI() {
     enterButtonInsertBr = enterBrEnabled;
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
+    if (window.GoogleDocs && typeof window.GoogleDocs.loadGoogleDocsSettingsUI === 'function') {
+        window.GoogleDocs.loadGoogleDocsSettingsUI(settings);
+    }
     syncImgbbApiKeyInputs(settings.imgbbApiKey || '');
     if (typeof validateApiKeyInputUI === 'function') validateApiKeyInputUI();
     const useCheck = document.getElementById('ai-use-checkbox');
@@ -5704,6 +5727,7 @@ async function loadAiSettingsToUI() {
     }
     applyImageUploadFeatureVisibility(settings);
     applyScholarSearchVisibility(settings);
+    applyToDocsVisibility(settings);
 }
 
 async function initAiVisibility() {
@@ -5728,6 +5752,7 @@ async function initAiVisibility() {
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
     applyHighlightVisibility(settings || { highlightVisible: false });
+    applyToDocsVisibility(settings || { toDocsVisible: false });
     await applyAiFeatureVisibility();
 }
 
