@@ -179,6 +179,21 @@ window.addEventListener('message', function (ev) {
     const d = ev.data;
     if (!d || typeof d !== 'object') return;
 
+    if (d.type === 'highlight-insert-markdown') {
+        const markdown = String(d.markdown || d.content || d.text || '');
+        if (!markdown.trim()) return;
+        const frame = document.getElementById('highlight-popup-frame');
+        const fromHighlightFrame = !!(frame && ev.source === frame.contentWindow);
+        const openerOk = !!(window.opener && ev.source === window.opener);
+        if (!fromHighlightFrame && !openerOk) return;
+        if (!isEditMode && typeof toggleMode === 'function') toggleMode('edit');
+        if (typeof insertLiteralAtCursor === 'function') {
+            insertLiteralAtCursor(markdown);
+            if (typeof showToast === 'function') showToast('Highlight 내용을 문서에 삽입했습니다.');
+        }
+        return;
+    }
+
     if (d.type === 'scholarToMDPaste') {
         const scholarNotebookLm = d.notebookLm !== false;
         const hasContent = d.content != null && String(d.content).length > 0;
@@ -4525,6 +4540,7 @@ function openHighlightPopup() {
     applyHighlightPopupLayout();
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    setTimeout(syncHighlightSelectionToPopup, 0);
 }
 
 function closeHighlightPopup() {
@@ -4538,8 +4554,12 @@ function applyHighlightPopupLayout() {
     const modal = document.getElementById('highlight-popup-modal');
     const panel = document.getElementById('highlight-popup-panel');
     const body = document.getElementById('highlight-popup-body');
+    const openBtn = document.getElementById('highlight-popup-open-btn');
+    const saveBtn = document.getElementById('highlight-popup-save-btn');
+    const dataBtn = document.getElementById('highlight-popup-data-btn');
     const dockBtn = document.getElementById('highlight-popup-dock-btn');
     const shrinkBtn = document.getElementById('highlight-popup-shrink-btn');
+    const closeBtn = document.getElementById('highlight-popup-close-btn');
     if (!modal || !panel) return;
 
     if (highlightPopupDockRight) {
@@ -4582,12 +4602,16 @@ function applyHighlightPopupLayout() {
 
     if (shrinkBtn) {
         // Expanded -> show shrink arrow, Shrunk -> show expand arrow
-        shrinkBtn.textContent = isShrinked ? '[>>]' : '[<<]';
+        shrinkBtn.textContent = isShrinked ? '>>' : '[<<]';
         shrinkBtn.disabled = !canShrink;
         shrinkBtn.classList.toggle('opacity-40', !canShrink);
         shrinkBtn.classList.toggle('cursor-not-allowed', !canShrink);
     }
-    if (dockBtn) dockBtn.textContent = highlightPopupDockRight ? 'Undock' : 'Dock Left';
+    if (openBtn) openBtn.textContent = isShrinked ? 'O' : 'Open';
+    if (saveBtn) saveBtn.textContent = isShrinked ? 'S' : 'Save';
+    if (dataBtn) dataBtn.textContent = isShrinked ? 'D' : 'Data';
+    if (dockBtn) dockBtn.textContent = isShrinked ? 'DOCK' : (highlightPopupDockRight ? 'Undock' : 'Dock Left');
+    if (closeBtn) closeBtn.textContent = isShrinked ? 'X' : 'Close';
 }
 
 function bindHighlightPopupDrag() {
@@ -4652,6 +4676,17 @@ function getHighlightFrameWindow() {
     const frame = document.getElementById('highlight-popup-frame');
     if (!frame) return null;
     return frame.contentWindow || null;
+}
+
+function sendHighlightPopupCommand(type) {
+    const win = getHighlightFrameWindow();
+    if (!win || !type) return false;
+    try {
+        win.postMessage({ type: type }, '*');
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 function handleHighlightFrameLoad() {
@@ -4723,28 +4758,50 @@ function syncHighlightSelectionToPopup() {
         }
     } catch (_) {}
     try {
-        win.postMessage({ type: 'highlight-selection', text: text }, '*');
+        win.postMessage({ type: 'highlight-selection', text: text, autoFill: true }, '*');
     } catch (_) {}
 }
 
 function openHighlightFile() {
     const win = getHighlightFrameWindow();
-    if (!win || !win.document) return;
-    const input = win.document.getElementById('file-input');
-    if (!input) return;
-    input.click();
+    if (!win) return;
+    let handled = false;
+    try {
+        if (win.document) {
+            const input = win.document.getElementById('file-input');
+            if (input) {
+                input.click();
+                handled = true;
+            }
+        }
+    } catch (_) {}
+    if (!handled) sendHighlightPopupCommand('highlight-open-file');
 }
 
 function exportHighlightData() {
     const win = getHighlightFrameWindow();
-    if (!win || typeof win.handleExport !== 'function') return;
-    win.handleExport();
+    if (!win) return;
+    let handled = false;
+    try {
+        if (typeof win.handleExport === 'function') {
+            win.handleExport();
+            handled = true;
+        }
+    } catch (_) {}
+    if (!handled) sendHighlightPopupCommand('highlight-save-data');
 }
 
 function openHighlightDataWindow() {
     const win = getHighlightFrameWindow();
-    if (!win || typeof win.openDataInNewWindow !== 'function') return;
-    win.openDataInNewWindow();
+    if (!win) return;
+    let handled = false;
+    try {
+        if (typeof win.openDataInNewWindow === 'function') {
+            win.openDataInNewWindow();
+            handled = true;
+        }
+    } catch (_) {}
+    if (!handled) sendHighlightPopupCommand('highlight-open-data-window');
 }
 
 function applyImageUploadFeatureVisibility(settings) {

@@ -1191,17 +1191,17 @@
             <div id="highlight-popup-header" class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 cursor-move select-none">
                 <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">Highlight</h3>
                 <div class="flex items-center gap-2 shrink-0">
-                    <button type="button" onclick="openHighlightFile()"
+                    <button type="button" id="highlight-popup-open-btn" onclick="openHighlightFile()"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Open</button>
-                    <button type="button" onclick="exportHighlightData()"
+                    <button type="button" id="highlight-popup-save-btn" onclick="exportHighlightData()"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Save</button>
-                    <button type="button" onclick="openHighlightDataWindow()"
+                    <button type="button" id="highlight-popup-data-btn" onclick="openHighlightDataWindow()"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Data</button>
                     <button type="button" id="highlight-popup-shrink-btn" onclick="toggleHighlightPopupShrink()"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">[>>]</button>
                     <button type="button" id="highlight-popup-dock-btn" onclick="toggleHighlightPopupDockRight()"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Undock</button>
-                    <button type="button" onclick="closeHighlightPopup()"
+                    <button type="button" id="highlight-popup-close-btn" onclick="closeHighlightPopup()"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>
                 </div>
             </div>

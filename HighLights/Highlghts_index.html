@@ -84,6 +84,26 @@
             margin-bottom: 10px;
         }
 
+        .list-header.list-mode-row {
+            justify-content: flex-start;
+        }
+
+        .list-top-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+            margin: 2px 0 10px 0;
+        }
+
+        .list-top-actions .btn {
+            border-radius: 10px;
+            font-size: 0.76rem;
+            padding: 6px 8px;
+            line-height: 1.15;
+            min-height: 36px;
+            white-space: nowrap;
+        }
+
         .tree-container {
             max-height: none;
             overflow: visible;
@@ -172,6 +192,83 @@
             padding: 15px;
             border: 1px solid #eee;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+
+        .data-card:hover {
+            border-color: #c7d2fe;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .data-card-top {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 8px;
+        }
+
+        .data-card-content p {
+            margin: 0 0 8px 0;
+        }
+
+        .data-card-content h1,
+        .data-card-content h2,
+        .data-card-content h3,
+        .data-card-content h4,
+        .data-card-content h5,
+        .data-card-content h6 {
+            margin: 8px 0 6px 0;
+            line-height: 1.35;
+        }
+
+        .data-card-content ul {
+            margin: 6px 0 8px 18px;
+            padding: 0;
+        }
+
+        .data-card-content code {
+            background: #eef2ff;
+            color: #1e3a8a;
+            border-radius: 4px;
+            padding: 1px 5px;
+            font-size: 0.86em;
+        }
+
+        .data-card-content pre {
+            background: #0f172a;
+            color: #e2e8f0;
+            border-radius: 8px;
+            padding: 10px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .data-card-content pre code {
+            background: transparent;
+            color: inherit;
+            padding: 0;
+        }
+
+        .icon-edit-btn {
+            width: 26px;
+            height: 26px;
+            border: 1px solid #cbd5e1;
+            border-radius: 999px;
+            background: #fff;
+            color: #475569;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 0.9rem;
+            line-height: 1;
+            padding: 0;
+        }
+
+        .icon-edit-btn:hover {
+            border-color: #94a3b8;
+            color: #1f2937;
         }
 
         .btn {
@@ -198,6 +295,13 @@
             border-radius: 8px;
             cursor: pointer;
             min-width: 0;
+            transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+        }
+
+        .header-btn-group .btn-outline:hover {
+            background: #5c67f2;
+            color: #ffffff;
+            border-color: #4e56d1;
         }
 
         .btn-mode {
@@ -373,6 +477,7 @@
                 min-height: 300px;
             }
             .list-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .list-top-actions { justify-content: flex-start; flex-wrap: wrap; }
         }
 
         #footer-list {
@@ -411,8 +516,13 @@
 
     <div class="modal-body">
         <div id="panel-list" class="view-panel active">
-            <div class="list-header">
-                <span style="font-weight: 600; color: var(--text-dark);">분류된 지식</span>
+            <div class="list-top-actions">
+                <button class="btn btn-danger-soft" onclick="clearAllData()">모두지우기</button>
+                <button class="btn btn-outline" style="border-color:#cbd5e1; color:#334155;" onclick="openTagManager()">Tag관리</button>
+                <button class="btn btn-purple" onclick="openCreateMode()">+New</button>
+                <button class="btn btn-outline" style="border-color:#5c67f2; color:#4e56d1;" onclick="insertMdToDocument()">[문서에삽입]</button>
+            </div>
+            <div class="list-header list-mode-row">
                 <div>
                     <button class="btn-mode active" id="mode-line" onclick="setViewMode('line')">한줄보기</button>
                     <button class="btn-mode" id="mode-extend" onclick="setViewMode('extend')">Extend View</button>
@@ -887,14 +997,7 @@ window.deleteRecordFromChild = function(id) {
         tx.objectStore(STORES.RECORDS).getAll().onsuccess = (e) => {
             const records = e.target.result;
             if (!records.length) return alert('??? ???? ????.');
-
-            let exportText = '# MDProViewer Export Data\n\n';
-            records.forEach(r => {
-                exportText += '### [Data Card]\n';
-                exportText += `- **Content**: ${r.contentData}\n`;
-                exportText += `- **Tags**: ${(r.tags || []).join(', ')}\n`;
-                exportText += `- **Date**: ${r.date || new Date().toLocaleDateString()}\n\n---\n\n`;
-            });
+            const exportText = buildExportTextFromRecords(records);
 
             const blobType = format === 'txt' ? 'text/plain' : 'text/markdown';
             const blob = new Blob([exportText], { type: blobType });
@@ -907,12 +1010,47 @@ window.deleteRecordFromChild = function(id) {
         };
     }
 
+    function buildExportTextFromRecords(records) {
+        let exportText = '# MDProViewer Highlights Export Data\n\n';
+        (records || []).forEach(r => {
+            exportText += '### [Data Card]\n';
+            exportText += `- **Content**: ${r.contentData || ''}\n`;
+            exportText += `- **Tags**: ${((r.tags || []).join(', '))}\n`;
+            exportText += `- **Date**: ${r.date || new Date().toLocaleDateString()}\n\n---\n\n`;
+        });
+        return exportText;
+    }
+
     function setSelectedText(text) {
         const value = String(text || '').trim();
         if (!value) return;
         const ta = document.getElementById('tag-data');
         if (ta) ta.value = value;
     }
+
+    window.addEventListener('message', function (ev) {
+        const data = ev && ev.data ? ev.data : {};
+        const type = typeof data.type === 'string' ? data.type : '';
+        if (!type) return;
+
+        if (type === 'highlight-selection') {
+            setSelectedText(data.text || '');
+            if (data.autoFill) switchPanel('form');
+            return;
+        }
+        if (type === 'highlight-open-file') {
+            const input = document.getElementById('file-input');
+            if (input) input.click();
+            return;
+        }
+        if (type === 'highlight-save-data') {
+            handleExport();
+            return;
+        }
+        if (type === 'highlight-open-data-window') {
+            openDataInNewWindow();
+        }
+    });
 
     document.addEventListener('selectionchange', () => {
         const text = window.getSelection().toString().trim();
@@ -923,7 +1061,7 @@ window.deleteRecordFromChild = function(id) {
         document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
         const panel = document.getElementById(`panel-${name}`);
         if (panel) panel.classList.add('active');
-        document.getElementById('footer-list').style.display = name === 'list' ? 'flex' : 'none';
+        document.getElementById('footer-list').style.display = 'none';
         document.getElementById('footer-form').style.display = name === 'form' ? 'flex' : 'none';
         document.getElementById('footer-tags').style.display = name === 'tags' ? 'flex' : 'none';
     }
@@ -937,6 +1075,83 @@ window.deleteRecordFromChild = function(id) {
 
     function escapeHtml(str) {
         return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function renderInlineMarkdown(text) {
+        let out = String(text || '');
+        out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        // Allow special characters inside emphasis markers.
+        out = out.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+        out = out.replace(/__([\s\S]+?)__/g, '<strong>$1</strong>');
+        out = out.replace(/(^|[^\*])\*([\s\S]+?)\*(?!\*)/g, '$1<em>$2</em>');
+        out = out.replace(/(^|[^_])_([\s\S]+?)_(?!_)/g, '$1<em>$2</em>');
+        out = out.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+        return out;
+    }
+
+    function renderMarkdownForCard(raw) {
+        const safe = escapeHtml(raw || '').replace(/\r\n?/g, '\n');
+        if (!safe.trim()) return '';
+
+        const codeBlocks = [];
+        let text = safe.replace(/```([\s\S]*?)```/g, function (_, code) {
+            const token = `@@CODEBLOCK_${codeBlocks.length}@@`;
+            codeBlocks.push(`<pre><code>${code.replace(/^\n+|\n+$/g, '')}</code></pre>`);
+            return token;
+        });
+
+        const lines = text.split('\n');
+        const parts = [];
+        let inList = false;
+
+        function closeList() {
+            if (inList) {
+                parts.push('</ul>');
+                inList = false;
+            }
+        }
+
+        for (const lineRaw of lines) {
+            const line = lineRaw.trim();
+            if (!line) {
+                closeList();
+                continue;
+            }
+
+            if (line.startsWith('@@CODEBLOCK_')) {
+                closeList();
+                parts.push(line);
+                continue;
+            }
+
+            const h = line.match(/^(#{1,6})\s+(.+)$/);
+            if (h) {
+                closeList();
+                const level = h[1].length;
+                parts.push(`<h${level}>${renderInlineMarkdown(h[2])}</h${level}>`);
+                continue;
+            }
+
+            const li = line.match(/^[-*+]\s+(.+)$/);
+            if (li) {
+                if (!inList) {
+                    parts.push('<ul>');
+                    inList = true;
+                }
+                parts.push(`<li>${renderInlineMarkdown(li[1])}</li>`);
+                continue;
+            }
+
+            closeList();
+            parts.push(`<p>${renderInlineMarkdown(line)}</p>`);
+        }
+        closeList();
+
+        let html = parts.join('');
+        codeBlocks.forEach((block, i) => {
+            html = html.replace(`@@CODEBLOCK_${i}@@`, block);
+        });
+        return html;
     }
 
     function getAllTags() {
@@ -1035,6 +1250,46 @@ window.deleteRecordFromChild = function(id) {
         switchPanel('form');
     }
 
+    function sendInsertMarkdownToHost(markdown) {
+        let sent = false;
+        const payload = { type: 'highlight-insert-markdown', markdown: String(markdown || '') };
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage(payload, '*');
+                sent = true;
+            }
+        } catch (_) {}
+        try {
+            if (window.opener && !window.opener.closed) {
+                window.opener.postMessage(payload, '*');
+                sent = true;
+            }
+        } catch (_) {}
+        return sent;
+    }
+
+    async function insertMdToDocument() {
+        let md = '';
+        try {
+            const records = await getAllRecords();
+            if (!records || !records.length) {
+                alert('삽입할 저장 데이터가 없습니다.');
+                return;
+            }
+            md = buildExportTextFromRecords(records);
+        } catch (e) {
+            alert('저장 데이터를 읽는 중 오류가 발생했습니다: ' + (e && e.message ? e.message : e));
+            return;
+        }
+
+        const ok = confirm('Save 내보내기 전체 내용을 현재 문서 커서 위치에 삽입할까요?');
+        if (!ok) return;
+
+        if (!sendInsertMarkdownToHost(md)) {
+            alert('부모 문서와 연결되지 않아 삽입할 수 없습니다.');
+        }
+    }
+
     function openEditMode(id) {
         const recId = Number(id);
         const tx = db.transaction([STORES.RECORDS, STORES.TAGS], 'readonly');
@@ -1121,10 +1376,13 @@ window.deleteRecordFromChild = function(id) {
                     ${items.map(item => currentViewMode === 'line' ? `
                         <div class="one-line-item">
                             <div class="text-truncate">${escapeHtml(item.contentData)}</div>
-                            <button class="btn-outline" style="padding:2px 8px; font-size:0.7rem;" onclick="event.stopPropagation(); openEditMode(${item.id})">Edit</button>
+                            <button class="icon-edit-btn" title="편집" aria-label="편집" onclick="event.stopPropagation(); openEditMode(${item.id})">✎</button>
                         </div>` : `
-                        <div class="data-card">
-                            <div style="font-size:0.95rem; line-height:1.5;">${escapeHtml(item.contentData)}</div>
+                        <div class="data-card" onclick="openEditMode(${item.id})" title="클릭해서 편집">
+                            <div class="data-card-top">
+                                <button class="icon-edit-btn" title="편집" aria-label="편집" onclick="event.stopPropagation(); openEditMode(${item.id})">✎</button>
+                            </div>
+                            <div class="data-card-content" style="font-size:0.95rem; line-height:1.5;">${renderMarkdownForCard(item.contentData)}</div>
                             <div style="margin-top:10px; font-size:0.75rem; color:var(--primary-purple); font-weight:700;">
                                 ${(item.tags || []).map(t => '#' + escapeHtml(t)).join(' ')}
                             </div>
