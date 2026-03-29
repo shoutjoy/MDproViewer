@@ -619,23 +619,57 @@ async function openDataInNewWindow() {
             }
 
             // [저장] 변경사항 부모 창의 DB에 반영
+            // async function saveAllChanges() {
+            //     if(!confirm('모든 변경사항을 데이터베이스에 저장하시겠습니까?')) return;
+                
+            //     const rows = document.querySelectorAll('#tableBody tr');
+            //     const updatePromises = Array.from(rows).map(row => {
+            //         const id = parseInt(row.dataset.id);
+            //         const content = row.querySelector('.content-edit').value;
+            //         const tagInputs = row.querySelectorAll('.tag-edit');
+            //         const tags = Array.from(tagInputs).map(input => input.value.trim()).filter(Boolean);
+                    
+            //         return window.opener.updateRecordFromChild(id, content, tags);
+            //     });
+
+            //     await Promise.all(updatePromises);
+            //     alert('저장되었습니다. 메인 화면의 목록을 새로고침합니다.');
+            //     window.opener.renderTree();
+            //     location.reload();
+            // }
+
+// [업그레이드] 편집 내용을 저장한 후 빈 화면 방지를 위해 창을 재시작함
             async function saveAllChanges() {
                 if(!confirm('모든 변경사항을 데이터베이스에 저장하시겠습니까?')) return;
                 
-                const rows = document.querySelectorAll('#tableBody tr');
-                const updatePromises = Array.from(rows).map(row => {
-                    const id = parseInt(row.dataset.id);
-                    const content = row.querySelector('.content-edit').value;
-                    const tagInputs = row.querySelectorAll('.tag-edit');
-                    const tags = Array.from(tagInputs).map(input => input.value.trim()).filter(Boolean);
-                    
-                    return window.opener.updateRecordFromChild(id, content, tags);
-                });
+                try {
+                    const rows = document.querySelectorAll('#tableBody tr');
+                    const updatePromises = Array.from(rows).map(row => {
+                        const id = parseInt(row.dataset.id);
+                        const content = row.querySelector('.content-edit').value;
+                        const tagInputs = row.querySelectorAll('.tag-edit');
+                        const tags = Array.from(tagInputs).map(input => input.value.trim()).filter(Boolean);
+                        
+                        // 부모 창의 DB 업데이트 함수 호출
+                        return window.opener.updateRecordFromChild(id, content, tags);
+                    });
 
-                await Promise.all(updatePromises);
-                alert('저장되었습니다. 메인 화면의 목록을 새로고침합니다.');
-                window.opener.renderTree();
-                location.reload();
+                    // 모든 저장이 완료될 때까지 대기
+                    await Promise.all(updatePromises);
+                    
+                    alert('성공적으로 저장되었습니다. 목록을 동기화합니다.');
+
+                    // [핵심] 부모 창의 트리 리스트를 갱신
+                    if (window.opener && !window.opener.closed) {
+                        window.opener.renderTree();
+                        // 하얀 화면이 되는 reload() 대신 창을 최신 데이터로 다시 열기
+                        window.opener.openDataInNewWindow(); 
+                        window.close(); 
+                    }
+                } catch (error) {
+                    console.error("저장 중 오류 발생:", error);
+                    alert("저장 처리 중 오류가 발생했습니다.");
+                }
             }
 
             // [삭제] 선택된 행 삭제
