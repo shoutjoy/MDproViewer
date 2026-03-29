@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MDProViewer Ultimate Tag System</title>
+    <style>
+        :root {
+            --primary-purple: #5c67f2;
+            --btn-hover: #4e56d1;
+            --border-color: #e8eaf0;
+            --text-dark: #2d3436;
+            --text-gray: #4b5563;
+            --bg-light: #f8fafc;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans KR', sans-serif;
+            background-color: #f0f3f8;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-size: 13px;
+            color: #334155;
+        }
+
+        .modal {
+            width: min(100%, 420px);
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+            border: 1px solid #d8dee9;
+            overflow: hidden;
+            color: #1f2937;
+        }
+
+        .modal-header {
+            padding: 14px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid var(--border-color);
+            background: #fcfdfe;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.1rem;
+            color: var(--text-dark);
+            line-height: 1.1;
+            flex: 0 1 auto;
+        }
+
+        .header-btn-group {
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: max-content;
+            gap: 6px;
+            justify-content: end;
+            align-items: center;
+        }
+
+        .modal-body {
+            padding: 14px;
+            min-height: 380px;
+        }
+
+        .view-panel {
+            display: none;
+        }
+
+        .view-panel.active {
+            display: block;
+        }
+
+        .list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .tree-container {
+            max-height: none;
+            overflow: visible;
+        }
+
+        .tag-group {
+            margin-bottom: 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            background: white;
+        }
+
+        .tag-group-header {
+            background: var(--bg-light);
+            padding: 12px 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .tag-title {
+            font-size: 1.05em;
+            font-weight: 700;
+            color: var(--primary-purple);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .tag-title::before {
+            content: 'v';
+            font-size: 0.7rem;
+            transition: transform 0.2s;
+        }
+
+        .tag-group.folded .tag-title::before {
+            transform: rotate(-90deg);
+        }
+
+        .tag-group.folded .tag-content-area {
+            display: none;
+        }
+
+        .one-line-item {
+            padding: 10px 15px 10px 35px;
+            border-bottom: 1px solid #f1f1f1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8em;
+            color: #334155;
+            position: relative;
+        }
+
+        .one-line-item::before {
+            content: '';
+            position: absolute;
+            left: 18px;
+            top: 0;
+            bottom: 50%;
+            width: 10px;
+            border-left: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+        }
+
+        .text-truncate {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 320px;
+        }
+
+        .extend-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            padding: 15px;
+            background: #f1f4f9;
+        }
+
+        .data-card {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid #eee;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+
+        .btn {
+            padding: 8px 14px;
+            border-radius: 10px;
+            border: none;
+            font-size: 0.9rem;
+            cursor: pointer;
+            font-weight: 600;
+            color: white;
+            transition: 0.2s;
+        }
+
+        .btn-purple {
+            background-color: var(--primary-purple);
+        }
+
+        .btn-outline {
+            background: white;
+            color: #475569;
+            border: 1px solid #b7c2d3;
+            font-size: 0.76rem;
+            padding: 5px 9px;
+            border-radius: 8px;
+            cursor: pointer;
+            min-width: 0;
+        }
+
+        .btn-mode {
+            font-size: 0.7em;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid var(--primary-purple);
+            background: white;
+            color: var(--primary-purple);
+            margin-left: 5px;
+            cursor: pointer;
+        }
+
+        .btn-mode.active {
+            background: var(--primary-purple);
+            color: white;
+        }
+
+        .btn-danger-soft {
+            background: #cdd5e1;
+            color: #334155;
+        }
+
+        .btn-danger-soft:hover {
+            background: #e74c3c;
+            color: #fff;
+        }
+
+        .modal-footer {
+            padding: 12px 14px;
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            border-top: 1px solid var(--border-color);
+            background: #fcfdfe;
+        }
+
+        .tag-manage-wrap {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            background: #fff;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .tag-manage-add {
+            display: flex;
+            gap: 8px;
+        }
+
+        .tag-manage-add input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #d1d9e6;
+            border-radius: 8px;
+        }
+
+        .tag-manage-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .tag-manage-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 8px 10px;
+            font-size: 0.82rem;
+            background: #fff;
+        }
+
+        .tag-del-btn {
+            border: 1px solid #fca5a5;
+            color: #dc2626;
+            background: #fff;
+            border-radius: 999px;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            line-height: 1;
+            font-size: 0.85rem;
+        }
+
+        .export-format-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.4);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+        }
+
+        .export-format-card {
+            width: min(92vw, 280px);
+            background: #ffffff;
+            border: 1px solid #d8dee9;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 12px 30px rgba(2, 6, 23, 0.2);
+        }
+
+        .export-format-title {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 10px;
+        }
+
+        .export-format-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+
+/* 새 창 HTML의 <style> 영역 내 수정 */
+.editable.content-edit { 
+    width: 100%; 
+    min-height: 120px; /* 기본 높이를 120px로 설정 (원하시는 만큼 조정 가능) */
+    border: 1px solid transparent; 
+    padding: 8px; 
+    border-radius: 4px; 
+    background: transparent; 
+    resize: vertical; /* 사용자가 필요에 따라 더 늘릴 수 있도록 허용 */
+    line-height: 1.6;
+    overflow-y: auto;
+}
+
+
+
+        @media (max-width: 860px) {
+            .modal-header h2 {
+                font-size: 1.45rem;
+            }
+            .modal {
+                width: min(100%, 380px);
+            }
+        }
+
+        @media (max-width: 560px) {
+            body {
+                padding: 8px;
+            }
+            .modal {
+                width: 100%;
+                border-radius: 12px;
+            }
+            .modal-header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .modal-header h2 {
+                font-size: 1.2rem;
+            }
+            .header-btn-group {
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-auto-flow: row;
+                justify-content: stretch;
+                width: 100%;
+            }
+            .header-btn-group .btn-outline {
+                width: 100%;
+                text-align: center;
+            }
+            .modal-body {
+                padding: 10px;
+                min-height: 300px;
+            }
+            .list-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+        }
+
+        #footer-list {
+            gap: 8px;
+        }
+
+        #footer-list .btn {
+            border-radius: 10px;
+            font-size: 0.76rem;
+            padding: 6px 6px;
+            line-height: 1.15;
+            letter-spacing: -0.01em;
+            min-height: 38px;
+            white-space: normal;
+            word-break: keep-all;
+        }
+
+        #footer-list .btn:first-child,
+        #footer-list .btn:last-child {
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="modal">
+    <div class="modal-header">
+        <h2 id="modal-title">HighLights</h2>
+        <div class="header-btn-group">
+            <input type="file" id="file-input" style="display:none;" accept=".md,.txt">
+            <button class="btn-outline" onclick="document.getElementById('file-input').click()">Open</button>
+            <button class="btn-outline" onclick="handleExport()">Save</button>
+            <button class="btn-outline" onclick="openDataInNewWindow()">Data</button>
+        </div>
+    </div>
+
+    <div class="modal-body">
+        <div id="panel-list" class="view-panel active">
+            <div class="list-header">
+                <span style="font-weight: 600; color: var(--text-dark);">분류된 지식</span>
+                <div>
+                    <button class="btn-mode active" id="mode-line" onclick="setViewMode('line')">한줄보기</button>
+                    <button class="btn-mode" id="mode-extend" onclick="setViewMode('extend')">Extend View</button>
+                </div>
+            </div>
+            <div class="tree-container" id="tree-container"></div>
+        </div>
+
+        <div id="panel-form" class="view-panel">
+            <div style="display:flex; flex-direction:column; gap:12px;">
+                <textarea id="tag-data" style="height:120px; padding:12px; border-radius:10px; border:1px solid #ddd; background:#f3f7ff;" placeholder="문서에서 텍스트를 선택하세요."></textarea>
+                <input type="text" id="tag-name" style="padding:12px; border-radius:10px; border:1px solid #ddd;" placeholder="새로운 태그 이름">
+                <div id="tag-selector" style="border:1px solid #ddd; border-radius:10px; padding:10px; max-height: 150px; overflow-y: auto;"></div>
+                <textarea id="tag-desc" style="height:50px; padding:12px; border-radius:10px; border:1px solid #ddd;" placeholder="상세 설명"></textarea>
+            </div>
+        </div>
+
+        <div id="panel-tags" class="view-panel">
+            <div class="tag-manage-wrap">
+                <div style="font-weight:700; color:var(--text-dark);">Tag 관리</div>
+                <div class="tag-manage-add">
+                    <input type="text" id="tag-manage-input" placeholder="추가할 태그 이름">
+                    <button class="btn-outline" onclick="addTagFromManager()">추가</button>
+                </div>
+                <div id="tag-manage-list" class="tag-manage-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-footer" id="footer-list">
+        <button class="btn btn-danger-soft" onclick="clearAllData()">모두지우기</button>
+        <button class="btn btn-outline" style="border-color:#cbd5e1; color:#334155;" onclick="openTagManager()">Tag관리</button>
+        <button class="btn btn-purple" onclick="openCreateMode()">+New</button>
+    </div>
+
+    <div class="modal-footer" id="footer-form" style="display:none;">
+        <button class="btn btn-purple" onclick="handleSave()">Save To List</button>
+        <button id="btn-remove-record" class="btn" style="display:none; background:#ef4444; color:#ffffff;" onclick="removeEditingRecord()">Remove</button>
+        <button class="btn" style="background:#e2e8f0; color:#64748b;" onclick="switchPanel('list')">Main</button>
+    </div>
+
+    <div class="modal-footer" id="footer-tags" style="display:none;">
+        <button class="btn btn-outline" style="color:#334155;" onclick="switchPanel('list')">닫기</button>
+    </div>
+</div>
+
+<div id="export-format-modal" class="export-format-modal" aria-hidden="true">
+    <div class="export-format-card">
+        <div class="export-format-title">내보내기 형식을 선택하세요</div>
+        <div class="export-format-actions">
+            <button type="button" class="btn btn-purple" onclick="handleExportWithFormat('md')">MD</button>
+            <button type="button" class="btn btn-outline" onclick="handleExportWithFormat('txt')">TXT</button>
+        </div>
+        <div style="margin-top:8px; text-align:right;">
+            <button type="button" class="btn btn-outline" onclick="closeExportFormatModal()">닫기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let db;
+    let currentViewMode = 'line';
+    let editingRecordId = null;
+    const DB_NAME = 'MDProViewer_Ultimate_DB';
+    const STORES = { RECORDS: 'records', TAGS: 'tags' };
+
+    const request = indexedDB.open(DB_NAME, 1);
+    request.onupgradeneeded = (e) => {
+        const d = e.target.result;
+        if (!d.objectStoreNames.contains(STORES.RECORDS)) {
+            d.createObjectStore(STORES.RECORDS, { keyPath: 'id', autoIncrement: true });
+        }
+        if (!d.objectStoreNames.contains(STORES.TAGS)) {
+            d.createObjectStore(STORES.TAGS, { keyPath: 'name' });
+        }
+    };
+    request.onsuccess = (e) => {
+        db = e.target.result;
+        renderTree();
+    };
+
+
+/**
+ * [데이터 뷰어 업그레이드] -------------------------------------------------------------
+ * 1. 개별 태그 열(Tag1, Tag2...) + 전체 합침 열(All Tags) 제공
+ * 2. 실시간 데이터 수정(Inline Edit) 및 DB 저장 기능
+ * 3. 행 선택 일괄 삭제 기능
+ */
+async function openDataInNewWindow() {
+    const tx = db.transaction([STORES.RECORDS], "readonly");
+    const records = await new Promise(r => tx.objectStore(STORES.RECORDS).getAll().onsuccess = e => r(e.target.result || []));
+
+    if (records.length === 0) return alert("표시할 데이터가 없습니다.");
+
+    const newWin = window.open("", "_blank", "width=1400,height=900");
+    const maxTags = records.reduce((max, r) => Math.max(max, (r.tags || []).length), 0);
+
+    // 필터 드롭다운용 데이터 가공
+    const allUniqueTags = [...new Set(records.flatMap(r => r.tags || []))].sort();
+
+    let html = `
+    <html>
+    <head>
+        <title>Data Management Console</title>
+        <style>
+            body { font-family: 'Segoe UI', system-ui, sans-serif; padding: 25px; background: #f8fafc; color: #1e293b; }
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+            .btn-group { display: flex; gap: 10px; }
+            
+            table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+            th, td { padding: 12px; border: 1px solid #e2e8f0; text-align: left; font-size: 0.85rem; }
+            th { background: #f1f5f9; color: #475569; font-weight: 600; }
+            
+            .editable { width: 100%; border: 1px solid transparent; padding: 4px; border-radius: 4px; background: transparent; }
+            .editable:focus { border-color: #5c67f2; background: #fff; outline: none; box-shadow: 0 0 0 2px rgba(92,103,242,0.1); }
+            
+            .tag-pill { background: #eef2ff; color: #5c67f2; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; border: 1px solid #e0e7ff; white-space: nowrap; }
+            
+            .btn-action { padding: 8px 16px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: 0.2s; color: white; }
+            .btn-save { background: #5c67f2; }
+            .btn-delete { background: #ef4444; }
+            .btn-csv { background: #10b981; }
+            
+            .filter-box { margin-top: 5px; width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.75rem; }
+            tr.selected { background: #fff7ed; }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <h2>📊 Data Management Console</h2>
+            <div class="btn-group">
+                <button class="btn-action btn-save" onclick="saveAllChanges()">변경사항 저장</button>
+                <button class="btn-action btn-delete" onclick="deleteSelectedRows()">선택 삭제</button>
+                <button class="btn-action btn-csv" onclick="downloadCSV()">CSV 내보내기</button>
+            </div>
+        </div>
+
+        <table id="mainTable">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" onclick="toggleSelectAll(this)"></th>
+                    <th>ID</th>
+                    <th>Date</th>
+                    <th>Content (수정가능)</th>
+                    <th>All Tags (합침)</th>
+                    ${Array.from({length: maxTags}, (_, i) => `<th>Tag ${i+1}</th>`).join('')}
+                </tr>
+                <tr>
+                    <td></td>
+                    <td><input type="text" class="filter-box" onkeyup="filterTable()" placeholder="ID 필터"></td>
+                    <td><input type="text" class="filter-box" onkeyup="filterTable()" placeholder="날짜 필터"></td>
+                    <td><input type="text" class="filter-box" onkeyup="filterTable()" placeholder="내용 필터"></td>
+                    <td>
+                        <select class="filter-box" onchange="filterTable()">
+                            <option value="">전체 태그</option>
+                            ${allUniqueTags.map(t => `<option value="${t}">${t}</option>`).join('')}
+                        </select>
+                    </td>
+                    ${Array.from({length: maxTags}, () => `<td></td>`).join('')}
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                ${records.map((r, idx) => `
+                    <tr data-id="${r.id}">
+                        <td><input type="checkbox" class="row-checkbox"></td>
+                        <td>datacard${idx + 1}</td>
+                        <td>${r.date || ''}</td>
+                      
+                        <td><textarea class="editable content-edit" rows="5">${r.contentData}</textarea></td>
+                        <td>${(r.tags || []).map(t => `<span class="tag-pill">${t}</span>`).join(' ')}</td>
+                        ${Array.from({length: maxTags}, (_, i) => {
+                            const tagVal = (r.tags && r.tags[i]) ? r.tags[i] : '';
+                            return `<td><input type="text" class="editable tag-edit" data-tag-idx="${i}" value="${tagVal}"></td>`;
+                        }).join('')}
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+
+        <script>
+            // [체크박스] 전체 선택/해제
+            function toggleSelectAll(masterCb) {
+                document.querySelectorAll('.row-checkbox').forEach(cb => {
+                    cb.checked = masterCb.checked;
+                    cb.closest('tr').classList.toggle('selected', cb.checked);
+                });
+            }
+
+            // [필터] 실시간 필터링 로직
+            function filterTable() {
+                const filters = Array.from(document.querySelectorAll('.filter-box'));
+                const rows = document.querySelectorAll('#tableBody tr');
+                
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    const match = filters.every((f, i) => {
+                        const val = f.value.toLowerCase();
+                        if (!val) return true;
+                        return cells[i+1].textContent.toLowerCase().includes(val) || 
+                               cells[i+1].querySelector('textarea, input')?.value.toLowerCase().includes(val);
+                    });
+                    row.style.display = match ? '' : 'none';
+                });
+            }
+
+            // [저장] 변경사항 부모 창의 DB에 반영
+            async function saveAllChanges() {
+                if(!confirm('모든 변경사항을 데이터베이스에 저장하시겠습니까?')) return;
+                
+                const rows = document.querySelectorAll('#tableBody tr');
+                const updatePromises = Array.from(rows).map(row => {
+                    const id = parseInt(row.dataset.id);
+                    const content = row.querySelector('.content-edit').value;
+                    const tagInputs = row.querySelectorAll('.tag-edit');
+                    const tags = Array.from(tagInputs).map(input => input.value.trim()).filter(Boolean);
+                    
+                    return window.opener.updateRecordFromChild(id, content, tags);
+                });
+
+                await Promise.all(updatePromises);
+                alert('저장되었습니다. 메인 화면의 목록을 새로고침합니다.');
+                window.opener.renderTree();
+                location.reload();
+            }
+
+            // [삭제] 선택된 행 삭제
+            // async function deleteSelectedRows() {
+            //     const selected = document.querySelectorAll('.row-checkbox:checked');
+            //     if(selected.length === 0) return alert('삭제할 항목을 선택하세요.');
+            //     if(!confirm(\`선택한 \${selected.length}개의 항목을 삭제하시겠습니까?\`)) return;
+
+            //     const deletePromises = Array.from(selected).map(cb => {
+            //         const id = parseInt(cb.closest('tr').dataset.id);
+            //         return window.opener.deleteRecordFromChild(id);
+            //     });
+
+            //     await Promise.all(deletePromises);
+            //     window.opener.renderTree();
+            //     location.reload();
+            // }
+
+// [업그레이드 버전] 행 삭제 후 화면 증발 문제를 해결하고 로직을 안정화함
+async function deleteSelectedRows() {
+    const selected = document.querySelectorAll('.row-checkbox:checked');
+    if (selected.length === 0) return alert('삭제할 항목을 선택하세요.');
+    
+    // 역슬래시(\)를 사용하여 부모 창의 백틱 문자열과 충돌을 방지함
+    if (!confirm(\`선택한 \${selected.length}개의 항목을 삭제하시겠습니까?\`)) return;
+
+    try {
+        // 1. 부모 창과의 연결 상태 확인
+        if (!window.opener || window.opener.closed) {
+            alert("부모 창을 찾을 수 없어 삭제를 진행할 수 없습니다.");
+            return;
+        }
+
+        // 2. 모든 삭제 작업을 병렬로 실행하여 성능 향상
+        const deletePromises = Array.from(selected).map(cb => {
+            const id = parseInt(cb.closest('tr').dataset.id);
+            return window.opener.deleteRecordFromChild(id);
+        });
+
+        await Promise.all(deletePromises);
+        
+        alert('삭제가 완료되었습니다. 목록을 최신화합니다.');
+
+        // 3. [핵심 개선] 빈 화면이 되는 location.reload() 대신
+        // 부모 창의 열기 함수를 다시 호출하여 데이터가 채워진 새 창을 띄우고 현재 창은 닫음
+        window.opener.openDataInNewWindow(); 
+        window.close(); 
+
+    } catch (error) {
+        console.error("삭제 중 오류 발생:", error);
+        alert("일부 항목 삭제 중 오류가 발생했습니다.");
+    }
+}
+
+
+
+
+            // [CSV] 필터링된 현재 데이터 내보내기
+            function downloadCSV() {
+                const rows = Array.from(document.querySelectorAll('#tableBody tr')).filter(r => r.style.display !== 'none');
+                let csv = "\\ufeffID,Date,Content,All Tags" + 
+                          "${Array.from({length: maxTags}, (_, i) => `,Tag \${i+1}`).join('')}\\n";
+                
+                rows.forEach(row => {
+                    const id = row.cells[1].innerText;
+                    const date = row.cells[2].innerText;
+                    const content = \`"\${row.querySelector('.content-edit').value.replace(/"/g, '""')}"\`;
+                    const allTags = \`"\${Array.from(row.querySelectorAll('.tag-pill')).map(p => p.innerText).join(', ')}"\`;
+                    const individualTags = Array.from(row.querySelectorAll('.tag-edit')).map(input => \`"\${input.value}"\`).join(',');
+                    
+                    csv += \`\${id},\${date},\${content},\${allTags},\${individualTags}\\n\`;
+                });
+
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = "data_management_export.csv";
+                link.click();
+            }
+
+            // 체크박스 클릭 시 행 강조
+            document.getElementById('tableBody').addEventListener('change', e => {
+                if(e.target.classList.contains('row-checkbox')) {
+                    e.target.closest('tr').classList.toggle('selected', e.target.checked);
+                }
+            });
+        <\/script>
+    </body>
+    </html>`;
+
+    newWin.document.write(html);
+    newWin.document.close();
+}
+
+/**
+ * 부모 창에서 자식 창의 수정을 도와주는 헬퍼 함수들
+ */
+window.updateRecordFromChild = function(id, content, tags) {
+    return new Promise((resolve) => {
+        const tx = db.transaction([STORES.RECORDS, STORES.TAGS], "readwrite");
+        const store = tx.objectStore(STORES.RECORDS);
+        const tagStore = tx.objectStore(STORES.TAGS);
+
+        store.get(id).onsuccess = (e) => {
+            const data = e.target.result;
+            data.contentData = content;
+            data.tags = tags;
+            store.put(data);
+            // 새 태그가 있으면 사전에도 추가
+            tags.forEach(t => tagStore.put({ name: t }));
+        };
+        tx.oncomplete = () => resolve();
+    });
+};
+
+
+window.deleteRecordFromChild = function(id) {
+    return new Promise((resolve, reject) => {
+        // ID가 문자열로 들어올 경우를 대비해 숫자로 변환
+        const targetId = Number(id);
+        
+        const tx = db.transaction([STORES.RECORDS], "readwrite");
+        const store = tx.objectStore(STORES.RECORDS);
+        
+        store.delete(targetId);
+
+        tx.oncomplete = () => {
+            console.log(`ID ${targetId} 삭제 완료`);
+            
+            // 1. 트리 화면만 즉시 갱신 (새로고침 없이 데이터만 바뀜)
+            if (typeof renderTree === 'function') {
+                renderTree();
+            }
+            
+            // 2. 비동기 작업 완료 신호를 자식 창에 보냄
+            resolve();
+        };
+
+        tx.onerror = (err) => {
+            console.error("삭제 중 오류 발생:", err);
+            reject(err);
+        };
+    });
+};
+
+
+// window.deleteRecordFromChild = function(id) {
+//     return new Promise((resolve) => {
+//         const tx = db.transaction([STORES.RECORDS], "readwrite");
+//         tx.objectStore(STORES.RECORDS).delete(id);
+//         tx.oncomplete = () => {
+//             try { renderTree(); } catch (_) {}
+//             resolve();
+//             setTimeout(() => {
+//                 try { window.location.reload(); } catch (_) {}
+//             }, 0);
+//         };
+//     });
+// };
+// [데이터 뷰어 업그레이드] 끝
+
+
+
+
+    // 파일 열기 로직
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            const text = event.target.result;
+            const blocks = text.split('---');
+            const tx = db.transaction([STORES.RECORDS, STORES.TAGS], 'readwrite');
+            for (const block of blocks) {
+                const contentMatch = block.match(/- \*\*Content\*\*: (.+)/);
+                const tagsMatch = block.match(/- \*\*Tags\*\*: (.+)/);
+                if (contentMatch && tagsMatch) {
+                    const content = contentMatch[1].trim();
+                    const tags = tagsMatch[1].split(',').map(t => t.trim()).filter(Boolean);
+                    tx.objectStore(STORES.RECORDS).add({ contentData: content, tags, date: new Date().toLocaleDateString() });
+                    tags.forEach(t => tx.objectStore(STORES.TAGS).put({ name: t }));
+                }
+            }
+            tx.oncomplete = () => {
+                alert('데이터를 성공적으로 불러왔습니다.');
+                renderTree();
+            };
+        };
+        reader.readAsText(file);
+    });
+
+    // 내보내기 로직
+    function openExportFormatModal() {
+        const modal = document.getElementById('export-format-modal');
+        if (!modal) return;
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+    }
+
+    function closeExportFormatModal() {
+        const modal = document.getElementById('export-format-modal');
+        if (!modal) return;
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+    }
+
+    async function handleExport() {
+        openExportFormatModal();
+    }
+
+    async function handleExportWithFormat(format) {
+        closeExportFormatModal();
+        if (!format) return;
+        const tx = db.transaction([STORES.RECORDS], 'readonly');
+        tx.objectStore(STORES.RECORDS).getAll().onsuccess = (e) => {
+            const records = e.target.result;
+            if (!records.length) return alert('??? ???? ????.');
+
+            let exportText = '# MDProViewer Export Data\n\n';
+            records.forEach(r => {
+                exportText += '### [Data Card]\n';
+                exportText += `- **Content**: ${r.contentData}\n`;
+                exportText += `- **Tags**: ${(r.tags || []).join(', ')}\n`;
+                exportText += `- **Date**: ${r.date || new Date().toLocaleDateString()}\n\n---\n\n`;
+            });
+
+            const blobType = format === 'txt' ? 'text/plain' : 'text/markdown';
+            const blob = new Blob([exportText], { type: blobType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `exported_knowledge.${format}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        };
+    }
+
+    function setSelectedText(text) {
+        const value = String(text || '').trim();
+        if (!value) return;
+        const ta = document.getElementById('tag-data');
+        if (ta) ta.value = value;
+    }
+
+    document.addEventListener('selectionchange', () => {
+        const text = window.getSelection().toString().trim();
+        if (text) setSelectedText(text);
+    });
+
+    function switchPanel(name) {
+        document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+        const panel = document.getElementById(`panel-${name}`);
+        if (panel) panel.classList.add('active');
+        document.getElementById('footer-list').style.display = name === 'list' ? 'flex' : 'none';
+        document.getElementById('footer-form').style.display = name === 'form' ? 'flex' : 'none';
+        document.getElementById('footer-tags').style.display = name === 'tags' ? 'flex' : 'none';
+    }
+
+    function setViewMode(mode) {
+        currentViewMode = mode;
+        document.getElementById('mode-line').classList.toggle('active', mode === 'line');
+        document.getElementById('mode-extend').classList.toggle('active', mode === 'extend');
+        renderTree();
+    }
+
+    function escapeHtml(str) {
+        return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function getAllTags() {
+        return new Promise(resolve => {
+            db.transaction([STORES.TAGS], 'readonly').objectStore(STORES.TAGS).getAll().onsuccess = e => resolve(e.target.result || []);
+        });
+    }
+
+    function getAllRecords() {
+        return new Promise(resolve => {
+            db.transaction([STORES.RECORDS], 'readonly').objectStore(STORES.RECORDS).getAll().onsuccess = e => resolve(e.target.result || []);
+        });
+    }
+
+    async function cleanupUnusedTags() {
+        const [records, tagsAll] = await Promise.all([getAllRecords(), getAllTags()]);
+        const used = new Set();
+        records.forEach(r => (r.tags || []).forEach(t => used.add(t)));
+        const stale = tagsAll.map(t => t.name).filter(name => !used.has(name));
+        if (!stale.length) return;
+        const tx = db.transaction([STORES.TAGS], 'readwrite');
+        const store = tx.objectStore(STORES.TAGS);
+        stale.forEach(name => store.delete(name));
+    }
+
+    function renderTagSelector(tagsAll, selectedSet) {
+        const sel = document.getElementById('tag-selector');
+        if (!sel) return;
+        sel.innerHTML = '';
+        tagsAll.forEach(t => {
+            const name = t.name || '';
+            const checked = selectedSet && selectedSet.has(name) ? ' checked' : '';
+            sel.innerHTML += `<label style="display:block; font-size:0.9rem; margin-bottom:6px;"><input type="checkbox" class="tag-cb" value="${escapeHtml(name)}"${checked}> ${escapeHtml(name)}</label>`;
+        });
+    }
+
+    async function renderTagManager() {
+        const container = document.getElementById('tag-manage-list');
+        const tagsAll = await getAllTags();
+        container.innerHTML = '';
+        if (!tagsAll.length) {
+            container.innerHTML = '<div style="color:#64748b; font-size:0.9rem;">등록된 태그가 없습니다.</div>';
+            return;
+        }
+        tagsAll.sort((a, b) => String(a.name).localeCompare(String(b.name), 'ko')).forEach(t => {
+            const row = document.createElement('div');
+            row.className = 'tag-manage-item';
+            row.innerHTML = `<span>${escapeHtml(t.name)}</span><button class="tag-del-btn" onclick="deleteTagFromManager('${encodeURIComponent(t.name)}')">x</button>`;
+            container.appendChild(row);
+        });
+    }
+
+    async function openTagManager() {
+        await cleanupUnusedTags();
+        await renderTagManager();
+        switchPanel('tags');
+    }
+
+    async function addTagFromManager() {
+        const input = document.getElementById('tag-manage-input');
+        const name = (input?.value || '').trim();
+        if (!name) return;
+        const tx = db.transaction([STORES.TAGS], 'readwrite');
+        tx.objectStore(STORES.TAGS).put({ name });
+        tx.oncomplete = () => { input.value = ''; renderTagManager(); };
+    }
+
+    async function deleteTagFromManager(encodedName) {
+        const name = decodeURIComponent(encodedName);
+        if (!confirm(`태그 "${name}"를 삭제하시겠습니까?`)) return;
+        const tx = db.transaction([STORES.RECORDS, STORES.TAGS], 'readwrite');
+        const recStore = tx.objectStore(STORES.RECORDS);
+        recStore.getAll().onsuccess = (e) => {
+            const rows = e.target.result || [];
+            rows.forEach(row => {
+                const nextTags = (row.tags || []).filter(t => t !== name);
+                if ((row.tags || []).length !== nextTags.length) {
+                    row.tags = nextTags;
+                    recStore.put(row);
+                }
+            });
+            tx.objectStore(STORES.TAGS).delete(name);
+        };
+        tx.oncomplete = async () => { await cleanupUnusedTags(); renderTagManager(); renderTree(); };
+    }
+
+    async function openCreateMode() {
+        editingRecordId = null;
+        await cleanupUnusedTags();
+        document.getElementById('tag-data').value = '';
+        document.getElementById('tag-name').value = '';
+        document.getElementById('tag-desc').value = '';
+        document.getElementById('btn-remove-record').style.display = 'none';
+        const tagsAll = await getAllTags();
+        renderTagSelector(tagsAll, new Set());
+        switchPanel('form');
+    }
+
+    function openEditMode(id) {
+        const recId = Number(id);
+        const tx = db.transaction([STORES.RECORDS, STORES.TAGS], 'readonly');
+        const recReq = tx.objectStore(STORES.RECORDS).get(recId);
+        const tagReq = tx.objectStore(STORES.TAGS).getAll();
+
+        Promise.all([
+            new Promise(r => recReq.onsuccess = e => r(e.target.result)),
+            new Promise(r => tagReq.onsuccess = e => r(e.target.result || []))
+        ]).then(([record, tagsAll]) => {
+            if (!record) return;
+            editingRecordId = recId;
+            document.getElementById('tag-data').value = record.contentData || '';
+            document.getElementById('tag-name').value = '';
+            document.getElementById('tag-desc').value = '';
+            document.getElementById('btn-remove-record').style.display = 'inline-flex';
+            renderTagSelector(tagsAll, new Set(record.tags || []));
+            switchPanel('form');
+        });
+    }
+
+    async function removeEditingRecord() {
+        if (editingRecordId === null || !confirm('현재 항목을 삭제하시겠습니까?')) return;
+        const tx = db.transaction([STORES.RECORDS], 'readwrite');
+        tx.objectStore(STORES.RECORDS).delete(editingRecordId);
+        tx.oncomplete = async () => { editingRecordId = null; await cleanupUnusedTags(); renderTree(); switchPanel('list'); };
+    }
+
+    function handleSave() {
+        const content = document.getElementById('tag-data').value.trim();
+        const tags = Array.from(document.querySelectorAll('.tag-cb:checked')).map(cb => cb.value);
+        const newTag = document.getElementById('tag-name').value.trim();
+        if (!content) return alert('내용을 입력하세요.');
+
+        if (newTag && !tags.includes(newTag)) tags.push(newTag);
+
+        const tx = db.transaction([STORES.RECORDS, STORES.TAGS], 'readwrite');
+        if (newTag) tx.objectStore(STORES.TAGS).put({ name: newTag });
+
+        const recordStore = tx.objectStore(STORES.RECORDS);
+        const data = { contentData: content, tags, date: new Date().toLocaleDateString() };
+        
+        if (editingRecordId !== null) {
+            data.id = editingRecordId;
+            recordStore.put(data);
+        } else {
+            recordStore.add(data);
+        }
+
+        tx.oncomplete = async () => { editingRecordId = null; await cleanupUnusedTags(); renderTree(); switchPanel('list'); };
+    }
+
+    function clearAllData() {
+        if (!confirm('모든 데이터를 삭제하시겠습니까?')) return;
+        const tx = db.transaction([STORES.RECORDS, STORES.TAGS], 'readwrite');
+        tx.objectStore(STORES.RECORDS).clear();
+        tx.objectStore(STORES.TAGS).clear();
+        tx.oncomplete = () => { renderTree(); switchPanel('list'); };
+    }
+
+    async function renderTree() {
+        if (!db) return;
+        const container = document.getElementById('tree-container');
+        container.innerHTML = '';
+        const records = await getAllRecords();
+        const treeMap = {};
+        records.forEach(rec => {
+            const tags = (rec.tags && rec.tags.length) ? rec.tags : ['미분류'];
+            tags.forEach(tag => {
+                if (!treeMap[tag]) treeMap[tag] = [];
+                treeMap[tag].push(rec);
+            });
+        });
+
+        Object.entries(treeMap).forEach(([tag, items]) => {
+            const group = document.createElement('div');
+            group.className = 'tag-group';
+            group.innerHTML = `
+                <div class="tag-group-header" onclick="this.parentElement.classList.toggle('folded')">
+                    <div class="tag-title">🏷 ${escapeHtml(tag)} (${items.length})</div>
+                    <small style="color:var(--text-gray); font-size:0.7rem;">접기/펼치기</small>
+                </div>
+                <div class="tag-content-area ${currentViewMode === 'extend' ? 'extend-grid' : ''}">
+                    ${items.map(item => currentViewMode === 'line' ? `
+                        <div class="one-line-item">
+                            <div class="text-truncate">${escapeHtml(item.contentData)}</div>
+                            <button class="btn-outline" style="padding:2px 8px; font-size:0.7rem;" onclick="event.stopPropagation(); openEditMode(${item.id})">Edit</button>
+                        </div>` : `
+                        <div class="data-card">
+                            <div style="font-size:0.95rem; line-height:1.5;">${escapeHtml(item.contentData)}</div>
+                            <div style="margin-top:10px; font-size:0.75rem; color:var(--primary-purple); font-weight:700;">
+                                ${(item.tags || []).map(t => '#' + escapeHtml(t)).join(' ')}
+                            </div>
+                        </div>`).join('')}
+                </div>`;
+            container.appendChild(group);
+        });
+    }
+</script>
+</body>
+</html>

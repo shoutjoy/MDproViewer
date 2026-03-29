@@ -156,6 +156,12 @@
                         <i data-lucide="layers" class="w-3.5 h-3.5"></i>
                         <span>merge</span>
                     </button>
+                    <button id="btn-highlight-popup" onclick="openHighlightPopup()"
+                        class="flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-xs font-medium text-slate-700 dark:text-slate-200 transition-colors"
+                        title="하이라이트 열기">
+                        <i data-lucide="highlighter" class="w-3.5 h-3.5"></i>
+                        <span>Highlight</span>
+                    </button>
                 </div>
                 <div class="flex items-center justify-between sidebar-header-btns">
                     <div class="flex bg-slate-200 dark:bg-slate-800 rounded p-1 w-full mr-2 sidebar-text">
@@ -1023,6 +1029,11 @@
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">학술검색 보이기</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="highlight-visible" onclick="setTimeout(toggleHighlightSection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Highlight 보이기</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="image-upload-enabled" onclick="setTimeout(toggleImageUploadSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">이미지 업로드 사용</span>
@@ -1173,6 +1184,27 @@
         </div>
     </div>
 
+    <!-- Highlight Popup -->
+    <div id="highlight-popup-modal" class="fixed inset-0 bg-transparent hidden items-start justify-start z-50 no-print pointer-events-none">
+        <div id="highlight-popup-panel"
+            class="pointer-events-auto mt-20 ml-5 bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 backdrop-blur-[1px] w-[min(980px,92vw)] h-[78vh] min-h-[420px] min-w-[360px] flex flex-col overflow-hidden resize">
+            <div id="highlight-popup-header" class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 cursor-move select-none">
+                <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">Highlight</h3>
+                <div class="flex items-center gap-2 shrink-0">
+                    <button type="button" id="highlight-popup-shrink-btn" onclick="toggleHighlightPopupShrink()"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">[>>]</button>
+                    <button type="button" id="highlight-popup-dock-btn" onclick="toggleHighlightPopupDockRight()"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Undock</button>
+                    <button type="button" onclick="closeHighlightPopup()"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>
+                </div>
+            </div>
+            <div id="highlight-popup-body" class="flex-1 min-h-0">
+                <iframe id="highlight-popup-frame" src="./HighLights/Highlghts_index.html" onload="handleHighlightFrameLoad()"
+                    class="w-full h-full border-0 bg-white dark:bg-slate-900" title="Highlight"></iframe>
+            </div>
+        </div>
+    </div>
     <!-- Text Style Modal (Alt+L) -->
     <div id="text-style-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50 no-print">
         <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-xl mx-4 border border-slate-200 dark:border-slate-700">

@@ -43,6 +43,15 @@ let scholarSearchDragBound = false;
 let scholarSearchDragging = false;
 let scholarSearchDragOffsetX = 0;
 let scholarSearchDragOffsetY = 0;
+let highlightPopupDockRight = true;
+let highlightPopupShrink = false;
+let highlightPopupDragBound = false;
+let highlightPopupDragging = false;
+let highlightPopupDragOffsetX = 0;
+let highlightPopupDragOffsetY = 0;
+let highlightPopupDockTop = 80;
+let highlightSelectionSyncBound = false;
+let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
 let viewClickMappedCaretPos = null;
 let lastEditCaretPos = 0;
@@ -4135,6 +4144,11 @@ function getScholarSearchVisibleFromSettings(settings) {
     return settings.scholarSearchVisible === true;
 }
 
+function getHighlightVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.highlightVisible === true;
+}
+
 function applyScholarSearchVisibility(settings) {
     const enabled = getScholarSearchVisibleFromSettings(settings || {});
     const wrap = document.getElementById('header-scholar-search-wrap');
@@ -4151,12 +4165,31 @@ function applyScholarSearchVisibility(settings) {
     }
 }
 
+function applyHighlightVisibility(settings) {
+    const enabled = getHighlightVisibleFromSettings(settings || {});
+    const btn = document.getElementById('btn-highlight-popup');
+    if (btn) {
+        btn.style.display = enabled ? '' : 'none';
+    }
+    if (!enabled && typeof closeHighlightPopup === 'function') {
+        closeHighlightPopup();
+    }
+}
+
 async function toggleScholarSearchSection() {
     const check = document.getElementById('scholar-search-visible');
     const enabled = !!(check && check.checked);
     await setAiSettings({ scholarSearchVisible: enabled });
     const s = await getAiSettings();
     applyScholarSearchVisibility(s || { scholarSearchVisible: enabled });
+}
+
+async function toggleHighlightSection() {
+    const check = document.getElementById('highlight-visible');
+    const enabled = !!(check && check.checked);
+    await setAiSettings({ highlightVisible: enabled });
+    const s = await getAiSettings();
+    applyHighlightVisibility(s || { highlightVisible: enabled });
 }
 
 function openScholarSearchWindow(query) {
@@ -4485,6 +4518,235 @@ function toggleScholarSearchShrink() {
     applyScholarSearchPanelLayout();
 }
 
+function openHighlightPopup() {
+    const modal = document.getElementById('highlight-popup-modal');
+    if (!modal) return;
+    bindHighlightPopupDrag();
+    applyHighlightPopupLayout();
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeHighlightPopup() {
+    const modal = document.getElementById('highlight-popup-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function applyHighlightPopupLayout() {
+    const modal = document.getElementById('highlight-popup-modal');
+    const panel = document.getElementById('highlight-popup-panel');
+    const body = document.getElementById('highlight-popup-body');
+    const dockBtn = document.getElementById('highlight-popup-dock-btn');
+    const shrinkBtn = document.getElementById('highlight-popup-shrink-btn');
+    if (!modal || !panel) return;
+
+    if (highlightPopupDockRight) {
+        modal.classList.remove('items-center', 'justify-center');
+        modal.classList.add('items-start', 'justify-start');
+        panel.style.position = 'fixed';
+        panel.style.top = `${highlightPopupDockTop}px`;
+        panel.style.left = '12px';
+        panel.style.right = 'auto';
+        panel.style.margin = '0';
+    } else {
+        modal.classList.remove('items-start', 'justify-start');
+        modal.classList.add('items-center', 'justify-center');
+        panel.style.position = 'relative';
+        panel.style.top = '';
+        panel.style.right = '';
+        panel.style.left = '';
+        panel.style.margin = '0';
+        panel.style.width = '';
+        panel.style.height = '';
+    }
+
+    const canShrink = highlightPopupDockRight;
+    const isShrinked = canShrink && highlightPopupShrink;
+    // Compact mode: keep content visible (do not hide body), only narrow the width.
+    if (body) body.classList.remove('hidden');
+    const sidebarEl = document.getElementById('sidebar');
+    const sidebarWidth = sidebarEl ? Math.round(sidebarEl.getBoundingClientRect().width) : 0;
+    const compactWidth = sidebarWidth > 0 ? sidebarWidth : 320;
+    // Keep a clearly visible difference between compact and expanded widths.
+    const expandedWidth = Math.min(
+        Math.max(compactWidth + 140, 420),
+        Math.floor(window.innerWidth * 0.58)
+    );
+    panel.style.width = canShrink ? `${isShrinked ? compactWidth : expandedWidth}px` : '';
+    panel.style.minWidth = canShrink ? `${isShrinked ? compactWidth : 360}px` : '';
+    panel.style.height = '';
+    panel.style.minHeight = '';
+    panel.style.resize = 'both';
+
+    if (shrinkBtn) {
+        // Expanded -> show shrink arrow, Shrunk -> show expand arrow
+        shrinkBtn.textContent = isShrinked ? '[>>]' : '[<<]';
+        shrinkBtn.disabled = !canShrink;
+        shrinkBtn.classList.toggle('opacity-40', !canShrink);
+        shrinkBtn.classList.toggle('cursor-not-allowed', !canShrink);
+    }
+    if (dockBtn) dockBtn.textContent = highlightPopupDockRight ? 'Undock' : 'Dock Left';
+}
+
+function bindHighlightPopupDrag() {
+    if (highlightPopupDragBound) return;
+    highlightPopupDragBound = true;
+    const header = document.getElementById('highlight-popup-header');
+    const panel = document.getElementById('highlight-popup-panel');
+    if (!header || !panel) return;
+
+    header.addEventListener('mousedown', function (e) {
+        const target = e.target;
+        if (!target) return;
+        if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('textarea')) return;
+        highlightPopupDragging = true;
+        const rect = panel.getBoundingClientRect();
+        if (!highlightPopupDockRight) {
+            highlightPopupDragOffsetX = e.clientX - rect.left;
+        }
+        highlightPopupDragOffsetY = e.clientY - rect.top;
+        panel.style.position = 'fixed';
+        panel.style.margin = '0';
+        panel.style.left = rect.left + 'px';
+        panel.style.top = rect.top + 'px';
+        panel.style.right = 'auto';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!highlightPopupDragging) return;
+        const panelEl = document.getElementById('highlight-popup-panel');
+        if (!panelEl) return;
+        const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - highlightPopupDragOffsetY));
+        if (!highlightPopupDockRight) {
+            const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - highlightPopupDragOffsetX));
+            panelEl.style.left = nextLeft + 'px';
+        } else {
+            highlightPopupDockTop = nextTop;
+            panelEl.style.left = '12px';
+        }
+        panelEl.style.top = nextTop + 'px';
+        panelEl.style.right = 'auto';
+    });
+
+    document.addEventListener('mouseup', function () {
+        highlightPopupDragging = false;
+    });
+}
+
+function toggleHighlightPopupDockRight() {
+    highlightPopupDockRight = !highlightPopupDockRight;
+    if (!highlightPopupDockRight) highlightPopupShrink = false;
+    applyHighlightPopupLayout();
+}
+
+function toggleHighlightPopupShrink() {
+    if (!highlightPopupDockRight) return;
+    highlightPopupShrink = !highlightPopupShrink;
+    applyHighlightPopupLayout();
+}
+
+function getHighlightFrameWindow() {
+    const frame = document.getElementById('highlight-popup-frame');
+    if (!frame) return null;
+    return frame.contentWindow || null;
+}
+
+function handleHighlightFrameLoad() {
+    // Flatten inner frame UI so the outer popup behaves like Scholar Search (single shell).
+    const frame = document.getElementById('highlight-popup-frame');
+    if (frame) {
+        try {
+            const doc = frame.contentDocument || frame.contentWindow.document;
+            if (doc && doc.head && !doc.getElementById('highlight-embed-style')) {
+                const style = doc.createElement('style');
+                style.id = 'highlight-embed-style';
+                style.textContent = '.modal-header{display:none!important;} body{padding:0!important;min-height:100%!important;} .modal{width:100%!important;height:100%!important;border:0!important;border-radius:0!important;box-shadow:none!important;} .modal-body{min-height:0!important;height:calc(100% - 72px)!important;}';
+                doc.head.appendChild(style);
+            }
+        } catch (_) {}
+    }
+    bindHighlightSelectionSync();
+    syncHighlightSelectionToPopup();
+}
+
+function bindHighlightSelectionSync() {
+    if (highlightSelectionSyncBound) return;
+    highlightSelectionSyncBound = true;
+    document.addEventListener('selectionchange', function () {
+        syncHighlightSelectionToPopup();
+    });
+    // Some browsers/areas emit selection updates more reliably on mouseup/keyup.
+    document.addEventListener('mouseup', function () {
+        setTimeout(syncHighlightSelectionToPopup, 0);
+    });
+    document.addEventListener('keyup', function () {
+        setTimeout(syncHighlightSelectionToPopup, 0);
+    });
+    const viewerEl = document.getElementById('viewer');
+    if (viewerEl) {
+        viewerEl.addEventListener('mouseup', function () {
+            setTimeout(syncHighlightSelectionToPopup, 0);
+        });
+    }
+}
+
+function getHighlightSelectionText() {
+    const active = document.activeElement;
+    if (active === editorTextarea) {
+        const selected = getEditorSelectedText();
+        if (selected && selected.trim()) return selected.trim();
+    }
+    const sel = window.getSelection ? window.getSelection() : null;
+    const t = sel && sel.toString ? String(sel.toString()) : '';
+    return t.trim();
+}
+
+function syncHighlightSelectionToPopup() {
+    const modal = document.getElementById('highlight-popup-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const win = getHighlightFrameWindow();
+    if (!win) return;
+    const text = getHighlightSelectionText();
+    if (!text) return;
+    try {
+        if (typeof win.setSelectedText === 'function') {
+            win.setSelectedText(text);
+        }
+    } catch (_) {}
+    try {
+        if (win.document) {
+            const ta = win.document.getElementById('tag-data');
+            if (ta) ta.value = text;
+        }
+    } catch (_) {}
+    try {
+        win.postMessage({ type: 'highlight-selection', text: text }, '*');
+    } catch (_) {}
+}
+
+function openHighlightFile() {
+    const win = getHighlightFrameWindow();
+    if (!win || !win.document) return;
+    const input = win.document.getElementById('file-input');
+    if (!input) return;
+    input.click();
+}
+
+function exportHighlightData() {
+    const win = getHighlightFrameWindow();
+    if (!win || typeof win.handleExport !== 'function') return;
+    win.handleExport();
+}
+
+function openHighlightDataWindow() {
+    const win = getHighlightFrameWindow();
+    if (!win || typeof win.openDataInNewWindow !== 'function') return;
+    win.openDataInNewWindow();
+}
+
 function applyImageUploadFeatureVisibility(settings) {
     const enabled = getImageUploadEnabledFromSettings(settings || {});
     const imgBtn = document.getElementById('btn-image-insert');
@@ -4646,6 +4908,8 @@ async function persistAiSettingsFromModal() {
     const imageUploadEnabled = !!(imageUploadEl && imageUploadEl.checked);
     const scholarSearchVisibleEl = document.getElementById('scholar-search-visible');
     const scholarSearchVisible = !!(scholarSearchVisibleEl && scholarSearchVisibleEl.checked);
+    const highlightVisibleEl = document.getElementById('highlight-visible');
+    const highlightVisible = !!(highlightVisibleEl && highlightVisibleEl.checked);
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     await setAiSettings({
@@ -4653,6 +4917,7 @@ async function persistAiSettingsFromModal() {
         sspimgAI: !!sspimgOn,
         githubEnabled: !!(githubEl && githubEl.checked),
         scholarSearchVisible: scholarSearchVisible,
+        highlightVisible: highlightVisible,
         imageUploadEnabled: imageUploadEnabled,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         imgbbApiKey: imgbbKey
@@ -5307,6 +5572,8 @@ async function loadAiSettingsToUI() {
         if (imageCheckEmpty) imageCheckEmpty.checked = false;
         const scholarSearchCheckEmpty = document.getElementById('scholar-search-visible');
         if (scholarSearchCheckEmpty) scholarSearchCheckEmpty.checked = false;
+        const highlightCheckEmpty = document.getElementById('highlight-visible');
+        if (highlightCheckEmpty) highlightCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
         const localEnterBr = getEnterButtonInsertBrFromLocal();
         if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
@@ -5317,6 +5584,7 @@ async function loadAiSettingsToUI() {
         updateAiScholarSspimgAvailability(false);
         applyImageUploadFeatureVisibility({ imageUploadEnabled: false });
         applyScholarSearchVisibility({ scholarSearchVisible: false });
+        applyHighlightVisibility({ highlightVisible: false });
         return;
     }
     const apiInput = document.getElementById('ai-api-key');
@@ -5327,6 +5595,8 @@ async function loadAiSettingsToUI() {
     if (imageCheck) imageCheck.checked = settings.imageUploadEnabled === true;
     const scholarSearchCheck = document.getElementById('scholar-search-visible');
     if (scholarSearchCheck) scholarSearchCheck.checked = settings.scholarSearchVisible === true;
+    const highlightCheck = document.getElementById('highlight-visible');
+    if (highlightCheck) highlightCheck.checked = settings.highlightVisible === true;
     const enterBrCheck = document.getElementById('enter-button-insert-br');
     const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
     if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
@@ -5400,6 +5670,7 @@ async function initAiVisibility() {
     updateAiScholarSspimgAvailability(verified);
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
+    applyHighlightVisibility(settings || { highlightVisible: false });
     await applyAiFeatureVisibility();
 }
 
@@ -5631,6 +5902,14 @@ window.deleteScholarRefItem = deleteScholarRefItem;
 window.clearAllScholarRefs = clearAllScholarRefs;
 window.toggleScholarSearchDockRight = toggleScholarSearchDockRight;
 window.toggleScholarSearchShrink = toggleScholarSearchShrink;
+window.openHighlightPopup = openHighlightPopup;
+window.closeHighlightPopup = closeHighlightPopup;
+window.toggleHighlightPopupDockRight = toggleHighlightPopupDockRight;
+window.toggleHighlightPopupShrink = toggleHighlightPopupShrink;
+window.handleHighlightFrameLoad = handleHighlightFrameLoad;
+window.openHighlightFile = openHighlightFile;
+window.exportHighlightData = exportHighlightData;
+window.openHighlightDataWindow = openHighlightDataWindow;
 window.toggleScholarSearchSection = toggleScholarSearchSection;
 window.showToast = showToast;
 window.scrollToDocumentTop = scrollToDocumentTop;
