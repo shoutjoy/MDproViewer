@@ -1,0 +1,29 @@
+﻿<div id="gdocs-settings" class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+    <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">Google Docs Sync</p>
+
+    <label class="flex items-center gap-2 cursor-pointer select-none">
+        <input type="checkbox" id="docsync-visible" onclick="setTimeout(toggleDocSyncSection,0)"
+            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">DocSyn 보이기</span>
+    </label>
+
+    <input type="password" id="gdocs-client-id" placeholder="OAuth Client ID (...apps.googleusercontent.com)"
+        autocomplete="off"
+        oninput="validateGoogleDocsCredentialInputsUI()"
+        class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
+    <p id="gdocs-client-id-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+
+    <input type="password" id="gdocs-picker-api-key" placeholder="Google API Key for Picker (optional)"
+        autocomplete="off"
+        oninput="validateGoogleDocsCredentialInputsUI()"
+        class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
+    <p id="gdocs-picker-api-key-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+
+    <div class="flex items-center justify-between gap-2">
+        <a href="https://developers.google.com/workspace/docs/api/quickstart/js" target="_blank" rel="noopener noreferrer"
+            class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Quickstart</a>
+        <button type="button" onclick="saveGoogleDocsCredentials()"
+            class="px-3 py-1.5 bg-emerald-600 rounded-md text-xs font-medium text-white hover:bg-emerald-700">Save DocSync</button>
+    </div>
+    <p id="gdocs-credentials-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+</div>

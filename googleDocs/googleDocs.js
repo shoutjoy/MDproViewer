@@ -1,114 +1,184 @@
-(function () {
+﻿(function () {
     'use strict';
 
     const GDOCS_SCOPE = 'https://www.googleapis.com/auth/documents';
+    const TOD0CS_TARGET_URL = 'https://docs.google.com/document/d/1GxyODdDK180K22j5e39oRTW7NrpgGDKtCu-5tTegCKU/edit?tab=t.0';
+    const DOCSYNC_DEBOUNCE_MS = 2000;
 
-    let gdocsGapiInited = false;
     let gdocsGisInited = false;
     let gdocsTokenClient = null;
     let gdocsTokenClientClientId = '';
+    let currentAccessToken = '';
+
     let toDocsVisible = false;
-    let gdocsLiveSyncEnabled = false;
-    let gdocsLiveDocumentId = '';
-    let gdocsLiveLastSyncedText = '';
-    let gdocsLiveSyncTimer = null;
-    let gdocsLiveSyncInFlight = false;
-    let gdocsLiveSyncDirty = false;
-    let gdocsLiveDocumentUrl = '';
+    let docSyncVisible = false;
+
+    let docSyncEnabled = false;
+    let docSyncBusy = false;
+    let docSyncDirty = false;
+    let docSyncTimer = null;
+    let docSyncDocumentId = '';
+    let docSyncLastText = '';
+
+    async function loadHtmlFragment(path) {
+        try {
+            const res = await fetch(path, { cache: 'no-store' });
+            if (!res.ok) return '';
+            return await res.text();
+        } catch (_) {
+            return '';
+        }
+    }
+
+    async function injectGoogleDocsUiFragments() {
+        let injected = false;
+        const toolbarSlot = document.getElementById('google-docs-toolbar-slot');
+        if (toolbarSlot && !document.getElementById('btn-export-gdocs')) {
+            const toolbarHtml = await loadHtmlFragment('./googleDocs/googleDocs-toolbar.html');
+            if (toolbarHtml) {
+                toolbarSlot.innerHTML = toolbarHtml;
+                injected = true;
+            }
+        }
+
+        const settingsSlot = document.getElementById('google-docs-settings-slot');
+        if (settingsSlot && !document.getElementById('gdocs-settings')) {
+            const settingsHtml = await loadHtmlFragment('./googleDocs/googleDocs-settings.html');
+            if (settingsHtml) {
+                settingsSlot.innerHTML = settingsHtml;
+                injected = true;
+            }
+        }
+
+        if (injected && typeof getAiSettings === 'function') {
+            const settings = await getAiSettings();
+            if (settings) loadGoogleDocsSettingsUI(settings);
+            else applyToDocsVisibility({ toDocsVisible: false });
+            setDocSyncButtonState('', false);
+        }
+    }
+
+    async function ensureGoogleDocsUiReady() {
+        if (document.getElementById('btn-export-gdocs') && document.getElementById('gdocs-settings')) return;
+        await injectGoogleDocsUiFragments();
+    }
 
     function isValidGoogleOAuthClientId(value) {
         const v = String(value || '').trim();
         return /^[0-9]+-[0-9A-Za-z_-]+\.apps\.googleusercontent\.com$/.test(v);
     }
 
-    function getGoogleDocsExportText() {
-        if (typeof editorTextarea !== 'undefined' && editorTextarea) {
-            const t = String(editorTextarea.value || '');
-            if (t) return t;
+    function isValidGoogleCloudApiKey(value) {
+        const v = String(value || '').trim();
+        return /^AIza[0-9A-Za-z_-]{20,200}$/.test(v);
+    }
+
+    function getCurrentMarkdownText() {
+        if (typeof editorTextarea !== 'undefined' && editorTextarea && typeof editorTextarea.value === 'string') {
+            return String(editorTextarea.value || '');
         }
         if (typeof currentMarkdown !== 'undefined') return String(currentMarkdown || '');
         return '';
     }
 
-    function setGoogleDocsExportButtonBusy(busy) {
+    function setToDocsButtonBusy(busy) {
         const btn = document.getElementById('btn-export-gdocs');
         if (!btn) return;
         btn.disabled = !!busy;
-        btn.setAttribute('aria-busy', busy ? 'true' : 'false');
         btn.classList.toggle('opacity-60', !!busy);
         btn.classList.toggle('cursor-not-allowed', !!busy);
+        btn.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
 
-    function setGoogleDocsButtonIdleLabel() {
-        const btn = document.getElementById('btn-export-gdocs');
+    function setDocSyncButtonState(label, busy) {
+        const btn = document.getElementById('btn-docsync');
         if (!btn) return;
-        btn.textContent = gdocsLiveSyncEnabled ? 'GDocs ON' : 'GDocs';
-    }
-
-    function setGoogleDocsExportProgress(label) {
-        const btn = document.getElementById('btn-export-gdocs');
-        if (!btn) return;
-        const base = 'GDocs';
         const text = String(label || '').trim();
-        if (!text) {
-            setGoogleDocsButtonIdleLabel();
-            return;
+        if (text) btn.textContent = text;
+        else btn.textContent = docSyncEnabled ? 'DocSyn ON' : 'DocSyn';
+        const b = !!busy;
+        btn.disabled = b;
+        btn.classList.toggle('opacity-60', b);
+        btn.classList.toggle('cursor-not-allowed', b);
+        btn.setAttribute('aria-busy', b ? 'true' : 'false');
+    }
+
+    function getToDocsVisibleFromSettings(settings) {
+        return !!(settings && settings.toDocsVisible === true);
+    }
+
+    function getDocSyncVisibleFromSettings(settings) {
+        return !!(settings && settings.docSyncVisible === true);
+    }
+
+    function applyToDocsVisibility(settings) {
+        const s = settings || {};
+        toDocsVisible = getToDocsVisibleFromSettings(s);
+        docSyncVisible = getDocSyncVisibleFromSettings(s);
+
+        const toDocsBtn = document.getElementById('btn-export-gdocs');
+        if (toDocsBtn) {
+            if (!toDocsVisible || (typeof isEditMode !== 'undefined' && isEditMode)) toDocsBtn.classList.add('hidden');
+            else toDocsBtn.classList.remove('hidden');
+            toDocsBtn.textContent = 'ToDocs';
         }
-        btn.textContent = base + ' · ' + text;
-    }
 
-    function buildGoogleDocEditUrl(documentId) {
-        return 'https://docs.google.com/document/d/' + encodeURIComponent(String(documentId || '')) + '/edit';
-    }
-
-    async function presentGoogleDocsLink(docUrl) {
-        const url = String(docUrl || '').trim();
-        if (!url) return;
-        let copied = false;
-        try {
-            if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                await navigator.clipboard.writeText(url);
-                copied = true;
-            }
-        } catch (_) {}
-
-        const message = copied
-            ? 'Google Docs 링크가 생성되어 클립보드에 복사되었습니다.\n확인을 누르면 링크를 엽니다.\n\n' + url
-            : 'Google Docs 링크가 생성되었습니다.\n확인을 누르면 링크를 엽니다.\n\n' + url;
-        const openNow = window.confirm(message);
-        if (openNow) {
-            const win = window.open(url, '_blank', 'noopener,noreferrer');
-            if (!win && typeof showToast === 'function') showToast('문서는 생성되었습니다. 팝업 허용 후 링크를 열어주세요.');
-        } else {
-            window.prompt('생성된 Google Docs 링크입니다. 복사해두세요.', url);
+        const docSyncBtn = document.getElementById('btn-docsync');
+        if (docSyncBtn) {
+            if (!docSyncVisible || (typeof isEditMode !== 'undefined' && isEditMode)) docSyncBtn.classList.add('hidden');
+            else docSyncBtn.classList.remove('hidden');
+            setDocSyncButtonState('', false);
         }
     }
 
-    async function waitForGoogleDocsScripts(timeoutMs) {
+    async function toggleToDocsSection() {
+        const check = document.getElementById('todocs-visible');
+        const enabled = !!(check && check.checked);
+        await setAiSettings({ toDocsVisible: enabled });
+        const s = await getAiSettings();
+        applyToDocsVisibility(s || { toDocsVisible: enabled });
+    }
+
+    async function toggleDocSyncSection() {
+        const check = document.getElementById('docsync-visible');
+        const enabled = !!(check && check.checked);
+        await setAiSettings({ docSyncVisible: enabled });
+        const s = await getAiSettings();
+        applyToDocsVisibility(s || { docSyncVisible: enabled });
+    }
+
+    function shouldShowInViewMode() {
+        return !!toDocsVisible;
+    }
+
+    function shouldShowDocSyncInViewMode() {
+        return !!docSyncVisible;
+    }
+
+    function ensureGisReady(timeoutMs) {
         const timeout = Math.max(1000, Number(timeoutMs) || 12000);
         return new Promise((resolve, reject) => {
             const deadline = Date.now() + timeout;
-            const check = function () {
-                const gapiReady = gdocsGapiInited && window.gapi && window.gapi.client;
-                const gisReady = gdocsGisInited && window.google && window.google.accounts && window.google.accounts.oauth2;
-                if (gapiReady && gisReady) {
+            const tick = function () {
+                const ready = gdocsGisInited && window.google && window.google.accounts && window.google.accounts.oauth2;
+                if (ready) {
                     resolve();
                     return;
                 }
                 if (Date.now() > deadline) {
-                    reject(new Error('Google API scripts not loaded.'));
+                    reject(new Error('Google Identity script not loaded.'));
                     return;
                 }
-                setTimeout(check, 120);
+                setTimeout(tick, 120);
             };
-            check();
+            tick();
         });
     }
 
-    async function ensureGoogleDocsTokenClient(clientId) {
+    async function ensureTokenClient(clientId) {
         const cid = String(clientId || '').trim();
-        if (!cid) throw new Error('Google OAuth client ID is missing.');
-        await waitForGoogleDocsScripts(12000);
+        if (!cid) throw new Error('OAuth Client ID is missing.');
+        await ensureGisReady(12000);
         if (gdocsTokenClient && gdocsTokenClientClientId === cid) return gdocsTokenClient;
         gdocsTokenClient = window.google.accounts.oauth2.initTokenClient({
             client_id: cid,
@@ -119,19 +189,18 @@
         return gdocsTokenClient;
     }
 
-    async function requestGoogleDocsAccessToken(clientId) {
-        const tokenClient = await ensureGoogleDocsTokenClient(clientId);
+    async function requestAccessToken(clientId) {
+        const tokenClient = await ensureTokenClient(clientId);
         return new Promise((resolve, reject) => {
             let settled = false;
-            const done = function (fn, value) {
+            const done = (fn, value) => {
                 if (settled) return;
                 settled = true;
                 try { clearTimeout(timeoutId); } catch (_) {}
                 fn(value);
             };
-            const timeoutId = setTimeout(function () {
-                done(reject, new Error('인증 시간이 초과되었습니다. 팝업 차단 또는 계정 인증 상태를 확인해주세요.'));
-            }, 25000);
+
+            const timeoutId = setTimeout(() => done(reject, new Error('Google 인증 시간이 초과되었습니다.')), 25000);
 
             tokenClient.error_callback = function (err) {
                 const code = err && err.type ? String(err.type) : 'oauth_error';
@@ -144,35 +213,60 @@
 
             tokenClient.callback = function (resp) {
                 if (!resp || resp.error) {
-                    done(reject, resp && resp.error ? new Error(String(resp.error)) : new Error('Token request failed.'));
+                    done(reject, new Error(resp && resp.error ? String(resp.error) : 'Token request failed.'));
                     return;
                 }
-                const tokenObj = window.gapi && window.gapi.client ? window.gapi.client.getToken() : null;
-                const token = tokenObj && tokenObj.access_token ? tokenObj.access_token : (resp.access_token || '');
+                const token = String(resp.access_token || '').trim();
                 if (!token) {
                     done(reject, new Error('No access token returned.'));
                     return;
                 }
+                currentAccessToken = token;
                 done(resolve, token);
             };
-            const existing = window.gapi && window.gapi.client ? window.gapi.client.getToken() : null;
-            tokenClient.requestAccessToken({ prompt: existing ? '' : 'consent' });
+
+            tokenClient.requestAccessToken({ prompt: currentAccessToken ? '' : 'consent' });
         });
     }
 
-    async function replaceGoogleDocContent(documentId, text) {
+    async function docsFetch(url, token, init) {
+        const headers = Object.assign({}, (init && init.headers) || {}, {
+            Authorization: 'Bearer ' + token
+        });
+        const res = await fetch(url, Object.assign({}, init || {}, { headers: headers }));
+        const data = await res.json().catch(() => null);
+        if (!res.ok) {
+            const msg = data && data.error && data.error.message ? String(data.error.message) : ('HTTP ' + res.status);
+            throw new Error(msg);
+        }
+        return data || {};
+    }
+
+    async function createGoogleDoc(token, title) {
+        const body = { title: String(title || 'MDproViewer Sync').trim() || 'MDproViewer Sync' };
+        const data = await docsFetch('https://docs.googleapis.com/v1/documents', token, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const id = String(data && data.documentId ? data.documentId : '').trim();
+        if (!id) throw new Error('Google Docs 문서 생성에 실패했습니다.');
+        return id;
+    }
+
+    async function replaceGoogleDocContent(documentId, token, text) {
         const docId = String(documentId || '').trim();
         if (!docId) throw new Error('Google Docs 문서 ID가 없습니다.');
-        const source = String(text || '');
-        const getRes = await window.gapi.client.docs.documents.get({ documentId: docId });
-        const body = getRes && getRes.result ? getRes.result.body : null;
-        const content = body && Array.isArray(body.content) ? body.content : [];
+
+        const getData = await docsFetch('https://docs.googleapis.com/v1/documents/' + encodeURIComponent(docId), token, { method: 'GET' });
+        const content = getData && getData.body && Array.isArray(getData.body.content) ? getData.body.content : [];
         let endIndex = 1;
         if (content.length > 0) {
             const last = content[content.length - 1];
             const idx = Number(last && last.endIndex ? last.endIndex : 1);
             endIndex = Number.isFinite(idx) ? Math.max(1, idx) : 1;
         }
+
         const requests = [];
         if (endIndex > 1) {
             requests.push({
@@ -181,6 +275,7 @@
                 }
             });
         }
+        const source = String(text || '');
         if (source.length > 0) {
             requests.push({
                 insertText: {
@@ -189,125 +284,198 @@
                 }
             });
         }
+
         if (!requests.length) return;
-        await window.gapi.client.docs.documents.batchUpdate({
-            documentId: docId,
-            requests: requests
+        await docsFetch('https://docs.googleapis.com/v1/documents/' + encodeURIComponent(docId) + ':batchUpdate', token, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: requests })
         });
     }
 
-    function scheduleGoogleDocsLiveSync(delayMs) {
-        if (!gdocsLiveSyncEnabled || !gdocsLiveDocumentId) return;
+    async function resolveGooglePickerApiKey(settingsMaybe) {
+        let settings = settingsMaybe || null;
+        if (!settings && typeof getAiSettings === 'function') settings = await getAiSettings();
+        const s = settings || {};
+        const candidates = [
+            { key: s.googlePickerApiKey, source: 'googlePickerApiKey' },
+            { key: s.googleDocsApiKey, source: 'googleDocsApiKey(legacy)' },
+            { key: s.apiKey, source: 'aiStudioApiKey' },
+            { key: (typeof localStorage !== 'undefined' ? localStorage.getItem('ss_gemini_api_key') : ''), source: 'localStorage:ss_gemini_api_key' }
+        ];
+        for (let i = 0; i < candidates.length; i += 1) {
+            const key = String(candidates[i].key || '').trim();
+            if (!key) continue;
+            return { key: key, source: candidates[i].source, valid: isValidGoogleCloudApiKey(key) };
+        }
+        return { key: '', source: '', valid: false };
+    }
+
+    function clearDocSyncTimer() {
+        if (docSyncTimer) {
+            clearTimeout(docSyncTimer);
+            docSyncTimer = null;
+        }
+    }
+
+    function stopDocSync(showMsg) {
+        docSyncEnabled = false;
+        docSyncBusy = false;
+        docSyncDirty = false;
+        clearDocSyncTimer();
+        docSyncDocumentId = '';
+        docSyncLastText = '';
+        setDocSyncButtonState('', false);
+        if (showMsg && typeof showToast === 'function') showToast('DocSyn을 종료했습니다.');
+    }
+
+    function scheduleDocSync(delayMs) {
+        if (!docSyncEnabled || !docSyncDocumentId) return;
         const delay = Math.max(0, Number(delayMs) || 0);
-        if (gdocsLiveSyncTimer) clearTimeout(gdocsLiveSyncTimer);
-        gdocsLiveSyncTimer = setTimeout(function () {
-            gdocsLiveSyncTimer = null;
-            runGoogleDocsLiveSync();
+        clearDocSyncTimer();
+        docSyncTimer = setTimeout(function () {
+            docSyncTimer = null;
+            runDocSyncNow();
         }, delay);
     }
 
-    async function runGoogleDocsLiveSync() {
-        if (!gdocsLiveSyncEnabled || !gdocsLiveDocumentId) return;
-        if (gdocsLiveSyncInFlight) {
-            gdocsLiveSyncDirty = true;
+    async function runDocSyncNow() {
+        if (!docSyncEnabled || !docSyncDocumentId) return;
+        if (docSyncBusy) {
+            docSyncDirty = true;
             return;
         }
-        const latest = getGoogleDocsExportText();
-        if (!gdocsLiveSyncDirty && latest === gdocsLiveLastSyncedText) return;
+        const latest = getCurrentMarkdownText();
+        if (!docSyncDirty && latest === docSyncLastText) return;
 
-        gdocsLiveSyncInFlight = true;
-        setGoogleDocsExportProgress('동기화중');
+        docSyncBusy = true;
+        setDocSyncButtonState('DocSyn Sync', true);
         try {
-            await replaceGoogleDocContent(gdocsLiveDocumentId, latest);
-            gdocsLiveLastSyncedText = latest;
-            gdocsLiveSyncDirty = false;
-            setGoogleDocsExportProgress('동기화됨');
-        } catch (e) {
-            const msg = e && e.message ? e.message : '동기화 실패';
-            if (typeof showToast === 'function') showToast('GDocs 실시간 동기화 실패: ' + msg);
-            setGoogleDocsExportProgress('오류');
+            await replaceGoogleDocContent(docSyncDocumentId, currentAccessToken, latest);
+            docSyncLastText = latest;
+            docSyncDirty = false;
+            setDocSyncButtonState('DocSyn ON', false);
+        } catch (err) {
+            if (typeof showToast === 'function') showToast('DocSyn 동기화 실패: ' + (err && err.message ? err.message : '오류'));
+            setDocSyncButtonState('DocSyn Err', false);
         } finally {
-            gdocsLiveSyncInFlight = false;
-            if (gdocsLiveSyncDirty) {
-                scheduleGoogleDocsLiveSync(600);
-            } else {
-                setTimeout(function () {
-                    if (gdocsLiveSyncEnabled) setGoogleDocsExportProgress('');
-                }, 700);
-            }
+            docSyncBusy = false;
+            if (docSyncDirty) scheduleDocSync(300);
         }
     }
 
-    function getToDocsVisibleFromSettings(settings) {
-        if (!settings) return false;
-        return settings.toDocsVisible === true;
+    async function ensureLinkedGoogleDocForCurrentFile(token) {
+        if (!(typeof window.getCurrentDbDocumentId === 'function')) {
+            throw new Error('문서 식별 함수가 없습니다.');
+        }
+        const localDocId = String(window.getCurrentDbDocumentId() || '').trim();
+        if (!localDocId) {
+            throw new Error('먼저 현재 문서를 inDB에 저장한 뒤 DocSyn을 사용하세요.');
+        }
+
+        let googleDocId = '';
+        if (typeof window.getCurrentFileGoogleDocId === 'function') {
+            googleDocId = String(await window.getCurrentFileGoogleDocId() || '').trim();
+        }
+
+        if (!googleDocId) {
+            const fileName = String((typeof currentFileName !== 'undefined' ? currentFileName : 'Untitled') || 'Untitled')
+                .replace(/\.md$/i, '')
+                .trim() || 'MDproViewer Sync';
+            googleDocId = await createGoogleDoc(token, fileName);
+            if (typeof window.setCurrentFileGoogleDocId === 'function') {
+                const ok = await window.setCurrentFileGoogleDocId(googleDocId);
+                if (!ok) throw new Error('googleDocId 저장에 실패했습니다.');
+            }
+            if (typeof showToast === 'function') showToast('현재 파일에 새 Google Docs 문서를 연결했습니다.');
+        }
+
+        return googleDocId;
     }
 
-    function applyToDocsVisibility(settings) {
-        const enabled = getToDocsVisibleFromSettings(settings || {});
-        toDocsVisible = enabled;
-        const btn = document.getElementById('btn-export-gdocs');
-        if (!btn) return;
-        if (!enabled || (typeof isEditMode !== 'undefined' && isEditMode)) btn.classList.add('hidden');
-        else btn.classList.remove('hidden');
-        setGoogleDocsButtonIdleLabel();
-    }
-
-    async function toggleToDocsSection() {
-        const check = document.getElementById('todocs-visible');
-        const enabled = !!(check && check.checked);
-        await setAiSettings({ toDocsVisible: enabled });
-        const s = await getAiSettings();
-        applyToDocsVisibility(s || { toDocsVisible: enabled });
-    }
-
-    function handleEditorChanged() {
-        if (!gdocsLiveSyncEnabled) return;
-        gdocsLiveSyncDirty = true;
-        scheduleGoogleDocsLiveSync(900);
-    }
-
-    function shouldShowInViewMode() {
-        return !!toDocsVisible;
-    }
-    async function exportCurrentToGoogleDocs() {
-        const targetUrl = 'https://docs.google.com/document/d/1GxyODdDK180K22j5e39oRTW7NrpgGDKtCu-5tTegCKU/edit?tab=t.0';
-        setGoogleDocsExportButtonBusy(true);
-        setGoogleDocsExportProgress('복사');
+    async function openToDocs() {
+        await ensureGoogleDocsUiReady();
+        setToDocsButtonBusy(true);
         try {
             let copied = false;
             if (typeof window.copyViewFormattedToClipboard === 'function') {
                 copied = await window.copyViewFormattedToClipboard();
-            } else if (typeof copyViewFormattedToClipboard === 'function') {
-                copied = await copyViewFormattedToClipboard();
             }
-
             if (!copied) {
-                if (typeof showToast === 'function') showToast('복사에 실패했습니다. Copy Styled를 먼저 확인해주세요.');
+                if (typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다.');
                 return;
             }
-
             const proceed = window.confirm('구글문서가 열리면 Ctrl+V를 실행하세요');
             if (!proceed) return;
-
-            setGoogleDocsExportProgress('열기');
-            const win = window.open(targetUrl, '_blank', 'noopener,noreferrer');
-            if (!win && typeof showToast === 'function') {
-                showToast('팝업이 차단되었습니다. 브라우저 팝업 허용 후 다시 시도해주세요.');
-            }
+            const win = window.open(TOD0CS_TARGET_URL, '_blank', 'noopener,noreferrer');
+            if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
         } catch (err) {
-            const msg = err && err.message ? err.message : 'GDocs 실행 중 오류';
-            if (typeof showToast === 'function') showToast(msg);
+            if (typeof showToast === 'function') showToast(err && err.message ? err.message : 'ToDocs 실행 중 오류');
         } finally {
-            setGoogleDocsExportButtonBusy(false);
-            setGoogleDocsExportProgress('');
+            setToDocsButtonBusy(false);
         }
     }
+
+    async function toggleGoogleDocSync() {
+        await ensureGoogleDocsUiReady();
+        if (docSyncEnabled) {
+            stopDocSync(true);
+            return;
+        }
+
+        try {
+            const settings = await getAiSettings();
+            const clientId = String(settings && settings.googleDocsClientId ? settings.googleDocsClientId : '').trim();
+            if (!clientId) throw new Error('OAuth Client ID를 먼저 저장해주세요.');
+            if (!isValidGoogleOAuthClientId(clientId)) throw new Error('OAuth Client ID 형식을 확인해주세요.');
+
+            setDocSyncButtonState('DocSyn Auth', true);
+            const token = await requestAccessToken(clientId);
+
+            setDocSyncButtonState('DocSyn Link', true);
+            const googleDocId = await ensureLinkedGoogleDocForCurrentFile(token);
+            docSyncDocumentId = googleDocId;
+
+            setDocSyncButtonState('DocSyn Init', true);
+            const text = getCurrentMarkdownText();
+            await replaceGoogleDocContent(docSyncDocumentId, token, text);
+            docSyncLastText = text;
+
+            docSyncEnabled = true;
+            docSyncDirty = false;
+            setDocSyncButtonState('DocSyn ON', false);
+            if (typeof showToast === 'function') showToast('DocSyn이 시작되었습니다. (2초 디바운스)');
+        } catch (err) {
+            stopDocSync(false);
+            const raw = err && err.message ? String(err.message) : 'DocSyn 시작 실패';
+            let msg = raw;
+            if (/redirect_uri_mismatch/i.test(raw) || /origin_mismatch/i.test(raw)) {
+                const origin = (typeof location !== 'undefined' && location && location.origin) ? location.origin : '(현재 origin 확인 불가)';
+                msg = 'OAuth 설정 오류(redirect/origin mismatch). Google Cloud OAuth 클라이언트의 승인된 JavaScript 원본에 ' + origin + ' 을 추가하세요.';
+            }
+            if (typeof showToast === 'function') showToast(msg);
+        }
+    }
+
+    function handleEditorChanged() {
+        if (!docSyncEnabled) return;
+        docSyncDirty = true;
+        scheduleDocSync(DOCSYNC_DEBOUNCE_MS);
+    }
+
+    function handleActiveDocumentChanged() {
+        if (!docSyncEnabled) return;
+        stopDocSync(false);
+        if (typeof showToast === 'function') showToast('문서가 변경되어 DocSyn을 종료했습니다. 다시 켜주세요.');
+    }
+
     function validateGoogleDocsCredentialInputsUI() {
         const clientInput = document.getElementById('gdocs-client-id');
         const clientFeedback = document.getElementById('gdocs-client-id-feedback');
-        const clientId = String(clientInput && clientInput.value ? clientInput.value : '').trim();
+        const pickerInput = document.getElementById('gdocs-picker-api-key');
+        const pickerFeedback = document.getElementById('gdocs-picker-api-key-feedback');
 
+        const clientId = String(clientInput && clientInput.value ? clientInput.value : '').trim();
         if (clientFeedback) {
             if (!clientId) {
                 clientFeedback.textContent = '';
@@ -320,35 +488,30 @@
                 clientFeedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
             }
         }
-    }
-    async function verifyGoogleOAuthClientIdReady(clientId) {
-        const cid = String(clientId || '').trim();
-        if (!cid) throw new Error('OAuth Client ID is missing.');
-        const timeout = Date.now() + 12000;
-        while (!(window.google && window.google.accounts && window.google.accounts.oauth2)) {
-            if (Date.now() > timeout) throw new Error('Google Identity script not loaded.');
-            await new Promise(function (resolve) { setTimeout(resolve, 120); });
-        }
-        try {
-            const tokenClient = window.google.accounts.oauth2.initTokenClient({
-                client_id: cid,
-                scope: GDOCS_SCOPE,
-                callback: ''
-            });
-            if (!tokenClient || typeof tokenClient.requestAccessToken !== 'function') {
-                throw new Error('OAuth Client ID verification failed.');
+
+        const pickerKey = String(pickerInput && pickerInput.value ? pickerInput.value : '').trim();
+        if (pickerFeedback) {
+            if (!pickerKey) {
+                pickerFeedback.textContent = 'Optional. Used only when Google Picker is enabled.';
+                pickerFeedback.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
+            } else if (isValidGoogleCloudApiKey(pickerKey)) {
+                pickerFeedback.textContent = 'Valid Google API key format.';
+                pickerFeedback.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
+            } else {
+                pickerFeedback.textContent = 'Invalid Google API key format.';
+                pickerFeedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
             }
-        } catch (e) {
-            throw new Error('OAuth Client ID verification failed.');
         }
-        return true;
     }
 
     async function saveGoogleDocsCredentials() {
+        await ensureGoogleDocsUiReady();
         const clientInput = document.getElementById('gdocs-client-id');
+        const pickerInput = document.getElementById('gdocs-picker-api-key');
         const feedback = document.getElementById('gdocs-credentials-feedback');
-        const clientFeedback = document.getElementById('gdocs-client-id-feedback');
+
         const clientId = String(clientInput && clientInput.value ? clientInput.value : '').trim();
+        const manualPickerKey = String(pickerInput && pickerInput.value ? pickerInput.value : '').trim();
 
         if (!clientId) {
             if (feedback) {
@@ -361,10 +524,20 @@
         if (!isValidGoogleOAuthClientId(clientId)) {
             validateGoogleDocsCredentialInputsUI();
             if (feedback) {
-                feedback.textContent = 'Invalid OAuth client ID format.';
+                feedback.textContent = 'Invalid OAuth Client ID format.';
                 feedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
             }
-            if (typeof showToast === 'function') showToast('Invalid OAuth client ID format.');
+            if (typeof showToast === 'function') showToast('OAuth Client ID 형식을 확인해주세요.');
+            return;
+        }
+
+        if (manualPickerKey && !isValidGoogleCloudApiKey(manualPickerKey)) {
+            validateGoogleDocsCredentialInputsUI();
+            if (feedback) {
+                feedback.textContent = 'Invalid Picker API key format.';
+                feedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
+            }
+            if (typeof showToast === 'function') showToast('Picker API key 형식을 확인해주세요.');
             return;
         }
 
@@ -372,94 +545,137 @@
             feedback.textContent = 'Checking OAuth Client ID...';
             feedback.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
         }
-        if (clientFeedback) {
-            clientFeedback.textContent = 'Checking OAuth Client ID...';
-            clientFeedback.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
-        }
 
         try {
-            await verifyGoogleOAuthClientIdReady(clientId);
-            if (clientFeedback) {
-                clientFeedback.textContent = 'OAuth Client ID verified.';
-                clientFeedback.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
-            }
+            await ensureTokenClient(clientId);
         } catch (err) {
             const msg = err && err.message ? err.message : 'Verification failed.';
-            const guidance = '\n체크: 승인된 JavaScript 원본과 OAuth 클라이언트 ID 프로젝트가 일치해야 합니다.';
             if (feedback) {
-                feedback.textContent = msg + guidance;
+                feedback.textContent = msg;
                 feedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
             }
             if (typeof showToast === 'function') showToast(msg);
             return;
         }
 
-        await setAiSettings({
-            googleDocsClientId: clientId
-        });
+        let pickerInfo = { key: '', source: '', valid: false };
+        if (manualPickerKey) {
+            pickerInfo = { key: manualPickerKey, source: 'manual', valid: true };
+        } else {
+            pickerInfo = await resolveGooglePickerApiKey();
+        }
+
+        const payload = { googleDocsClientId: clientId };
+        if (pickerInfo.valid) payload.googlePickerApiKey = pickerInfo.key;
+
+        await setAiSettings(payload);
 
         if (feedback) {
-            feedback.textContent = 'Google Docs credentials saved.';
+            if (pickerInfo.valid) {
+                feedback.textContent = 'DocSync settings saved. Picker key source: ' + pickerInfo.source + '.';
+            } else {
+                feedback.textContent = 'DocSync settings saved. Picker key not set.';
+            }
             feedback.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
         }
-        if (typeof showToast === 'function') showToast('Google Docs credentials saved.');
+        if (typeof showToast === 'function') showToast('DocSync settings saved.');
     }
 
     function resetGoogleDocsSettingsUI() {
-        const toDocsCheckEmpty = document.getElementById('todocs-visible');
-        if (toDocsCheckEmpty) toDocsCheckEmpty.checked = false;
-        const gdocsClientInputEmpty = document.getElementById('gdocs-client-id');
-        if (gdocsClientInputEmpty) gdocsClientInputEmpty.value = '';
-        const gdocsFeedbackEmpty = document.getElementById('gdocs-credentials-feedback');
-        if (gdocsFeedbackEmpty) gdocsFeedbackEmpty.textContent = '';
-        const gdocsClientFeedbackEmpty = document.getElementById('gdocs-client-id-feedback');
-        if (gdocsClientFeedbackEmpty) gdocsClientFeedbackEmpty.textContent = '';
-        applyToDocsVisibility({ toDocsVisible: false });
+        const toDocsCheck = document.getElementById('todocs-visible');
+        if (toDocsCheck) toDocsCheck.checked = false;
+        const docSyncCheck = document.getElementById('docsync-visible');
+        if (docSyncCheck) docSyncCheck.checked = false;
+
+        const clientInput = document.getElementById('gdocs-client-id');
+        if (clientInput) clientInput.value = '';
+
+        const pickerInput = document.getElementById('gdocs-picker-api-key');
+        if (pickerInput) pickerInput.value = '';
+
+        const feedback = document.getElementById('gdocs-credentials-feedback');
+        if (feedback) feedback.textContent = '';
+
+        const clientFeedback = document.getElementById('gdocs-client-id-feedback');
+        if (clientFeedback) clientFeedback.textContent = '';
+
+        const pickerFeedback = document.getElementById('gdocs-picker-api-key-feedback');
+        if (pickerFeedback) pickerFeedback.textContent = '';
+
+        stopDocSync(false);
+        applyToDocsVisibility({ toDocsVisible: false, docSyncVisible: false });
     }
 
     function loadGoogleDocsSettingsUI(settings) {
         const toDocsCheck = document.getElementById('todocs-visible');
         if (toDocsCheck) toDocsCheck.checked = !!(settings && settings.toDocsVisible === true);
-        const gdocsClientInput = document.getElementById('gdocs-client-id');
-        if (gdocsClientInput) gdocsClientInput.value = settings && settings.googleDocsClientId ? settings.googleDocsClientId : '';
-        const gdocsFeedback = document.getElementById('gdocs-credentials-feedback');
-        if (gdocsFeedback) gdocsFeedback.textContent = '';
-        const gdocsClientFeedback = document.getElementById('gdocs-client-id-feedback');
-        if (gdocsClientFeedback) gdocsClientFeedback.textContent = '';
+        const docSyncCheck = document.getElementById('docsync-visible');
+        if (docSyncCheck) docSyncCheck.checked = !!(settings && settings.docSyncVisible === true);
+
+        const clientInput = document.getElementById('gdocs-client-id');
+        if (clientInput) clientInput.value = settings && settings.googleDocsClientId ? settings.googleDocsClientId : '';
+
+        const pickerInput = document.getElementById('gdocs-picker-api-key');
+        if (pickerInput) pickerInput.value = settings && settings.googlePickerApiKey ? settings.googlePickerApiKey : '';
+
+        const feedback = document.getElementById('gdocs-credentials-feedback');
+        if (feedback) feedback.textContent = '';
+
         validateGoogleDocsCredentialInputsUI();
-        applyToDocsVisibility(settings || { toDocsVisible: false });
+        applyToDocsVisibility(settings || { toDocsVisible: false, docSyncVisible: false });
     }
 
     function onGoogleApiJsLoaded() {
-        if (!(window.gapi && typeof window.gapi.load === 'function')) return;
-        window.gapi.load('client', function () {
-            gdocsGapiInited = true;
-        });
+        // gapi is optional in current DocSync implementation.
     }
 
     function onGoogleGisLoaded() {
         gdocsGisInited = true;
     }
 
+    async function getReusableGooglePickerApiKey() {
+        const info = await resolveGooglePickerApiKey();
+        return info && info.valid ? info.key : '';
+    }
+
     window.GoogleDocs = {
         onGoogleApiJsLoaded,
         onGoogleGisLoaded,
-        exportCurrentToGoogleDocs,
+        openToDocs,
+        exportCurrentToGoogleDocs: openToDocs,
+        toggleGoogleDocSync,
         saveGoogleDocsCredentials,
         validateGoogleDocsCredentialInputsUI,
         applyToDocsVisibility,
         toggleToDocsSection,
+        toggleDocSyncSection,
         handleEditorChanged,
+        handleActiveDocumentChanged,
         shouldShowInViewMode,
+        shouldShowDocSyncInViewMode,
         resetGoogleDocsSettingsUI,
-        loadGoogleDocsSettingsUI
+        loadGoogleDocsSettingsUI,
+        getReusableGooglePickerApiKey
     };
 
     window.onGoogleApiJsLoaded = onGoogleApiJsLoaded;
     window.onGoogleGisLoaded = onGoogleGisLoaded;
-    window.exportCurrentToGoogleDocs = exportCurrentToGoogleDocs;
+    window.openToDocs = openToDocs;
+    window.exportCurrentToGoogleDocs = openToDocs;
+    window.toggleGoogleDocSync = toggleGoogleDocSync;
     window.saveGoogleDocsCredentials = saveGoogleDocsCredentials;
     window.validateGoogleDocsCredentialInputsUI = validateGoogleDocsCredentialInputsUI;
     window.applyToDocsVisibility = applyToDocsVisibility;
     window.toggleToDocsSection = toggleToDocsSection;
+    window.toggleDocSyncSection = toggleDocSyncSection;
+    window.handleGoogleDocActiveDocumentChanged = handleActiveDocumentChanged;
+    window.getReusableGooglePickerApiKey = getReusableGooglePickerApiKey;
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function () {
+            injectGoogleDocsUiFragments();
+        }, { once: true });
+    } else {
+        injectGoogleDocsUiFragments();
+    }
 })();

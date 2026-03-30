@@ -12,6 +12,7 @@ const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 let currentMarkdown = "";
 let currentFileName = "untitled.md";
 let currentFilePath = null;
+let currentDbDocId = null;
 let isEditMode = true;
 let pageScale = 1.0;
 let fontSize = 16;
@@ -330,10 +331,18 @@ function updateEditorLightButton() {
     if (btn) btn.title = isLight ? 'Switch editor to dark mode' : 'Switch editor to light mode';
 }
 
+function relocateAiIntegrationSettingsIntoAiUse() {
+    const card = document.getElementById('ai-link-settings-block');
+    const slot = document.getElementById('ai-integration-settings-slot');
+    if (!card || !slot) return;
+    if (card.parentElement !== slot) slot.appendChild(card);
+}
+
 window.onload = async () => {
     try {
         initTheme();
         initSettings();
+        relocateAiIntegrationSettingsIntoAiUse();
         lucide.createIcons();
         toggleMode('edit');
 
@@ -1176,6 +1185,7 @@ function toggleMode(mode) {
     const editTools = document.getElementById('edit-tools');
     const btnCopyViewRich = document.getElementById('btn-copy-view-rich');
     const btnExportGdocs = document.getElementById('btn-export-gdocs');
+    const btnDocSync = document.getElementById('btn-docsync');
     const activeClasses = ['bg-white', 'dark:bg-slate-700', 'shadow-sm', 'text-indigo-600', 'dark:text-indigo-400'];
     if (!vc || !ec) {
         console.warn('toggleMode: viewer-container or content-viewport not found.', { vc: !!vc, ec: !!ec });
@@ -1192,6 +1202,7 @@ function toggleMode(mode) {
         if (editTools) editTools.classList.remove('hidden');
         if (btnCopyViewRich) btnCopyViewRich.classList.add('hidden');
         if (btnExportGdocs) btnExportGdocs.classList.add('hidden');
+        if (btnDocSync) btnDocSync.classList.add('hidden');
         if (btnEdit) btnEdit.classList.add(...activeClasses);
         if (btnView) btnView.classList.remove(...activeClasses);
         applyEditorLightPreference();
@@ -1224,6 +1235,11 @@ function toggleMode(mode) {
             const showToDocs = !!(window.GoogleDocs && typeof window.GoogleDocs.shouldShowInViewMode === 'function' && window.GoogleDocs.shouldShowInViewMode());
             if (showToDocs) btnExportGdocs.classList.remove('hidden');
             else btnExportGdocs.classList.add('hidden');
+        }
+        if (btnDocSync) {
+            const showDocSync = !!(window.GoogleDocs && typeof window.GoogleDocs.shouldShowDocSyncInViewMode === 'function' && window.GoogleDocs.shouldShowDocSyncInViewMode());
+            if (showDocSync) btnDocSync.classList.remove('hidden');
+            else btnDocSync.classList.add('hidden');
         }
         if (btnView) btnView.classList.add(...activeClasses);
         if (btnEdit) btnEdit.classList.remove(...activeClasses);
@@ -1260,6 +1276,7 @@ async function handleFileSelect(event) {
 function createNewFile() {
     currentMarkdown = "";
     setCurrentDocumentInfo("untitled.md", null);
+    currentDbDocId = null;
     updateContent("");
     markPersistedState();
     performAutoSave();
@@ -1273,7 +1290,54 @@ const MPV_VERSION = 1;
 function setCurrentDocumentInfo(fileName, filePath = null) {
     currentFileName = fileName;
     currentFilePath = filePath || null;
+    currentDbDocId = null;
     fileNameDisplay.textContent = currentFileName;
+    if (window.GoogleDocs && typeof window.GoogleDocs.handleActiveDocumentChanged === 'function') {
+        window.GoogleDocs.handleActiveDocumentChanged();
+    }
+}
+
+function getCurrentDbDocumentId() {
+    return currentDbDocId ? String(currentDbDocId) : '';
+}
+
+async function getCurrentFileGoogleDocId() {
+    const docId = getCurrentDbDocumentId();
+    if (!docId || !db) return '';
+    return new Promise((resolve) => {
+        const tx = db.transaction('documents', 'readonly');
+        const req = tx.objectStore('documents').get(docId);
+        req.onsuccess = () => {
+            const doc = req.result || null;
+            resolve(doc && doc.googleDocId ? String(doc.googleDocId) : '');
+        };
+        req.onerror = () => resolve('');
+    });
+}
+
+async function setCurrentFileGoogleDocId(googleDocId) {
+    const docId = getCurrentDbDocumentId();
+    if (!docId || !db) return false;
+    const nextId = String(googleDocId || '').trim();
+    return new Promise((resolve) => {
+        const tx = db.transaction('documents', 'readwrite');
+        const store = tx.objectStore('documents');
+        const getReq = store.get(docId);
+        getReq.onsuccess = () => {
+            const doc = getReq.result || null;
+            if (!doc) {
+                resolve(false);
+                return;
+            }
+            if (nextId) doc.googleDocId = nextId;
+            else delete doc.googleDocId;
+            doc.updatedAt = new Date();
+            store.put(doc);
+        };
+        getReq.onerror = () => resolve(false);
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = () => resolve(false);
+    });
 }
 
 function getSaveCandidateFileName() {
@@ -2279,6 +2343,10 @@ async function loadFromDB(id) {
         req.onsuccess = () => r(req.result);
     });
     if (doc) {
+        currentDbDocId = String(id || '');
+        if (window.GoogleDocs && typeof window.GoogleDocs.handleActiveDocumentChanged === 'function') {
+            window.GoogleDocs.handleActiveDocumentChanged();
+        }
         currentFileName = doc.title + ".md";
         fileNameDisplay.textContent = currentFileName;
         updateContent(doc.content);
@@ -5884,12 +5952,19 @@ function saveToDB() {
                 title: resolvedTitle,
                 content: currentMarkdown,
                 folderId: targetDoc && targetDoc.folderId ? targetDoc.folderId : 'root',
+                googleDocId: targetDoc && targetDoc.googleDocId ? targetDoc.googleDocId : '',
                 updatedAt: new Date()
             };
 
             const tx = db.transaction('documents', 'readwrite');
             tx.objectStore('documents').put(doc);
             tx.oncomplete = () => {
+                currentDbDocId = String(doc.id || '');
+                if (window.GoogleDocs && typeof window.GoogleDocs.handleActiveDocumentChanged === 'function') {
+                    window.GoogleDocs.handleActiveDocumentChanged();
+                }
+                currentFileName = resolvedTitle + '.md';
+                if (fileNameDisplay) fileNameDisplay.textContent = currentFileName;
                 showToast(targetDoc ? 'Existing inDB document overwritten.' : `Saved to inDB as "${resolvedTitle}".`);
                 renderDBList();
                 if (isSidebarHidden) toggleSidebarVisibility();
@@ -5915,6 +5990,9 @@ window.saveCurrentFile = saveCurrentFile;
 window.saveFileAs = saveFileAs;
 window.printPage = printPage;
 window.copyViewFormattedToClipboard = copyViewFormattedToClipboard;
+window.getCurrentDbDocumentId = getCurrentDbDocumentId;
+window.getCurrentFileGoogleDocId = getCurrentFileGoogleDocId;
+window.setCurrentFileGoogleDocId = setCurrentFileGoogleDocId;
 window.toggleSidebarVisibility = toggleSidebarVisibility;
 window.toggleSidebarCollapse = toggleSidebarCollapse;
 window.ensureRootFolder = ensureRootFolder;
