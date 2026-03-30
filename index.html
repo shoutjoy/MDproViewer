@@ -98,9 +98,12 @@
                 <i data-lucide="settings" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
             </button>
             <div id="header-scholar-search-wrap" class="hidden items-center gap-1 shrink-0">
-                <button type="button" onclick="openScholarSearchModal()"
+                <button type="button" id="btn-scholar-search" onclick="openScholarSearchModal()"
                     class="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
                     title="학술검색 입력창 열기 (Alt+S)">학술검색</button>
+                <button type="button" id="btn-sites-panel" onclick="toggleSitesPanel()"
+                    class="hidden px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700"
+                    title="Sites / Stat">Sites</button>
             </div>
 
             <!-- 확대/축소·폰트 (좁은 화면에서 다음 줄로) -->
@@ -1057,6 +1060,11 @@
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">toDocs 보이기</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="sites-visible" onclick="setTimeout(toggleSitesSection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Sites 보이기</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="image-upload-enabled" onclick="setTimeout(toggleImageUploadSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">이미지 업로드 사용</span>
@@ -1350,6 +1358,34 @@
 
             <div class="mt-3 text-xs text-slate-500 dark:text-slate-400" id="img-insert-status"></div>
             <img id="img-insert-preview" class="mt-3 max-h-40 rounded border border-slate-300 dark:border-slate-600 hidden" alt="preview">
+        </div>
+    </div>
+
+    <div id="sites-panel" class="fixed bottom-3 right-3 hidden flex-col z-50 no-print w-[min(520px,94vw)] rounded-lg border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-sm">
+        <div id="sites-panel-header" class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 cursor-move select-none">
+            <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Sites</h3>
+            <div class="flex items-center gap-1.5">
+                <button type="button" onclick="toggleSitesSettingsPanel()"
+                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    title="Settings">⚙</button>
+                <button type="button" id="sites-panel-compact-btn" onclick="toggleSitesCompactMode()"
+                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">>></button>
+                <button type="button" onclick="closeSitesPanel()"
+                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>
+            </div>
+        </div>
+        <div class="p-3 space-y-2">
+            <div id="sites-add-row" class="flex items-center gap-2">
+                <input type="url" id="sites-add-input" placeholder="https://example.com"
+                    class="flex-1 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
+                <button type="button" onclick="addSiteFromInput()"
+                    class="px-2.5 py-1.5 rounded bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">+add</button>
+            </div>
+            <div id="sites-list" class="space-y-1.5 max-h-52 overflow-auto pr-1"></div>
+            <div id="sites-settings-wrap" class="hidden border-t border-slate-200 dark:border-slate-700 pt-2">
+                <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Delete sites in settings</div>
+                <div id="sites-list-settings" class="space-y-1.5 max-h-40 overflow-auto pr-1"></div>
+            </div>
         </div>
     </div>
 

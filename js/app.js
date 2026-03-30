@@ -20,7 +20,7 @@ let modalMode = 'link';
 let movingDocId = null;
 let previewPopupWindow = null;
 let previewPopupScale = 1.0;
-let previewPopupFontSize = 16;
+let previewPopupFontSize = 21;
 let previewPopupRenderToken = 0;
 let imageInsertCurrentDataUrl = '';
 let imageInsertCurrentFileName = '';
@@ -55,6 +55,15 @@ let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
 let selectionWrapEnabled = true;
+let sitesPanelOpen = false;
+let sitesList = [];
+let sitesPanelCompact = false;
+let sitesPanelSettingsOpen = false;
+let sitesPanelDragBound = false;
+let sitesPanelDragging = false;
+let sitesPanelDragOffsetX = 0;
+let sitesPanelDragOffsetY = 0;
+let sitesPanelMoved = false;
 let viewClickMappedCaretPos = null;
 let lastEditCaretPos = 0;
 let viewerInternalImageObjectUrls = [];
@@ -91,6 +100,11 @@ let lastExternalOpenSignature = '';
 const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
 const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
 const ROOT_FOLDER_NAME = 'ROOT';
+const DEFAULT_SITES_LIST = [
+    { name: 'data시각화', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
+    { name: 'Serial Mediation effect', url: 'https://parkjoonghee.shinyapps.io/sobel/' },
+    { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' }
+];
 
 function getNameFromPath(pathValue) {
     const p = String(pathValue || '').trim();
@@ -1039,7 +1053,9 @@ function escapeHtmlForPreview(text) {
 }
 
 function getPreviewPopupDocumentHtml() {
-    return '<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MDproViewer Preview</title><style>'
+    return '<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MDproViewer Preview</title>'
+        + '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">'
+        + '<style>'
         + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;}'
         + '#pv-root{display:flex;flex-direction:column;height:100%;}'
         + '#pv-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#e2e8f0;border-bottom:1px solid #cbd5e1;position:sticky;top:0;z-index:10;}'
@@ -1064,13 +1080,14 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-content .md-footnotes ol{margin:.5rem 0 0;padding-left:1.25rem;}'
         + '#pv-content .md-footnote-ref a,#pv-content .md-footnote-backref{color:#2563eb;text-decoration:none;font-weight:700;}'
         + '#pv-content .md-footnote-ref a:hover,#pv-content .md-footnote-backref:hover{text-decoration:underline;}'
+        + '#pv-content .katex .katex-mathml{position:absolute;clip:rect(1px,1px,1px,1px);clip-path:inset(50%);height:1px;width:1px;overflow:hidden;white-space:nowrap;}'
         + '</style></head><body><div id=\"pv-root\"><div id=\"pv-toolbar\">'
         + '<strong style=\"margin-right:6px\">Preview</strong>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">Zoom Out</button>'
         + '<span id=\"pv-scale-label\" class=\"label\">100%</span>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(0.1)\">Zoom In</button>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(-1)\">Font -</button>'
-        + '<span id=\"pv-font-label\" class=\"label\">16px</span>'
+        + '<span id=\"pv-font-label\" class=\"label\">21px</span>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(1)\">Font +</button>'
         + '<button type=\"button\" style=\"margin-left:auto\" onclick=\"window.close()\">Close</button>'
         + '</div><div id=\"pv-viewport\"><div id=\"pv-content\"></div></div></div>'
@@ -1087,12 +1104,13 @@ function applyPreviewPopupViewport() {
     if (!content) return;
 
     const scale = Math.max(0.3, Math.min(3, Number(previewPopupScale) || 1));
-    const fs = Math.max(8, Math.min(72, Number(previewPopupFontSize) || 16));
+    const fs = Math.max(8, Math.min(72, Number(previewPopupFontSize) || 21));
     previewPopupScale = scale;
     previewPopupFontSize = fs;
 
-    content.style.transform = 'scale(' + scale + ')';
-    content.style.width = (100 / scale) + '%';
+    content.style.zoom = String(scale);
+    content.style.transform = 'none';
+    content.style.width = '';
     content.style.fontSize = fs + 'px';
     if (scaleLabel) scaleLabel.textContent = Math.round(scale * 100) + '%';
     if (fontLabel) fontLabel.textContent = fs + 'px';
@@ -1104,7 +1122,7 @@ function previewPopupAdjustScale(delta) {
 }
 
 function previewPopupAdjustFontSize(delta) {
-    previewPopupFontSize = (Number(previewPopupFontSize) || 16) + Number(delta || 0);
+    previewPopupFontSize = (Number(previewPopupFontSize) || 21) + Number(delta || 0);
     applyPreviewPopupViewport();
 }
 
@@ -4263,12 +4281,259 @@ function getHighlightVisibleFromSettings(settings) {
     return settings.highlightVisible === true;
 }
 
+function getSitesVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.sitesVisible === true;
+}
+
+function normalizeSitesList(rawList) {
+    const src = Array.isArray(rawList) ? rawList : [];
+    const out = src
+        .map(function (item) {
+            const name = String(item && item.name ? item.name : '').trim();
+            const url = String(item && item.url ? item.url : '').trim();
+            return { name: name, url: url };
+        })
+        .filter(function (item) { return !!item.url; });
+    return out.length ? out : DEFAULT_SITES_LIST.slice();
+}
+
+function renderSitesPanel() {
+    const listEl = document.getElementById('sites-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    sitesList.forEach(function (site, idx) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        if (sitesPanelCompact) {
+            btn.className = 'inline-flex items-center px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs whitespace-nowrap w-auto shrink-0';
+        } else {
+            btn.className = 'w-full text-left px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs';
+        }
+        btn.textContent = site.name || site.url;
+        btn.title = site.url;
+        btn.onclick = function () { openSiteInNewWindow(site.url); };
+        listEl.appendChild(btn);
+    });
+    renderSitesSettingsList();
+}
+
+function renderSitesSettingsList() {
+    const listEl = document.getElementById('sites-list-settings');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+    sitesList.forEach(function (site, idx) {
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2';
+
+        const name = document.createElement('div');
+        name.className = 'flex-1 text-[11px] text-slate-700 dark:text-slate-200 truncate';
+        name.title = site.url;
+        name.textContent = site.name || site.url;
+        row.appendChild(name);
+
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'px-2 py-1 rounded border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-[11px]';
+        del.textContent = 'Delete';
+        del.onclick = function () { removeSiteAt(idx); };
+        row.appendChild(del);
+
+        listEl.appendChild(row);
+    });
+}
+
+function applySitesPanelMode() {
+    const panel = document.getElementById('sites-panel');
+    const list = document.getElementById('sites-list');
+    const addRow = document.getElementById('sites-add-row');
+    const compactBtn = document.getElementById('sites-panel-compact-btn');
+    if (!panel || !list) return;
+
+    if (sitesPanelCompact) {
+        panel.style.left = '12px';
+        panel.style.right = '12px';
+        panel.style.bottom = '10px';
+        panel.style.top = 'auto';
+        panel.style.width = 'auto';
+        panel.style.maxWidth = 'none';
+        list.className = 'flex items-center gap-1.5 overflow-x-auto whitespace-nowrap py-1';
+        if (addRow) addRow.classList.add('hidden');
+        if (compactBtn) compactBtn.textContent = '<<';
+    } else {
+        panel.style.width = '';
+        panel.style.maxWidth = '';
+        if (!sitesPanelMoved) {
+            panel.style.left = '';
+            panel.style.top = '';
+            panel.style.right = '12px';
+            panel.style.bottom = '12px';
+        }
+        list.className = 'space-y-1.5 max-h-52 overflow-auto pr-1';
+        if (addRow) addRow.classList.remove('hidden');
+        if (compactBtn) compactBtn.textContent = '>>';
+    }
+    renderSitesPanel();
+}
+
+function toggleSitesCompactMode() {
+    sitesPanelCompact = !sitesPanelCompact;
+    applySitesPanelMode();
+}
+
+function toggleSitesSettingsPanel() {
+    const wrap = document.getElementById('sites-settings-wrap');
+    if (!wrap) return;
+    sitesPanelSettingsOpen = !sitesPanelSettingsOpen;
+    wrap.classList.toggle('hidden', !sitesPanelSettingsOpen);
+}
+
+function bindSitesPanelDrag() {
+    if (sitesPanelDragBound) return;
+    sitesPanelDragBound = true;
+    const panel = document.getElementById('sites-panel');
+    const header = document.getElementById('sites-panel-header');
+    if (!panel || !header) return;
+
+    header.addEventListener('mousedown', function (e) {
+        const target = e.target;
+        if (target && target.closest && target.closest('button,input,textarea,select,a')) return;
+        if (sitesPanelCompact) return;
+        const rect = panel.getBoundingClientRect();
+        sitesPanelDragging = true;
+        sitesPanelDragOffsetX = e.clientX - rect.left;
+        sitesPanelDragOffsetY = e.clientY - rect.top;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+    });
+    document.addEventListener('mousemove', function (e) {
+        if (!sitesPanelDragging || sitesPanelCompact) return;
+        const x = Math.max(0, e.clientX - sitesPanelDragOffsetX);
+        const y = Math.max(0, e.clientY - sitesPanelDragOffsetY);
+        panel.style.left = x + 'px';
+        panel.style.top = y + 'px';
+        sitesPanelMoved = true;
+    });
+    document.addEventListener('mouseup', function () {
+        sitesPanelDragging = false;
+    });
+}
+
+function openSiteInNewWindow(url) {
+    const u = String(url || '').trim();
+    if (!u) return;
+    const win = window.open(u, '_blank', 'noopener,noreferrer,width=1300,height=900');
+    if (!win) showToast('Popup blocked. Please allow popups for this site.');
+}
+
+function applySitesVisibility(settings) {
+    const enabled = getSitesVisibleFromSettings(settings || {});
+    const btn = document.getElementById('btn-sites-panel');
+    if (btn) {
+        if (enabled) btn.classList.remove('hidden');
+        else btn.classList.add('hidden');
+    }
+    const wrap = document.getElementById('header-scholar-search-wrap');
+    const scholarBtn = document.getElementById('btn-scholar-search');
+    const scholarEnabled = !!(scholarBtn && !scholarBtn.classList.contains('hidden'));
+    if (wrap) {
+        if (enabled || scholarEnabled) {
+            wrap.classList.remove('hidden');
+            wrap.classList.add('flex');
+            wrap.style.display = 'flex';
+        } else {
+            wrap.classList.add('hidden');
+            wrap.classList.remove('flex');
+            wrap.style.display = 'none';
+        }
+    }
+    if (!enabled) closeSitesPanel();
+}
+
+function openSitesPanel() {
+    const panel = document.getElementById('sites-panel');
+    if (!panel) return;
+    bindSitesPanelDrag();
+    applySitesPanelMode();
+    renderSitesPanel();
+    panel.classList.remove('hidden');
+    panel.classList.add('flex');
+    sitesPanelOpen = true;
+}
+
+function closeSitesPanel() {
+    const panel = document.getElementById('sites-panel');
+    if (!panel) return;
+    panel.classList.add('hidden');
+    panel.classList.remove('flex');
+    sitesPanelOpen = false;
+}
+
+function toggleSitesPanel() {
+    if (sitesPanelOpen) closeSitesPanel();
+    else openSitesPanel();
+}
+
+function buildSiteNameFromUrl(url) {
+    try {
+        const u = new URL(url);
+        const base = (u.hostname || 'site').replace(/^www\./, '');
+        return base;
+    } catch (_) {
+        return 'Custom Site';
+    }
+}
+
+async function saveSitesListToSettings() {
+    await setAiSettings({ sitesList: sitesList.slice() });
+}
+
+async function addSiteFromInput() {
+    const input = document.getElementById('sites-add-input');
+    if (!input) return;
+    const raw = String(input.value || '').trim();
+    if (!raw) {
+        showToast('Enter a site URL first.');
+        return;
+    }
+    let normalized = raw;
+    if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
+    try {
+        const parsed = new URL(normalized);
+        normalized = parsed.href;
+    } catch (_) {
+        showToast('Invalid URL.');
+        return;
+    }
+    const exists = sitesList.some(function (s) { return String(s.url || '').trim() === normalized; });
+    if (exists) {
+        showToast('Site already exists.');
+        return;
+    }
+    sitesList.push({ name: buildSiteNameFromUrl(normalized), url: normalized });
+    await saveSitesListToSettings();
+    renderSitesPanel();
+    input.value = '';
+    showToast('Site added.');
+}
+
+async function removeSiteAt(index) {
+    if (index < 0 || index >= sitesList.length) return;
+    sitesList.splice(index, 1);
+    if (!sitesList.length) sitesList = DEFAULT_SITES_LIST.slice();
+    await saveSitesListToSettings();
+    renderSitesPanel();
+}
 
 function applyScholarSearchVisibility(settings) {
     const enabled = getScholarSearchVisibleFromSettings(settings || {});
     const wrap = document.getElementById('header-scholar-search-wrap');
+    const scholarBtn = document.getElementById('btn-scholar-search');
+    const sitesBtn = document.getElementById('btn-sites-panel');
+    if (scholarBtn) scholarBtn.classList.toggle('hidden', !enabled);
+    const sitesEnabled = !!(sitesBtn && !sitesBtn.classList.contains('hidden'));
     if (wrap) {
-        if (enabled) {
+        if (enabled || sitesEnabled) {
             wrap.classList.remove('hidden');
             wrap.classList.add('flex');
             wrap.style.display = 'flex';
@@ -4306,6 +4571,14 @@ async function toggleHighlightSection() {
     await setAiSettings({ highlightVisible: enabled });
     const s = await getAiSettings();
     applyHighlightVisibility(s || { highlightVisible: enabled });
+}
+
+async function toggleSitesSection() {
+    const check = document.getElementById('sites-visible');
+    const enabled = !!(check && check.checked);
+    await setAiSettings({ sitesVisible: enabled });
+    const s = await getAiSettings();
+    applySitesVisibility(s || { sitesVisible: enabled });
 }
 
 function openScholarSearchWindow(query) {
@@ -5072,6 +5345,8 @@ async function persistAiSettingsFromModal() {
     const scholarSearchVisible = !!(scholarSearchVisibleEl && scholarSearchVisibleEl.checked);
     const highlightVisibleEl = document.getElementById('highlight-visible');
     const highlightVisible = !!(highlightVisibleEl && highlightVisibleEl.checked);
+    const sitesVisibleEl = document.getElementById('sites-visible');
+    const sitesVisible = !!(sitesVisibleEl && sitesVisibleEl.checked);
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     await setAiSettings({
@@ -5080,6 +5355,8 @@ async function persistAiSettingsFromModal() {
         githubEnabled: !!(githubEl && githubEl.checked),
         scholarSearchVisible: scholarSearchVisible,
         highlightVisible: highlightVisible,
+        sitesVisible: sitesVisible,
+        sitesList: sitesList.slice(),
         imageUploadEnabled: imageUploadEnabled,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
@@ -5697,6 +5974,8 @@ async function loadAiSettingsToUI() {
         if (scholarSearchCheckEmpty) scholarSearchCheckEmpty.checked = false;
         const highlightCheckEmpty = document.getElementById('highlight-visible');
         if (highlightCheckEmpty) highlightCheckEmpty.checked = false;
+        const sitesCheckEmpty = document.getElementById('sites-visible');
+        if (sitesCheckEmpty) sitesCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
         const localEnterBr = getEnterButtonInsertBrFromLocal();
         if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
@@ -5712,9 +5991,12 @@ async function loadAiSettingsToUI() {
         }
         syncImgbbApiKeyInputs('');
         updateAiScholarSspimgAvailability(false);
+        sitesList = DEFAULT_SITES_LIST.slice();
+        renderSitesPanel();
         applyImageUploadFeatureVisibility({ imageUploadEnabled: false });
         applyScholarSearchVisibility({ scholarSearchVisible: false });
         applyHighlightVisibility({ highlightVisible: false });
+        applySitesVisibility({ sitesVisible: false });
         return;
     }
     const apiInput = document.getElementById('ai-api-key');
@@ -5727,6 +6009,8 @@ async function loadAiSettingsToUI() {
     if (scholarSearchCheck) scholarSearchCheck.checked = settings.scholarSearchVisible === true;
     const highlightCheck = document.getElementById('highlight-visible');
     if (highlightCheck) highlightCheck.checked = settings.highlightVisible === true;
+    const sitesCheck = document.getElementById('sites-visible');
+    if (sitesCheck) sitesCheck.checked = settings.sitesVisible === true;
     const enterBrCheck = document.getElementById('enter-button-insert-br');
     const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
     if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
@@ -5776,9 +6060,12 @@ async function loadAiSettingsToUI() {
     if (window.UserSettingsModule && typeof window.UserSettingsModule.applyUserInfoToModalFields === 'function') {
         window.UserSettingsModule.applyUserInfoToModalFields(settings && settings.userInfo ? settings.userInfo : null);
     }
+    sitesList = normalizeSitesList(settings.sitesList);
+    renderSitesPanel();
     applyImageUploadFeatureVisibility(settings);
     applyScholarSearchVisibility(settings);
     applyToDocsVisibility(settings);
+    applySitesVisibility(settings);
 }
 
 async function initAiVisibility() {
@@ -5803,11 +6090,14 @@ async function initAiVisibility() {
         ? settings.selectionWrapEnabled
         : getSelectionWrapEnabledFromLocal();
     setSelectionWrapEnabledToLocal(selectionWrapEnabled);
+    sitesList = normalizeSitesList(settings && settings.sitesList);
+    renderSitesPanel();
     updateAiScholarSspimgAvailability(verified);
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
     applyHighlightVisibility(settings || { highlightVisible: false });
     applyToDocsVisibility(settings || { toDocsVisible: false });
+    applySitesVisibility(settings || { sitesVisible: false });
     await applyAiFeatureVisibility();
 }
 
@@ -6048,6 +6338,12 @@ window.deleteScholarRefItem = deleteScholarRefItem;
 window.clearAllScholarRefs = clearAllScholarRefs;
 window.toggleScholarSearchDockRight = toggleScholarSearchDockRight;
 window.toggleScholarSearchShrink = toggleScholarSearchShrink;
+window.toggleSitesPanel = toggleSitesPanel;
+window.closeSitesPanel = closeSitesPanel;
+window.addSiteFromInput = addSiteFromInput;
+window.toggleSitesSection = toggleSitesSection;
+window.toggleSitesCompactMode = toggleSitesCompactMode;
+window.toggleSitesSettingsPanel = toggleSitesSettingsPanel;
 window.openHighlightPopup = openHighlightPopup;
 window.closeHighlightPopup = closeHighlightPopup;
 window.toggleHighlightPopupDockRight = toggleHighlightPopupDockRight;
