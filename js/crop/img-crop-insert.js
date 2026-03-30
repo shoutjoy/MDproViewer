@@ -1,4 +1,4 @@
-/* ImgCrop — 이미지삽입 탭에서 crop.html로 크롭 (의존: CropPopup, _showImgpv) */
+/* ImgCrop — 이미지삽입 탭에서 js/crop/crop.html로 크롭 (의존: CropPopup, _showImgpv) */
 
 const ImgCrop = {
     /** 현재 Md_image/미리보기 이미지로 크롭 팝업을 연다 */

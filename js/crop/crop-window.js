@@ -1,5 +1,5 @@
 /**
- * crop.html 전용 — 캔버스에서 영역 선택 후 opener에 aiimg-cropped 전달
+ * js/crop/crop.html 전용 — 캔버스에서 영역 선택 후 opener에 aiimg-cropped 전달
  * (부모 창은 crop-ready / crop 메시지로 이미지를 넘긴다)
  */
 (function () {

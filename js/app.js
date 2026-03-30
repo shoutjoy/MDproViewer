@@ -5,8 +5,8 @@ let db;
 
 const AI_SETTINGS_KEY = 'ai_settings';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
-const AUTH_REQUEST_EMAIL = 'shoutjoy1@yonsei.ac.kr';
 const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
+const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
 
 // State
 let currentMarkdown = "";
@@ -54,6 +54,7 @@ let highlightPopupDockTop = 80;
 let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
+let selectionWrapEnabled = true;
 let viewClickMappedCaretPos = null;
 let lastEditCaretPos = 0;
 let viewerInternalImageObjectUrls = [];
@@ -338,10 +339,29 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     if (card.parentElement !== slot) slot.appendChild(card);
 }
 
+function initUserSettingsModule() {
+    if (!window.UserSettingsModule || typeof window.UserSettingsModule.init !== 'function') return;
+    window.UserSettingsModule.init({
+        authRequestEmail: 'shoutjoy1@yonsei.ac.kr',
+        getDb: function () { return db; },
+        getAiSettings: getAiSettings,
+        setAiSettings: setAiSettings,
+        showToast: showToast,
+        getIsEditMode: function () { return isEditMode; },
+        getEditorTextarea: function () { return editorTextarea; },
+        onEditorChanged: function () {
+            currentMarkdown = editorTextarea.value;
+            performAutoSave();
+            if (activeSidebarTab === 'toc') renderTOC();
+        }
+    });
+}
+
 window.onload = async () => {
     try {
         initTheme();
         initSettings();
+        initUserSettingsModule();
         relocateAiIntegrationSettingsIntoAiUse();
         lucide.createIcons();
         toggleMode('edit');
@@ -502,6 +522,19 @@ window.onload = async () => {
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
         const isAltGraph = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
+        if (window.EditorRule && typeof window.EditorRule.handleSelectionWrapByTypedPair === 'function') {
+            const wrapped = window.EditorRule.handleSelectionWrapByTypedPair(e, {
+                selectionWrapEnabled: selectionWrapEnabled,
+                isEditMode: isEditMode,
+                editorTextarea: editorTextarea,
+                onAfterApply: function () {
+                    currentMarkdown = editorTextarea.value;
+                    performAutoSave();
+                    if (activeSidebarTab === 'toc') renderTOC();
+                }
+            });
+            if (wrapped) return;
+        }
         // Ctrl + Alt + 1, 2, 3, 4, 5 for Headings
         if (e.ctrlKey && e.altKey && (e.code === 'Digit1' || e.key === '1')) { e.preventDefault(); applyHeading(1); return; }
         if (e.ctrlKey && e.altKey && (e.code === 'Digit2' || e.key === '2')) { e.preventDefault(); applyHeading(2); return; }
@@ -548,7 +581,7 @@ window.onload = async () => {
         }
         if (e.shiftKey && e.altKey && !e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
             e.preventDefault();
-            insertUserInfoAtCursor();
+            if (typeof window.insertUserInfoAtCursor === 'function') window.insertUserInfoAtCursor();
             return;
         }
         if (e.shiftKey && e.altKey && !e.ctrlKey && (e.key === 'h' || e.key === 'H')) {
@@ -2603,39 +2636,6 @@ function pasteFromClipboardAndDismiss() {
     });
 }
 
-async function insertUserInfoAtCursor() {
-    if (!isEditMode) {
-        showToast('Use this in edit mode.');
-        return;
-    }
-    if (!db) {
-        showToast('Database is not ready yet. Please try again.');
-        return;
-    }
-    const s = await getAiSettings();
-    const u = s && s.userInfo;
-    if (!u || (!String(u.name || '').trim() && !String(u.id || '').trim() && !String(u.major || '').trim() && !String(u.contact || '').trim() && !String(u.email || '').trim())) {
-        showToast('No user info found. Please save your profile first.');
-        return;
-    }
-    const lines = [];
-    if (String(u.name || '').trim()) lines.push('Name: ' + String(u.name).trim());
-    if (String(u.id || '').trim()) lines.push('Student ID: ' + String(u.id).trim());
-    if (String(u.major || '').trim()) lines.push('Major: ' + String(u.major).trim());
-    if (String(u.contact || '').trim()) lines.push('Contact: ' + String(u.contact).trim());
-    if (String(u.email || '').trim()) lines.push('Email: ' + String(u.email).trim());
-    const block = lines.map(function (line) { return line + '  '; }).join('\n');
-    const ta = editorTextarea;
-    const scrollTop = ta.scrollTop;
-    ta.focus();
-    document.execCommand('insertText', false, block);
-    currentMarkdown = ta.value;
-    ta.scrollTop = scrollTop;
-    performAutoSave();
-    if (activeSidebarTab === 'toc') renderTOC();
-    showToast('User info inserted.');
-}
-
 function insertMarkdownImageAtCursor(imageUrl, altText) {
     if (!isEditMode) {
         showToast('Use this in edit mode.');
@@ -3200,9 +3200,9 @@ function onImageInsertUploadDrop(event) {
 
 function getCropPageUrlForImageInsert() {
     try {
-        return new URL('crop.html', document.baseURI || window.location.href).href;
+        return new URL('js/crop/crop.html', document.baseURI || window.location.href).href;
     } catch (e) {
-        return './crop.html';
+        return './js/crop/crop.html';
     }
 }
 
@@ -4222,6 +4222,23 @@ async function toggleEnterButtonInsertBrSetting(enabled) {
     try { await setAiSettings({ enterButtonInsertBr: on }); } catch (e) {}
 }
 
+function getSelectionWrapEnabledFromLocal() {
+    if (localStorage.getItem(SELECTION_WRAP_KEY) == null) return true;
+    return localStorage.getItem(SELECTION_WRAP_KEY) === '1';
+}
+
+function setSelectionWrapEnabledToLocal(enabled) {
+    if (enabled) localStorage.setItem(SELECTION_WRAP_KEY, '1');
+    else localStorage.setItem(SELECTION_WRAP_KEY, '0');
+}
+
+async function toggleSelectionWrapSetting(enabled) {
+    const on = !!enabled;
+    selectionWrapEnabled = on;
+    setSelectionWrapEnabledToLocal(on);
+    try { await setAiSettings({ selectionWrapEnabled: on }); } catch (e) {}
+}
+
 async function saveImgbbApiKey(key) {
     const value = String(key || '').trim();
     await setAiSettings({ imgbbApiKey: value });
@@ -5037,6 +5054,10 @@ async function persistAiSettingsFromModal() {
     const enterButtonInsertBrEnabled = !!(enterBrEl && enterBrEl.checked);
     enterButtonInsertBr = enterButtonInsertBrEnabled;
     setEnterButtonInsertBrToLocal(enterButtonInsertBrEnabled);
+    const wrapEl = document.getElementById('selection-wrap-enabled');
+    const selectionWrapEnabledValue = !(wrapEl && wrapEl.checked === false);
+    selectionWrapEnabled = selectionWrapEnabledValue;
+    setSelectionWrapEnabledToLocal(selectionWrapEnabledValue);
     if (!db) return;
     const s = await getAiSettings();
     const verified = !!(s && s.verified);
@@ -5061,6 +5082,7 @@ async function persistAiSettingsFromModal() {
         highlightVisible: highlightVisible,
         imageUploadEnabled: imageUploadEnabled,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
+        selectionWrapEnabled: selectionWrapEnabledValue,
         imgbbApiKey: imgbbKey
     });
     if (imgbbKey) localStorage.setItem('ss_imgbb_api_key', imgbbKey);
@@ -5072,47 +5094,6 @@ async function closeSettingsModal() {
     document.getElementById('settings-modal').classList.add('hidden');
     document.getElementById('settings-modal').classList.remove('flex');
     await applyAiFeatureVisibility();
-}
-
-function readAiUserInfoFromModal() {
-    const name = ((document.getElementById('ai-user-name') && document.getElementById('ai-user-name').value) || '').trim();
-    const id = ((document.getElementById('ai-user-id') && document.getElementById('ai-user-id').value) || '').trim();
-    const major = ((document.getElementById('ai-user-major') && document.getElementById('ai-user-major').value) || '').trim();
-    const contact = ((document.getElementById('ai-user-contact') && document.getElementById('ai-user-contact').value) || '').trim();
-    const email = ((document.getElementById('ai-user-email') && document.getElementById('ai-user-email').value) || '').trim();
-    return { name, id, major, contact, email };
-}
-
-async function saveAiUserInfo() {
-    const fb = document.getElementById('ai-user-info-feedback');
-    if (fb) fb.textContent = '';
-    if (!db) {
-        showToast('Storage is not ready yet. Please try again.');
-        return;
-    }
-    const userInfo = readAiUserInfoFromModal();
-    if (!userInfo.name && !userInfo.id && !userInfo.major && !userInfo.contact && !userInfo.email) {
-        if (fb) fb.textContent = 'Please enter at least one user info field.';
-        showToast('No input provided.');
-        return;
-    }
-    await setAiSettings({ userInfo });
-    if (fb) fb.textContent = 'User info saved.';
-    showToast('Saved user info.');
-}
-
-async function sendAuthRequestMail() {
-    const { name, id, major, contact, email } = readAiUserInfoFromModal();
-    const userInfo = { name, id, major, contact, email };
-    await setAiSettings({ userInfo });
-    const body = `Requesting verification code with user information.\n\nName: ${name}\nStudent ID: ${id}\nMajor: ${major}\nContact: ${contact}\nEmail: ${email}`;
-    const subject = 'MDproViewer AI access verification request';
-    const gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1' +
-        '&to=' + encodeURIComponent(AUTH_REQUEST_EMAIL) +
-        '&su=' + encodeURIComponent(subject) +
-        '&body=' + encodeURIComponent(body);
-    window.open(gmailUrl, '_blank', 'noopener,noreferrer');
-    showToast("Opened Gmail compose window.");
 }
 
 function isAiMasterEnabled(settings) {
@@ -5440,7 +5421,7 @@ function ensureSidebarAILoaded() {
     });
     window.SidebarAIConfig = {
         host: null,
-        cropEditorBase: './',
+        cropEditorBase: './js/crop/',
         callbacks: {
             getApiKey: function () { return localStorage.getItem('ss_gemini_api_key') || ''; },
             getImgbbApiKey: function () { return getImgbbApiKey(); },
@@ -5720,6 +5701,10 @@ async function loadAiSettingsToUI() {
         const localEnterBr = getEnterButtonInsertBrFromLocal();
         if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
         enterButtonInsertBr = localEnterBr;
+        const wrapCheckEmpty = document.getElementById('selection-wrap-enabled');
+        const localWrapEnabled = getSelectionWrapEnabledFromLocal();
+        if (wrapCheckEmpty) wrapCheckEmpty.checked = localWrapEnabled;
+        selectionWrapEnabled = localWrapEnabled;
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
         if (window.GoogleDocs && typeof window.GoogleDocs.resetGoogleDocsSettingsUI === 'function') {
@@ -5746,6 +5731,13 @@ async function loadAiSettingsToUI() {
     const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
     if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
     enterButtonInsertBr = enterBrEnabled;
+    const wrapCheck = document.getElementById('selection-wrap-enabled');
+    const wrapEnabled = typeof settings.selectionWrapEnabled === 'boolean'
+        ? settings.selectionWrapEnabled
+        : getSelectionWrapEnabledFromLocal();
+    if (wrapCheck) wrapCheck.checked = wrapEnabled;
+    selectionWrapEnabled = wrapEnabled;
+    setSelectionWrapEnabledToLocal(wrapEnabled);
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
     if (window.GoogleDocs && typeof window.GoogleDocs.loadGoogleDocsSettingsUI === 'function') {
@@ -5781,17 +5773,8 @@ async function loadAiSettingsToUI() {
     if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
     if (githubEl) githubEl.checked = !!settings.githubEnabled;
     updateAiScholarSspimgAvailability(verified);
-    const nameEl = document.getElementById('ai-user-name');
-    const idEl = document.getElementById('ai-user-id');
-    const majorEl = document.getElementById('ai-user-major');
-    const contactEl = document.getElementById('ai-user-contact');
-    const emailEl = document.getElementById('ai-user-email');
-    if (settings.userInfo) {
-        if (nameEl) nameEl.value = settings.userInfo.name || '';
-        if (idEl) idEl.value = settings.userInfo.id || '';
-        if (majorEl) majorEl.value = settings.userInfo.major || '';
-        if (contactEl) contactEl.value = settings.userInfo.contact || '';
-        if (emailEl) emailEl.value = settings.userInfo.email || '';
+    if (window.UserSettingsModule && typeof window.UserSettingsModule.applyUserInfoToModalFields === 'function') {
+        window.UserSettingsModule.applyUserInfoToModalFields(settings && settings.userInfo ? settings.userInfo : null);
     }
     applyImageUploadFeatureVisibility(settings);
     applyScholarSearchVisibility(settings);
@@ -5816,6 +5799,10 @@ async function initAiVisibility() {
         if (sspimgEl) sspimgEl.checked = false;
     }
     enterButtonInsertBr = !!((settings && settings.enterButtonInsertBr === true) || getEnterButtonInsertBrFromLocal());
+    selectionWrapEnabled = settings && typeof settings.selectionWrapEnabled === 'boolean'
+        ? settings.selectionWrapEnabled
+        : getSelectionWrapEnabledFromLocal();
+    setSelectionWrapEnabledToLocal(selectionWrapEnabled);
     updateAiScholarSspimgAvailability(verified);
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
@@ -6011,7 +5998,6 @@ window.dismissRecovery = dismissRecovery;
 window.loadFromExternalContent = loadFromExternalContent;
 window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
-window.insertUserInfoAtCursor = insertUserInfoAtCursor;
 window.toggleEnterButtonInsertBrSetting = toggleEnterButtonInsertBrSetting;
 window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
 window.insertHtmlImageAtCursor = insertHtmlImageAtCursor;
@@ -6093,8 +6079,6 @@ window.saveApiKey = saveApiKey;
 window.toggleAiPasswordSection = toggleAiPasswordSection;
 window.validateApiKeyInputUI = validateApiKeyInputUI;
 window.saveAiPassword = saveAiPassword;
-window.sendAuthRequestMail = sendAuthRequestMail;
-window.saveAiUserInfo = saveAiUserInfo;
 window.applyAiFeatureVisibility = applyAiFeatureVisibility;
 window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
 window.closeDeleteModal = closeDeleteModal;

@@ -1612,7 +1612,7 @@ function viewerSSPFsUploadImgbb() {
   function viewerSSPGetCropPageUrl() {
     var c = getConfig();
     if (c && c.cropPageUrl) return String(c.cropPageUrl);
-    var base = (c && c.cropEditorBase != null) ? c.cropEditorBase : './';
+    var base = (c && c.cropEditorBase != null) ? c.cropEditorBase : './js/crop/';
     try {
       return new URL('crop.html', base).href;
     } catch (e) {}

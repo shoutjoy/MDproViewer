@@ -951,6 +951,11 @@
                                 class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                             <span>툴바 Enter 버튼을 <code>&lt;br&gt;</code>로 삽입</span>
                         </label>
+                        <label class="mt-2 inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                            <input type="checkbox" id="selection-wrap-enabled" onchange="toggleSelectionWrapSetting(this.checked)"
+                                class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500" checked>
+                            <span>Selection wrap rules (<code>[]</code>, <code>&lt;&gt;</code>, <code>()</code>, <code>{}</code>, <code>&quot;&quot;</code>, <code>''</code>, <code>`inline`</code>, <code>```block```</code>, <code>$inline$</code> -&gt; <code>$$block$$</code>)</span>
+                        </label>
                     </div>
                 </div>
 
@@ -1352,10 +1357,12 @@
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous" defer></script>
     <script src="./js/md_katex_render.js" charset="utf-8" defer></script>
     <script src="./trt/special_trt.js" charset="utf-8" defer></script>
+    <script src="./Setting/user.js" charset="utf-8" defer></script>
     <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
     <script src="./imageDB/imageDB.js" charset="utf-8" defer></script>
     <script src="./Scholarref/scholarref.js" charset="utf-8" defer></script>
     <script src="./js/extendFiles/extend-files.js" charset="utf-8" defer></script>
+    <script src="./trt/editorRule.js" charset="utf-8" defer></script>
     <script src="./googleDocs/googleDocs.js?v=20260330-1" charset="utf-8" defer></script>
     <script src="./js/app.js" charset="utf-8" defer></script>
     <script src="https://apis.google.com/js/api.js" defer onload="onGoogleApiJsLoaded()"></script>

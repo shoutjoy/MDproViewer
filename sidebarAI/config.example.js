@@ -14,7 +14,7 @@
     window.SidebarAIConfig = {
       host: window.opener,
       // crop-editor.html 경로 (선택)
-      cropEditorBase: './'
+      cropEditorBase: './js/crop/'
     };
     return;
   }
@@ -22,7 +22,7 @@
   // ========== 옵션 2: callbacks만 사용 (독립 실행, API 직접 제공) ==========
   window.SidebarAIConfig = {
     host: null,
-    cropEditorBase: './',
+    cropEditorBase: './js/crop/',
     callbacks: {
       // 필수: Gemini 텍스트 API
       callGemini: async function (prompt, systemInstruction, useSearch, modelOverride) {

@@ -1,7 +1,7 @@
 /* CropPopup — crop.html 팝업 열기·이미지 postMessage 전송 (의존: window._mdliveCropPending) */
 
 const CropPopup = (() => {
-    const URL = 'crop.html';
+    const URL = 'js/crop/crop.html';
     const WIN_NAME = 'crop';
     const WIN_FEATURES = 'width=640,height=560,scrollbars=yes';
 

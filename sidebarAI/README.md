@@ -54,7 +54,7 @@ HTML 삽입: sidebar-ai.html 내용을 뷰어 레이아웃에 넣습니다.
 ```javascript
 window.SidebarAIConfig = {
   host: window.opener,  // 부모 창
-  cropEditorBase: './'  // crop-editor.html 경로 (선택)
+  cropEditorBase: './js/crop/'  // crop.html 경로 (선택)
 };
 ```
 
@@ -65,7 +65,7 @@ window.SidebarAIConfig = {
 ```javascript
 window.SidebarAIConfig = {
   host: null,
-  cropEditorBase: './',
+  cropEditorBase: './js/crop/',
   callbacks: {
     callGemini: async (prompt, sys, useSearch, modelId) => { /* ... */ },
     generateImage: async (prompt, options) => { /* ... */ },
@@ -120,7 +120,7 @@ if (typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
 ## 선택 콜백
 
 - `setViewerContent`, `getViewerRenderedContent`: 문서 편집·저장 기능이 있을 때만 필요
-- `cropEditorBase`: 자르기 기능 사용 시 `crop-editor.html` 경로
+- `cropEditorBase`: 자르기 기능 사용 시 `crop.html` 경로
 
 ## ScholarSlide와의 연동
 
