@@ -249,8 +249,95 @@ function extractSvgErrorText(svg) {
   return '';
 }
 
+function preprocessMermaidSourceForRender(source) {
+  const src = String(source || '').trim();
+  if (!/^sankey-beta\b/i.test(src)) return { source: src, labelMap: null };
+
+  const lines = src.split(/\r?\n/);
+  const out = [];
+  const labelMap = {};
+  const reverseMap = {};
+  let seq = 0;
+  let started = false;
+
+  function isQuoted(value) {
+    const v = String(value || '').trim();
+    return (v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"));
+  }
+  function unquote(value) {
+    const v = String(value || '').trim();
+    if (isQuoted(v)) return v.slice(1, -1);
+    return v;
+  }
+  function quoteIfNeeded(value) {
+    const v = String(value || '').trim();
+    if (!v) return '""';
+    if (isQuoted(v)) return v;
+    if (/[^\x00-\x7F]/.test(v) || /\s/.test(v) || /[,:;]/.test(v)) return '"' + v.replace(/"/g, '\\"') + '"';
+    return v;
+  }
+  function toAlias(label) {
+    const key = String(label || '');
+    if (reverseMap[key]) return reverseMap[key];
+    const alias = 'kr_node_' + (seq++);
+    reverseMap[key] = alias;
+    labelMap[alias] = key;
+    return alias;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const trimmed = String(raw || '').trim();
+    if (!started) {
+      out.push(raw);
+      if (/^sankey-beta\b/i.test(trimmed)) started = true;
+      continue;
+    }
+    if (!trimmed || /^%%/.test(trimmed)) {
+      out.push(raw);
+      continue;
+    }
+
+    const noSemi = trimmed.replace(/;+\s*$/, '');
+    const m = noSemi.match(/^(.*?),(.*?),(.*)$/);
+    if (!m) {
+      out.push(raw);
+      continue;
+    }
+    const fromRaw = unquote(m[1]);
+    const toRaw = unquote(m[2]);
+    const from = /[^\x00-\x7F]/.test(fromRaw) ? toAlias(fromRaw) : quoteIfNeeded(m[1]);
+    const to = /[^\x00-\x7F]/.test(toRaw) ? toAlias(toRaw) : quoteIfNeeded(m[2]);
+    const value = String(m[3] || '').trim();
+    out.push(from + ', ' + to + ', ' + value);
+  }
+
+  return { source: out.join('\n'), labelMap: Object.keys(labelMap).length ? labelMap : null };
+}
+
+function restoreSankeyAliasLabels(labelMap) {
+  if (!labelMap || !renderDiv) return;
+  const svg = renderDiv.querySelector('svg');
+  if (!svg) return;
+  const textNodes = svg.querySelectorAll('text, tspan');
+  function escapeRegExp(text) {
+    return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  for (let i = 0; i < textNodes.length; i++) {
+    const el = textNodes[i];
+    let next = String(el.textContent || '');
+    for (const alias in labelMap) {
+      if (!Object.prototype.hasOwnProperty.call(labelMap, alias)) continue;
+      next = next.replace(new RegExp('\\b' + escapeRegExp(alias) + '\\b', 'g'), String(labelMap[alias] || ''));
+    }
+    el.textContent = next;
+  }
+}
+
 async function render() {
   const code = editor.value.trim();
+  const prepared = preprocessMermaidSourceForRender(code);
+  const renderCode = String(prepared && prepared.source ? prepared.source : code);
   removeMermaidErrorArtifacts();
 
   if (!code) {
@@ -265,7 +352,7 @@ async function render() {
     renderDiv.innerHTML = '';
 
     const id = 'mermaid-' + Date.now() + '-' + (++renderSeq);
-    const { svg } = await mermaid.render(id, code);
+    const { svg } = await mermaid.render(id, renderCode);
 
     if (isErrorSvg(svg)) {
       renderDiv.innerHTML = '';
@@ -276,6 +363,7 @@ async function render() {
     }
 
     renderDiv.innerHTML = svg;
+    restoreSankeyAliasLabels(prepared && prepared.labelMap ? prepared.labelMap : null);
 
     // Safety net: Mermaid may still emit an error-like SVG in some versions.
     const renderedText = (renderDiv.textContent || '').toLowerCase();
@@ -295,7 +383,7 @@ async function render() {
       renderDiv.innerHTML = '';
       const block = document.createElement('div');
       block.className = 'mermaid';
-      block.textContent = code;
+      block.textContent = renderCode;
       renderDiv.appendChild(block);
       await mermaid.run({ nodes: [block] });
       const renderedText = (renderDiv.textContent || '').toLowerCase();
@@ -303,6 +391,7 @@ async function render() {
       if (hasInlineErrorIcon || renderedText.includes('syntax error in text')) {
         throw (e || new Error('Mermaid fallback render failed.'));
       }
+      restoreSankeyAliasLabels(prepared && prepared.labelMap ? prepared.labelMap : null);
       errorDiv.style.display = 'none';
       errorDiv.textContent = '';
       applyPreviewScale();

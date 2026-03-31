@@ -280,6 +280,9 @@
         if (modal) {
             modal.classList.remove('hidden');
             modal.classList.add('flex');
+            requestAnimationFrame(function () {
+                moveShareLinksModalToRightSide();
+            });
         }
     }
 

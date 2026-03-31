@@ -111,7 +111,8 @@ const LOCAL_BOOT_DELETE_TITLES = new Set([
 const DEFAULT_SITES_LIST = [
     { name: 'data visualization', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
     { name: 'Serial Mediation effect', url: 'https://parkjoonghee.shinyapps.io/sobel/' },
-    { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' }
+    { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' },
+    { name: 'Mermaid AI', url: 'https://mermaid.ai/' }
 ];
 
 function getNameFromPath(pathValue) {
@@ -4060,7 +4061,14 @@ function normalizeSitesList(rawList) {
             return { name: name, url: url };
         })
         .filter(function (item) { return !!item.url; });
-    return out.length ? out : DEFAULT_SITES_LIST.slice();
+
+    const base = out.length ? out : DEFAULT_SITES_LIST.slice();
+    const hasMermaidAi = base.some(function (item) {
+        const u = String(item && item.url ? item.url : '').trim().toLowerCase();
+        return u === 'https://mermaid.ai/' || u === 'https://mermaid.ai';
+    });
+    if (!hasMermaidAi) base.push({ name: 'Mermaid AI', url: 'https://mermaid.ai/' });
+    return base;
 }
 
 function renderSitesPanel() {
