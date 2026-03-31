@@ -242,10 +242,10 @@
         if (document.getElementById('share-links-modal')) return;
         const modal = document.createElement('div');
         modal.id = 'share-links-modal';
-        modal.className = 'fixed inset-0 bg-black/30 hidden items-start justify-center z-[65] no-print';
-        modal.setAttribute('onclick', "if(event.target===this) closeShareLinksModal()");
+        // Modeless floating shell: keep background fully interactive.
+        modal.className = 'fixed inset-0 hidden items-start justify-center z-[65] no-print pointer-events-none';
         modal.innerHTML = ''
-            + '<div id="share-links-modal-panel" class="absolute top-24 left-1/2 -translate-x-1/2 w-[min(860px,94vw)] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4">'
+            + '<div id="share-links-modal-panel" class="pointer-events-auto absolute top-24 left-1/2 -translate-x-1/2 w-[min(860px,94vw)] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4">'
             + '  <div id="share-links-modal-header" class="flex items-center justify-between mb-3 cursor-move select-none">'
             + '    <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100">Share</h3>'
             + '    <div class="flex items-center gap-2">'

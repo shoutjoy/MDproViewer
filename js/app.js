@@ -114,6 +114,42 @@ const DEFAULT_SITES_LIST = [
     { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' },
     { name: 'Mermaid AI', url: 'https://mermaid.ai/' }
 ];
+const FOLDER_COLLAPSE_STATE_KEY = 'md_viewer_folder_collapse_state';
+let folderCollapseState = {};
+
+function loadFolderCollapseState() {
+    try {
+        const raw = localStorage.getItem(FOLDER_COLLAPSE_STATE_KEY);
+        if (!raw) {
+            folderCollapseState = {};
+            return;
+        }
+        const parsed = JSON.parse(raw);
+        folderCollapseState = (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (_) {
+        folderCollapseState = {};
+    }
+}
+
+function saveFolderCollapseState() {
+    try {
+        localStorage.setItem(FOLDER_COLLAPSE_STATE_KEY, JSON.stringify(folderCollapseState || {}));
+    } catch (_) {}
+}
+
+function isFolderCollapsed(folderId) {
+    const key = String(folderId || '');
+    if (!key) return false;
+    return !!(folderCollapseState && folderCollapseState[key] === true);
+}
+
+function toggleFolderCollapse(folderId) {
+    const key = String(folderId || '');
+    if (!key) return;
+    folderCollapseState[key] = !isFolderCollapsed(key);
+    saveFolderCollapseState();
+    renderDBList();
+}
 
 function getNameFromPath(pathValue) {
     const p = String(pathValue || '').trim();
@@ -390,6 +426,7 @@ window.onload = async () => {
         toggleMode('edit');
 
         await initDB();
+        loadFolderCollapseState();
         await ensureRootFolder();
         await cleanupBootBlockedDocuments();
         renderDBList();
@@ -2614,18 +2651,25 @@ async function renderDBList() {
         const folderDisplayName = folder.id === 'root'
             ? ROOT_FOLDER_NAME
             : String(folder.name || 'Folder');
+        const collapsedByState = isFolderCollapsed(folder.id);
+        const isCollapsedFolder = !searchTerm && collapsedByState;
 
         const folderDiv = document.createElement('div');
         folderDiv.className = "mb-2";
-        folderDiv.innerHTML = `
-            <div class="flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter ${isSidebarCollapsed ? 'justify-center' : ''}">
-                <i data-lucide="folder" class="w-3 h-3"></i> 
-                <span class="sidebar-text">${folderDisplayName}</span>
-            </div>
+        const folderHeader = document.createElement('div');
+        folderHeader.className = `flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ${isSidebarCollapsed ? 'justify-center' : ''}`;
+        folderHeader.innerHTML = `
+            <i data-lucide="${isCollapsedFolder ? 'chevron-right' : 'chevron-down'}" class="w-3 h-3"></i>
+            <i data-lucide="folder" class="w-3 h-3"></i>
+            <span class="sidebar-text">${folderDisplayName}</span>
         `;
+        folderHeader.addEventListener('click', function () {
+            toggleFolderCollapse(folder.id);
+        });
+        folderDiv.appendChild(folderHeader);
 
         const docContainer = document.createElement('div');
-        docContainer.className = isSidebarCollapsed ? "space-y-1" : "pl-2 space-y-1";
+        docContainer.className = (isSidebarCollapsed ? "space-y-1" : "pl-2 space-y-1") + (isCollapsedFolder ? " hidden" : "");
 
         folderDocs.forEach(doc => {
             const docItem = document.createElement('div');
