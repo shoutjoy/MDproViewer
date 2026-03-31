@@ -1217,7 +1217,7 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-toolbar button{padding:4px 10px;border:1px solid #94a3b8;background:#fff;border-radius:6px;font-weight:700;color:#1e293b;cursor:pointer;}'
         + '#pv-toolbar .label{font-size:12px;color:#334155;min-width:48px;text-align:center;font-weight:700;}'
         + '#pv-viewport{flex:1;overflow:auto;padding:20px;}'
-        + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;}'
+        + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;margin:0 auto;width:100%;max-width:56rem;}'
         + '#pv-content h1{font-size:2.25rem;font-weight:800;margin-top:1.5rem;margin-bottom:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:.5rem;}'
         + '#pv-content h2{font-size:1.875rem;font-weight:700;margin-top:1.25rem;margin-bottom:.75rem;border-bottom:1px solid #e2e8f0;padding-bottom:.3rem;}'
         + '#pv-content h3{font-size:1.5rem;font-weight:600;margin-top:1rem;margin-bottom:.5rem;}'
@@ -1449,9 +1449,14 @@ function applyPreviewPopupViewport() {
     previewPopupScale = scale;
     previewPopupFontSize = fs;
 
-    content.style.zoom = String(scale);
+    const baseMaxWidthRem = 56;
+    const widthRem = Math.max(28, baseMaxWidthRem * scale);
+    content.style.zoom = '1';
     content.style.transform = 'none';
-    content.style.width = '';
+    content.style.width = '100%';
+    content.style.maxWidth = widthRem + 'rem';
+    content.style.marginLeft = 'auto';
+    content.style.marginRight = 'auto';
     content.style.fontSize = fs + 'px';
     if (scaleLabel) scaleLabel.textContent = Math.round(scale * 100) + '%';
     if (fontLabel) fontLabel.textContent = fs + 'px';
