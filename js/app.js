@@ -24,6 +24,7 @@ let previewPopupWindow = null;
 let previewPopupScale = 1.0;
 let previewPopupFontSize = 21;
 let previewPopupRenderToken = 0;
+let previewPopupMermaidLoadPromise = null;
 let imageInsertCurrentDataUrl = '';
 let imageInsertCurrentFileName = '';
 let imageInsertSavedInternalId = '';
@@ -756,12 +757,20 @@ window.onload = async () => {
         }
         if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'b') {
             e.preventDefault();
-            if (isEditMode && editorTextarea) insertAtCursor('bold');
+            if (isEditMode && editorTextarea) {
+                insertAtCursor('bold');
+            } else {
+                applyInlineFormatFromViewerSelection('bold');
+            }
             return;
         }
         if (e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'i') {
             e.preventDefault();
-            if (isEditMode && editorTextarea) insertAtCursor('italic');
+            if (isEditMode && editorTextarea) {
+                insertAtCursor('italic');
+            } else {
+                applyInlineFormatFromViewerSelection('italic');
+            }
             return;
         }
         const isSaveModifier = e.ctrlKey || e.metaKey;
@@ -1131,17 +1140,20 @@ function isPreviewPopupAlive() {
 
 function onPreviewPopupClosed() {
     previewPopupWindow = null;
+    resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
 }
 
 function closePreviewPopupWindow() {
     if (!isPreviewPopupAlive()) {
         previewPopupWindow = null;
+        resetPreviewPopupMermaidLoader();
         revokeObjectUrls(previewInternalImageObjectUrls);
         return;
     }
     previewPopupWindow.close();
     previewPopupWindow = null;
+    resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
 }
 
@@ -1193,6 +1205,192 @@ function getPreviewPopupDocumentHtml() {
         + '</div><div id=\"pv-viewport\"><div id=\"pv-content\"></div></div></div>'
         + '<script>window.addEventListener(\"beforeunload\",function(){try{if(window.opener&&typeof window.opener.onPreviewPopupClosed===\"function\"){window.opener.onPreviewPopupClosed();}}catch(e){}});<\/script>'
         + '</body></html>';
+}
+
+function resetPreviewPopupMermaidLoader() {
+    previewPopupMermaidLoadPromise = null;
+}
+
+function isQuotedFieldForPv(value) {
+    const v = String(value || '').trim();
+    return (v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"));
+}
+
+function unquoteFieldForPv(value) {
+    const v = String(value || '').trim();
+    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1);
+    return v;
+}
+
+function quoteMermaidFieldForPv(value) {
+    const v = String(value || '').trim();
+    if (!v) return '""';
+    if (isQuotedFieldForPv(v)) return v;
+    if (/[^\x00-\x7F]/.test(v) || /\s/.test(v) || /[,:;]/.test(v)) return '"' + v.replace(/"/g, '\\"') + '"';
+    return v;
+}
+
+function preprocessPreviewPopupMermaidSource(source) {
+    const src = String(source || '').trim();
+    if (!/^sankey-beta\b/i.test(src)) return { source: src, labelMap: null };
+
+    const lines = src.split(/\r?\n/);
+    const out = [];
+    const labelMap = {};
+    const reverseMap = {};
+    let aliasSeq = 0;
+    let started = false;
+
+    function toAlias(label) {
+        const key = String(label || '');
+        if (reverseMap[key]) return reverseMap[key];
+        const alias = 'kr_node_' + (aliasSeq++);
+        reverseMap[key] = alias;
+        labelMap[alias] = key;
+        return alias;
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const trimmed = String(raw || '').trim();
+        if (!started) {
+            out.push(raw);
+            if (/^sankey-beta\b/i.test(trimmed)) started = true;
+            continue;
+        }
+        if (!trimmed || /^%%/.test(trimmed)) {
+            out.push(raw);
+            continue;
+        }
+        const noSemi = trimmed.replace(/;+\s*$/, '');
+        const m = noSemi.match(/^(.*?),(.*?),(.*)$/);
+        if (!m) {
+            out.push(raw);
+            continue;
+        }
+        const fromRaw = unquoteFieldForPv(m[1]);
+        const toRaw = unquoteFieldForPv(m[2]);
+        const from = /[^\x00-\x7F]/.test(fromRaw) ? toAlias(fromRaw) : quoteMermaidFieldForPv(m[1]);
+        const to = /[^\x00-\x7F]/.test(toRaw) ? toAlias(toRaw) : quoteMermaidFieldForPv(m[2]);
+        const value = String(m[3] || '').trim();
+        out.push(from + ', ' + to + ', ' + value);
+    }
+    return { source: out.join('\n'), labelMap: Object.keys(labelMap).length ? labelMap : null };
+}
+
+function restorePreviewPopupSankeyLabels(wrapper) {
+    if (!wrapper) return;
+    let labelMap = null;
+    try { labelMap = JSON.parse(wrapper.getAttribute('data-sankey-label-map') || 'null'); } catch (e) { labelMap = null; }
+    if (!labelMap) return;
+    const svg = wrapper.querySelector('svg');
+    if (!svg) return;
+    const textNodes = svg.querySelectorAll('text, tspan');
+    function escapeRegExp(text) { return String(text || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    for (let i = 0; i < textNodes.length; i++) {
+        const el = textNodes[i];
+        let next = String(el.textContent || '');
+        for (const alias in labelMap) {
+            if (!Object.prototype.hasOwnProperty.call(labelMap, alias)) continue;
+            const re = new RegExp('\\b' + escapeRegExp(alias) + '\\b', 'g');
+            next = next.replace(re, String(labelMap[alias] || ''));
+        }
+        el.textContent = next;
+    }
+}
+
+async function loadMermaidInPreviewPopup() {
+    if (!isPreviewPopupAlive()) return null;
+    const win = previewPopupWindow;
+    if (win.mermaid && win.__mdvMermaidReady) return win.mermaid;
+    if (previewPopupMermaidLoadPromise) return previewPopupMermaidLoadPromise;
+
+    previewPopupMermaidLoadPromise = new Promise(function (resolve, reject) {
+        const doc = win.document;
+        const existing = doc.querySelector('script[data-pv-mermaid="1"]');
+        const done = function () {
+            try {
+                if (!win.mermaid) throw new Error('Mermaid was not loaded in PV window.');
+                win.mermaid.initialize({
+                    startOnLoad: false,
+                    suppressErrorRendering: true,
+                    securityLevel: 'loose',
+                    theme: 'default',
+                    flowchart: { useMaxWidth: true, htmlLabels: true },
+                    themeVariables: { fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif' }
+                });
+                win.__mdvMermaidReady = true;
+                resolve(win.mermaid);
+            } catch (e) {
+                reject(e);
+            }
+        };
+
+        if (existing && win.mermaid) {
+            done();
+            return;
+        }
+
+        const script = doc.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+        script.async = true;
+        script.defer = true;
+        script.setAttribute('data-pv-mermaid', '1');
+        script.onload = done;
+        script.onerror = function () { reject(new Error('Failed to load Mermaid in PV window.')); };
+        doc.head.appendChild(script);
+    }).catch(function (err) {
+        previewPopupMermaidLoadPromise = null;
+        throw err;
+    });
+
+    return previewPopupMermaidLoadPromise;
+}
+
+async function renderMermaidInPreviewPopup(root) {
+    if (!isPreviewPopupAlive() || !root) return;
+    const win = previewPopupWindow;
+    const doc = win.document;
+    const codeNodes = root.querySelectorAll('pre > code.language-mermaid, pre > code.lang-mermaid, pre > code.mermaid');
+    if (!codeNodes.length) return;
+
+    const targets = [];
+    for (let i = 0; i < codeNodes.length; i++) {
+        const codeEl = codeNodes[i];
+        const pre = codeEl.parentElement;
+        if (!pre || pre.tagName !== 'PRE') continue;
+        const prep = preprocessPreviewPopupMermaidSource(String(codeEl.textContent || '').trim());
+        const source = String(prep && prep.source ? prep.source : '').trim();
+        if (!source) continue;
+
+        const wrapper = doc.createElement('div');
+        wrapper.className = 'trt-mermaid-wrapper my-3 overflow-x-auto';
+        wrapper.setAttribute('data-mermaid-source', source);
+        if (prep && prep.labelMap) wrapper.setAttribute('data-sankey-label-map', JSON.stringify(prep.labelMap));
+        const block = doc.createElement('div');
+        block.className = 'mermaid';
+        block.textContent = source;
+        wrapper.appendChild(block);
+        pre.replaceWith(wrapper);
+        targets.push({ block, wrapper, source });
+    }
+
+    if (!targets.length) return;
+    await loadMermaidInPreviewPopup();
+
+    for (let i = 0; i < targets.length; i++) {
+        const item = targets[i];
+        try {
+            await win.mermaid.run({ nodes: [item.block] });
+            restorePreviewPopupSankeyLabels(item.wrapper);
+        } catch (e) {
+            item.wrapper.innerHTML = '';
+            const errPre = doc.createElement('pre');
+            errPre.className = 'trt-mermaid-error';
+            errPre.textContent = item.source;
+            item.wrapper.appendChild(errPre);
+        }
+    }
 }
 
 function applyPreviewPopupViewport() {
@@ -1253,6 +1451,7 @@ async function updatePreviewPopupContent() {
     target.innerHTML = html;
     try { await hydrateInternalImagesInElement(target, registerPreviewInternalObjectUrl); } catch (e) {}
     if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(target);
+    try { await renderMermaidInPreviewPopup(target); } catch (e) {}
     applyPreviewPopupViewport();
 }
 
@@ -2233,7 +2432,10 @@ function scrollToLine(lineIndex) {
         editorTextarea.focus();
         editorTextarea.setSelectionRange(charPos, charPos);
         const top = getTextareaCaretTopOffset(editorTextarea, charPos);
-        editorTextarea.scrollTo({ top, behavior: 'smooth' });
+        const lineHeight = parseFloat(getComputedStyle(editorTextarea).lineHeight) || 24;
+        // Show three lines above the heading when syncing from TOC.
+        const offsetTop = Math.max(0, top - (lineHeight * 3));
+        editorTextarea.scrollTo({ top: offsetTop, behavior: 'smooth' });
     } else {
         const lines = currentMarkdown.split('\n');
         let headerIndex = 0;
@@ -2920,6 +3122,41 @@ function insertAtCursor(type) {
         editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
     }
 }
+function applyInlineFormatFromViewerSelection(type) {
+    const selection = (typeof window.getSelection === 'function') ? window.getSelection() : null;
+    const selectedText = String(selection && selection.toString ? selection.toString() : '');
+    if (!selectedText || !selectedText.trim()) {
+        showToast('보기 모드에서 먼저 텍스트를 선택하세요.');
+        return false;
+    }
+
+    const source = String(currentMarkdown || (editorTextarea ? editorTextarea.value : ''));
+    if (!source) {
+        showToast('현재 문서 내용이 비어 있습니다.');
+        return false;
+    }
+
+    const idx = source.indexOf(selectedText);
+    if (idx < 0) {
+        showToast('선택 텍스트를 원문에서 찾지 못했습니다.');
+        return false;
+    }
+
+    const isBold = type === 'bold';
+    const before = isBold ? '**' : '*';
+    const after = before;
+    const replacement = before + selectedText + after;
+    const nextText = source.substring(0, idx) + replacement + source.substring(idx + selectedText.length);
+
+    currentMarkdown = nextText;
+    if (editorTextarea) editorTextarea.value = nextText;
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    if (selection && typeof selection.removeAllRanges === 'function') selection.removeAllRanges();
+    showToast(isBold ? 'Bold 적용 완료' : 'Italic 적용 완료');
+    return true;
+}
 function insertFencedCodeBlock(language) {
     if (!isEditMode || !editorTextarea) {
         showToast('Use this in edit mode.');
@@ -3344,6 +3581,118 @@ function closeTextStyleModal() {
     modal.classList.remove('flex');
 }
 
+function openMermaidEditorModal() {
+    const modal = document.getElementById('mermaid-editor-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    bindMermaidEditorModalDrag();
+}
+
+function closeMermaidEditorModal() {
+    const modal = document.getElementById('mermaid-editor-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+}
+
+let mermaidEditorModalDragBound = false;
+let mermaidEditorModalFullscreen = false;
+
+function bindMermaidEditorModalDrag() {
+    if (mermaidEditorModalDragBound) return;
+    const panel = document.getElementById('mermaid-editor-modal-panel');
+    const header = document.getElementById('mermaid-editor-modal-header');
+    if (!panel || !header) return;
+
+    let dragging = false;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+
+    header.addEventListener('mousedown', function (event) {
+        if (event.button !== 0 || mermaidEditorModalFullscreen) return;
+        dragging = true;
+        startX = event.clientX;
+        startY = event.clientY;
+        const rect = panel.getBoundingClientRect();
+        startLeft = rect.left;
+        startTop = rect.top;
+        panel.style.left = startLeft + 'px';
+        panel.style.top = startTop + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        panel.style.transform = 'none';
+        event.preventDefault();
+    });
+
+    window.addEventListener('mousemove', function (event) {
+        if (!dragging) return;
+        const nextLeft = Math.max(4, startLeft + (event.clientX - startX));
+        const nextTop = Math.max(4, startTop + (event.clientY - startY));
+        panel.style.left = nextLeft + 'px';
+        panel.style.top = nextTop + 'px';
+    });
+
+    window.addEventListener('mouseup', function () {
+        dragging = false;
+    });
+
+    mermaidEditorModalDragBound = true;
+}
+
+function toggleMermaidEditorFullscreen() {
+    const panel = document.getElementById('mermaid-editor-modal-panel');
+    if (!panel) return;
+    mermaidEditorModalFullscreen = !mermaidEditorModalFullscreen;
+    if (mermaidEditorModalFullscreen) {
+        panel.style.resize = 'none';
+        panel.style.left = '8px';
+        panel.style.top = '8px';
+        panel.style.right = '8px';
+        panel.style.bottom = '8px';
+        panel.style.width = 'auto';
+        panel.style.height = 'auto';
+        panel.style.transform = 'none';
+        return;
+    }
+    panel.style.left = '50%';
+    panel.style.top = '64px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.width = 'min(1200px, 96vw)';
+    panel.style.height = 'min(860px, 92vh)';
+    panel.style.transform = 'translateX(-50%)';
+    panel.style.resize = 'both';
+}
+
+function insertMermaidBlockFromExternal(codeText) {
+    const raw = String(codeText || '').trim();
+    if (!raw) {
+        showToast('삽입할 Mermaid 코드가 비어 있습니다.');
+        return;
+    }
+    if (!isEditMode) toggleMode('edit');
+    if (!editorTextarea) return;
+
+    const start = typeof editorTextarea.selectionStart === 'number' ? editorTextarea.selectionStart : editorTextarea.value.length;
+    const end = typeof editorTextarea.selectionEnd === 'number' ? editorTextarea.selectionEnd : start;
+    const replacement = '```mermaid\n' + raw + '\n```\n';
+
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+    currentMarkdown = editorTextarea.value;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    showToast('Mermaid 코드가 문서에 삽입되었습니다.');
+}
+
+window.addEventListener('message', function (event) {
+    const data = event && event.data ? event.data : null;
+    if (!data || data.type !== 'mdv-insert-mermaid') return;
+    insertMermaidBlockFromExternal(data.code || '');
+});
+
 function applyTextStyleToSelection() {
     if (!isEditMode || !editorTextarea) {
         showToast('Use this in edit mode.');
@@ -3461,16 +3810,19 @@ function confirmModalInsert() {
 
 // --- Utility ---
 function adjustPageScale(delta) {
-    pageScale = Math.max(0.5, Math.min(3.0, pageScale + delta));
-
-    // Use zoom to correctly scale layout without clipping bugs
-    viewer.style.zoom = pageScale;
-    editorTextarea.style.zoom = pageScale;
-
-    // Clear any previous transform styles
-    viewer.style.transform = "none";
-
+    pageScale = Math.max(0.6, Math.min(1.8, pageScale + delta));
+    applyDocumentWidthScale();
     document.getElementById('scale-display').textContent = `${Math.round(pageScale * 100)}%`;
+}
+
+function applyDocumentWidthScale() {
+    const baseMaxWidthRem = 56; // Tailwind max-w-4xl
+    const widthRem = Math.max(28, baseMaxWidthRem * pageScale);
+    const widthValue = widthRem + 'rem';
+    if (viewer) viewer.style.maxWidth = widthValue;
+    const editorDocWrap = document.getElementById('editor-doc-wrap');
+    if (editorDocWrap) editorDocWrap.style.maxWidth = widthValue;
+    if (editorTextarea) editorTextarea.style.maxWidth = widthValue;
 }
 
 function adjustFontSize(delta) {
@@ -3528,6 +3880,7 @@ function initSettings() {
         document.documentElement.style.setProperty('--code-text-color', savedText);
         if (textEl) textEl.value = savedText;
     }
+    applyDocumentWidthScale();
 }
 
 async function getAiSettings() {
@@ -3656,7 +4009,9 @@ function applyEditToolsVisibilityByMode() {
     const editTools = document.getElementById('edit-tools');
     if (!editTools) return;
     const show = !!(isEditMode || viewModeEditEnabled);
-    editTools.classList.toggle('hidden', !show);
+    // Keep toolbar height stable between edit/view modes.
+    editTools.classList.toggle('invisible', !show);
+    editTools.classList.toggle('pointer-events-none', !show);
 }
 
 async function toggleViewModeEditSetting(enabled) {
@@ -6059,6 +6414,9 @@ window.insertLiteralAtCursor = insertLiteralAtCursor;
 window.insertFootnoteTemplate = insertFootnoteTemplate;
 window.openTextStyleModal = openTextStyleModal;
 window.closeTextStyleModal = closeTextStyleModal;
+window.openMermaidEditorModal = openMermaidEditorModal;
+window.closeMermaidEditorModal = closeMermaidEditorModal;
+window.toggleMermaidEditorFullscreen = toggleMermaidEditorFullscreen;
 window.applyTextStyleToSelection = applyTextStyleToSelection;
 
 // --- Advanced Edit Functions ---

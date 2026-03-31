@@ -225,11 +225,15 @@
     function moveShareLinksModalToRightSide() {
         const panel = document.getElementById('share-links-modal-panel');
         if (!panel) return;
+        const rect = panel.getBoundingClientRect();
+        const currentWidth = Math.max(1, Math.round(rect.width || panel.offsetWidth || 420));
+        const targetWidth = Math.max(220, Math.round(currentWidth / 3));
         panel.style.left = 'auto';
         panel.style.right = '12px';
         panel.style.top = '84px';
         panel.style.transform = 'none';
-        panel.style.width = 'min(420px, 92vw)';
+        panel.style.width = targetWidth + 'px';
+        panel.style.maxWidth = '92vw';
     }
 
     function isShareLinksModalOpen() {

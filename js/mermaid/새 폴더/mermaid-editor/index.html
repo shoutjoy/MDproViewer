@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mermaid Editor Pro</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <header id="top-bar">
+    <div class="toolbar-left">
+      <strong>Mermaid Editor Pro</strong>
+      <button onclick="setDirection('TD')" id="dir-TD" class="btn active">TD</button>
+      <button onclick="setDirection('LR')" id="dir-LR" class="btn">LR</button>
+    </div>
+    <div class="toolbar-right">
+      <button onclick="insertSnippet('node')" class="btn">노드</button>
+      <button onclick="insertSnippet('decision')" class="btn">조건</button>
+      <button onclick="insertSnippet('arrow')" class="btn">연결</button>
+      <button onclick="loadTemplate('shopping')" class="btn">예제</button>
+      <button onclick="copyCode()" class="btn">복사</button>
+      <button onclick="downloadSVG()" class="btn">SVG</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="editor-pane">
+      <div class="pane-title">코드 편집기</div>
+      <textarea id="raw-code-editor" spellcheck="false"></textarea>
+      <!-- <div class="editor-help">
+        <div>단축키</div>
+        <div>Ctrl + Alt + ↓ : 현재 줄 아래로 복사</div>
+        <div>Alt + ↑ / ↓ : 현재 줄 이동</div>
+      </div> -->
+    </section>
+
+    <section id="preview-pane">
+      <div class="pane-title">미리보기</div>
+      <div id="render-wrapper">
+        <div id="render"></div>
+      </div>
+      <div id="error" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

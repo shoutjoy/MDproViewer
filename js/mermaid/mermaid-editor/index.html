@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mermaid Editor Pro</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <header id="top-bar">
+    <div class="toolbar-left">
+      <strong>Mermaid Editor Pro</strong>
+      <button onclick="setDirection('TD')" id="dir-TD" class="btn active">TD</button>
+      <button onclick="setDirection('LR')" id="dir-LR" class="btn">LR</button>
+    </div>
+    <div class="toolbar-right">
+      <input id="node-label" class="input-like" type="text" placeholder="노드 텍스트" />
+      <select id="node-shape" class="select-like-btn">
+        <option value="rect">사각형 [ ]</option>
+        <option value="diamond">마름모 { }</option>
+        <option value="square">정사각형 [[ ]]</option>
+        <option value="circle">원형 (( ))</option>
+      </select>
+      <button onclick="insertNodeByShape()" class="btn">노드추가</button>
+      <button onclick="insertSnippet('node')" class="btn">노드</button>
+      <button onclick="insertSnippet('decision')" class="btn">조건</button>
+      <button onclick="insertSnippet('arrow')" class="btn">연결</button>
+      <select id="example-select" class="select-like-btn" onchange="loadTemplate(this.value)">
+        <option value="">사례선택</option>
+        <option value="shopping">Flow 기본</option>
+        <option value="sankey-basic">Sankey 기본</option>
+        <option value="sankey-family">Sankey 한글</option>
+        <option value="sankey-config">Sankey (showValues off)</option>
+        <option value="state">State</option>
+        <option value="class">Class</option>
+        <option value="sequence">Sequence</option>
+        <option value="er">ER</option>
+        <option value="journey">Journey</option>
+        <option value="mindmap">Mindmap</option>
+        <option value="pie">Pie</option>
+        <option value="timeline">Timeline</option>
+        <option value="quadrant">Quadrant</option>
+        <option value="xychart">XY Chart</option>
+        <option value="block">Block</option>
+        <option value="kanban-advanced">Kanban (advanced)</option>
+        <option value="treemap">Treemap</option>
+        <option value="requirement">Requirement</option>
+        <option value="gantt">Gantt</option>
+      </select>
+      <button onclick="copyCode()" class="btn">복사</button>
+      <button onclick="downloadSVG()" class="btn">SVG</button>
+      <button onclick="downloadPNG()" class="btn">PNG</button>
+      <button onclick="insertIntoDocument()" class="btn">문서삽입</button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section id="editor-pane">
+      <div class="pane-title">코드 편집기</div>
+      <textarea id="raw-code-editor" spellcheck="false"></textarea>
+      <!-- <div class="editor-help">
+        <div>단축키</div>
+        <div>Ctrl + Alt + ↓ : 현재 줄 아래로 복사</div>
+        <div>Alt + ↑ / ↓ : 현재 줄 이동</div>
+      </div> -->
+    </section>
+
+    <div id="pane-divider" title="좌우 패널 크기 조절"></div>
+
+    <section id="preview-pane">
+      <div class="pane-title pane-title-row">
+        <span>미리보기</span>
+        <div class="zoom-controls">
+          <button type="button" class="btn-light" onclick="adjustPreviewScale(-0.1)">-</button>
+          <span id="preview-scale-label">100%</span>
+          <button type="button" class="btn-light" onclick="adjustPreviewScale(0.1)">+</button>
+          <button type="button" class="btn-light" onclick="resetPreviewScale()">Reset</button>
+        </div>
+      </div>
+      <div id="render-wrapper">
+        <div id="render"></div>
+      </div>
+      <div id="error" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

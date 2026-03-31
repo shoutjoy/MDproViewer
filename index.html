@@ -429,6 +429,9 @@
                     <button type="button" onclick="insertAtCursor('mermaid')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
                         title="Mermaid 다이어그램 블록 삽입">[mermaid]</button>
+                    <button type="button" onclick="openMermaidEditorModal()"
+                        class="w-8 h-7 flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
+                        title="Mermaid Editor 열기">ME</button>
 
                     <button onclick="insertAtCursor('quote')"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
@@ -541,7 +544,7 @@
             <!-- Main Content Area -->
             <main id="drop-zone" class="flex-1 overflow-hidden relative">
                 <div id="viewer-container"
-                    class="hidden h-full w-full overflow-y-auto custom-scrollbar p-8 sm:p-12 md:p-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
+                    class="hidden h-full w-full overflow-y-auto custom-scrollbar px-8 sm:px-12 md:px-16 pt-3 sm:pt-4 md:pt-5 pb-8 sm:pb-12 md:pb-16 flex justify-center bg-white dark:bg-slate-950 transition-all duration-300">
                     <div id="viewer" class="markdown-body w-full max-w-4xl print-area mx-auto">
                         <div
                             class="flex flex-col items-center justify-center h-full text-slate-400 dark:text-slate-500">
@@ -554,10 +557,10 @@
 
                 
                 
-                <div id="content-viewport" class="h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 p-8 sm:p-12 md:p-16 viewer-edit-active">
+                <div id="content-viewport" class="h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 px-8 sm:px-12 md:px-16 pt-3 sm:pt-4 md:pt-5 pb-8 sm:pb-12 md:pb-16 viewer-edit-active">
                     
                                     
-                    <div class="w-full max-w-4xl h-full mx-auto flex flex-col">
+                    <div id="editor-doc-wrap" class="w-full max-w-4xl h-full mx-auto flex flex-col">
                         <textarea id="viewer-edit-ta" spellcheck="false"
                         class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
                         placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
@@ -628,6 +631,25 @@
                 <button onclick="closeMoveModal()"
                     class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Mermaid Editor Modal -->
+    <div id="mermaid-editor-modal" class="fixed inset-0 hidden z-[70] no-print pointer-events-none">
+        <div id="mermaid-editor-modal-panel"
+            class="pointer-events-auto absolute top-16 left-1/2 -translate-x-1/2 bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-[min(1200px,96vw)] h-[min(860px,92vh)] flex flex-col border border-slate-200 dark:border-slate-700 overflow-hidden"
+            style="resize: both; min-width: 760px; min-height: 520px; max-width: 98vw; max-height: 95vh;">
+            <div id="mermaid-editor-modal-header" class="px-4 py-2.5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-between cursor-move select-none">
+                <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Mermaid Editor</h3>
+                <div class="flex items-center gap-2">
+                    <button type="button" onclick="toggleMermaidEditorFullscreen()"
+                        class="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">전체화면</button>
+                    <button type="button" onclick="closeMermaidEditorModal()"
+                        class="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">닫기</button>
+                </div>
+            </div>
+            <iframe id="mermaid-editor-frame" src="./js/mermaid/mermaid-editor/index.html"
+                class="w-full h-full border-0 bg-white dark:bg-slate-900" title="Mermaid Editor"></iframe>
         </div>
     </div>
 
@@ -1306,7 +1328,7 @@
                 </div>
             </div>
             <div id="highlight-popup-body" class="flex-1 min-h-0">
-                <iframe id="highlight-popup-frame" src="./HighLights/Highlghts_index.html" onload="handleHighlightFrameLoad()"
+                <iframe id="highlight-popup-frame" src="./HighLights/Highlghts_index.html" onload="window.handleHighlightFrameLoad && window.handleHighlightFrameLoad()"
                     class="w-full h-full border-0 bg-white dark:bg-slate-900" title="Highlight"></iframe>
             </div>
         </div>
@@ -1460,7 +1482,7 @@
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous" defer></script>
     <script src="./js/md_katex_render.js" charset="utf-8" defer></script>
     <script src="./trt/special_trt.js" charset="utf-8" defer></script>
-    <script src="./trt/mermaid_render.js" charset="utf-8" defer></script>
+    <script src="./js/mermaid/mermaid_render.js" charset="utf-8" defer></script>
     <script src="./Setting/user.js" charset="utf-8" defer></script>
     <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
     <script src="./imageDB/imageDB.js" charset="utf-8" defer></script>
