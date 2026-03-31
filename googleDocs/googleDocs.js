@@ -5,6 +5,7 @@
     const SHARE_DESTINATIONS = [
         { key: 'docs', label: 'docs.new', url: 'https://docs.new/', checkboxId: 'share-site-docs' },
         { key: 'gemini', label: 'gemini.new', url: 'https://gemini.google.com/app', checkboxId: 'share-site-gemini' },
+        { key: 'colab', label: 'colab.new', url: 'https://colab.new/', checkboxId: 'share-site-colab' },
         { key: 'story', label: 'story.new', url: 'https://story.new/', checkboxId: 'share-site-story' },
         { key: 'sheets', label: 'sheets.new', url: 'https://sheets.new/', checkboxId: 'share-site-sheets' },
         { key: 'slides', label: 'slides.new', url: 'https://slides.new/', checkboxId: 'share-site-slides' },
@@ -25,6 +26,7 @@
     let docSyncVisible = false;
     let shareMenuExpanded = false;
     let shareSites = DEFAULT_SHARE_SITES.slice();
+    let customShareDestinations = [];
 
     let docSyncEnabled = false;
     let docSyncBusy = false;
@@ -129,10 +131,91 @@
         return !!(settings && settings.docSyncVisible === true);
     }
 
+    function normalizeCustomShareDestinations(rawList) {
+        const src = Array.isArray(rawList) ? rawList : [];
+        const out = [];
+        const seen = new Set();
+        for (let i = 0; i < src.length; i += 1) {
+            const item = src[i] || {};
+            const keyRaw = String(item.key || '').trim();
+            const label = String(item.label || item.name || '').trim();
+            const urlRaw = String(item.url || '').trim();
+            if (!urlRaw) continue;
+            let url = urlRaw;
+            if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
+            try { url = new URL(url).href; } catch (_) { continue; }
+            const key = keyRaw || ('custom_' + Date.now() + '_' + i);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            out.push({
+                key: key,
+                label: label || url.replace(/^https?:\/\//i, '').replace(/\/$/, ''),
+                url: url,
+                checkboxId: 'share-site-' + key.replace(/[^a-zA-Z0-9_-]/g, '_')
+            });
+        }
+        return out;
+    }
+
+    function getAllShareDestinations() {
+        return SHARE_DESTINATIONS.concat(customShareDestinations || []);
+    }
+
+    function getCustomShareDestinationsForSave() {
+        return (customShareDestinations || []).map(function (item) {
+            return { key: item.key, label: item.label, url: item.url };
+        });
+    }
+
+    function renderCustomShareDestinationSettings() {
+        const list = document.getElementById('share-custom-destinations-list');
+        if (!list) return;
+        list.innerHTML = '';
+        if (!customShareDestinations.length) {
+            const empty = document.createElement('p');
+            empty.className = 'text-xs text-slate-500 dark:text-slate-400';
+            empty.textContent = '추가된 대상이 없습니다.';
+            list.appendChild(empty);
+            return;
+        }
+        customShareDestinations.forEach(function (item) {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2';
+
+            const label = document.createElement('label');
+            label.className = 'flex items-center gap-2 cursor-pointer select-none flex-1 min-w-0';
+
+            const check = document.createElement('input');
+            check.type = 'checkbox';
+            check.id = item.checkboxId;
+            check.className = 'rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500';
+            check.addEventListener('change', function () { setTimeout(toggleShareSiteSelection, 0); });
+
+            const text = document.createElement('span');
+            text.className = 'text-sm font-medium text-slate-700 dark:text-slate-300 truncate';
+            text.textContent = item.label;
+            text.title = item.url;
+
+            label.appendChild(check);
+            label.appendChild(text);
+
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'px-2 py-0.5 rounded border border-red-300 dark:border-red-700 text-[11px] text-red-600 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20';
+            del.textContent = 'x';
+            del.title = '삭제';
+            del.addEventListener('click', function () { removeCustomShareDestination(item.key); });
+
+            row.appendChild(label);
+            row.appendChild(del);
+            list.appendChild(row);
+        });
+    }
+
     function normalizeShareSites(settings) {
         const s = settings || {};
         if (Array.isArray(s.shareSites)) {
-            const allowed = new Set(SHARE_DESTINATIONS.map(function (item) { return item.key; }));
+            const allowed = new Set(getAllShareDestinations().map(function (item) { return item.key; }));
             return s.shareSites
                 .map(function (value) { return String(value || '').trim(); })
                 .filter(function (value, index, arr) {
@@ -144,7 +227,7 @@
 
     function syncShareSiteCheckboxes(selectedKeys) {
         const selected = new Set(Array.isArray(selectedKeys) ? selectedKeys : []);
-        SHARE_DESTINATIONS.forEach(function (item) {
+        getAllShareDestinations().forEach(function (item) {
             const el = document.getElementById(item.checkboxId);
             if (el) el.checked = selected.has(item.key);
         });
@@ -152,7 +235,7 @@
 
     function getSelectedShareDestinations() {
         const selected = new Set(Array.isArray(shareSites) ? shareSites : []);
-        return SHARE_DESTINATIONS.filter(function (item) { return selected.has(item.key); });
+        return getAllShareDestinations().filter(function (item) { return selected.has(item.key); });
     }
 
     function ensureShareLinksModalUi() {
@@ -302,6 +385,8 @@
         const toDocsCheck = document.getElementById('todocs-visible');
         toDocsVisible = getToDocsVisibleFromSettings(s) || !!(toDocsCheck && toDocsCheck.checked);
         docSyncVisible = getDocSyncVisibleFromSettings(s);
+        customShareDestinations = normalizeCustomShareDestinations(s.customShareDestinations);
+        renderCustomShareDestinationSettings();
         shareSites = normalizeShareSites(s);
         syncShareSiteCheckboxes(shareSites);
 
@@ -612,8 +697,9 @@
     function findShareDestination(destKey) {
         const key = String(destKey || '').trim();
         if (!key) return null;
-        for (let i = 0; i < SHARE_DESTINATIONS.length; i += 1) {
-            if (SHARE_DESTINATIONS[i].key === key) return SHARE_DESTINATIONS[i];
+        const all = getAllShareDestinations();
+        for (let i = 0; i < all.length; i += 1) {
+            if (all[i].key === key) return all[i];
         }
         return null;
     }
@@ -648,16 +734,78 @@
 
     async function toggleShareSiteSelection() {
         await ensureGoogleDocsUiReady();
-        const selectedKeys = SHARE_DESTINATIONS
+        const selectedKeys = getAllShareDestinations()
             .filter(function (item) {
                 const el = document.getElementById(item.checkboxId);
                 return !!(el && el.checked);
             })
             .map(function (item) { return item.key; });
 
-        await setAiSettings({ shareSites: selectedKeys });
+        await setAiSettings({
+            shareSites: selectedKeys,
+            customShareDestinations: getCustomShareDestinationsForSave()
+        });
         const settings = await getAiSettings();
-        applyToDocsVisibility(settings || { shareSites: selectedKeys });
+        applyToDocsVisibility(settings || { shareSites: selectedKeys, customShareDestinations: getCustomShareDestinationsForSave() });
+    }
+
+    async function addShareDestinationFromSettings() {
+        await ensureGoogleDocsUiReady();
+        const nameInput = document.getElementById('share-custom-name');
+        const urlInput = document.getElementById('share-custom-url');
+        const rawName = String(nameInput && nameInput.value ? nameInput.value : '').trim();
+        const rawUrl = String(urlInput && urlInput.value ? urlInput.value : '').trim();
+        if (!rawUrl) {
+            if (typeof showToast === 'function') showToast('주소를 입력해주세요.');
+            return;
+        }
+        let normalizedUrl = rawUrl;
+        if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = 'https://' + normalizedUrl;
+        try { normalizedUrl = new URL(normalizedUrl).href; } catch (_) {
+            if (typeof showToast === 'function') showToast('유효한 주소를 입력해주세요.');
+            return;
+        }
+
+        const exists = getAllShareDestinations().some(function (item) {
+            return String(item.url || '').trim().toLowerCase() === normalizedUrl.toLowerCase();
+        });
+        if (exists) {
+            if (typeof showToast === 'function') showToast('이미 등록된 주소입니다.');
+            return;
+        }
+
+        const fallbackName = normalizedUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+        const key = 'custom_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        const item = {
+            key: key,
+            label: rawName || fallbackName,
+            url: normalizedUrl,
+            checkboxId: 'share-site-' + key
+        };
+        customShareDestinations.push(item);
+        if (!shareSites.includes(item.key)) shareSites.push(item.key);
+        renderCustomShareDestinationSettings();
+        syncShareSiteCheckboxes(shareSites);
+        await setAiSettings({
+            shareSites: shareSites.slice(),
+            customShareDestinations: getCustomShareDestinationsForSave()
+        });
+        if (nameInput) nameInput.value = '';
+        if (urlInput) urlInput.value = '';
+        if (typeof showToast === 'function') showToast('Share 대상이 추가되었습니다.');
+    }
+
+    async function removeCustomShareDestination(key) {
+        const targetKey = String(key || '').trim();
+        if (!targetKey) return;
+        customShareDestinations = customShareDestinations.filter(function (item) { return item.key !== targetKey; });
+        shareSites = shareSites.filter(function (k) { return k !== targetKey; });
+        renderCustomShareDestinationSettings();
+        syncShareSiteCheckboxes(shareSites);
+        await setAiSettings({
+            shareSites: shareSites.slice(),
+            customShareDestinations: getCustomShareDestinationsForSave()
+        });
     }
 
     async function toggleShareLinksMenu() {
@@ -879,11 +1027,13 @@
         if (pickerFeedback) pickerFeedback.textContent = '';
 
         shareSites = DEFAULT_SHARE_SITES.slice();
+        customShareDestinations = [];
+        renderCustomShareDestinationSettings();
         syncShareSiteCheckboxes(shareSites);
         shareMenuExpanded = false;
 
         stopDocSync(false);
-        applyToDocsVisibility({ googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: shareSites });
+        applyToDocsVisibility({ googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: shareSites, customShareDestinations: [] });
     }
 
     function loadGoogleDocsSettingsUI(settings) {
@@ -893,6 +1043,8 @@
         if (toDocsCheck) toDocsCheck.checked = !!(settings && settings.toDocsVisible === true);
         const docSyncCheck = document.getElementById('docsync-visible');
         if (docSyncCheck) docSyncCheck.checked = !!(settings && settings.docSyncVisible === true);
+        customShareDestinations = normalizeCustomShareDestinations(settings && settings.customShareDestinations);
+        renderCustomShareDestinationSettings();
         shareSites = normalizeShareSites(settings || {});
         syncShareSiteCheckboxes(shareSites);
 
@@ -933,6 +1085,8 @@
         closeShareLinksModal,
         moveShareLinksModalToRightSide,
         toggleShareSiteSelection,
+        addShareDestinationFromSettings,
+        removeCustomShareDestination,
         saveGoogleDocsCredentials,
         validateGoogleDocsCredentialInputsUI,
         applyToDocsVisibility,
@@ -958,6 +1112,8 @@
     window.closeShareLinksModal = closeShareLinksModal;
     window.moveShareLinksModalToRightSide = moveShareLinksModalToRightSide;
     window.toggleShareSiteSelection = toggleShareSiteSelection;
+    window.addShareDestinationFromSettings = addShareDestinationFromSettings;
+    window.removeCustomShareDestination = removeCustomShareDestination;
     window.saveGoogleDocsCredentials = saveGoogleDocsCredentials;
     window.validateGoogleDocsCredentialInputsUI = validateGoogleDocsCredentialInputsUI;
     window.applyToDocsVisibility = applyToDocsVisibility;

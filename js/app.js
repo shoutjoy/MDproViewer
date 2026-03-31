@@ -783,11 +783,15 @@ window.onload = async () => {
         }
         if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'z') {
             e.preventDefault();
+            let handledBySnapshot = false;
             if (e.shiftKey) {
-                document.execCommand('redo');
+                const redone = document.execCommand('redo');
+                if (!redone) handledBySnapshot = redoFromReplaceStack();
             } else {
-                document.execCommand('undo');
+                const undone = document.execCommand('undo');
+                if (!undone) handledBySnapshot = undoFromReplaceStack();
             }
+            if (handledBySnapshot) return;
             setTimeout(() => {
                 currentMarkdown = editorTextarea.value;
                 renderMarkdown();
@@ -798,7 +802,8 @@ window.onload = async () => {
         }
         if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'y') {
             e.preventDefault();
-            document.execCommand('redo');
+            const redone = document.execCommand('redo');
+            if (!redone && redoFromReplaceStack()) return;
             setTimeout(() => {
                 currentMarkdown = editorTextarea.value;
                 renderMarkdown();
@@ -6448,6 +6453,67 @@ function closeFindReplace() {
 }
 
 let lastFindIndex = -1;
+const replaceUndoStack = [];
+const replaceRedoStack = [];
+const REPLACE_UNDO_LIMIT = 80;
+
+function captureEditorSnapshot() {
+    if (!editorTextarea) return null;
+    return {
+        value: String(editorTextarea.value || ''),
+        selectionStart: Number(editorTextarea.selectionStart) || 0,
+        selectionEnd: Number(editorTextarea.selectionEnd) || 0,
+        scrollTop: Number(editorTextarea.scrollTop) || 0,
+        scrollLeft: Number(editorTextarea.scrollLeft) || 0
+    };
+}
+
+function applyEditorSnapshot(snapshot) {
+    if (!editorTextarea || !snapshot) return false;
+    editorTextarea.value = String(snapshot.value || '');
+    const max = editorTextarea.value.length;
+    const start = Math.max(0, Math.min(Number(snapshot.selectionStart) || 0, max));
+    const end = Math.max(0, Math.min(Number(snapshot.selectionEnd) || 0, max));
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    editorTextarea.scrollTop = Number(snapshot.scrollTop) || 0;
+    editorTextarea.scrollLeft = Number(snapshot.scrollLeft) || 0;
+    currentMarkdown = editorTextarea.value;
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    return true;
+}
+
+function pushReplaceUndoSnapshot() {
+    const snap = captureEditorSnapshot();
+    if (!snap) return;
+    replaceUndoStack.push(snap);
+    if (replaceUndoStack.length > REPLACE_UNDO_LIMIT) replaceUndoStack.shift();
+    replaceRedoStack.length = 0;
+}
+
+function undoFromReplaceStack() {
+    if (!replaceUndoStack.length) return false;
+    const prev = replaceUndoStack.pop();
+    const current = captureEditorSnapshot();
+    if (current) {
+        replaceRedoStack.push(current);
+        if (replaceRedoStack.length > REPLACE_UNDO_LIMIT) replaceRedoStack.shift();
+    }
+    return applyEditorSnapshot(prev);
+}
+
+function redoFromReplaceStack() {
+    if (!replaceRedoStack.length) return false;
+    const next = replaceRedoStack.pop();
+    const current = captureEditorSnapshot();
+    if (current) {
+        replaceUndoStack.push(current);
+        if (replaceUndoStack.length > REPLACE_UNDO_LIMIT) replaceUndoStack.shift();
+    }
+    return applyEditorSnapshot(next);
+}
 
 function swapFindReplaceValues() {
     const findInput = document.getElementById('find-input');
@@ -6574,6 +6640,7 @@ function replaceRangeWithOptions(text, start, end, replacement) {
 function replaceTextareaContentWithUndo(nextText, selectionStart, selectionEnd) {
     if (!editorTextarea) return;
     const normalizedText = String(nextText || '');
+    if (normalizedText !== String(editorTextarea.value || '')) pushReplaceUndoSnapshot();
     editorTextarea.focus();
     editorTextarea.setSelectionRange(0, editorTextarea.value.length);
     const applied = document.execCommand('insertText', false, normalizedText);
