@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 
 <head>
@@ -423,6 +423,12 @@
                     <button type="button" onclick="insertListAtSelection('number')"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
                         title="번호 목록 (Alt+6)">[1.list]</button>
+                    <button type="button" onclick="insertAtCursor('code')"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
+                        title="코드 블록 삽입 (Alt+C)">[code]</button>
+                    <button type="button" onclick="insertAtCursor('mermaid')"
+                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
+                        title="Mermaid 다이어그램 블록 삽입">[mermaid]</button>
 
                     <button onclick="insertAtCursor('quote')"
                         class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
@@ -668,11 +674,11 @@
                     class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
                 <div class="flex gap-2">
                     <button type="button" onclick="selectAllMergeItems()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체선택</button>
+                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">&#xC804;&#xCCB4;&#xC120;&#xD0DD;</button>
                     <button type="button" onclick="deselectAllMergeItems()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체 해제</button>
+                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">&#xC804;&#xCCB4; &#xD574;&#xC81C;</button>
                     <button type="button" id="merge-selected-only-btn" onclick="toggleSelectedOnlyMergeView()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700">선택보기</button>
+                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700">&#xC120;&#xD0DD; &#xBCF4;&#xAE30;</button>
                 </div>
             </div>
             <div id="merge-list" class="flex-1 overflow-y-auto space-y-2 min-h-0 custom-scrollbar">
@@ -1057,8 +1063,51 @@
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="todocs-visible" onclick="setTimeout(toggleToDocsSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">toDocs 보이기</span>
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Share 보이기</span>
                                 </label>
+                                <div id="share-destinations-settings" class="pl-6 pt-1 space-y-2">
+                                    <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">Share Destinations</p>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-docs" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">docs.new</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-gemini" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">gemini.new</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-story" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">story.new</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-sheets" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">sheets.new</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-slides" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">slides.new</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-gist" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">gist.new</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-board" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">board.new</span>
+                                    </label>
+                                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                                        <input type="checkbox" id="share-site-pdf2ppt" onclick="setTimeout(toggleShareSiteSelection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm font-medium text-slate-700 dark:text-slate-300">pdf to pptx</span>
+                                    </label>
+                                </div>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="sites-visible" onclick="setTimeout(toggleSitesSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
@@ -1091,10 +1140,28 @@
             </div>
 
             <div class="flex gap-2">
+                <button type="button" id="btn-open-indb-status" onclick="openInDbStatusModal()"
+                    class="px-4 py-2 border-2 border-slate-700 rounded-md text-sm font-medium text-slate-800 bg-white hover:bg-slate-50">
+                    inDB보기
+                </button>
                 <button type="button" onclick="closeSettingsModal()"
                     class="flex-1 px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm">
                     닫기
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- inDB Status Modal -->
+    <div id="indb-status-modal" class="fixed inset-0 bg-black/30 hidden items-center justify-center z-[70] no-print" onclick="if(event.target===this) closeInDbStatusModal()">
+        <div class="w-[min(680px,92vw)] h-[min(680px,86vh)] bg-white dark:bg-slate-900 border-2 border-slate-800 shadow-2xl flex flex-col">
+            <div class="px-4 py-2 bg-indigo-600 text-white text-2xl text-center tracking-wide">inDB Status</div>
+            <div id="indb-status-list" class="flex-1 overflow-auto p-4 space-y-3 bg-slate-100 dark:bg-slate-800"></div>
+            <div class="border-t-2 border-slate-700 p-2 flex items-center justify-center gap-2 bg-white dark:bg-slate-900">
+                <button type="button" onclick="deleteAllInDbStatusItems()"
+                    class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">전체지우기</button>
+                <button type="button" onclick="closeInDbStatusModal()"
+                    class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">닫기</button>
             </div>
         </div>
     </div>
@@ -1393,14 +1460,17 @@
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous" defer></script>
     <script src="./js/md_katex_render.js" charset="utf-8" defer></script>
     <script src="./trt/special_trt.js" charset="utf-8" defer></script>
+    <script src="./trt/mermaid_render.js" charset="utf-8" defer></script>
     <script src="./Setting/user.js" charset="utf-8" defer></script>
     <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
     <script src="./imageDB/imageDB.js" charset="utf-8" defer></script>
+    <script src="./imageDB/image_insert.js" charset="utf-8" defer></script>
     <script src="./Scholarref/scholarref.js" charset="utf-8" defer></script>
     <script src="./js/extendFiles/extend-files.js" charset="utf-8" defer></script>
     <script src="./trt/editorRule.js" charset="utf-8" defer></script>
     <script src="./googleDocs/googleDocs.js?v=20260330-1" charset="utf-8" defer></script>
     <script src="./js/app.js" charset="utf-8" defer></script>
+    <script src="./sidebar_left/merge/merge.js" charset="utf-8" defer></script>
     <script src="https://apis.google.com/js/api.js" defer onload="onGoogleApiJsLoaded()"></script>
     <script src="https://accounts.google.com/gsi/client" defer onload="onGoogleGisLoaded()"></script>
 </body>

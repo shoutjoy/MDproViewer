@@ -13,6 +13,8 @@
         { action: 'Heading H5', keys: ['Ctrl', 'Alt', '5'] },
         { action: 'Bullet list', keys: ['Alt', '5'] },
         { action: 'Number list', keys: ['Alt', '6'] },
+        { action: 'Code block', keys: ['Alt', 'C'] },
+        { action: 'Mermaid block', keys: ['Alt', 'M'] },
         { action: 'Find/Replace', keys: ['Ctrl', 'H'] },
         { action: 'Bold', keys: ['Ctrl', 'B'] },
         { action: 'Italic', keys: ['Ctrl', 'I'] },
@@ -97,6 +99,16 @@
             if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && isDigitKey(e, 6)) {
                 e.preventDefault();
                 if (typeof deps.insertListAtSelection === 'function') deps.insertListAtSelection('number');
+                return;
+            }
+            if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyC' || e.key === 'c' || e.key === 'C')) {
+                e.preventDefault();
+                if (isEditMode && editorTextarea && typeof deps.insertAtCursor === 'function') deps.insertAtCursor('code');
+                return;
+            }
+            if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyM' || e.key === 'm' || e.key === 'M')) {
+                e.preventDefault();
+                if (isEditMode && editorTextarea && typeof deps.insertAtCursor === 'function') deps.insertAtCursor('mermaid');
                 return;
             }
             if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyL' || e.key === 'l' || e.key === 'L')) {

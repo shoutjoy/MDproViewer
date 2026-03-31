@@ -2,7 +2,17 @@
     'use strict';
 
     const GDOCS_SCOPE = 'https://www.googleapis.com/auth/documents';
-    const TOD0CS_TARGET_URL = 'https://docs.google.com/document/d/1GxyODdDK180K22j5e39oRTW7NrpgGDKtCu-5tTegCKU/edit?tab=t.0';
+    const SHARE_DESTINATIONS = [
+        { key: 'docs', label: 'docs.new', url: 'https://docs.new/', checkboxId: 'share-site-docs' },
+        { key: 'gemini', label: 'gemini.new', url: 'https://gemini.google.com/app', checkboxId: 'share-site-gemini' },
+        { key: 'story', label: 'story.new', url: 'https://story.new/', checkboxId: 'share-site-story' },
+        { key: 'sheets', label: 'sheets.new', url: 'https://sheets.new/', checkboxId: 'share-site-sheets' },
+        { key: 'slides', label: 'slides.new', url: 'https://slides.new/', checkboxId: 'share-site-slides' },
+        { key: 'gist', label: 'gist.new', url: 'https://gist.new/', checkboxId: 'share-site-gist' },
+        { key: 'board', label: 'board.new', url: 'https://board.new', checkboxId: 'share-site-board' },
+        { key: 'pdf2ppt', label: 'pdf to pptx', url: 'https://pdf2pptmake.onrender.com/', checkboxId: 'share-site-pdf2ppt' }
+    ];
+    const DEFAULT_SHARE_SITES = ['docs'];
     const DOCSYNC_DEBOUNCE_MS = 2000;
 
     let gdocsGisInited = false;
@@ -10,8 +20,11 @@
     let gdocsTokenClientClientId = '';
     let currentAccessToken = '';
 
+    let googleDocsUseEnabled = false;
     let toDocsVisible = false;
     let docSyncVisible = false;
+    let shareMenuExpanded = false;
+    let shareSites = DEFAULT_SHARE_SITES.slice();
 
     let docSyncEnabled = false;
     let docSyncBusy = false;
@@ -19,6 +32,7 @@
     let docSyncTimer = null;
     let docSyncDocumentId = '';
     let docSyncLastText = '';
+    let shareModalDragBound = false;
 
     async function loadHtmlFragment(path) {
         try {
@@ -107,28 +121,212 @@
         return !!(settings && settings.toDocsVisible === true);
     }
 
+    function getGoogleDocsUseEnabledFromSettings(settings) {
+        return !!(settings && settings.googleDocsUseEnabled === true);
+    }
+
     function getDocSyncVisibleFromSettings(settings) {
         return !!(settings && settings.docSyncVisible === true);
     }
 
+    function normalizeShareSites(settings) {
+        const s = settings || {};
+        if (Array.isArray(s.shareSites)) {
+            const allowed = new Set(SHARE_DESTINATIONS.map(function (item) { return item.key; }));
+            return s.shareSites
+                .map(function (value) { return String(value || '').trim(); })
+                .filter(function (value, index, arr) {
+                    return value && allowed.has(value) && arr.indexOf(value) === index;
+                });
+        }
+        return DEFAULT_SHARE_SITES.slice();
+    }
+
+    function syncShareSiteCheckboxes(selectedKeys) {
+        const selected = new Set(Array.isArray(selectedKeys) ? selectedKeys : []);
+        SHARE_DESTINATIONS.forEach(function (item) {
+            const el = document.getElementById(item.checkboxId);
+            if (el) el.checked = selected.has(item.key);
+        });
+    }
+
+    function getSelectedShareDestinations() {
+        const selected = new Set(Array.isArray(shareSites) ? shareSites : []);
+        return SHARE_DESTINATIONS.filter(function (item) { return selected.has(item.key); });
+    }
+
+    function ensureShareLinksModalUi() {
+        if (document.getElementById('share-links-modal')) return;
+        const modal = document.createElement('div');
+        modal.id = 'share-links-modal';
+        modal.className = 'fixed inset-0 bg-black/30 hidden items-start justify-center z-[65] no-print';
+        modal.setAttribute('onclick', "if(event.target===this) closeShareLinksModal()");
+        modal.innerHTML = ''
+            + '<div id="share-links-modal-panel" class="absolute top-24 left-1/2 -translate-x-1/2 w-[min(860px,94vw)] bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4">'
+            + '  <div id="share-links-modal-header" class="flex items-center justify-between mb-3 cursor-move select-none">'
+            + '    <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100">Share</h3>'
+            + '    <div class="flex items-center gap-2">'
+            + '      <button type="button" onclick="moveShareLinksModalToRightSide()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">[>>]</button>'
+            + '      <button type="button" onclick="closeShareLinksModal()" class="px-3 py-1 rounded border border-slate-300 dark:border-slate-600 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>'
+            + '    </div>'
+            + '  </div>'
+            + '  <p class="text-sm text-slate-600 dark:text-slate-300 mb-3">Click a destination. Copy Styled runs first, then the site opens in a new tab.</p>'
+            + '  <div id="share-links-modal-list" class="flex flex-col gap-2 max-h-[60vh] overflow-auto pr-1"></div>'
+            + '</div>';
+        document.body.appendChild(modal);
+        bindShareLinksModalDrag();
+    }
+
+    function bindShareLinksModalDrag() {
+        if (shareModalDragBound) return;
+        const panel = document.getElementById('share-links-modal-panel');
+        const header = document.getElementById('share-links-modal-header');
+        if (!panel || !header) return;
+
+        let dragging = false;
+        let startX = 0;
+        let startY = 0;
+        let startLeft = 0;
+        let startTop = 0;
+
+        header.addEventListener('mousedown', function (event) {
+            if (event.button !== 0) return;
+            dragging = true;
+            startX = event.clientX;
+            startY = event.clientY;
+            const rect = panel.getBoundingClientRect();
+            startLeft = rect.left;
+            startTop = rect.top;
+            panel.style.left = startLeft + 'px';
+            panel.style.top = startTop + 'px';
+            panel.style.right = 'auto';
+            panel.style.transform = 'none';
+            document.body.classList.add('select-none');
+            event.preventDefault();
+        });
+
+        window.addEventListener('mousemove', function (event) {
+            if (!dragging) return;
+            const nextLeft = startLeft + (event.clientX - startX);
+            const nextTop = startTop + (event.clientY - startY);
+            panel.style.left = Math.max(6, nextLeft) + 'px';
+            panel.style.top = Math.max(6, nextTop) + 'px';
+        });
+
+        window.addEventListener('mouseup', function () {
+            if (!dragging) return;
+            dragging = false;
+            document.body.classList.remove('select-none');
+        });
+
+        shareModalDragBound = true;
+    }
+
+    function moveShareLinksModalToRightSide() {
+        const panel = document.getElementById('share-links-modal-panel');
+        if (!panel) return;
+        panel.style.left = 'auto';
+        panel.style.right = '12px';
+        panel.style.top = '84px';
+        panel.style.transform = 'none';
+        panel.style.width = 'min(420px, 92vw)';
+    }
+
+    function isShareLinksModalOpen() {
+        const modal = document.getElementById('share-links-modal');
+        return !!(modal && !modal.classList.contains('hidden'));
+    }
+
+    function closeShareLinksModal() {
+        const modal = document.getElementById('share-links-modal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        shareMenuExpanded = false;
+    }
+
+    function renderShareLinksMenu() {
+        ensureShareLinksModalUi();
+        const list = document.getElementById('share-links-modal-list');
+        if (!list) return;
+
+        const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
+        const selectedDestinations = getSelectedShareDestinations();
+        const canShow = !!toDocsVisible && !inEditMode && selectedDestinations.length > 0 && shareMenuExpanded;
+
+        list.innerHTML = '';
+        if (!canShow) {
+            closeShareLinksModal();
+            return;
+        }
+
+        selectedDestinations.forEach(function (dest) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'px-3 py-1.5 rounded border border-indigo-300 dark:border-indigo-600 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-slate-700';
+            btn.textContent = dest.label;
+            btn.title = dest.url;
+            btn.addEventListener('click', function () {
+                openShareDestination(dest.key);
+            });
+            list.appendChild(btn);
+        });
+
+        const modal = document.getElementById('share-links-modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+    }
+
+    function applyGoogleDocsUseSectionVisibility(settings) {
+        const s = settings || {};
+        googleDocsUseEnabled = getGoogleDocsUseEnabledFromSettings(s);
+        const useCheck = document.getElementById('gdocs-use-enabled');
+        const body = document.getElementById('gdocs-settings-body');
+        if (useCheck) useCheck.checked = googleDocsUseEnabled;
+        if (body) body.classList.toggle('hidden', !googleDocsUseEnabled);
+    }
+
     function applyToDocsVisibility(settings) {
         const s = settings || {};
-        toDocsVisible = getToDocsVisibleFromSettings(s);
+        googleDocsUseEnabled = getGoogleDocsUseEnabledFromSettings(s);
+        applyGoogleDocsUseSectionVisibility(s);
+        const toDocsCheck = document.getElementById('todocs-visible');
+        toDocsVisible = getToDocsVisibleFromSettings(s) || !!(toDocsCheck && toDocsCheck.checked);
         docSyncVisible = getDocSyncVisibleFromSettings(s);
+        shareSites = normalizeShareSites(s);
+        syncShareSiteCheckboxes(shareSites);
 
         const toDocsBtn = document.getElementById('btn-export-gdocs');
+        const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
         if (toDocsBtn) {
-            if (!toDocsVisible || (typeof isEditMode !== 'undefined' && isEditMode)) toDocsBtn.classList.add('hidden');
+            if (!toDocsVisible || inEditMode) toDocsBtn.classList.add('hidden');
             else toDocsBtn.classList.remove('hidden');
-            toDocsBtn.textContent = 'ToDocs';
+            toDocsBtn.textContent = 'Share';
         }
+        const shareSettingsBox = document.getElementById('share-destinations-settings');
+        if (shareSettingsBox) shareSettingsBox.classList.toggle('hidden', !toDocsVisible);
 
         const docSyncBtn = document.getElementById('btn-docsync');
         if (docSyncBtn) {
-            if (!docSyncVisible || (typeof isEditMode !== 'undefined' && isEditMode)) docSyncBtn.classList.add('hidden');
+            if (!googleDocsUseEnabled || !docSyncVisible || inEditMode) docSyncBtn.classList.add('hidden');
             else docSyncBtn.classList.remove('hidden');
             setDocSyncButtonState('', false);
         }
+
+        if (!toDocsVisible || inEditMode) shareMenuExpanded = false;
+        renderShareLinksMenu();
+    }
+
+    async function toggleGoogleDocsUseSection() {
+        const check = document.getElementById('gdocs-use-enabled');
+        const enabled = !!(check && check.checked);
+        if (!enabled && docSyncEnabled) stopDocSync(false);
+        await setAiSettings({ googleDocsUseEnabled: enabled });
+        const s = await getAiSettings();
+        const toDocsCheck = document.getElementById('todocs-visible');
+        applyToDocsVisibility(s || { googleDocsUseEnabled: enabled, toDocsVisible: !!(toDocsCheck && toDocsCheck.checked) });
     }
 
     async function toggleToDocsSection() {
@@ -137,6 +335,13 @@
         await setAiSettings({ toDocsVisible: enabled });
         const s = await getAiSettings();
         applyToDocsVisibility(s || { toDocsVisible: enabled });
+        const toDocsBtn = document.getElementById('btn-export-gdocs');
+        const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
+        if (toDocsBtn) toDocsBtn.classList.toggle('hidden', !enabled || inEditMode);
+        const shareSettingsBox = document.getElementById('share-destinations-settings');
+        if (shareSettingsBox) shareSettingsBox.classList.toggle('hidden', !enabled);
+        if (!enabled) shareMenuExpanded = false;
+        renderShareLinksMenu();
     }
 
     async function toggleDocSyncSection() {
@@ -152,7 +357,7 @@
     }
 
     function shouldShowDocSyncInViewMode() {
-        return !!docSyncVisible;
+        return !!(googleDocsUseEnabled && docSyncVisible);
     }
 
     function ensureGisReady(timeoutMs) {
@@ -394,7 +599,25 @@
     }
 
     async function openToDocs() {
+        return openShareDestination('docs');
+    }
+
+    function findShareDestination(destKey) {
+        const key = String(destKey || '').trim();
+        if (!key) return null;
+        for (let i = 0; i < SHARE_DESTINATIONS.length; i += 1) {
+            if (SHARE_DESTINATIONS[i].key === key) return SHARE_DESTINATIONS[i];
+        }
+        return null;
+    }
+
+    async function openShareDestination(destKey) {
         await ensureGoogleDocsUiReady();
+        const destination = findShareDestination(destKey);
+        if (!destination) {
+            if (typeof showToast === 'function') showToast('Share 대상이 올바르지 않습니다.');
+            return;
+        }
         setToDocsButtonBusy(true);
         try {
             let copied = false;
@@ -405,15 +628,66 @@
                 if (typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다.');
                 return;
             }
-            const proceed = window.confirm('구글문서가 열리면 Ctrl+V를 실행하세요');
-            if (!proceed) return;
-            const win = window.open(TOD0CS_TARGET_URL, '_blank', 'noopener,noreferrer');
+            const win = window.open(destination.url, '_blank', 'noopener,noreferrer');
             if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
+            if (win) closeShareLinksModal();
         } catch (err) {
-            if (typeof showToast === 'function') showToast(err && err.message ? err.message : 'ToDocs 실행 중 오류');
+            if (typeof showToast === 'function') showToast(err && err.message ? err.message : 'Share 실행 중 오류');
         } finally {
             setToDocsButtonBusy(false);
         }
+    }
+
+    async function toggleShareSiteSelection() {
+        await ensureGoogleDocsUiReady();
+        const selectedKeys = SHARE_DESTINATIONS
+            .filter(function (item) {
+                const el = document.getElementById(item.checkboxId);
+                return !!(el && el.checked);
+            })
+            .map(function (item) { return item.key; });
+
+        await setAiSettings({ shareSites: selectedKeys });
+        const settings = await getAiSettings();
+        applyToDocsVisibility(settings || { shareSites: selectedKeys });
+    }
+
+    async function toggleShareLinksMenu() {
+        await ensureGoogleDocsUiReady();
+        if (!toDocsVisible) {
+            shareMenuExpanded = false;
+            renderShareLinksMenu();
+            return;
+        }
+        if (isShareLinksModalOpen()) {
+            shareMenuExpanded = false;
+            renderShareLinksMenu();
+            return;
+        }
+
+        setToDocsButtonBusy(true);
+        try {
+            let copied = false;
+            if (typeof window.copyViewFormattedToClipboard === 'function') {
+                copied = await window.copyViewFormattedToClipboard();
+            }
+            if (!copied) {
+                if (typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다.');
+                shareMenuExpanded = false;
+                renderShareLinksMenu();
+                return;
+            }
+        } catch (err) {
+            if (typeof showToast === 'function') showToast(err && err.message ? err.message : 'Copy Styled 실행 중 오류');
+            shareMenuExpanded = false;
+            renderShareLinksMenu();
+            return;
+        } finally {
+            setToDocsButtonBusy(false);
+        }
+
+        shareMenuExpanded = true;
+        renderShareLinksMenu();
     }
 
     async function toggleGoogleDocSync() {
@@ -582,6 +856,8 @@
     }
 
     function resetGoogleDocsSettingsUI() {
+        const useCheck = document.getElementById('gdocs-use-enabled');
+        if (useCheck) useCheck.checked = false;
         const toDocsCheck = document.getElementById('todocs-visible');
         if (toDocsCheck) toDocsCheck.checked = false;
         const docSyncCheck = document.getElementById('docsync-visible');
@@ -602,15 +878,23 @@
         const pickerFeedback = document.getElementById('gdocs-picker-api-key-feedback');
         if (pickerFeedback) pickerFeedback.textContent = '';
 
+        shareSites = DEFAULT_SHARE_SITES.slice();
+        syncShareSiteCheckboxes(shareSites);
+        shareMenuExpanded = false;
+
         stopDocSync(false);
-        applyToDocsVisibility({ toDocsVisible: false, docSyncVisible: false });
+        applyToDocsVisibility({ googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: shareSites });
     }
 
     function loadGoogleDocsSettingsUI(settings) {
+        const useCheck = document.getElementById('gdocs-use-enabled');
+        if (useCheck) useCheck.checked = !!(settings && settings.googleDocsUseEnabled === true);
         const toDocsCheck = document.getElementById('todocs-visible');
         if (toDocsCheck) toDocsCheck.checked = !!(settings && settings.toDocsVisible === true);
         const docSyncCheck = document.getElementById('docsync-visible');
         if (docSyncCheck) docSyncCheck.checked = !!(settings && settings.docSyncVisible === true);
+        shareSites = normalizeShareSites(settings || {});
+        syncShareSiteCheckboxes(shareSites);
 
         const clientInput = document.getElementById('gdocs-client-id');
         if (clientInput) clientInput.value = settings && settings.googleDocsClientId ? settings.googleDocsClientId : '';
@@ -622,7 +906,7 @@
         if (feedback) feedback.textContent = '';
 
         validateGoogleDocsCredentialInputsUI();
-        applyToDocsVisibility(settings || { toDocsVisible: false, docSyncVisible: false });
+        applyToDocsVisibility(settings || { googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: shareSites });
     }
 
     function onGoogleApiJsLoaded() {
@@ -642,11 +926,17 @@
         onGoogleApiJsLoaded,
         onGoogleGisLoaded,
         openToDocs,
+        openShareDestination,
         exportCurrentToGoogleDocs: openToDocs,
         toggleGoogleDocSync,
+        toggleShareLinksMenu,
+        closeShareLinksModal,
+        moveShareLinksModalToRightSide,
+        toggleShareSiteSelection,
         saveGoogleDocsCredentials,
         validateGoogleDocsCredentialInputsUI,
         applyToDocsVisibility,
+        toggleGoogleDocsUseSection,
         toggleToDocsSection,
         toggleDocSyncSection,
         handleEditorChanged,
@@ -661,11 +951,17 @@
     window.onGoogleApiJsLoaded = onGoogleApiJsLoaded;
     window.onGoogleGisLoaded = onGoogleGisLoaded;
     window.openToDocs = openToDocs;
+    window.openShareDestination = openShareDestination;
     window.exportCurrentToGoogleDocs = openToDocs;
     window.toggleGoogleDocSync = toggleGoogleDocSync;
+    window.toggleShareLinksMenu = toggleShareLinksMenu;
+    window.closeShareLinksModal = closeShareLinksModal;
+    window.moveShareLinksModalToRightSide = moveShareLinksModalToRightSide;
+    window.toggleShareSiteSelection = toggleShareSiteSelection;
     window.saveGoogleDocsCredentials = saveGoogleDocsCredentials;
     window.validateGoogleDocsCredentialInputsUI = validateGoogleDocsCredentialInputsUI;
     window.applyToDocsVisibility = applyToDocsVisibility;
+    window.toggleGoogleDocsUseSection = toggleGoogleDocsUseSection;
     window.toggleToDocsSection = toggleToDocsSection;
     window.toggleDocSyncSection = toggleDocSyncSection;
     window.handleGoogleDocActiveDocumentChanged = handleActiveDocumentChanged;

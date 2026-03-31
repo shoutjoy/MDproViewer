@@ -296,3 +296,168 @@ body.theme-light .ssp-ai-sidebar .ssp-img-history-item .ssp-h-label { color: #64
   .viewer-fs-link-input-wrap { flex-direction: column; align-items: stretch; }
   .viewer-fs-link-open { text-align: center; }
 }
+
+/* App font-size sync (follow main app font controls) */
+:root {
+  --md-app-font-size: 16px;
+  --ai-font-base: clamp(12px, calc(var(--md-app-font-size, 16px) * 0.84), 22px);
+  --ai-font-sm: calc(var(--ai-font-base) * 0.9);
+  --ai-font-xs: calc(var(--ai-font-base) * 0.82);
+  --ai-font-lg: calc(var(--ai-font-base) * 1.08);
+}
+
+.scholar-ai-sidebar,
+.ssp-ai-sidebar,
+.viewer-fs-overlay {
+  font-size: var(--ai-font-base);
+}
+
+.scholar-ai-header h3,
+.ssp-ai-sidebar .ssp-header h3 {
+  font-size: var(--ai-font-lg);
+}
+
+.scholar-ai-body label,
+#scholar-ai-model-panel label,
+.scholar-ai-history label,
+.ssp-ai-sidebar label,
+.ssp-img-link-label,
+.ssp-ai-sidebar .ssp-status,
+.viewer-fs-gallery-title,
+.viewer-fs-gallery-label {
+  font-size: var(--ai-font-sm) !important;
+}
+
+.scholar-ai-header .sa-btn,
+.scholar-ai-footer .sa-btn,
+.scholar-ai-insert-menu button,
+.scholar-ai-history-search,
+.scholar-ai-history-item,
+.scholar-ai-history-item .sa-h-save,
+.scholar-ai-history-item .sa-h-del,
+.ssp-ai-sidebar select,
+.ssp-ai-sidebar textarea,
+.ssp-ai-sidebar .ssp-upload,
+.ssp-btn-generate,
+.ssp-btn-imgbb,
+.ssp-btn-insert-md,
+.ssp-btn-insert-html,
+.ssp-image-link-input,
+.ssp-ai-sidebar .ssp-ratio-btn,
+.viewer-fs-toolbar button,
+.viewer-fs-gallery-time {
+  font-size: var(--ai-font-sm) !important;
+}
+
+.scholar-ai-body textarea,
+.scholar-ai-result,
+.scholar-ai-result-zoom-box .scholar-ai-result-zoom-body textarea,
+.scholar-ai-result-zoom-box .scholar-ai-result-zoom-view {
+  font-size: var(--ai-font-base) !important;
+}
+
+/* Override inline tiny-size declarations in injected HTML */
+#sa-pre-prompt-btn,
+#sa-model-btn,
+#scholar-ai-pre-prompt-text,
+#scholar-ai-model-select,
+#scholar-ai-run-btn,
+#scholar-ai-stop-btn,
+#scholar-ai-zoom-label,
+#scholar-ai-zoom-mode-edit,
+#scholar-ai-zoom-mode-view,
+#ssp-progress-pct,
+#ssp-progress-wrap .sa-btn,
+#ssp-imgbb-settings label,
+#ssp-imgbb-settings-status,
+#viewer-fs-zoom-val {
+  font-size: var(--ai-font-sm) !important;
+}
+
+.scholar-ai-footer .sa-font {
+  font-size: var(--ai-font-xs) !important;
+}
+
+/* Purple theme alignment (keep imgBB green) */
+:root {
+  --md-ai-purple: #4f46e5;
+  --md-ai-purple-strong: #4338ca;
+  --md-ai-purple-soft: #eef2ff;
+  --md-ai-purple-border: #c7d2fe;
+}
+
+body.theme-light .scholar-ai-header h3,
+body.theme-light .ssp-ai-sidebar .ssp-header h3 {
+  color: var(--md-ai-purple);
+  font-weight: 800;
+}
+
+body.theme-light .scholar-ai-body label,
+body.theme-light #scholar-ai-model-panel label,
+body.theme-light .scholar-ai-history label,
+body.theme-light .ssp-ai-sidebar label,
+body.theme-light .ssp-img-link-label,
+body.theme-light .ssp-ai-sidebar .ssp-status {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.scholar-ai-sidebar .sa-btn,
+.ssp-ai-sidebar .sa-btn,
+.viewer-fs-toolbar button {
+  font-weight: 700;
+}
+
+body.theme-light .scholar-ai-sidebar .sa-btn:not(.ghost),
+body.theme-light .ssp-ai-sidebar .sa-btn:not(.ghost),
+body.theme-light #scholar-ai-run-btn,
+body.theme-light .ssp-btn-generate {
+  background: var(--md-ai-purple) !important;
+  border-color: var(--md-ai-purple) !important;
+  color: #ffffff !important;
+}
+
+body.theme-light .scholar-ai-sidebar .sa-btn:not(.ghost):hover,
+body.theme-light .ssp-ai-sidebar .sa-btn:not(.ghost):hover,
+body.theme-light #scholar-ai-run-btn:hover,
+body.theme-light .ssp-btn-generate:hover {
+  background: var(--md-ai-purple-strong) !important;
+  border-color: var(--md-ai-purple-strong) !important;
+}
+
+body.theme-light .scholar-ai-sidebar .sa-btn.ghost,
+body.theme-light .ssp-ai-sidebar .sa-btn.ghost {
+  background: var(--md-ai-purple-soft) !important;
+  border: 1px solid var(--md-ai-purple-border) !important;
+  color: var(--md-ai-purple-strong) !important;
+}
+
+body.theme-light .scholar-ai-sidebar .sa-btn.ghost:hover,
+body.theme-light .ssp-ai-sidebar .sa-btn.ghost:hover {
+  background: #e0e7ff !important;
+  border-color: #a5b4fc !important;
+}
+
+body.theme-light .scholar-ai-body .sa-btn.ghost.active {
+  border-color: var(--md-ai-purple) !important;
+  color: var(--md-ai-purple) !important;
+  background: #e0e7ff !important;
+}
+
+body.theme-light .ssp-ai-sidebar .ssp-ratio-btn.active {
+  border-color: var(--md-ai-purple) !important;
+  color: var(--md-ai-purple) !important;
+  background: rgba(79, 70, 229, 0.16) !important;
+}
+
+/* Keep imgBB actions green */
+body.theme-light .ssp-btn-imgbb,
+body.theme-light .ssp-btn-imgbb:hover,
+body.theme-light .viewer-fs-imgbb-btn,
+body.theme-light .viewer-fs-imgbb-btn:hover,
+body.theme-light .ssp-h-upload,
+body.theme-light .ssp-h-upload:hover {
+  background: #0d9488 !important;
+  border-color: #0f766e !important;
+  color: #ffffff !important;
+}

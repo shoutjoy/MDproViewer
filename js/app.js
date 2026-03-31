@@ -1,4 +1,4 @@
-// IndexedDB Logic
+﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
 const DB_VERSION = 4;
 let db;
@@ -7,6 +7,7 @@ const AI_SETTINGS_KEY = 'ai_settings';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
 const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
+const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
 
 // State
 let currentMarkdown = "";
@@ -16,6 +17,7 @@ let currentDbDocId = null;
 let isEditMode = true;
 let pageScale = 1.0;
 let fontSize = 16;
+document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
 let modalMode = 'link';
 let movingDocId = null;
 let previewPopupWindow = null;
@@ -55,6 +57,7 @@ let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
 let selectionWrapEnabled = true;
+let viewModeEditEnabled = false;
 let sitesPanelOpen = false;
 let sitesList = [];
 let sitesPanelCompact = false;
@@ -100,8 +103,12 @@ let lastExternalOpenSignature = '';
 const EXTERNAL_LOAD_TYPES = ['mdViewerLoad', 'notebooklm', 'notebooklm-export', 'loadMarkdown'];
 const NOTEBOOKLM_ORIGINS = ['https://notebooklm.google.com', 'https://aistudio.google.com'];
 const ROOT_FOLDER_NAME = 'ROOT';
+const LOCAL_BOOT_DELETE_TITLES = new Set([
+    'shoutjoy/mdlivedata',
+    'shoutjoy/mdlivedata.md'
+]);
 const DEFAULT_SITES_LIST = [
-    { name: 'data시각화', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
+    { name: 'data visualization', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
     { name: 'Serial Mediation effect', url: 'https://parkjoonghee.shinyapps.io/sobel/' },
     { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' }
 ];
@@ -167,7 +174,7 @@ async function applyIncomingOpenedFile(rawPayload, options) {
     }
 
     if (!payload.hasText) {
-        if (opts.showMissingTextToast) showToast('파일 경로는 전달되었지만 본문(text)이 없어 열지 못했습니다.');
+        if (opts.showMissingTextToast) showToast('File path was received, but body text was missing, so it could not be opened.');
         return false;
     }
 
@@ -205,7 +212,7 @@ window.addEventListener('message', function (ev) {
         if (!isEditMode && typeof toggleMode === 'function') toggleMode('edit');
         if (typeof insertLiteralAtCursor === 'function') {
             insertLiteralAtCursor(markdown);
-            if (typeof showToast === 'function') showToast('Highlight 내용을 문서에 삽입했습니다.');
+            if (typeof showToast === 'function') showToast('Inserted highlight content into the document.');
         }
         return;
     }
@@ -382,6 +389,7 @@ window.onload = async () => {
 
         await initDB();
         await ensureRootFolder();
+        await cleanupBootBlockedDocuments();
         renderDBList();
 
         if (pendingExternalContent) {
@@ -483,6 +491,7 @@ window.onload = async () => {
         currentMarkdown = editorTextarea.value;
         performAutoSave();
         updatePreviewPopupContent();
+        if (activeSidebarTab === 'toc') renderTOC();
         if (window.GoogleDocs && typeof window.GoogleDocs.handleEditorChanged === 'function') {
             window.GoogleDocs.handleEditorChanged();
         }
@@ -522,6 +531,82 @@ window.onload = async () => {
         findInput.addEventListener('input', function () {
             lastFindIndex = -1;
         });
+    }
+    const editToolsEl = document.getElementById('edit-tools');
+    if (editToolsEl) {
+        editToolsEl.addEventListener('click', function (e) {
+            if (isEditMode || !viewModeEditEnabled) return;
+            const target = e && e.target && e.target.closest ? e.target.closest('button') : null;
+            if (!target) return;
+            const vm = window.ViewModeEditTRT;
+            if (!vm || typeof vm.parseToolbarAction !== 'function') return;
+            const action = vm.parseToolbarAction(target);
+            if (!action || !action.mutate) return;
+            if (e) {
+                if (typeof e.preventDefault === 'function') e.preventDefault();
+                if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+            }
+            const selectedInView = typeof vm.getViewerSelectedText === 'function'
+                ? vm.getViewerSelectedText({
+                    viewer: viewer,
+                    isEditMode: isEditMode,
+                    enabled: viewModeEditEnabled
+                })
+                : '';
+            if (typeof vm.applyToolbarAction === 'function' && editorTextarea) {
+                const text = String(editorTextarea.value || currentMarkdown || '');
+                const hintPos = (function () {
+                    const fromClick = Number(viewClickMappedCaretPos);
+                    if (Number.isFinite(fromClick) && fromClick >= 0) return Math.max(0, Math.min(fromClick, text.length));
+                    if (viewerContainer) {
+                        const ratio = getScrollRatio(viewerContainer);
+                        return Math.max(0, Math.min(getMarkdownPositionFromRatio(ratio), text.length));
+                    }
+                    return Math.max(0, Math.min(Number(lastEditCaretPos) || 0, text.length));
+                })();
+                const applied = vm.applyToolbarAction({
+                    action: action,
+                    selectedText: selectedInView,
+                    sourceText: text,
+                    hintPos: hintPos,
+                    enterButtonInsertBr: enterButtonInsertBr,
+                    tidySeparatorSpacing: tidySeparatorSpacing
+                });
+                if (applied && applied.changed && typeof applied.text === 'string') {
+                    editorTextarea.value = applied.text;
+                    currentMarkdown = applied.text;
+                    lastEditCaretPos = Math.max(0, Math.min(Number(applied.caretPos) || 0, applied.text.length));
+                    performAutoSave();
+                    if (activeSidebarTab === 'toc') renderTOC();
+                    renderMarkdown();
+                    requestAnimationFrame(function () {
+                        if (isEditMode || !viewerContainer) return;
+                        const ratio = getMarkdownRatioFromCharPos(lastEditCaretPos);
+                        setScrollRatio(viewerContainer, ratio);
+                    });
+                    return;
+                }
+            }
+            viewClickMappedCaretPos = Math.max(0, Number(lastEditCaretPos) || 0);
+            toggleMode('edit');
+            if (editorTextarea && selectedInView) {
+                const text = String(editorTextarea.value || '');
+                const hintPos = Math.max(0, Math.min(Number(editorTextarea.selectionStart) || 0, text.length));
+                const found = vm.findNearestOccurrence(text, selectedInView, hintPos);
+                if (found >= 0) {
+                    editorTextarea.focus();
+                    editorTextarea.setSelectionRange(found, found + selectedInView.length);
+                    lastEditCaretPos = found;
+                }
+            }
+            if (typeof vm.executeParsedAction === 'function') vm.executeParsedAction(action);
+            if (editorTextarea) lastEditCaretPos = Math.max(0, Number(editorTextarea.selectionStart) || 0);
+            requestAnimationFrame(function () {
+                if (!isEditMode || !editorTextarea) return;
+                try { editorTextarea.focus(); } catch (err) {}
+            });
+        }, true);
     }
     if (viewer) {
         viewer.addEventListener('mousedown', function (e) {
@@ -591,6 +676,16 @@ window.onload = async () => {
         if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'Digit6' || e.key === '6')) {
             e.preventDefault();
             insertListAtSelection('number');
+            return;
+        }
+        if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyC' || e.key === 'c' || e.key === 'C')) {
+            e.preventDefault();
+            insertAtCursor('code');
+            return;
+        }
+        if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyM' || e.key === 'm' || e.key === 'M')) {
+            e.preventDefault();
+            insertAtCursor('mermaid');
             return;
         }
         if (e.shiftKey && e.altKey && !e.ctrlKey && (e.key === 'a' || e.key === 'A')) {
@@ -959,6 +1054,11 @@ function renderMarkdown() {
         try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
         try { hydrateInternalImagesInElement(viewer, registerViewerInternalObjectUrl); } catch (e) {}
         try { if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(viewer); } catch (e) {}
+        try {
+            if (window.MermaidTRT && typeof window.MermaidTRT.renderIn === 'function') {
+                window.MermaidTRT.renderIn(viewer).catch(function () {});
+            }
+        } catch (e) {}
         try { updatePreviewPopupContent(); } catch (e) {}
     }
     revokeObjectUrls(viewerInternalImageObjectUrls);
@@ -1250,7 +1350,7 @@ function toggleMode(mode) {
         vc.classList.add('hidden');
         ec.classList.remove('hidden');
         ec.classList.add('viewer-edit-active');
-        if (editTools) editTools.classList.remove('hidden');
+        applyEditToolsVisibilityByMode();
         if (btnCopyViewRich) btnCopyViewRich.classList.add('hidden');
         if (btnExportGdocs) btnExportGdocs.classList.add('hidden');
         if (btnDocSync) btnDocSync.classList.add('hidden');
@@ -1280,10 +1380,13 @@ function toggleMode(mode) {
         }
         ec.classList.remove('viewer-edit-active');
         ec.classList.add('hidden');
-        if (editTools) editTools.classList.add('hidden');
+        applyEditToolsVisibilityByMode();
         if (btnCopyViewRich) btnCopyViewRich.classList.remove('hidden');
         if (btnExportGdocs) {
-            const showToDocs = !!(window.GoogleDocs && typeof window.GoogleDocs.shouldShowInViewMode === 'function' && window.GoogleDocs.shouldShowInViewMode());
+            const showFromGoogleDocs = !!(window.GoogleDocs && typeof window.GoogleDocs.shouldShowInViewMode === 'function' && window.GoogleDocs.shouldShowInViewMode());
+            const toDocsCheck = document.getElementById('todocs-visible');
+            const showFromCheck = !!(toDocsCheck && toDocsCheck.checked);
+            const showToDocs = showFromGoogleDocs || showFromCheck;
             if (showToDocs) btnExportGdocs.classList.remove('hidden');
             else btnExportGdocs.classList.add('hidden');
         }
@@ -1478,7 +1581,7 @@ async function exportCurrentDocumentByChoice() {
             const confirmMd = await window.ExtendFiles.showMdImageLossWarningDialog();
             if (confirmMd !== 'continue_md') return false;
         } else {
-            const ok = window.confirm('MD 파일은 문서 텍스트만 저장되며 내부 이미지(IndexedDB)는 포함되지 않습니다.\nMDD는 문서+이미지 통합 저장, ZIP은 문서+images 폴더 저장입니다.\nMD로 계속 저장하시겠습니까?');
+            const ok = window.confirm('MD exports text only. Internal images (IndexedDB) are not included.\nMDD exports document + images together, and ZIP exports a document + images folder.\nDo you want to continue with MD export?');
             if (!ok) return false;
         }
     }
@@ -1613,150 +1716,24 @@ function closeBackupModal() {
     document.getElementById('backup-modal').classList.remove('flex');
 }
 
-let mergeListState = [];
-let mergeListSearchQuery = '';
-let mergeListSelectedOnly = false;
-
-async function openMergeModal() {
-    if (!db) return;
-    const docs = await new Promise(r => {
-        const req = db.transaction('documents', 'readonly').objectStore('documents').getAll();
-        req.onsuccess = () => r(req.result);
-    });
-    const rootDocs = (docs || []).filter(d => d.folderId === 'root');
-    mergeListState = rootDocs.map(d => ({ id: d.id, title: d.title, checked: true }));
-    mergeListSearchQuery = '';
-    mergeListSelectedOnly = false;
-    const searchInput = document.getElementById('merge-search-input');
-    if (searchInput) searchInput.value = '';
-    renderMergeList();
-    document.getElementById('merge-bundle-name').value = '';
-    document.getElementById('merge-modal').classList.remove('hidden');
-    document.getElementById('merge-modal').classList.add('flex');
-    lucide.createIcons();
-}
-
-function filterMergeList(query) {
-    mergeListSearchQuery = String(query || '').trim().toLowerCase();
-    renderMergeList();
-}
-
-function renderMergeList() {
-    const listEl = document.getElementById('merge-list');
-    const selectedOnlyBtn = document.getElementById('merge-selected-only-btn');
-    if (!listEl) return;
-    if (selectedOnlyBtn) {
-        selectedOnlyBtn.textContent = mergeListSelectedOnly ? '전체보기' : '선택보기';
-        selectedOnlyBtn.className = mergeListSelectedOnly
-            ? 'flex-1 px-3 py-1.5 text-xs font-medium border border-indigo-600 dark:border-indigo-400 rounded-md text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60'
-            : 'flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700';
-    }
-    if (mergeListState.length === 0) {
-        listEl.innerHTML = '<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">No documents found in the root folder.</p>';
+function callSidebarLeftMergeApi(method, args) {
+    const api = window.__sidebarLeftMergeApi;
+    if (!api || typeof api[method] !== 'function') {
+        showToast('Merge module is loading. Please try again.');
         return;
     }
-    const q = mergeListSearchQuery;
-    const filtered = mergeListState
-        .map((item, idx) => ({ item, idx }))
-        .filter(({ item }) => (!mergeListSelectedOnly || item.checked) && (!q || (item.title || '').toLowerCase().includes(q)));
-    if (filtered.length === 0) {
-        listEl.innerHTML = `<p class="text-sm text-slate-500 dark:text-slate-400 py-4 text-center">${mergeListSelectedOnly ? 'No selected documents found.' : 'No matching documents found.'}</p>`;
-        lucide.createIcons();
-        return;
-    }
-    listEl.innerHTML = filtered.map(({ item, idx }) => `
-        <div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600" data-idx="${idx}">
-            <i data-lucide="file-text" class="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0"></i>
-            <span class="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate" title="${(item.title || '').replace(/"/g, '&quot;')}">${(item.title || '').replace(/</g, '&lt;')}</span>
-            <label class="flex items-center shrink-0 cursor-pointer">
-                <input type="checkbox" ${item.checked ? 'checked' : ''} onchange="toggleMergeItem(${idx}, this.checked)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600">
-            </label>
-            <div class="flex flex-col shrink-0">
-                <button type="button" onclick="moveMergeItem(${idx},-1)" class="p-0.5 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400" title="위로 이동">▲</button>
-                <button type="button" onclick="moveMergeItem(${idx},1)" class="p-0.5 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400" title="아래로 이동">▼</button>
-            </div>
-        </div>
-    `).join('');
-    lucide.createIcons();
+    return api[method].apply(null, Array.isArray(args) ? args : []);
 }
 
-function selectAllMergeItems() {
-    const q = mergeListSearchQuery;
-    mergeListState.forEach((item, idx) => {
-        const match = !q || (item.title || '').toLowerCase().includes(q);
-        if (match) item.checked = true;
-    });
-    renderMergeList();
-}
-
-function deselectAllMergeItems() {
-    const q = mergeListSearchQuery;
-    mergeListState.forEach((item) => {
-        const match = !q || (item.title || '').toLowerCase().includes(q);
-        if (match) item.checked = false;
-    });
-    renderMergeList();
-}
-
-function toggleMergeItem(idx, checked) {
-    if (mergeListState[idx]) mergeListState[idx].checked = !!checked;
-    if (mergeListSelectedOnly) renderMergeList();
-}
-
-function moveMergeItem(idx, dir) {
-    const next = idx + dir;
-    if (next < 0 || next >= mergeListState.length) return;
-    [mergeListState[idx], mergeListState[next]] = [mergeListState[next], mergeListState[idx]];
-    renderMergeList();
-}
-
-function toggleSelectedOnlyMergeView() {
-    mergeListSelectedOnly = !mergeListSelectedOnly;
-    renderMergeList();
-}
-
-function closeMergeModal() {
-    document.getElementById('merge-modal').classList.add('hidden');
-    document.getElementById('merge-modal').classList.remove('flex');
-}
-
-async function bindMerge() {
-    const nameInput = document.getElementById('merge-bundle-name');
-    const bundleName = (nameInput && nameInput.value) ? String(nameInput.value).trim() : '';
-    if (!bundleName) {
-        showToast("Enter a bundle name first.");
-        if (nameInput) nameInput.focus();
-        return;
-    }
-    const selected = mergeListState.filter(x => x.checked);
-    if (selected.length === 0) {
-        showToast("Select at least one document to merge.");
-        return;
-    }
-    const tx = db.transaction('documents', 'readonly');
-    const contents = await Promise.all(selected.map(item => {
-        return new Promise(r => {
-            const req = tx.objectStore('documents').get(item.id);
-            req.onsuccess = () => r(req.result ? req.result.content : '');
-        });
-    }));
-    const mergedContent = contents.join('\n\n---\n\n');
-    const newDoc = {
-        id: 'doc_' + Date.now(),
-        title: bundleName,
-        content: mergedContent,
-        folderId: 'root',
-        updatedAt: new Date()
-    };
-    const writeTx = db.transaction('documents', 'readwrite');
-    writeTx.objectStore('documents').add(newDoc);
-    writeTx.oncomplete = () => {
-        showToast("Merged document created.");
-        renderDBList();
-        closeMergeModal();
-        if (isSidebarHidden) toggleSidebarVisibility();
-    };
-}
+function openMergeModal() { return callSidebarLeftMergeApi('openMergeModal'); }
+function filterMergeList(query) { return callSidebarLeftMergeApi('filterMergeList', [query]); }
+function selectAllMergeItems() { return callSidebarLeftMergeApi('selectAllMergeItems'); }
+function deselectAllMergeItems() { return callSidebarLeftMergeApi('deselectAllMergeItems'); }
+function toggleMergeItem(idx, checked) { return callSidebarLeftMergeApi('toggleMergeItem', [idx, checked]); }
+function moveMergeItem(idx, dir) { return callSidebarLeftMergeApi('moveMergeItem', [idx, dir]); }
+function toggleSelectedOnlyMergeView() { return callSidebarLeftMergeApi('toggleSelectedOnlyMergeView'); }
+function closeMergeModal() { return callSidebarLeftMergeApi('closeMergeModal'); }
+function bindMerge() { return callSidebarLeftMergeApi('bindMerge'); }
 
 async function exportZip() {
     if (!db || typeof JSZip === 'undefined') {
@@ -2179,18 +2156,84 @@ function renderTOC() {
     tocList.innerHTML = tocHtml;
 }
 
+function getTextareaCaretTopOffset(textarea, position) {
+    if (!textarea) return 0;
+    const value = String(textarea.value || '');
+    const safePos = Math.max(0, Math.min(Number(position) || 0, value.length));
+    const before = value.slice(0, safePos) + (safePos > 0 && value.charAt(safePos - 1) === '\n' ? ' ' : '');
+    const mirror = document.createElement('div');
+    const marker = document.createElement('span');
+    const style = window.getComputedStyle(textarea);
+    const props = [
+        'boxSizing',
+        'width',
+        'height',
+        'overflowX',
+        'overflowY',
+        'borderTopWidth',
+        'borderRightWidth',
+        'borderBottomWidth',
+        'borderLeftWidth',
+        'paddingTop',
+        'paddingRight',
+        'paddingBottom',
+        'paddingLeft',
+        'fontStyle',
+        'fontVariant',
+        'fontWeight',
+        'fontStretch',
+        'fontSize',
+        'fontSizeAdjust',
+        'lineHeight',
+        'fontFamily',
+        'textAlign',
+        'textTransform',
+        'textIndent',
+        'textDecoration',
+        'letterSpacing',
+        'wordSpacing',
+        'tabSize',
+        'MozTabSize'
+    ];
+
+    mirror.style.position = 'absolute';
+    mirror.style.visibility = 'hidden';
+    mirror.style.whiteSpace = 'pre-wrap';
+    mirror.style.wordWrap = 'break-word';
+    mirror.style.left = '-9999px';
+    mirror.style.top = '0';
+    mirror.style.pointerEvents = 'none';
+
+    props.forEach((prop) => {
+        mirror.style[prop] = style[prop];
+    });
+
+    mirror.style.width = `${textarea.clientWidth}px`;
+    mirror.textContent = before;
+    marker.textContent = '\u200b';
+    mirror.appendChild(marker);
+    document.body.appendChild(mirror);
+
+    const paddingTop = parseFloat(style.paddingTop) || 0;
+    const top = Math.max(0, marker.offsetTop - paddingTop);
+    document.body.removeChild(mirror);
+    return top;
+}
+
 function scrollToLine(lineIndex) {
     if (isEditMode) {
-        const text = editorTextarea.value;
+        if (!editorTextarea) return;
+        const text = String(editorTextarea.value || '');
         const lines = text.split('\n');
+        const safeLineIndex = Math.max(0, Math.min(Number(lineIndex) || 0, Math.max(0, lines.length - 1)));
         let charPos = 0;
-        for (let i = 0; i < lineIndex; i++) {
+        for (let i = 0; i < safeLineIndex; i++) {
             charPos += lines[i].length + 1;
         }
         editorTextarea.focus();
         editorTextarea.setSelectionRange(charPos, charPos);
-        const lineHeight = parseInt(getComputedStyle(editorTextarea).lineHeight) || 28;
-        editorTextarea.scrollTop = lineIndex * lineHeight;
+        const top = getTextareaCaretTopOffset(editorTextarea, charPos);
+        editorTextarea.scrollTo({ top, behavior: 'smooth' });
     } else {
         const lines = currentMarkdown.split('\n');
         let headerIndex = 0;
@@ -2221,13 +2264,39 @@ async function ensureRootFolder() {
                 return;
             }
             const currentName = String(current.name || '').trim();
-            const looksBroken = !currentName || currentName.includes('?') || currentName.includes('�');
+            const looksBroken = !currentName || currentName.includes('?') || currentName.includes('\uFFFD');
             if (looksBroken || currentName.toUpperCase() !== ROOT_FOLDER_NAME) {
                 store.put({ ...current, name: ROOT_FOLDER_NAME });
             }
             res();
         };
     });
+}
+
+async function cleanupBootBlockedDocuments() {
+    if (!db) return 0;
+    const docs = await new Promise((resolve) => {
+        const tx = db.transaction('documents', 'readonly');
+        const req = tx.objectStore('documents').getAll();
+        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : []);
+        req.onerror = () => resolve([]);
+    });
+    const targets = docs.filter((doc) => {
+        const title = String((doc && doc.title) || '').trim().toLowerCase();
+        return LOCAL_BOOT_DELETE_TITLES.has(title);
+    });
+    if (!targets.length) return 0;
+
+    await new Promise((resolve) => {
+        const tx = db.transaction('documents', 'readwrite');
+        const store = tx.objectStore('documents');
+        targets.forEach((doc) => {
+            if (doc && doc.id) store.delete(doc.id);
+        });
+        tx.oncomplete = resolve;
+        tx.onerror = resolve;
+    });
+    return targets.length;
 }
 
 let currentActionCallback = null;
@@ -2539,7 +2608,7 @@ async function clearUnusedCache() {
 
     const parts = [];
     if (removedAutosave) parts.push('autosave');
-    if (removedCaches > 0) parts.push('browser cache ' + removedCaches + '개');
+    if (removedCaches > 0) parts.push('browser cache ' + removedCaches + ' entries');
     if (parts.length === 0) parts.push('temporary object cache');
     showToast('Cache cleared: ' + parts.join(', '));
 }
@@ -2652,734 +2721,6 @@ function pasteFromClipboardAndDismiss() {
     requestAnimationFrame(() => {
         if (editorTextarea) editorTextarea.focus();
     });
-}
-
-function insertMarkdownImageAtCursor(imageUrl, altText) {
-    if (!isEditMode) {
-        showToast('Use this in edit mode.');
-        return;
-    }
-    const u = String(imageUrl || '').trim();
-    if (!u) {
-        showToast('Enter an image URL.');
-        return;
-    }
-    const alt = String(altText || 'image').trim().replace(/[\[\]]/g, '') || 'image';
-    const md = '![' + alt + '](' + u + ')';
-    const ta = editorTextarea;
-    const scrollTop = ta.scrollTop;
-    ta.focus();
-    document.execCommand('insertText', false, md);
-    currentMarkdown = ta.value;
-    ta.scrollTop = scrollTop;
-    performAutoSave();
-    if (activeSidebarTab === 'toc') renderTOC();
-    showToast('Markdown image inserted.');
-}
-
-function insertHtmlImageAtCursor(imageUrl, altText) {
-    if (!isEditMode) {
-        showToast('Use this in edit mode.');
-        return;
-    }
-    const u = String(imageUrl || '').trim();
-    if (!u) {
-        showToast('Enter an image URL.');
-        return;
-    }
-    const alt = String(altText || 'image')
-        .trim()
-        .replace(/"/g, '&quot;')
-        .replace(/[<>]/g, '') || 'image';
-    const html = '<img src="' + u + '" alt="' + alt + '" border="0" />';
-    const ta = editorTextarea;
-    const scrollTop = ta.scrollTop;
-    ta.focus();
-    document.execCommand('insertText', false, html);
-    currentMarkdown = ta.value;
-    ta.scrollTop = scrollTop;
-    performAutoSave();
-    if (activeSidebarTab === 'toc') renderTOC();
-    showToast('HTML image tag inserted.');
-}
-
-function getImageAltTextFromUrl(imageUrl) {
-    const u = String(imageUrl || '').trim();
-    if (!u) return 'image';
-    try {
-        const path = u.split('?')[0].split('#')[0];
-        const name = decodeURIComponent(path.substring(path.lastIndexOf('/') + 1) || 'image')
-            .replace(/\.[^.]+$/, '')
-            .trim();
-        return name || 'image';
-    } catch (e) {
-        return 'image';
-    }
-}
-
-function setImageInsertStatus(msg, isError) {
-    const el = document.getElementById('img-insert-status');
-    if (!el) return;
-    el.textContent = String(msg || '');
-    el.className = 'mt-3 text-xs ' + (isError ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400');
-}
-
-function setImageUploadProgress(pct, active) {
-    const wrap = document.getElementById('img-insert-progress-wrap');
-    const fill = document.getElementById('img-insert-progress-fill');
-    const text = document.getElementById('img-insert-progress-text');
-    if (!wrap || !fill || !text) return;
-    const safe = Math.max(0, Math.min(100, Number(pct) || 0));
-    fill.style.width = safe + '%';
-    text.textContent = safe + '%';
-    if (active) wrap.classList.remove('hidden');
-    else if (safe >= 100 || safe <= 0) setTimeout(function () { wrap.classList.add('hidden'); }, 700);
-}
-
-function setImageInsertPreview(dataUrl) {
-    const img = document.getElementById('img-insert-preview');
-    if (!img) return;
-    if (!dataUrl) {
-        img.classList.add('hidden');
-        img.removeAttribute('src');
-        return;
-    }
-    img.src = dataUrl;
-    img.classList.remove('hidden');
-}
-
-function revokeImageInsertGalleryObjectUrls() {
-    if (!Array.isArray(imageInsertGalleryObjectUrls) || imageInsertGalleryObjectUrls.length === 0) return;
-    imageInsertGalleryObjectUrls.forEach(function (u) {
-        try { URL.revokeObjectURL(u); } catch (e) {}
-    });
-    imageInsertGalleryObjectUrls = [];
-}
-
-function setImageInsertGalleryToggleActive(active) {
-    const btn = document.getElementById('img-insert-gallery-toggle');
-    if (!btn) return;
-    if (active) {
-        btn.classList.add('ring-2', 'ring-fuchsia-300');
-    } else {
-        btn.classList.remove('ring-2', 'ring-fuchsia-300');
-    }
-}
-
-function blobToDataUrlForImageInsert(blob) {
-    return new Promise(function (resolve, reject) {
-        const r = new FileReader();
-        r.onload = function () { resolve(String(r.result || '')); };
-        r.onerror = function () { reject(r.error || new Error('Failed to read blob')); };
-        r.readAsDataURL(blob);
-    });
-}
-
-async function ensureImageInsertDataUrlFromInternalSelection() {
-    if (imageInsertCurrentDataUrl && imageInsertCurrentDataUrl.indexOf('data:image') === 0) return true;
-    if (!db || !window.ImageDB || typeof window.ImageDB.getImage !== 'function') return false;
-    const id = String(imageInsertSavedInternalId || '').trim();
-    if (!id) return false;
-    const rec = await window.ImageDB.getImage(db, id);
-    if (!rec || !rec.blob) return false;
-    const dataUrl = await blobToDataUrlForImageInsert(rec.blob);
-    if (!dataUrl || dataUrl.indexOf('data:image') !== 0) return false;
-    imageInsertCurrentDataUrl = dataUrl;
-    imageInsertCurrentFileName = rec.name || ('gallery_' + id + '.png');
-    setImageInsertPreview(dataUrl);
-    return true;
-}
-
-async function getImageInsertGalleryDataUrl(id, blob) {
-    const key = String(id || '').trim();
-    if (!key || !blob) return '';
-    if (imageInsertGalleryDataUrlCache.has(key)) return imageInsertGalleryDataUrlCache.get(key) || '';
-    const dataUrl = await blobToDataUrlForImageInsert(blob);
-    imageInsertGalleryDataUrlCache.set(key, dataUrl);
-    return dataUrl;
-}
-
-async function syncImageInsertFullscreenGallery(items, currentId, currentDataUrl) {
-    if (typeof window.viewerSSPSetFullscreenGallery !== 'function') return;
-    const src = Array.isArray(items) ? items : [];
-    const list = src
-        .filter(function (it) { return it && it.blob && String(it.id || '').trim(); })
-        .slice(0, 80);
-    if (!list.length) {
-        window.viewerSSPSetFullscreenGallery([], '');
-        return;
-    }
-    const entries = [];
-    for (let i = 0; i < list.length; i++) {
-        const it = list[i];
-        const id = String(it.id || '').trim();
-        let dataUrl = '';
-        if (id === currentId && currentDataUrl && currentDataUrl.indexOf('data:image') === 0) dataUrl = currentDataUrl;
-        else {
-            try { dataUrl = await getImageInsertGalleryDataUrl(id, it.blob); } catch (e) { dataUrl = ''; }
-        }
-        if (!dataUrl || dataUrl.indexOf('data:image') !== 0) continue;
-        entries.push({
-            id: 'idb_' + encodeURIComponent(id),
-            dataURL: dataUrl,
-            prompt: String(it.name || id),
-            createdAt: Number(it.createdAt || Date.now())
-        });
-    }
-    window.viewerSSPSetFullscreenGallery(entries, currentDataUrl || '');
-}
-
-function openImageInsertGalleryFullscreen(src) {
-    const safeSrc = String(src || '').trim();
-    if (!safeSrc) return;
-    if (typeof window.viewerSSPOpenFullscreen === 'function') {
-        window.viewerSSPOpenFullscreen(safeSrc);
-        return;
-    }
-    try {
-        window.open(safeSrc, '_blank', 'noopener,noreferrer');
-    } catch (e) {}
-}
-
-async function loadImageInsertGallery() {
-    const panel = document.getElementById('img-insert-gallery-panel');
-    const list = document.getElementById('img-insert-gallery-list');
-    if (!panel || !list) return;
-    if (!db) {
-        list.innerHTML = '<div class="text-xs text-red-500">DB not ready.</div>';
-        return;
-    }
-
-    revokeImageInsertGalleryObjectUrls();
-    list.innerHTML = '<div class="text-xs text-slate-500">불러오는 중...</div>';
-
-    try {
-        const items = await new Promise(function (resolve, reject) {
-            const tx = db.transaction('images', 'readonly');
-            const req = tx.objectStore('images').getAll();
-            req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
-            req.onerror = function () { reject(req.error || new Error('Failed to load images')); };
-        });
-
-        items.sort(function (a, b) { return Number(b && b.createdAt || 0) - Number(a && a.createdAt || 0); });
-
-        if (!items.length) {
-            list.innerHTML = '<div class="text-xs text-slate-500">IndexedDB 이미지가 없습니다.</div>';
-            return;
-        }
-
-        const html = [];
-        items.forEach(function (it, idx) {
-            const id = String(it && it.id || '').trim();
-            if (!id || !it.blob) return;
-            const objectUrl = URL.createObjectURL(it.blob);
-            imageInsertGalleryObjectUrls.push(objectUrl);
-            const title = String(it.name || id).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            html.push(
-                '<button type="button" class="img-gallery-item rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-1 text-left" data-idx="' + idx + '" data-id="' + encodeURIComponent(id) + '" title="' + title + '">' +
-                '<img src="' + objectUrl + '" class="w-full h-20 object-contain rounded bg-slate-100 dark:bg-slate-900">' +
-                '<div class="mt-1 text-[10px] text-slate-600 dark:text-slate-300 truncate">' + title + '</div>' +
-                '</button>'
-            );
-        });
-        list.innerHTML = html.join('');
-
-        Array.from(list.querySelectorAll('.img-gallery-item')).forEach(function (btn) {
-            btn.addEventListener('click', async function () {
-                const encId = String(btn.getAttribute('data-id') || '');
-                const id = decodeURIComponent(encId);
-                const target = items.find(function (x) { return String(x && x.id || '') === id; });
-                if (!target) return;
-
-                const internalUrl = (window.ImageDB && typeof window.ImageDB.internalUrlFromId === 'function')
-                    ? window.ImageDB.internalUrlFromId(id)
-                    : ('internal://' + encodeURIComponent(id));
-
-                const input = document.getElementById('img-insert-url');
-                if (input) input.value = internalUrl;
-                imageInsertSavedInternalId = id;
-                imageInsertSavedInternalUrl = internalUrl;
-                imageInsertSavedFingerprint = '';
-                renderImageInsertInternalInfo();
-
-                try {
-                    const dataUrl = await getImageInsertGalleryDataUrl(id, target.blob);
-                    imageInsertCurrentDataUrl = dataUrl;
-                    imageInsertCurrentFileName = target.name || ('gallery_' + id + '.png');
-                    setImageInsertPreview(dataUrl);
-
-                    if (typeof window.viewerSSPSetFullscreenGallery === 'function') {
-                        window.viewerSSPSetFullscreenGallery([{
-                            id: 'idb_' + encodeURIComponent(id),
-                            dataURL: dataUrl,
-                            prompt: String(target.name || id),
-                            createdAt: Number(target.createdAt || Date.now())
-                        }], dataUrl);
-                    }
-                    openImageInsertGalleryFullscreen(dataUrl);
-                    syncImageInsertFullscreenGallery(items, id, dataUrl).catch(function () {});
-                } catch (e) {
-                    setImageInsertPreview('');
-                }
-
-                Array.from(list.querySelectorAll('.img-gallery-item')).forEach(function (el) {
-                    el.classList.remove('ring-2', 'ring-indigo-400');
-                });
-                btn.classList.add('ring-2', 'ring-indigo-400');
-
-                setImageInsertStatus('갤러리 이미지 선택됨: ' + internalUrl, false);
-            });
-        });
-    } catch (e) {
-        list.innerHTML = '<div class="text-xs text-red-500">갤러리 로드 실패</div>';
-        setImageInsertStatus('IndexedDB 갤러리 로드 실패: ' + (e && e.message ? e.message : e), true);
-    }
-}
-
-function refreshImageInsertGallery() {
-    if (!imageInsertGalleryOpen) return;
-    loadImageInsertGallery();
-}
-
-async function downloadImageInsertGalleryZip() {
-    if (!db || typeof JSZip === 'undefined') {
-        setImageInsertStatus('ZIP export is not available.', true);
-        return;
-    }
-    setImageInsertStatus('Preparing gallery ZIP...', false);
-    try {
-        const items = await new Promise(function (resolve, reject) {
-            const tx = db.transaction('images', 'readonly');
-            const req = tx.objectStore('images').getAll();
-            req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
-            req.onerror = function () { reject(req.error || new Error('Failed to load images')); };
-        });
-        if (!items.length) {
-            setImageInsertStatus('No IndexedDB images to export.', true);
-            return;
-        }
-
-        const zip = new JSZip();
-        const used = new Set();
-        let added = 0;
-        items.forEach(function (it, idx) {
-            if (!it || !it.blob) return;
-            const id = String(it.id || ('img_' + idx));
-            const rawName = String(it.name || id || ('image_' + idx)).trim();
-            const extFromMime = (String(it.mime || it.blob.type || '').split('/')[1] || 'bin').replace(/[^a-zA-Z0-9]/g, '');
-            const safeBase = rawName.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim() || ('image_' + idx);
-            const hasExt = /\.[a-zA-Z0-9]{2,5}$/.test(safeBase);
-            const baseName = hasExt ? safeBase : (safeBase + '.' + extFromMime);
-            let fileName = baseName;
-            let seq = 2;
-            while (used.has(fileName.toLowerCase())) {
-                const dot = baseName.lastIndexOf('.');
-                if (dot > 0) fileName = baseName.slice(0, dot) + '_' + seq + baseName.slice(dot);
-                else fileName = baseName + '_' + seq;
-                seq += 1;
-            }
-            used.add(fileName.toLowerCase());
-            zip.file('images/' + fileName, it.blob);
-            added += 1;
-        });
-        if (!added) {
-            setImageInsertStatus('No valid images found for ZIP export.', true);
-            return;
-        }
-        zip.file('manifest.json', JSON.stringify({
-            format: 'mdviewer-indexeddb-gallery',
-            createdAt: new Date().toISOString(),
-            count: added
-        }, null, 2));
-
-        const blob = await zip.generateAsync({ type: 'blob' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'indexeddb_gallery_' + new Date().toISOString().slice(0, 10) + '.zip';
-        a.click();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 400);
-        setImageInsertStatus('Gallery ZIP downloaded (' + added + ' images).', false);
-    } catch (e) {
-        setImageInsertStatus('Failed to export gallery ZIP: ' + (e && e.message ? e.message : e), true);
-    }
-}
-
-function toggleImageInsertGallery() {
-    const panel = document.getElementById('img-insert-gallery-panel');
-    if (!panel) return;
-    imageInsertGalleryOpen = !imageInsertGalleryOpen;
-    panel.classList.toggle('hidden', !imageInsertGalleryOpen);
-    setImageInsertGalleryToggleActive(imageInsertGalleryOpen);
-    if (imageInsertGalleryOpen) loadImageInsertGallery();
-    else revokeImageInsertGalleryObjectUrls();
-}
-function openImageInsertModal() {
-    const modal = document.getElementById('image-insert-modal');
-    if (!modal) return;
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    applyImageInsertPanelLayout();
-    bindImageInsertModalDrag();
-    if (!imageInsertCropBound) {
-        imageInsertCropBound = true;
-        window.addEventListener('message', function (ev) {
-            if (!ev || !ev.data || !imageInsertCropWindow || ev.source !== imageInsertCropWindow) return;
-            if (ev.data.type === 'crop-ready') {
-                if (!imageInsertCurrentDataUrl) return;
-                try { imageInsertCropWindow.postMessage({ type: 'crop', image: imageInsertCurrentDataUrl }, '*'); } catch (e) {}
-                return;
-            }
-            if (ev.data.type === 'aiimg-cropped' && ev.data.dataUrl) {
-                imageInsertCurrentDataUrl = String(ev.data.dataUrl);
-                imageInsertCurrentFileName = 'cropped_' + Date.now() + '.png';
-                resetImageInsertForNewImage(true);
-                setImageInsertPreview(imageInsertCurrentDataUrl);
-                setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
-                try { imageInsertCropWindow.postMessage({ type: 'crop-applied' }, '*'); } catch (e) {}
-            }
-        });
-    }
-
-    const galleryPanel = document.getElementById('img-insert-gallery-panel');
-    if (galleryPanel) {
-        galleryPanel.classList.toggle('hidden', !imageInsertGalleryOpen);
-    }
-    setImageInsertGalleryToggleActive(imageInsertGalleryOpen);
-    if (imageInsertGalleryOpen) {
-        loadImageInsertGallery();
-    }
-
-    setImageUploadProgress(0, false);
-    renderImageInsertInternalInfo();
-    setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
-}
-
-function closeImageInsertModal() {
-    const modal = document.getElementById('image-insert-modal');
-    if (!modal) return;
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    const panel = document.getElementById('image-insert-panel');
-    if (panel) {
-        panel.style.left = '';
-        panel.style.top = '';
-        panel.style.margin = '';
-    }
-
-    const galleryPanel = document.getElementById('img-insert-gallery-panel');
-    imageInsertGalleryOpen = false;
-    if (galleryPanel) {
-        galleryPanel.classList.add('hidden');
-    }
-    setImageInsertGalleryToggleActive(false);
-    revokeImageInsertGalleryObjectUrls();
-    imageInsertGalleryDataUrlCache.clear();
-
-    imageInsertDragging = false;
-    setImageUploadProgress(0, false);
-}
-
-function applyImageInsertPanelLayout() {
-    const modal = document.getElementById('image-insert-modal');
-    const panel = document.getElementById('image-insert-panel');
-    if (!modal || !panel) return;
-    if (imageInsertDockRight) {
-        modal.classList.remove('justify-center');
-        modal.classList.add('justify-end');
-        panel.classList.remove('max-w-2xl');
-        panel.classList.add('max-w-xl');
-        panel.style.marginRight = '12px';
-    } else {
-        modal.classList.remove('justify-end');
-        modal.classList.add('justify-center');
-        panel.classList.remove('max-w-xl');
-        panel.classList.add('max-w-2xl');
-        panel.style.marginRight = '';
-    }
-}
-
-function toggleImageInsertDockRight() {
-    imageInsertDockRight = !imageInsertDockRight;
-    applyImageInsertPanelLayout();
-}
-
-function openImageInsertExternalLink(type) {
-    const targetUrl = type === 'imgbb'
-        ? 'https://imgbb.com/'
-        : 'https://www.google.co.kr/imghp';
-    try {
-        const win = window.open(targetUrl, '_blank', 'noopener,noreferrer');
-        if (!win) {
-            setImageInsertStatus('Popup blocked. Please allow popups in your browser settings.', true);
-            return;
-        }
-        setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
-    } catch (e) {
-        setImageInsertStatus('Could not open external link. Please try again.', true);
-    }
-}
-
-function bindImageInsertModalDrag() {
-    if (imageInsertDragBound) return;
-    imageInsertDragBound = true;
-    const header = document.getElementById('image-insert-header');
-    const panel = document.getElementById('image-insert-panel');
-    if (!header || !panel) return;
-
-    header.addEventListener('mousedown', function (e) {
-        const target = e.target;
-        if (target && (target.closest('button') || target.tagName === 'BUTTON')) return;
-        imageInsertDragging = true;
-        const rect = panel.getBoundingClientRect();
-        imageInsertDragOffsetX = e.clientX - rect.left;
-        imageInsertDragOffsetY = e.clientY - rect.top;
-        panel.style.position = 'fixed';
-        panel.style.margin = '0';
-        panel.style.left = rect.left + 'px';
-        panel.style.top = rect.top + 'px';
-        e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', function (e) {
-        if (!imageInsertDragging) return;
-        const panelEl = document.getElementById('image-insert-panel');
-        if (!panelEl) return;
-        const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - imageInsertDragOffsetX));
-        const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - imageInsertDragOffsetY));
-        panelEl.style.left = nextLeft + 'px';
-        panelEl.style.top = nextTop + 'px';
-    });
-
-    document.addEventListener('mouseup', function () {
-        imageInsertDragging = false;
-    });
-}
-
-function focusImageInsertPasteZone() {
-    setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
-}
-
-function handleImageInsertFile(event) {
-    const file = event && event.target && event.target.files ? event.target.files[0] : null;
-    if (!file) return;
-    readImageFileForInsertModal(file);
-    if (event && event.target) event.target.value = '';
-}
-
-function readImageFileForInsertModal(file) {
-    if (!file || String(file.type || '').indexOf('image') !== 0) {
-        setImageInsertStatus('Please select an image file.', true);
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = function () {
-        imageInsertCurrentDataUrl = String(reader.result || '');
-        imageInsertCurrentFileName = file.name || ('upload_' + Date.now() + '.png');
-        clearImageInsertInternalSavedState();
-        imageInsertChangedByCrop = false;
-        setImageInsertPreview(imageInsertCurrentDataUrl);
-        renderImageInsertInternalInfo();
-        setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
-    };
-    reader.readAsDataURL(file);
-}
-
-function onImageInsertUploadDragOver(event) {
-    if (!event) return;
-    event.preventDefault();
-    const zone = document.getElementById('img-insert-upload-zone');
-    if (zone) {
-        zone.classList.add('bg-indigo-50');
-        zone.classList.add('dark:bg-indigo-900/30');
-    }
-}
-
-function onImageInsertUploadDragLeave(event) {
-    if (event) event.preventDefault();
-    const zone = document.getElementById('img-insert-upload-zone');
-    if (zone) {
-        zone.classList.remove('bg-indigo-50');
-        zone.classList.remove('dark:bg-indigo-900/30');
-    }
-}
-
-function onImageInsertUploadDrop(event) {
-    if (!event) return;
-    event.preventDefault();
-    onImageInsertUploadDragLeave(event);
-    const file = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files[0] : null;
-    if (!file) {
-        setImageInsertStatus('No file was dropped.', true);
-        return;
-    }
-    readImageFileForInsertModal(file);
-}
-
-function getCropPageUrlForImageInsert() {
-    try {
-        return new URL('js/crop/crop.html', document.baseURI || window.location.href).href;
-    } catch (e) {
-        return './js/crop/crop.html';
-    }
-}
-
-function cropImageInsertCurrent() {
-    if (!imageInsertCurrentDataUrl) {
-        setImageInsertStatus('Select or paste an image before cropping.', true);
-        return;
-    }
-    imageInsertCropWindow = window.open(getCropPageUrlForImageInsert(), 'img_insert_crop', 'width=700,height=620,scrollbars=yes,resizable=yes');
-    if (!imageInsertCropWindow) {
-        setImageInsertStatus('Failed to open crop window. Please allow popups and try again.', true);
-        return;
-    }
-    try { imageInsertCropWindow.focus(); } catch (e) {}
-    try { imageInsertCropWindow.postMessage({ type: 'crop', image: imageInsertCurrentDataUrl }, '*'); } catch (e) {}
-}
-
-async function uploadImageInsertToImgbb() {
-    if (!imageInsertCurrentDataUrl || imageInsertCurrentDataUrl.indexOf('data:image') !== 0) {
-        try { await ensureImageInsertDataUrlFromInternalSelection(); } catch (e) {}
-    }
-    if (!imageInsertCurrentDataUrl || imageInsertCurrentDataUrl.indexOf('data:image') !== 0) {
-        setImageInsertStatus('Select or paste an image before uploading.', true);
-        return;
-    }
-    const apiKey = String(getImgbbApiKey() || '').trim();
-    if (!apiKey) {
-        setImageInsertStatus('imgBB API key is missing. Please save it in settings first.', true);
-        return;
-    }
-    setImageInsertStatus('Uploading to imgBB...', false);
-    setImageUploadProgress(0, true);
-    try {
-        const comma = imageInsertCurrentDataUrl.indexOf(',');
-        const base64Data = comma >= 0 ? imageInsertCurrentDataUrl.slice(comma + 1) : imageInsertCurrentDataUrl;
-        const form = new FormData();
-        form.append('image', base64Data);
-        form.append('name', 'img_insert_' + Date.now());
-
-        const payload = await new Promise(function (resolve, reject) {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', 'https://api.imgbb.com/1/upload?key=' + encodeURIComponent(apiKey), true);
-            xhr.upload.onprogress = function (ev) {
-                if (!ev || !ev.lengthComputable) return;
-                const pct = Math.round((ev.loaded / ev.total) * 100);
-                setImageUploadProgress(pct, true);
-                setImageInsertStatus('Uploading to imgBB... ' + pct + '%', false);
-            };
-            xhr.onload = function () {
-                try {
-                    const data = JSON.parse(xhr.responseText || '{}');
-                    if (xhr.status >= 200 && xhr.status < 300 && data && data.success !== false) resolve(data);
-                    else {
-                        const msg = data && data.error && data.error.message ? data.error.message : ('imgBB upload failed (' + xhr.status + ')');
-                        reject(new Error(msg));
-                    }
-                } catch (e) {
-                    reject(e);
-                }
-            };
-            xhr.onerror = function () { reject(new Error('Network error during imgBB upload.')); };
-            xhr.send(form);
-        });
-
-        const data = payload.data || {};
-        const directUrl = data.url || (data.image && data.image.url) || data.display_url || '';
-        const input = document.getElementById('img-insert-url');
-        if (input) input.value = directUrl || '';
-        setImageUploadProgress(100, false);
-        setImageInsertStatus(directUrl ? ('Upload complete: ' + directUrl) : 'Upload complete.', false);
-    } catch (e) {
-        setImageUploadProgress(0, false);
-        setImageInsertStatus('imgBB upload failed: ' + (e && e.message ? e.message : e), true);
-    }
-}
-
-async function saveImageInsertToInternalDb() {
-    if (!db) {
-        setImageInsertStatus('Database is not ready yet.', true);
-        return;
-    }
-    if (!window.ImageDB || typeof window.ImageDB.saveDataUrl !== 'function') {
-        setImageInsertStatus('ImageDB module is not available.', true);
-        return;
-    }
-    if (!imageInsertCurrentDataUrl || imageInsertCurrentDataUrl.indexOf('data:image') !== 0) {
-        setImageInsertStatus('Select or paste an image before saving internally.', true);
-        return;
-    }
-    const nowFingerprint = getImageInsertFingerprint(imageInsertCurrentDataUrl);
-    if (imageInsertSavedInternalUrl) {
-        if (imageInsertSavedFingerprint === nowFingerprint) {
-            const inputEl = document.getElementById('img-insert-url');
-            if (inputEl) inputEl.value = imageInsertSavedInternalUrl;
-            setImageInsertStatus('Already saved internally. Reusing the existing internal link.', false);
-            renderImageInsertInternalInfo();
-            return;
-        }
-        if (!imageInsertChangedByCrop) {
-            setImageInsertStatus('An internal link already exists. Delete the saved internal image first to save a new one.', true);
-            return;
-        }
-    }
-    try {
-        const saved = await window.ImageDB.saveDataUrl(db, imageInsertCurrentDataUrl, {
-            name: imageInsertCurrentFileName || ('internal_' + Date.now() + '.png')
-        });
-        const input = document.getElementById('img-insert-url');
-        if (input) input.value = saved.url;
-        imageInsertSavedInternalId = saved.id;
-        imageInsertSavedInternalUrl = saved.url;
-        imageInsertSavedFingerprint = nowFingerprint;
-        imageInsertChangedByCrop = false;
-        renderImageInsertInternalInfo();
-        setImageInsertStatus('Saved to internal image DB. Insert with Markdown/HTML buttons.', false);
-        if (imageInsertGalleryOpen) loadImageInsertGallery();
-        showToast('Image saved to internal DB.');
-    } catch (e) {
-        setImageInsertStatus('Failed to save image internally: ' + (e && e.message ? e.message : e), true);
-    }
-}
-
-async function deleteSavedInternalImage() {
-    if (!db || !imageInsertSavedInternalId) return;
-    try {
-        const tx = db.transaction('images', 'readwrite');
-        tx.objectStore('images').delete(imageInsertSavedInternalId);
-        await new Promise(function (resolve, reject) {
-            tx.oncomplete = resolve;
-            tx.onerror = function () { reject(tx.error || new Error('Failed to delete image.')); };
-        });
-        clearImageInsertInternalSavedState();
-        imageInsertChangedByCrop = false;
-        const input = document.getElementById('img-insert-url');
-        if (input && String(input.value || '').trim().startsWith('internal://')) input.value = '';
-        renderImageInsertInternalInfo();
-        if (imageInsertGalleryOpen) loadImageInsertGallery();
-        setImageInsertStatus('Deleted saved internal image. You can save a new internal image now.', false);
-    } catch (e) {
-        setImageInsertStatus('Failed to delete saved internal image: ' + (e && e.message ? e.message : e), true);
-    }
-}
-
-function insertImageFromModal(type) {
-    if (!isEditMode) {
-        showToast('Use this in edit mode.');
-        return;
-    }
-    const urlInput = document.getElementById('img-insert-url');
-    const url = String(urlInput && urlInput.value ? urlInput.value : '').trim();
-    const source = url || imageInsertCurrentDataUrl;
-    if (!source) {
-        setImageInsertStatus('Enter an image URL or upload an image first.', true);
-        return;
-    }
-    const alt = getImageAltTextFromUrl(source);
-    if (type === 'html') insertHtmlImageAtCursor(source, alt);
-    else insertMarkdownImageAtCursor(source, alt);
-    closeImageInsertModal();
 }
 
 function tidySeparatorSpacing(source) {
@@ -3520,6 +2861,15 @@ function tidySeparatorSpacingInEditor() {
 
 // --- Helper Insertion (Modal) ---
 function insertAtCursor(type) {
+    if (!isEditMode || !editorTextarea) return;
+    if (type === 'code') {
+        insertFencedCodeBlock('');
+        return;
+    }
+    if (type === 'mermaid') {
+        insertFencedCodeBlock('mermaid');
+        return;
+    }
     const start = editorTextarea.selectionStart;
     const end = editorTextarea.selectionEnd;
     const text = editorTextarea.value;
@@ -3568,6 +2918,41 @@ function insertAtCursor(type) {
         editorTextarea.setSelectionRange(start + before.length, start + before.length + content.length);
     } else {
         editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
+    }
+}
+function insertFencedCodeBlock(language) {
+    if (!isEditMode || !editorTextarea) {
+        showToast('Use this in edit mode.');
+        return;
+    }
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const text = editorTextarea.value;
+    const selectedText = text.substring(start, end);
+    const currentScrollTop = editorTextarea.scrollTop;
+    const currentScrollLeft = editorTextarea.scrollLeft;
+    const lang = String(language || '').trim();
+    const fenceOpen = '```' + lang + '\n';
+    const placeholder = lang === 'mermaid'
+        ? 'graph TD\n  A[Start] --> B[End]'
+        : 'code';
+    const content = selectedText || placeholder;
+    const replacement = fenceOpen + content + '\n```';
+
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+    currentMarkdown = editorTextarea.value;
+    editorTextarea.scrollTop = currentScrollTop;
+    editorTextarea.scrollLeft = currentScrollLeft;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+
+    if (selectedText) {
+        editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
+    } else {
+        const selectStart = start + fenceOpen.length;
+        editorTextarea.setSelectionRange(selectStart, selectStart + content.length);
     }
 }
 function applyHeading(level) {
@@ -4056,7 +3441,7 @@ function confirmModalInsert() {
     if (isId) {
         const idValue = String(displayText || '').trim();
         if (!idValue) {
-            showToast('ID를 입력해 주세요.');
+            showToast('\u0049\u0044\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694.');
             return;
         }
         replacement = `<div id ="${idValue}"></div>\n[${idValue}]\n\n[${idValue}](#${idValue})`;
@@ -4092,6 +3477,7 @@ function adjustFontSize(delta) {
     fontSize = Math.max(10, Math.min(48, fontSize + delta));
     viewer.style.fontSize = `${fontSize}px`;
     editorTextarea.style.fontSize = `${fontSize}px`;
+    document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
     document.getElementById('font-size-display').textContent = `${fontSize}px`;
 }
 
@@ -4099,7 +3485,7 @@ function sanitizeUiMessage(msg) {
     const text = String(msg == null ? '' : msg);
     if (!text) return '';
     const qCount = (text.match(/\?/g) || []).length;
-    const bad = text.includes('�') || text.includes('???') || (text.length >= 12 && (qCount / text.length) > 0.2);
+    const bad = text.includes('\uFFFD') || text.includes('???') || (text.length >= 12 && (qCount / text.length) > 0.2);
     return bad ? 'Message unavailable due to encoding issue.' : text;
 }
 
@@ -4255,6 +3641,30 @@ async function toggleSelectionWrapSetting(enabled) {
     selectionWrapEnabled = on;
     setSelectionWrapEnabledToLocal(on);
     try { await setAiSettings({ selectionWrapEnabled: on }); } catch (e) {}
+}
+
+function getViewModeEditEnabledFromLocal() {
+    return localStorage.getItem(VIEW_MODE_EDIT_KEY) === '1';
+}
+
+function setViewModeEditEnabledToLocal(enabled) {
+    if (enabled) localStorage.setItem(VIEW_MODE_EDIT_KEY, '1');
+    else localStorage.removeItem(VIEW_MODE_EDIT_KEY);
+}
+
+function applyEditToolsVisibilityByMode() {
+    const editTools = document.getElementById('edit-tools');
+    if (!editTools) return;
+    const show = !!(isEditMode || viewModeEditEnabled);
+    editTools.classList.toggle('hidden', !show);
+}
+
+async function toggleViewModeEditSetting(enabled) {
+    const on = !!enabled;
+    viewModeEditEnabled = on;
+    setViewModeEditEnabledToLocal(on);
+    applyEditToolsVisibilityByMode();
+    try { await setAiSettings({ viewModeEditEnabled: on }); } catch (e) {}
 }
 
 async function saveImgbbApiKey(key) {
@@ -5331,6 +4741,11 @@ async function persistAiSettingsFromModal() {
     const selectionWrapEnabledValue = !(wrapEl && wrapEl.checked === false);
     selectionWrapEnabled = selectionWrapEnabledValue;
     setSelectionWrapEnabledToLocal(selectionWrapEnabledValue);
+    const viewModeEditEl = document.getElementById('view-mode-edit-enabled');
+    const viewModeEditEnabledValue = !!(viewModeEditEl && viewModeEditEl.checked);
+    viewModeEditEnabled = viewModeEditEnabledValue;
+    setViewModeEditEnabledToLocal(viewModeEditEnabledValue);
+    applyEditToolsVisibilityByMode();
     if (!db) return;
     const s = await getAiSettings();
     const verified = !!(s && s.verified);
@@ -5360,6 +4775,7 @@ async function persistAiSettingsFromModal() {
         imageUploadEnabled: imageUploadEnabled,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
+        viewModeEditEnabled: viewModeEditEnabledValue,
         imgbbApiKey: imgbbKey
     });
     if (imgbbKey) localStorage.setItem('ss_imgbb_api_key', imgbbKey);
@@ -5371,6 +4787,229 @@ async function closeSettingsModal() {
     document.getElementById('settings-modal').classList.add('hidden');
     document.getElementById('settings-modal').classList.remove('flex');
     await applyAiFeatureVisibility();
+}
+
+const INDB_STATUS_STORE_ORDER = ['documents', 'folders', 'images', 'autosave', 'ai_settings', 'scholar_refs'];
+
+function escapeInDbStatusHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function getInDbStatusStores() {
+    if (!db || !db.objectStoreNames) return [];
+    const existing = Array.from(db.objectStoreNames || []);
+    const ordered = [];
+    INDB_STATUS_STORE_ORDER.forEach(function (name) {
+        if (existing.includes(name)) ordered.push(name);
+    });
+    existing.forEach(function (name) {
+        if (!ordered.includes(name)) ordered.push(name);
+    });
+    return ordered;
+}
+
+function getInDbStatusPrimaryText(storeName, item) {
+    const rec = item || {};
+    if (storeName === 'documents') return String(rec.title || rec.id || '(untitled)');
+    if (storeName === 'folders') return String(rec.name || rec.id || '(folder)');
+    if (storeName === 'images') return String(rec.name || rec.id || '(image)');
+    if (storeName === 'autosave') return String(rec.title || rec.id || '(autosave)');
+    if (storeName === 'scholar_refs') return String(rec.title || rec.id || '(scholar ref)');
+    if (storeName === 'ai_settings') return String(rec.id || 'ai_settings');
+    return String(rec.id || '(item)');
+}
+
+function getInDbStatusSecondaryText(storeName, item) {
+    const rec = item || {};
+    if (storeName === 'documents') {
+        const len = String(rec.content || '').length;
+        return 'id=' + String(rec.id || '') + ' | chars=' + len;
+    }
+    if (storeName === 'images') {
+        const size = rec.blob && typeof rec.blob.size === 'number' ? rec.blob.size : 0;
+        return 'id=' + String(rec.id || '') + ' | bytes=' + size;
+    }
+    return 'id=' + String(rec.id || '');
+}
+
+async function readAllInDbStoreItems(storeName) {
+    return await new Promise(function (resolve) {
+        try {
+            const tx = db.transaction(storeName, 'readonly');
+            const req = tx.objectStore(storeName).getAll();
+            req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+            req.onerror = function () { resolve([]); };
+        } catch (e) {
+            resolve([]);
+        }
+    });
+}
+
+async function renderInDbStatusModal() {
+    const listEl = document.getElementById('indb-status-list');
+    if (!listEl) return;
+    if (!db) {
+        listEl.innerHTML = '<div class="text-sm text-red-600 dark:text-red-400">IndexedDB is not ready.</div>';
+        return;
+    }
+
+    const stores = getInDbStatusStores();
+    if (!stores.length) {
+        listEl.innerHTML = '<div class="text-sm text-slate-500 dark:text-slate-400">No object stores found.</div>';
+        return;
+    }
+
+    const sections = [];
+    for (let si = 0; si < stores.length; si++) {
+        const storeName = stores[si];
+        const items = await readAllInDbStoreItems(storeName);
+        const rows = [];
+        for (let i = 0; i < items.length; i++) {
+            const rec = items[i] || {};
+            const id = String(rec.id || '').trim();
+            if (!id) continue;
+            const lockedRoot = storeName === 'folders' && id === 'root';
+            const title = escapeInDbStatusHtml(getInDbStatusPrimaryText(storeName, rec));
+            const sub = escapeInDbStatusHtml(getInDbStatusSecondaryText(storeName, rec));
+            const btn = lockedRoot
+                ? '<span class="text-xs text-slate-400 dark:text-slate-500">root</span>'
+                : '<button type="button" class="text-red-600 hover:text-red-700 font-bold text-lg leading-none" onclick="deleteInDbStatusItem(\'' + escapeInDbStatusHtml(storeName) + '\', \'' + escapeInDbStatusHtml(id) + '\')">x</button>';
+            rows.push(
+                '<div class="flex items-start gap-3 px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">' +
+                '<div class="min-w-[88px] text-[10px] font-bold uppercase text-indigo-600 dark:text-indigo-300 mt-0.5">' + escapeInDbStatusHtml(storeName) + '</div>' +
+                '<div class="flex-1 min-w-0">' +
+                '<div class="text-sm font-semibold text-slate-800 dark:text-slate-100 break-all">' + title + '</div>' +
+                '<div class="text-[11px] text-slate-500 dark:text-slate-400 break-all">' + sub + '</div>' +
+                '</div>' +
+                '<div class="shrink-0 pt-1">' + btn + '</div>' +
+                '</div>'
+            );
+        }
+
+        const body = rows.length
+            ? rows.join('')
+            : '<div class="text-xs text-slate-400 dark:text-slate-500 px-2 py-1">No records</div>';
+        sections.push(
+            '<div class="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">' +
+            '<div class="px-3 py-1.5 text-xs font-bold uppercase tracking-wide bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200">' +
+            escapeInDbStatusHtml(storeName) + ' (' + items.length + ')' +
+            '</div>' +
+            '<div class="p-2 space-y-1">' + body + '</div>' +
+            '</div>'
+        );
+    }
+
+    listEl.innerHTML = sections.join('');
+}
+
+async function openInDbStatusModal() {
+    const modal = document.getElementById('indb-status-modal');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    await renderInDbStatusModal();
+}
+
+function closeInDbStatusModal() {
+    const modal = document.getElementById('indb-status-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+async function deleteInDbStatusItem(storeName, id) {
+    const store = String(storeName || '').trim();
+    const itemId = String(id || '').trim();
+    if (!db || !store || !itemId) return;
+    if (store === 'folders' && itemId === 'root') {
+        showToast('ROOT folder cannot be deleted.');
+        return;
+    }
+
+    const first = window.confirm('Delete this item?\n[' + store + '] ' + itemId);
+    if (!first) return;
+    const second = window.confirm('Are you sure again?\nThis action cannot be undone.');
+    if (!second) return;
+
+    await new Promise(function (resolve, reject) {
+        try {
+            const tx = db.transaction(store, 'readwrite');
+            tx.objectStore(store).delete(itemId);
+            tx.oncomplete = resolve;
+            tx.onerror = function () { reject(tx.error || new Error('Failed to delete item.')); };
+        } catch (e) {
+            reject(e);
+        }
+    }).catch(function (e) {
+        showToast('Delete failed: ' + (e && e.message ? e.message : e));
+    });
+
+    if (store === 'documents' && String(currentDbDocId || '') === itemId) {
+        currentDbDocId = null;
+        setCurrentDocumentInfo('untitled.md', null);
+        updateContent('');
+        markPersistedState();
+    }
+
+    await ensureRootFolder();
+    renderDBList();
+    await renderInDbStatusModal();
+    showToast('Deleted: [' + store + '] ' + itemId);
+}
+
+async function deleteAllInDbStatusItems() {
+    if (!db) return;
+    const first = window.confirm('Delete all inDB items?');
+    if (!first) return;
+    const second = window.confirm('Are you sure again?\nAll records will be removed (ROOT folder is kept).');
+    if (!second) return;
+
+    const stores = getInDbStatusStores();
+    for (let i = 0; i < stores.length; i++) {
+        const storeName = stores[i];
+        if (storeName === 'folders') {
+            const folders = await readAllInDbStoreItems('folders');
+            await new Promise(function (resolve) {
+                try {
+                    const tx = db.transaction('folders', 'readwrite');
+                    const os = tx.objectStore('folders');
+                    folders.forEach(function (f) {
+                        const id = String((f && f.id) || '').trim();
+                        if (id && id !== 'root') os.delete(id);
+                    });
+                    tx.oncomplete = resolve;
+                    tx.onerror = resolve;
+                } catch (e) {
+                    resolve();
+                }
+            });
+        } else {
+            await new Promise(function (resolve) {
+                try {
+                    const tx = db.transaction(storeName, 'readwrite');
+                    tx.objectStore(storeName).clear();
+                    tx.oncomplete = resolve;
+                    tx.onerror = resolve;
+                } catch (e) {
+                    resolve();
+                }
+            });
+        }
+    }
+
+    currentDbDocId = null;
+    setCurrentDocumentInfo('untitled.md', null);
+    updateContent('');
+    markPersistedState();
+    await ensureRootFolder();
+    renderDBList();
+    await renderInDbStatusModal();
+    showToast('All inDB items deleted.');
 }
 
 function isAiMasterEnabled(settings) {
@@ -5734,6 +5373,9 @@ function ensureSidebarAILoaded() {
             generateImage: async function (prompt, options) {
                 const key = localStorage.getItem('ss_gemini_api_key') || '';
                 if (!key || !String(key).trim()) throw new Error('API key is missing. Save your Gemini API key in Settings.');
+                const ctrl = new AbortController();
+                window._abortController = ctrl;
+                try {
                 let modelId = (options && options.modelId) || 'gemini-2.5-flash-image';
                 const aspectRatio = (options && options.aspectRatio) || '1:1';
                 const simpleNoText = !!(options && options.noText);
@@ -5757,7 +5399,7 @@ function ensureSidebarAILoaded() {
                                 personGeneration: 'allow_adult'
                             }
                         };
-                        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal });
                         if (!res.ok) {
                             let msg = String(res.status);
                             try { const err = await res.json(); msg = err.error?.message || msg; } catch (e) {}
@@ -5804,10 +5446,10 @@ function ensureSidebarAILoaded() {
                 };
                 const genLite = { imageConfig: { aspectRatio: aspectRatio } };
                 let payload = { contents: [{ role: 'user', parts }], generationConfig: genFull };
-                let res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                let res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ctrl.signal });
                 if (!res.ok && res.status === 400) {
                     payload.generationConfig = genLite;
-                    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: ctrl.signal });
                 }
                 if (!res.ok) {
                     let msg = String(res.status);
@@ -5834,6 +5476,9 @@ function ensureSidebarAILoaded() {
                 }
                 if (cand.finishReason && cand.finishReason !== 'STOP') throw new Error('Image generation stopped unexpectedly: ' + cand.finishReason);
                 throw new Error('Failed to extract generated image data from API response.');
+                } finally {
+                    if (window._abortController === ctrl) window._abortController = null;
+                }
             },
             getScholarAISystemInstruction: function () { return localStorage.getItem('ss_scholar_ai_system') || ''; },
             setScholarAISystemInstruction: function (text) { localStorage.setItem('ss_scholar_ai_system', text || ''); },
@@ -5894,14 +5539,8 @@ function injectSidebarAIHtml() {
         if (typeof lucide !== 'undefined') lucide.createIcons();
         return true;
     };
-    try {
-        if (typeof window.getSidebarAIHtml === 'function') {
-            const inlineHtml = window.getSidebarAIHtml();
-            if (applyHtml(inlineHtml)) return Promise.resolve(true);
-        }
-    } catch (e) {}
     const tryFetch = function (u) {
-        return fetch(u).then(function (r) {
+        return fetch(u, { cache: 'no-store' }).then(function (r) {
             if (!r.ok) throw new Error(String(r.status));
             return r.text();
         });
@@ -5984,6 +5623,10 @@ async function loadAiSettingsToUI() {
         const localWrapEnabled = getSelectionWrapEnabledFromLocal();
         if (wrapCheckEmpty) wrapCheckEmpty.checked = localWrapEnabled;
         selectionWrapEnabled = localWrapEnabled;
+        const viewModeEditCheckEmpty = document.getElementById('view-mode-edit-enabled');
+        const localViewModeEditEnabled = getViewModeEditEnabledFromLocal();
+        if (viewModeEditCheckEmpty) viewModeEditCheckEmpty.checked = localViewModeEditEnabled;
+        viewModeEditEnabled = localViewModeEditEnabled;
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
         if (window.GoogleDocs && typeof window.GoogleDocs.resetGoogleDocsSettingsUI === 'function') {
@@ -5997,6 +5640,7 @@ async function loadAiSettingsToUI() {
         applyScholarSearchVisibility({ scholarSearchVisible: false });
         applyHighlightVisibility({ highlightVisible: false });
         applySitesVisibility({ sitesVisible: false });
+        applyEditToolsVisibilityByMode();
         return;
     }
     const apiInput = document.getElementById('ai-api-key');
@@ -6022,6 +5666,13 @@ async function loadAiSettingsToUI() {
     if (wrapCheck) wrapCheck.checked = wrapEnabled;
     selectionWrapEnabled = wrapEnabled;
     setSelectionWrapEnabledToLocal(wrapEnabled);
+    const viewModeEditCheck = document.getElementById('view-mode-edit-enabled');
+    const viewModeEditValue = typeof settings.viewModeEditEnabled === 'boolean'
+        ? settings.viewModeEditEnabled
+        : getViewModeEditEnabledFromLocal();
+    if (viewModeEditCheck) viewModeEditCheck.checked = viewModeEditValue;
+    viewModeEditEnabled = viewModeEditValue;
+    setViewModeEditEnabledToLocal(viewModeEditValue);
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
     if (window.GoogleDocs && typeof window.GoogleDocs.loadGoogleDocsSettingsUI === 'function') {
@@ -6066,6 +5717,7 @@ async function loadAiSettingsToUI() {
     applyScholarSearchVisibility(settings);
     applyToDocsVisibility(settings);
     applySitesVisibility(settings);
+    applyEditToolsVisibilityByMode();
 }
 
 async function initAiVisibility() {
@@ -6090,6 +5742,10 @@ async function initAiVisibility() {
         ? settings.selectionWrapEnabled
         : getSelectionWrapEnabledFromLocal();
     setSelectionWrapEnabledToLocal(selectionWrapEnabled);
+    viewModeEditEnabled = settings && typeof settings.viewModeEditEnabled === 'boolean'
+        ? settings.viewModeEditEnabled
+        : getViewModeEditEnabledFromLocal();
+    setViewModeEditEnabledToLocal(viewModeEditEnabled);
     sitesList = normalizeSitesList(settings && settings.sitesList);
     renderSitesPanel();
     updateAiScholarSspimgAvailability(verified);
@@ -6098,13 +5754,51 @@ async function initAiVisibility() {
     applyHighlightVisibility(settings || { highlightVisible: false });
     applyToDocsVisibility(settings || { toDocsVisible: false });
     applySitesVisibility(settings || { sitesVisible: false });
+    applyEditToolsVisibilityByMode();
     await applyAiFeatureVisibility();
 }
 
 function openSettingsModal() {
+    ensureInDbStatusUi();
     document.getElementById('settings-modal').classList.remove('hidden');
     document.getElementById('settings-modal').classList.add('flex');
     loadAiSettingsToUI();
+}
+
+function ensureInDbStatusUi() {
+    const settingsModal = document.getElementById('settings-modal');
+    if (settingsModal) {
+        let openBtn = document.getElementById('btn-open-indb-status');
+        if (!openBtn) {
+            const closeRow = settingsModal.querySelector('button[onclick="closeSettingsModal()"]')?.parentElement;
+            if (closeRow && closeRow.parentElement) {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-start mb-2';
+                row.innerHTML = ''
+                    + '<button type="button" id="btn-open-indb-status" onclick="openInDbStatusModal()"'
+                    + ' class="px-3 py-1.5 border-2 border-slate-700 rounded-lg text-sm font-medium text-slate-800 bg-white hover:bg-slate-50">inDB보기</button>';
+                closeRow.parentElement.insertBefore(row, closeRow);
+                openBtn = row.querySelector('#btn-open-indb-status');
+            }
+        }
+    }
+
+    if (!document.getElementById('indb-status-modal')) {
+        const modal = document.createElement('div');
+        modal.id = 'indb-status-modal';
+        modal.className = 'fixed inset-0 bg-black/30 hidden items-center justify-center z-[70] no-print';
+        modal.setAttribute('onclick', "if(event.target===this) closeInDbStatusModal()");
+        modal.innerHTML = ''
+            + '<div class="w-[min(680px,92vw)] h-[min(680px,86vh)] bg-white dark:bg-slate-900 border-2 border-slate-800 shadow-2xl flex flex-col">'
+            + '<div class="px-4 py-2 bg-indigo-600 text-white text-2xl text-center tracking-wide">inDB Status</div>'
+            + '<div id="indb-status-list" class="flex-1 overflow-auto p-4 space-y-3 bg-slate-100 dark:bg-slate-800"></div>'
+            + '<div class="border-t-2 border-slate-700 p-2 flex items-center justify-center gap-2 bg-white dark:bg-slate-900">'
+            + '<button type="button" onclick="deleteAllInDbStatusItems()" class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">전체지우기</button>'
+            + '<button type="button" onclick="closeInDbStatusModal()" class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">닫기</button>'
+            + '</div>'
+            + '</div>';
+        document.body.appendChild(modal);
+    }
 }
 
 function applyCodeColorSettings() {
@@ -6127,43 +5821,7 @@ function resetCodeColorSettings() {
     showToast('Code color settings reset to default.');
 }
 
-function insertHtmlImageAtCursor(imageUrl, altText) {
-    if (!isEditMode) {
-        showToast('Use this in edit mode.');
-        return;
-    }
-    const u = String(imageUrl || '').trim();
-    if (!u) {
-        showToast('Enter an image URL.');
-        return;
-    }
-    const safeUrl = u.replace(/"/g, '&quot;').replace(/[<>]/g, '');
-    const alt = String(altText || 'image')
-        .trim()
-        .replace(/"/g, '&quot;')
-        .replace(/[<>]/g, '') || 'image';
-    const ta = editorTextarea;
-    const scrollTop = ta.scrollTop;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const before = ta.value.slice(0, start);
-    const prefix = before.length > 0 && !before.endsWith('\n\n')
-        ? (before.endsWith('\n') ? '\n' : '\n\n')
-        : '';
-    const html = prefix + '<img src="' + safeUrl + '" alt="' + alt + '" border="0">' + '\n\n';
-    ta.focus();
-    if (typeof ta.setRangeText === 'function') {
-        ta.setRangeText(html, start, end, 'end');
-    } else {
-        document.execCommand('insertText', false, html);
-    }
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
-    currentMarkdown = ta.value;
-    ta.scrollTop = scrollTop;
-    performAutoSave();
-    if (activeSidebarTab === 'toc') renderTOC();
-    showToast('HTML image tag inserted.');
-}
+
 
 function getNextIndexedDbTitle(baseTitle, docs) {
     const trimmedBase = String(baseTitle || '').trim() || 'Untitled';
@@ -6289,24 +5947,25 @@ window.loadFromExternalContent = loadFromExternalContent;
 window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
 window.toggleEnterButtonInsertBrSetting = toggleEnterButtonInsertBrSetting;
-window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
-window.insertHtmlImageAtCursor = insertHtmlImageAtCursor;
-window.openImageInsertModal = openImageInsertModal;
-window.closeImageInsertModal = closeImageInsertModal;
-window.toggleImageInsertDockRight = toggleImageInsertDockRight;
-window.openImageInsertExternalLink = openImageInsertExternalLink;
-window.focusImageInsertPasteZone = focusImageInsertPasteZone;
-window.handleImageInsertFile = handleImageInsertFile;
-window.onImageInsertUploadDragOver = onImageInsertUploadDragOver;
-window.onImageInsertUploadDragLeave = onImageInsertUploadDragLeave;
-window.onImageInsertUploadDrop = onImageInsertUploadDrop;
-window.cropImageInsertCurrent = cropImageInsertCurrent;
-window.uploadImageInsertToImgbb = uploadImageInsertToImgbb;
-window.saveImageInsertToInternalDb = saveImageInsertToInternalDb;
-window.toggleImageInsertGallery = toggleImageInsertGallery;
-window.refreshImageInsertGallery = refreshImageInsertGallery;
-window.downloadImageInsertGalleryZip = downloadImageInsertGalleryZip;
-window.insertImageFromModal = insertImageFromModal;
+window.toggleViewModeEditSetting = toggleViewModeEditSetting;
+if (typeof insertMarkdownImageAtCursor === 'function') window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
+if (typeof insertHtmlImageAtCursor === 'function') window.insertHtmlImageAtCursor = insertHtmlImageAtCursor;
+if (typeof openImageInsertModal === 'function') window.openImageInsertModal = openImageInsertModal;
+if (typeof closeImageInsertModal === 'function') window.closeImageInsertModal = closeImageInsertModal;
+if (typeof toggleImageInsertDockRight === 'function') window.toggleImageInsertDockRight = toggleImageInsertDockRight;
+if (typeof openImageInsertExternalLink === 'function') window.openImageInsertExternalLink = openImageInsertExternalLink;
+if (typeof focusImageInsertPasteZone === 'function') window.focusImageInsertPasteZone = focusImageInsertPasteZone;
+if (typeof handleImageInsertFile === 'function') window.handleImageInsertFile = handleImageInsertFile;
+if (typeof onImageInsertUploadDragOver === 'function') window.onImageInsertUploadDragOver = onImageInsertUploadDragOver;
+if (typeof onImageInsertUploadDragLeave === 'function') window.onImageInsertUploadDragLeave = onImageInsertUploadDragLeave;
+if (typeof onImageInsertUploadDrop === 'function') window.onImageInsertUploadDrop = onImageInsertUploadDrop;
+if (typeof cropImageInsertCurrent === 'function') window.cropImageInsertCurrent = cropImageInsertCurrent;
+if (typeof uploadImageInsertToImgbb === 'function') window.uploadImageInsertToImgbb = uploadImageInsertToImgbb;
+if (typeof saveImageInsertToInternalDb === 'function') window.saveImageInsertToInternalDb = saveImageInsertToInternalDb;
+if (typeof toggleImageInsertGallery === 'function') window.toggleImageInsertGallery = toggleImageInsertGallery;
+if (typeof refreshImageInsertGallery === 'function') window.refreshImageInsertGallery = refreshImageInsertGallery;
+if (typeof downloadImageInsertGalleryZip === 'function') window.downloadImageInsertGalleryZip = downloadImageInsertGalleryZip;
+if (typeof insertImageFromModal === 'function') window.insertImageFromModal = insertImageFromModal;
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
@@ -6381,6 +6040,10 @@ window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
+window.openInDbStatusModal = openInDbStatusModal;
+window.closeInDbStatusModal = closeInDbStatusModal;
+window.deleteInDbStatusItem = deleteInDbStatusItem;
+window.deleteAllInDbStatusItems = deleteAllInDbStatusItems;
 window.applyCodeColorSettings = applyCodeColorSettings;
 window.resetCodeColorSettings = resetCodeColorSettings;
 window.clearUnusedCache = clearUnusedCache;
@@ -6763,3 +6426,4 @@ window.findPrev = findPrev;
 window.replaceCurrent = replaceCurrent;
 window.replaceAll = replaceAll;
 window.swapFindReplaceValues = swapFindReplaceValues;
+

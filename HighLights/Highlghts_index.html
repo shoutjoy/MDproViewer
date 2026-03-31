@@ -996,7 +996,7 @@ window.deleteRecordFromChild = function(id) {
         const tx = db.transaction([STORES.RECORDS], 'readonly');
         tx.objectStore(STORES.RECORDS).getAll().onsuccess = (e) => {
             const records = e.target.result;
-            if (!records.length) return alert('??? ???? ????.');
+            if (!records.length) return alert('No records to export.');
             const exportText = buildExportTextFromRecords(records);
 
             const blobType = format === 'txt' ? 'text/plain' : 'text/markdown';

@@ -1,12 +1,16 @@
-# 빌드/배포 폴더 제외
+﻿# 
 md-electron/
 Release/
 Docs/
 backup/
-# 복구용 파일 제외 
+restore/
+temp/
+#   
 
-index복구용.html
 
-# 업로드 자동화 제외 
+# 
 push.bat
 push.py
+trt/wysiwyg-layer-proposal.md
+restore/index1.html
+

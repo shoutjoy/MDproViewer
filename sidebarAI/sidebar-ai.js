@@ -1,4 +1,4 @@
-/**
+﻿/**
  * sidebarAI - ScholarAI & SSPAI Core Logic (Portable Module)
  * Extracted from viewer-standalone.js
  *
@@ -556,7 +556,8 @@
     var safeValue = escapeHtml(value);
     var safeHref = href ? escapeHtml(href) : '';
     var escapedForInsert = String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-    var insertBtn = '<button type="button" class="viewer-fs-link-insert" onclick="viewerSSPInsertLinkToDoc(\'' + escapedForInsert + '\', \'' + String(label || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">문서 삽입</button>';
+    // Korean text: Insert this link into the editor document.
+    var insertBtn = '<button type="button" class="viewer-fs-link-insert" onclick="viewerSSPInsertLinkToDoc(\'' + escapedForInsert + '\', \'' + String(label || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\')">\uBB38\uC11C\uC5D0 \uC0BD\uC785</button>';
     var openLink = safeHref
       ? '<a class="viewer-fs-link-open" href="' + safeHref + '" target="_blank" rel="noopener noreferrer">Open</a>'
       : '';
@@ -577,20 +578,24 @@
     var isDirect = /direct/i.test(String(label || ''));
     if (isDirect && typeof window.insertMarkdownImageAtCursor === 'function') {
       window.insertMarkdownImageAtCursor(u, getSspImageAltText(u));
-      notifyUser('이미지 링크를 문서에 삽입했습니다.', false);
+      // Korean text: Image inserted into the document.
+      notifyUser('\uBB38\uC11C\uC5D0 \uC774\uBBF8\uC9C0\uAC00 \uC0BD\uC785\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', false);
       return;
     }
     var ta = document.getElementById('viewer-edit-ta');
     if (!ta) {
-      notifyUser('편집창을 찾을 수 없습니다.', true);
+      // Korean text: Editor not found, cannot insert the link.
+      notifyUser('\uD3B8\uC9D1\uAE30\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC5B4 \uB9C1\uD06C\uB97C \uC0BD\uC785\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.', true);
       return;
     }
     var linkText = '[image link](' + u + ')';
     ta.focus();
     document.execCommand('insertText', false, linkText);
     try { ta.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
-    notifyUser('링크를 문서에 삽입했습니다.', false);
+    // Korean text: Image link inserted into the document.
+    notifyUser('\uC774\uBBF8\uC9C0 \uB9C1\uD06C\uAC00 \uBB38\uC11C\uC5D0 \uC0BD\uC785\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', false);
   }
+
   function viewerSSPFindHistoryEntryById(id) {
     if (!id) return null;
     for (var i = 0; i < __viewerSSPImgHistory.length; i++) {
@@ -883,7 +888,7 @@
     }
 if (!text) {
   if (taPassage && (window.__contentType || '') === 'summary' && (!taPassage.value || !String(taPassage.value).trim())) {
-    // 깨진 문자열 대신 아래 문구를 삽입
+    
     taPassage.value = 'Select a passage from the document to start the AI analysis.';
   }
   return;
@@ -1030,12 +1035,12 @@ if (!text) {
   function scholarAIGetToneInstruction(v) {
     var tone = (v === 'academic_ida' || v === 'academic_eumham' || v === 'general_polite') ? v : SA_TONE_DEFAULT;
     if (tone === 'academic_eumham') {
-      return 'Tone preset: Academic style. Use Korean ending forms such as "-음/-함" consistently and avoid casual speech.';
+      return '\uBB38\uCCB4 \uD504\uB9AC\uC14B: \uD559\uC220\uD615. \uBB38\uC7A5 \uC885\uACB0\uC740 -\uC74C/-\uD568 \uD615\uD0DC\uB97C \uC77C\uAD00\uB418\uAC8C \uC0AC\uC6A9\uD558\uACE0 \uAD6C\uC5B4\uCCB4\uB97C \uD53C\uD558\uC138\uC694.';
     }
     if (tone === 'general_polite') {
-      return 'Tone preset: General polite Korean. Use courteous endings such as "-습니다/-요". Keep readability high.';
+      return '\uBB38\uCCB4 \uD504\uB9AC\uC14B: \uC77C\uBC18 \uACF5\uC190\uCCB4. -\uC2B5\uB2C8\uB2E4/-\uC694 \uAC19\uC740 \uACF5\uC190\uD55C \uC5B4\uBBF8\uB97C \uC0AC\uC6A9\uD558\uACE0 \uAC00\uB3C5\uC131\uC744 \uB192\uC774\uC138\uC694.';
     }
-    return 'Tone preset: Academic declarative Korean style. Prefer concise sentence endings in "-이다".';
+    return '\uBB38\uCCB4 \uD504\uB9AC\uC14B: \uD559\uC220 \uC11C\uC220\uD615. \uBB38\uC7A5 \uC885\uACB0\uC740 \uAC04\uACB0\uD55C -\uC774\uB2E4 \uD615\uD0DC\uB97C \uC6B0\uC120 \uC0AC\uC6A9\uD558\uC138\uC694.';
   }
   function scholarAIInitToneSelect() {
     var sel = document.getElementById('scholar-ai-tone-select');
@@ -1556,7 +1561,7 @@ if (!text) {
 function viewerSSPFsUploadImgbb() {
     var img = document.getElementById('viewer-fs-img');
     if (!img || !img.src) {
-        // 깨진 문자열 대신 사용자에게 알림을 띄웁니다.
+        
         notifyUser('No image found. Please capture or select an image first.', true);
         return;
     }
@@ -1771,7 +1776,8 @@ function viewerSSPFsUploadImgbb() {
       cropBtn.onclick = function () {
         var resultImg = document.getElementById('ssp-result-img');
         if (!resultImg || !resultImg.src) {
-          notifyUser('먼저 이미지를 생성하거나 업로드하세요.', true);
+          // Korean text: No image available to crop. Generate or load an image first.
+          notifyUser('\uC790\uB974\uAE30\uD560 \uC774\uBBF8\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uBA3C\uC800 \uC774\uBBF8\uC9C0\uB97C \uC0DD\uC131\uD558\uAC70\uB098 \uBD88\uB7EC\uC624\uC138\uC694.', true);
           return;
         }
         viewerSSPOpenFullscreen(resultImg.src);
@@ -1798,7 +1804,7 @@ function viewerSSPFsUploadImgbb() {
       link.href = 'https://api.imgbb.com/';
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.textContent = 'API key 받기: https://api.imgbb.com/';
+      link.textContent = 'API key 발급/안내 페이지: https://api.imgbb.com/';
       link.style.color = '#2563eb';
       link.style.textDecoration = 'underline';
       linkWrap.appendChild(link);
@@ -1828,9 +1834,9 @@ function viewerSSPFsUploadImgbb() {
     var prompt = [p1, p2].filter(Boolean).join('\n\n');
     var seedImage = __viewerSSPSeedImage;
     var hasSeed = seedImage && typeof seedImage === 'string' && seedImage.indexOf('data:image') === 0;
-    if (!hasSeed && !prompt) { alert('프롬프트를 입력하거나 시드 이미지를 업로드하세요.'); return; }
+    if (!hasSeed && !prompt) { alert('프롬프트를 입력하거나 시드 이미지를 먼저 업로드해 주세요.'); return; }
     var generateImage = getCallback('generateImage');
-    if (typeof generateImage !== 'function') { alert('이미지 생성 API를 사용할 수 없습니다. 설정을 확인하세요.'); return; }
+    if (typeof generateImage !== 'function') { alert('이미지 생성 API가 설정되지 않았습니다. 설정에서 콜백을 연결해 주세요.'); return; }
     var statusEl = document.getElementById('ssp-status');
     var resultImg = document.getElementById('ssp-result-img');
     var downloadBtn = document.getElementById('ssp-download-btn');
@@ -1845,7 +1851,7 @@ function viewerSSPFsUploadImgbb() {
     if (progressWrap) { progressWrap.classList.add('visible'); progressWrap.style.display = 'flex'; }
     if (progressFill) progressFill.style.width = '0%';
     if (progressPct) progressPct.textContent = '0%';
-    if (statusEl) statusEl.textContent = 'AI 이미지 생성 중...';
+    if (statusEl) statusEl.textContent = 'AI 이미지 생성을 요청하는 중입니다...';
     var progressInterval = null;
     var progressVal = 0;
     var progressMax = 95;
@@ -1867,19 +1873,19 @@ function viewerSSPFsUploadImgbb() {
         __viewerSSPResultImage = dataURL;
         if (resultImg) { resultImg.src = dataURL; resultImg.style.display = 'block'; resultImg.title = 'Open fullscreen'; }
         if (downloadBtn) downloadBtn.disabled = false;
-        if (statusEl) statusEl.textContent = '생성 완료';
+        if (statusEl) statusEl.textContent = '\uC774\uBBF8\uC9C0\uAC00 \uC131\uACF5\uC801\uC73C\uB85C \uC0DD\uC131\uB418\uC5C8\uC2B5\uB2C8\uB2E4.';
         viewerSSPImgHistoryAdd(dataURL, prompt);
       } else {
-        if (statusEl) statusEl.textContent = '결과를 받지 못했습니다.';
+        if (statusEl) statusEl.textContent = '\uC774\uBBF8\uC9C0 \uC0DD\uC131 \uACB0\uACFC\uAC00 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4. \uB2E4\uC2DC \uC2DC\uB3C4\uD574 \uC8FC\uC138\uC694.';
       }
     } catch (e) {
       clearInterval(progressInterval);
       if (progressWrap) { progressWrap.classList.remove('visible'); progressWrap.style.display = 'none'; }
-      if (statusEl) statusEl.textContent = (e && e.name === 'AbortError') ? '생성이 중단되었습니다.' : ('생성 오류: ' + (e.message || e));
+      if (statusEl) statusEl.textContent = (e && e.name === 'AbortError') ? '\uC774\uBBF8\uC9C0 \uC0DD\uC131\uC774 \uCDE8\uC18C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.' : ('\uC774\uBBF8\uC9C0 \uC0DD\uC131 \uC911 \uC624\uB958: ' + (e.message || e));
     }
   }
   function viewerSSPDownload() {
-    if (!__viewerSSPResultImage) { alert('다운로드할 이미지가 없습니다. 먼저 이미지를 생성하세요.'); return; }
+    if (!__viewerSSPResultImage) { alert('\uB2E4\uC6B4\uB85C\uB4DC\uD560 \uC774\uBBF8\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uBA3C\uC800 \uC774\uBBF8\uC9C0\uB97C \uC0DD\uC131\uD574 \uC8FC\uC138\uC694.'); return; }
     var a = document.createElement('a');
     a.href = __viewerSSPResultImage;
     a.download = 'ssp_image_' + Date.now() + '.png';
@@ -1900,8 +1906,10 @@ function viewerSSPFsUploadImgbb() {
   async function viewerSSPUploadToImgbb(sourceDataUrl) {
     if (__viewerSSPImgbbUploading) return;
     if (!sourceDataUrl || sourceDataUrl.indexOf('data:image') !== 0) {
-      setSSPStatus('업로드할 이미지가 없습니다. 먼저 이미지를 생성하거나 불러오세요.');
-      notifyUser('업로드할 이미지가 없습니다. 먼저 이미지를 생성하거나 불러오세요.', true);
+      // Korean text: No image available to upload. Generate or load an image first.
+      // This message is stored with Unicode escapes to prevent mojibake.
+      setSSPStatus('\uC5C5\uB85C\uB4DC\uD560 \uC774\uBBF8\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uBA3C\uC800 \uC774\uBBF8\uC9C0\uB97C \uC0DD\uC131\uD558\uAC70\uB098 \uBD88\uB7EC\uC624\uC138\uC694.');
+      notifyUser('\uC5C5\uB85C\uB4DC\uD560 \uC774\uBBF8\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uBA3C\uC800 \uC774\uBBF8\uC9C0\uB97C \uC0DD\uC131\uD558\uAC70\uB098 \uBD88\uB7EC\uC624\uC138\uC694.', true);
       return;
     }
     __viewerSSPResultImage = sourceDataUrl;
@@ -1912,8 +1920,10 @@ function viewerSSPFsUploadImgbb() {
     var apiKey = getImgbbApiKeyValue();
     if (!apiKey) {
       viewerSSPToggleImgbbSettings(true);
-      setImgbbSettingsStatus('imgBB API 키를 먼저 입력하고 저장하세요.', true);
-      notifyUser('imgBB API 키를 먼저 입력하고 저장하세요.', true);
+      // Korean text: Prompt the user to save the imgBB API key first.
+      // This string uses Unicode escapes to avoid encoding-related mojibake.
+      setImgbbSettingsStatus('imgBB API \uD0A4\uB97C \uBA3C\uC800 \uC785\uB825\uD558\uACE0 \uC800\uC7A5\uD558\uC138\uC694.', true);
+      notifyUser('imgBB API \uD0A4\uB97C \uBA3C\uC800 \uC785\uB825\uD558\uACE0 \uC800\uC7A5\uD558\uC138\uC694.', true);
       return;
     }
 
@@ -1974,9 +1984,9 @@ function viewerSSPFsUploadImgbb() {
         try { window.open(viewerUrl, '_blank'); } catch (e) {}
       }
 
-      setSSPStatus('imgBB 업로드가 완료되었습니다.');
-      setImgbbSettingsStatus('업로드 완료. 아래 링크를 Markdown 또는 HTML로 삽입할 수 있습니다.', false);
-      notifyUser('imgBB 업로드 완료', false);
+      setSSPStatus('imgBB upload completed.');
+      setImgbbSettingsStatus('Upload completed. You can insert the link below as Markdown or HTML.', false);
+      notifyUser('imgBB upload completed', false);
     } catch (e) {
       if (previewWindow && !previewWindow.closed) previewWindow.close();
       var message = e && e.message ? e.message : String(e || 'imgBB upload error');
@@ -1997,7 +2007,7 @@ function viewerSSPFsUploadImgbb() {
   function viewerSSPCropFromPanel() {
     var resultImg = document.getElementById('ssp-result-img');
     if (!resultImg || !resultImg.src) {
-      notifyUser('먼저 이미지를 생성하거나 업로드하세요.', true);
+      notifyUser('\uC790\uB97C \uC774\uBBF8\uC9C0\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uBA3C\uC800 \uC774\uBBF8\uC9C0\uB97C \uC0DD\uC131\uD574 \uC8FC\uC138\uC694.', true);
       return;
     }
     viewerSSPOpenFullscreen(resultImg.src);
@@ -2006,9 +2016,9 @@ function viewerSSPFsUploadImgbb() {
   function sspInsertImageMarkdown() {
     var el = document.getElementById('ssp-image-link-url');
     var u = el && el.value.trim();
-    if (!u) { alert('이미지 URL을 먼저 입력해 주세요.'); return; }
+    if (!u) { alert('\uC0BD\uC785\uD560 \uC774\uBBF8\uC9C0 URL\uC744 \uC785\uB825\uD574 \uC8FC\uC138\uC694.'); return; }
     if (typeof window.insertMarkdownImageAtCursor !== 'function') {
-      alert('Markdown image insertion is not available.');
+      alert('\uB9C8\uD06C\uB2E4\uC6B4 \uC774\uBBF8\uC9C0 \uC0BD\uC785 \uAE30\uB2A5\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.');
       return;
     }
     window.insertMarkdownImageAtCursor(u, getSspImageAltText(u));
@@ -2016,9 +2026,9 @@ function viewerSSPFsUploadImgbb() {
   function sspInsertImageHtml() {
     var el = document.getElementById('ssp-image-link-url');
     var u = el && el.value.trim();
-    if (!u) { alert('이미지 URL을 먼저 입력해 주세요.'); return; }
+    if (!u) { alert('\uC0BD\uC785\uD560 \uC774\uBBF8\uC9C0 URL\uC744 \uC785\uB825\uD574 \uC8FC\uC138\uC694.'); return; }
     if (typeof window.insertHtmlImageAtCursor !== 'function') {
-      alert('HTML image insertion is not available.');
+      alert('HTML \uC774\uBBF8\uC9C0 \uC0BD\uC785 \uAE30\uB2A5\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.');
       return;
     }
     window.insertHtmlImageAtCursor(u, getSspImageAltText(u));
@@ -2030,7 +2040,7 @@ function viewerSSPFsUploadImgbb() {
         return;
       }
     }
-    notifyUser('선택한 이미지를 히스토리에서 찾을 수 없습니다.', true);
+    notifyUser('\uC120\uD0DD\uD55C \uD788\uC2A4\uD1A0\uB9AC \uC774\uBBF8\uC9C0\uB97C \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.', true);
   }
   function viewerSSPImgHistoryLoad() {
     try {
@@ -2059,18 +2069,18 @@ function viewerSSPFsUploadImgbb() {
     var list = document.getElementById('ssp-img-history-list');
     if (!list) return;
   if (__viewerSSPImgHistory.length === 0) { 
-    list.innerHTML = '<span style="font-size:10px;color:#94a3b8">No image history available. Your generated images will appear here.</span>'; 
+    list.innerHTML = '<span style="font-size:10px;color:#94a3b8">\uC774\uBBF8\uC9C0 \uD788\uC2A4\uD1A0\uB9AC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4. \uC0DD\uC131\uD55C \uC774\uBBF8\uC9C0\uAC00 \uC5EC\uAE30\uC5D0 \uD45C\uC2DC\uB429\uB2C8\uB2E4.</span>'; 
     return; 
 }
     var html = '';
     for (var i = 0; i < __viewerSSPImgHistory.length; i++) {
       var h = __viewerSSPImgHistory[i];
-      var lbl = (h.prompt || '(?????諛몃마?????熬곻퐢夷①뇾????????⑤뜤??').replace(/</g, '&lt;').substring(0, 30) + ((h.prompt || '').length > 30 ? '...' : '');
+      var lbl = (h.prompt || '(\uD504\uB86C\uD504\uD2B8 \uC5C6\uC74C)').replace(/</g, '&lt;').substring(0, 30) + ((h.prompt || '').length > 30 ? '...' : '');
       html += '<div class="ssp-img-history-item" data-id="' + h.id + '">';
-      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPOpenFullscreen(this.src); event.stopPropagation()" title="Open fullscreen">';
+      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPOpenFullscreen(this.src); event.stopPropagation()" title="\uC804\uCCB4\uD654\uBA74\uC73C\uB85C \uC5F4\uAE30">';
       html += '<span class="ssp-h-label">' + lbl + '</span>';
-      html += '<button type="button" class="ssp-h-del" onclick="viewerSSPImgHistoryRemove(\'' + h.id + '\'); event.stopPropagation()" title="Delete">X</button>';
-      html += '<button type="button" class="sa-btn ghost ssp-h-upload" onclick="viewerSSPUploadHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="Upload to imgBB">imgBB</button>';
+      html += '<button type="button" class="ssp-h-del" onclick="viewerSSPImgHistoryRemove(\'' + h.id + '\'); event.stopPropagation()" title="\uC0AD\uC81C">X</button>';
+      html += '<button type="button" class="sa-btn ghost ssp-h-upload" onclick="viewerSSPUploadHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="imgBB\uB85C \uC5C5\uB85C\uB4DC">imgBB</button>';
       html += '</div>';
     }
     list.innerHTML = html;
@@ -2092,19 +2102,19 @@ function viewerSSPFsUploadImgbb() {
     var settingsLabel = document.querySelector('label[for="ssp-imgbb-api-key"]');
     if (settingsLabel) settingsLabel.textContent = 'imgBB API Key';
     var settingsNote = document.getElementById('ssp-imgbb-settings-status');
-    if (settingsNote && !getImgbbApiKeyValue()) settingsNote.textContent = 'Enter your imgBB API key to enable direct uploads.';
+    if (settingsNote && !getImgbbApiKeyValue()) settingsNote.textContent = '\uC9C1\uC811 \uC5C5\uB85C\uB4DC\uB97C \uC0AC\uC6A9\uD558\uB824\uBA74 imgBB API \uD0A4\uB97C \uC785\uB825\uD558\uC138\uC694.';
     var uploadZone = document.getElementById('ssp-upload-zone');
-    if (uploadZone && !uploadZone.querySelector('img')) uploadZone.innerHTML = 'Image upload (JPG, PNG, GIF, WebP)<br><small>or Ctrl+V paste</small>';
+    if (uploadZone && !uploadZone.querySelector('img')) uploadZone.innerHTML = '\uC774\uBBF8\uC9C0 \uC5C5\uB85C\uB4DC (JPG, PNG, GIF, WebP)<br><small>\uB610\uB294 Ctrl+V \uBD99\uC5EC\uB123\uAE30</small>';
     var noTextLabel = document.getElementById('ssp-no-text');
-    if (noTextLabel && noTextLabel.parentElement) noTextLabel.parentElement.lastChild.textContent = ' Pure image (no text)';
+    if (noTextLabel && noTextLabel.parentElement) noTextLabel.parentElement.lastChild.textContent = ' \uC21C\uC218 \uC774\uBBF8\uC9C0(\uD14D\uC2A4\uD2B8 \uC5C6\uC74C)';
   }
 
   function viewerSSPLoadImgbbSettings() {
     var input = document.getElementById('ssp-imgbb-api-key');
     var key = getImgbbApiKeyValue();
     if (input) input.value = key;
-    if (key) setImgbbSettingsStatus('imgBB API key is saved and ready.', false);
-    else setImgbbSettingsStatus('Enter your imgBB API key to enable direct uploads.', false);
+    if (key) setImgbbSettingsStatus('imgBB API \uD0A4\uAC00 \uC800\uC7A5\uB418\uC5C8\uACE0 \uC0AC\uC6A9 \uC900\uBE44\uAC00 \uB418\uC5C8\uC2B5\uB2C8\uB2E4.', false);
+    else setImgbbSettingsStatus('\uC9C1\uC811 \uC5C5\uB85C\uB4DC\uB97C \uC0AC\uC6A9\uD558\uB824\uBA74 imgBB API \uD0A4\uB97C \uC785\uB825\uD558\uC138\uC694.', false);
   }
 
   async function viewerSSPSaveImgbbSettings() {
@@ -2117,11 +2127,11 @@ function viewerSSPFsUploadImgbb() {
         if (key) localStorage.setItem('ss_imgbb_api_key', key);
         else localStorage.removeItem('ss_imgbb_api_key');
       }
-      setImgbbSettingsStatus(key ? 'imgBB API key saved.' : 'imgBB API key cleared.', false);
-      notifyUser(key ? 'imgBB API key saved.' : 'imgBB API key cleared.', false);
+      setImgbbSettingsStatus(key ? 'imgBB API \uD0A4\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.' : 'imgBB API \uD0A4\uAC00 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', false);
+      notifyUser(key ? 'imgBB API \uD0A4\uAC00 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.' : 'imgBB API \uD0A4\uAC00 \uC0AD\uC81C\uB418\uC5C8\uC2B5\uB2C8\uB2E4.', false);
     } catch (e) {
-      setImgbbSettingsStatus('Could not save the imgBB API key.', true);
-      notifyUser('Could not save the imgBB API key.', true);
+      setImgbbSettingsStatus('imgBB API \uD0A4\uB97C \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.', true);
+      notifyUser('imgBB API \uD0A4\uB97C \uC800\uC7A5\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.', true);
     }
   }
 
@@ -2129,11 +2139,11 @@ function viewerSSPFsUploadImgbb() {
     var el = document.getElementById('ssp-image-link-url');
     var u = el && el.value.trim();
     if (!u) {
-      alert('Enter an image URL first.');
+      alert('\uBA3C\uC800 \uC774\uBBF8\uC9C0 URL\uC744 \uC785\uB825\uD574 \uC8FC\uC138\uC694.');
       return;
     }
     if (typeof window.insertMarkdownImageAtCursor !== 'function') {
-      alert('Markdown image insertion is not available.');
+      alert('\uB9C8\uD06C\uB2E4\uC6B4 \uC774\uBBF8\uC9C0 \uC0BD\uC785 \uAE30\uB2A5\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.');
       return;
     }
     window.insertMarkdownImageAtCursor(u, getSspImageAltText(u));
@@ -2143,11 +2153,11 @@ function viewerSSPFsUploadImgbb() {
     var el = document.getElementById('ssp-image-link-url');
     var u = el && el.value.trim();
     if (!u) {
-      alert('Enter an image URL first.');
+      alert('\uBA3C\uC800 \uC774\uBBF8\uC9C0 URL\uC744 \uC785\uB825\uD574 \uC8FC\uC138\uC694.');
       return;
     }
     if (typeof window.insertHtmlImageAtCursor !== 'function') {
-      alert('HTML image insertion is not available.');
+      alert('HTML \uC774\uBBF8\uC9C0 \uC0BD\uC785 \uAE30\uB2A5\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.');
       return;
     }
     window.insertHtmlImageAtCursor(u, getSspImageAltText(u));
@@ -2157,20 +2167,20 @@ function viewerSSPFsUploadImgbb() {
     var list = document.getElementById('ssp-img-history-list');
     if (!list) return;
     if (__viewerSSPImgHistory.length === 0) {
-      list.innerHTML = '<span style="font-size:10px;color:#94a3b8">No generated images yet.</span>';
+      list.innerHTML = '<span style="font-size:10px;color:#94a3b8">\uC0DD\uC131\uB41C \uC774\uBBF8\uC9C0 \uD788\uC2A4\uD1A0\uB9AC\uAC00 \uC544\uC9C1 \uC5C6\uC2B5\uB2C8\uB2E4.</span>';
       viewerSSPRenderFullscreenGallery((document.getElementById('viewer-fs-img') || {}).src || '');
       return;
     }
     var html = '';
     for (var i = 0; i < __viewerSSPImgHistory.length; i++) {
       var h = __viewerSSPImgHistory[i];
-      var rawLabel = String(h.prompt || 'Generated image').replace(/</g, '&lt;');
+      var rawLabel = String(h.prompt || '\uC0DD\uC131\uB41C \uC774\uBBF8\uC9C0').replace(/</g, '&lt;');
       var lbl = rawLabel.substring(0, 30) + (rawLabel.length > 30 ? '...' : '');
       html += '<div class="ssp-img-history-item" data-id="' + h.id + '">';
-      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPOpenFullscreen(this.src); event.stopPropagation()" title="Open fullscreen">';
+      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPOpenFullscreen(this.src); event.stopPropagation()" title="\uC804\uCCB4\uD654\uBA74\uC73C\uB85C \uC5F4\uAE30">';
       html += '<span class="ssp-h-label">' + lbl + '</span>';
-      html += '<button type="button" class="ssp-h-del" onclick="viewerSSPImgHistoryRemove(\'' + h.id + '\'); event.stopPropagation()" title="Delete">X</button>';
-      html += '<button type="button" class="sa-btn ghost ssp-h-upload" onclick="viewerSSPUploadHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="Upload to imgBB">imgBB</button>';
+      html += '<button type="button" class="ssp-h-del" onclick="viewerSSPImgHistoryRemove(\'' + h.id + '\'); event.stopPropagation()" title="\uC0AD\uC81C">X</button>';
+      html += '<button type="button" class="sa-btn ghost ssp-h-upload" onclick="viewerSSPUploadHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="imgBB\uB85C \uC5C5\uB85C\uB4DC">imgBB</button>';
       html += '</div>';
     }
     list.innerHTML = html;
@@ -2181,11 +2191,9 @@ function viewerSSPFsUploadImgbb() {
     var text = String(value || '').trim();
     if (!text) return false;
     var questionRuns = (text.match(/\?{4,}/g) || []).join('').length;
-    var replacementCharCount = (text.match(/�/g) || []).length;
-    var weirdKorCount = (text.match(/[癲椰筌怨뺤떪熬곣뫖利당춯쎾퐲꿔꺂㏘틠怨몄젦]/g) || []).length;
+    var replacementCharCount = (text.match(/\uFFFD/g) || []).length;
     return questionRuns >= Math.max(6, Math.floor(text.length * 0.25))
-      || replacementCharCount >= 2
-      || weirdKorCount >= Math.max(8, Math.floor(text.length * 0.2));
+      || replacementCharCount >= 2;
   }
 
   function scholarAINormalizeHistory() {
@@ -2212,18 +2220,18 @@ function viewerSSPFsUploadImgbb() {
         })
       : __scholarAIHistory;
     if (!items.length) {
-      list.innerHTML = '<span style="font-size:11px;color:#94a3b8">No ScholarAI history yet.</span>';
+      list.innerHTML = '<span style="font-size:11px;color:#94a3b8">ScholarAI \uD788\uC2A4\uD1A0\uB9AC\uAC00 \uC544\uC9C1 \uC5C6\uC2B5\uB2C8\uB2E4.</span>';
       return;
     }
     var html = '';
     for (var i = 0; i < items.length; i++) {
       var idx = __scholarAIHistory.indexOf(items[i]);
-      var raw = String(items[i].prompt || items[i].result || 'Untitled history item');
+      var raw = String(items[i].prompt || items[i].result || '\uC81C\uBAA9 \uC5C6\uB294 \uD788\uC2A4\uD1A0\uB9AC');
       var lbl = raw.replace(/</g, '&lt;').substring(0, 36) + (raw.length > 36 ? '...' : '');
       html += '<div class="scholar-ai-history-item" data-idx="' + idx + '">';
-      html += '<span class="sa-h-label" onclick="scholarAIHistoryShowResult(' + idx + ')" title="Show this result">' + lbl.replace(/'/g, "\\'") + '</span>';
-      html += '<button type="button" class="sa-h-save" onclick="scholarAIHistorySaveMd(' + idx + ')" title="Save as Markdown">MD</button>';
-      html += '<button type="button" class="sa-h-del" onclick="scholarAIHistoryDelete(' + idx + ')" title="Delete">X</button>';
+      html += '<span class="sa-h-label" onclick="scholarAIHistoryShowResult(' + idx + ')" title="\uC774 \uACB0\uACFC \uBCF4\uAE30">' + lbl.replace(/'/g, "\\'") + '</span>';
+      html += '<button type="button" class="sa-h-save" onclick="scholarAIHistorySaveMd(' + idx + ')" title="\uB9C8\uD06C\uB2E4\uC6B4\uC73C\uB85C \uC800\uC7A5">MD</button>';
+      html += '<button type="button" class="sa-h-del" onclick="scholarAIHistoryDelete(' + idx + ')" title="\uC0AD\uC81C">X</button>';
       html += '</div>';
     }
     list.innerHTML = html;
