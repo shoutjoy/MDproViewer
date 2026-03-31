@@ -627,19 +627,20 @@
         }
         setToDocsButtonBusy(true);
         try {
-            let copied = false;
+            let copied = true;
             if (typeof window.copyViewFormattedToClipboard === 'function') {
                 copied = await window.copyViewFormattedToClipboard();
             }
-            if (!copied) {
-                if (typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다.');
-                return;
-            }
+            if (!copied && typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다. 사이트는 계속 엽니다.');
             const win = window.open(destination.url, '_blank', 'noopener,noreferrer');
             if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
             if (win) closeShareLinksModal();
         } catch (err) {
-            if (typeof showToast === 'function') showToast(err && err.message ? err.message : 'Share 실행 중 오류');
+            const msg = err && err.message ? err.message : 'Share 실행 중 오류';
+            if (typeof showToast === 'function') showToast(msg + ' (사이트 열기는 계속 시도합니다.)');
+            const win = window.open(destination.url, '_blank', 'noopener,noreferrer');
+            if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
+            if (win) closeShareLinksModal();
         } finally {
             setToDocsButtonBusy(false);
         }
@@ -674,21 +675,13 @@
 
         setToDocsButtonBusy(true);
         try {
-            let copied = false;
+            let copied = true;
             if (typeof window.copyViewFormattedToClipboard === 'function') {
                 copied = await window.copyViewFormattedToClipboard();
             }
-            if (!copied) {
-                if (typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다.');
-                shareMenuExpanded = false;
-                renderShareLinksMenu();
-                return;
-            }
+            if (!copied && typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다. Share 메뉴는 계속 엽니다.');
         } catch (err) {
-            if (typeof showToast === 'function') showToast(err && err.message ? err.message : 'Copy Styled 실행 중 오류');
-            shareMenuExpanded = false;
-            renderShareLinksMenu();
-            return;
+            if (typeof showToast === 'function') showToast((err && err.message ? err.message : 'Copy Styled 실행 중 오류') + ' (Share 메뉴는 계속 엽니다.)');
         } finally {
             setToDocsButtonBusy(false);
         }
