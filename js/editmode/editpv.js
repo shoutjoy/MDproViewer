@@ -97,8 +97,14 @@ function quoteMermaidFieldForPv(value) {
     return v;
 }
 
+function normalizePreviewPopupMermaidDiagramType(source) {
+    const src = String(source || '');
+    // Accept both "treeView" and "treeview" and normalize to the beta keyword.
+    return src.replace(/(^\s*)(treeview|treeView)(?!-beta)(?=\s|$)/im, '$1treeView-beta');
+}
+
 function preprocessPreviewPopupMermaidSource(source) {
-    const src = String(source || '').trim();
+    const src = normalizePreviewPopupMermaidDiagramType(source).trim();
     if (!/^sankey-beta\b/i.test(src)) return { source: src, labelMap: null };
 
     const lines = src.split(/\r?\n/);
@@ -199,7 +205,7 @@ async function loadMermaidInPreviewPopup() {
         }
 
         const script = doc.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+        script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.min.js';
         script.async = true;
         script.defer = true;
         script.setAttribute('data-pv-mermaid', '1');

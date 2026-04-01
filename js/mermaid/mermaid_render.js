@@ -2,11 +2,10 @@
     'use strict';
 
     const MERMAID_SOURCES = [
+        'https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.min.js',
+        'https://unpkg.com/mermaid@11.14.0/dist/mermaid.min.js',
         'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js',
-        'https://unpkg.com/mermaid@11/dist/mermaid.min.js',
-        'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js',
-        'https://unpkg.com/mermaid@10/dist/mermaid.min.js',
-        'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js'
+        'https://unpkg.com/mermaid@11/dist/mermaid.min.js'
     ];
     const CODE_SELECTOR = 'pre > code.language-mermaid, pre > code.lang-mermaid, pre > code.mermaid';
     let mermaidLoadPromise = null;
@@ -177,8 +176,14 @@
         };
     }
 
+    function normalizeMermaidDiagramType(source) {
+        var src = String(source || '');
+        // Accept both "treeView" and "treeview" and normalize to the beta keyword.
+        return src.replace(/(^\s*)(treeview|treeView)(?!-beta)(?=\s|$)/im, '$1treeView-beta');
+    }
+
     function preprocessMermaidSource(source) {
-        var src = String(source || '').trim();
+        var src = normalizeMermaidDiagramType(source).trim();
         if (!src) return { source: src, labelMap: null };
         if (/^sankey-beta\b/i.test(src)) return preprocessSankeyBetaSource(src);
         return { source: src, labelMap: null };

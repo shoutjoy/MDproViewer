@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mermaid Editor Pro</title>
   <link rel="stylesheet" href="style.css" />
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.min.js"></script>
 </head>
 <body>
   <header id="top-bar">
@@ -98,6 +98,7 @@
       <div class="pane-title pane-title-row">
         <span>&#xBBF8;&#xB9AC;&#xBCF4;&#xAE30;</span>
         <div class="zoom-controls">
+          <button type="button" class="btn-light" id="preview-theme-toggle-btn" onclick="togglePreviewTheme()">Dark</button>
           <button type="button" class="btn-light" onclick="adjustPreviewScale(-0.1)">-</button>
           <span id="preview-scale-label">100%</span>
           <button type="button" class="btn-light" onclick="adjustPreviewScale(0.1)">+</button>

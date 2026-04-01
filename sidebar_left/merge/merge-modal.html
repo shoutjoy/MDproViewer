@@ -1,9 +1,13 @@
 <!-- Merge Modal (문서 묶기) -->
-<div id="merge-modal" data-source="sidebar-left-merge" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
-  <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
-    <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0">
-      <i data-lucide="layers" class="w-5 h-5"></i> 문서 묶기
-    </h3>
+<div id="merge-modal" data-source="sidebar-left-merge" class="fixed inset-0 hidden z-[55] no-print pointer-events-none bg-transparent">
+  <div id="merge-panel" class="pointer-events-auto absolute left-1/2 top-20 -translate-x-1/2 bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-[min(680px,92vw)] h-[min(72vh,820px)] min-w-[420px] min-h-[320px] flex flex-col overflow-hidden">
+    <div id="merge-panel-header" class="flex items-center justify-between mb-3 gap-2 cursor-move select-none shrink-0">
+      <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+        <i data-lucide="layers" class="w-5 h-5"></i> 문서 묶기
+      </h3>
+      <button type="button" onclick="closeMergeModal()"
+        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>
+    </div>
     <div class="flex gap-2 mb-3 shrink-0">
       <input type="text" id="merge-bundle-name" placeholder="새로운 묶음 파일"
         class="flex-1 px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
@@ -27,5 +31,8 @@
       <button type="button" onclick="closeMergeModal()"
         class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
     </div>
+    <div id="merge-panel-resizer" title="Resize"
+      class="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize opacity-70 hover:opacity-100 select-none"
+      style="background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);"></div>
   </div>
 </div>

@@ -8,6 +8,9 @@ const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddf
 const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
 const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
+const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
+const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
+const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
 
 // State
 let currentMarkdown = "";
@@ -74,6 +77,23 @@ let sitesPanelResizeBound = false;
 let sitesPanelResizing = false;
 let sitesPanelSavedWidth = '';
 let sitesPanelSavedHeight = '';
+let templatePanelOpen = false;
+let templatePanelCompact = false;
+let templatePanelDragBound = false;
+let templatePanelDragging = false;
+let templatePanelDragOffsetX = 0;
+let templatePanelDragOffsetY = 0;
+let templatePanelMoved = false;
+let templatePanelResized = false;
+let templatePanelResizeBound = false;
+let templatePanelResizing = false;
+let templatePanelSavedWidth = '';
+let templatePanelSavedHeight = '';
+let templateCustomList = [];
+let scholarRefBootPromise = null;
+let scholarRefInitDone = false;
+let aiSidebarBootPromise = null;
+let aiSidebarLoadAttempts = 0;
 let viewClickMappedCaretPos = null;
 let lastEditCaretPos = 0;
 let viewerInternalImageObjectUrls = [];
@@ -476,13 +496,7 @@ window.onload = async () => {
 
         if (sidebar) sidebar.style.display = 'none';
 
-        if (window.ScholarRef && typeof window.ScholarRef.init === 'function') {
-            await window.ScholarRef.init({
-                dbGetter: function () { return db; },
-                getEditor: function () { return editorTextarea; },
-                showToast: showToast
-            });
-        }
+        await ensureScholarRefReady();
 
         initAiVisibility();
 
@@ -3305,6 +3319,43 @@ function closeMermaidEditorModal() {
 
 let mermaidEditorModalDragBound = false;
 let mermaidEditorModalFullscreen = false;
+let mermaidEditorModalDockRight = false;
+
+function applyMermaidEditorDockRight(docked) {
+    const panel = document.getElementById('mermaid-editor-modal-panel');
+    const dockBtn = document.getElementById('mermaid-editor-dock-right-btn');
+    if (!panel) return;
+    mermaidEditorModalDockRight = !!docked;
+    if (dockBtn) dockBtn.textContent = mermaidEditorModalDockRight ? '<<' : '>>';
+    if (mermaidEditorModalDockRight) {
+        mermaidEditorModalFullscreen = false;
+        panel.style.transform = 'none';
+        panel.style.left = 'auto';
+        panel.style.top = '8px';
+        panel.style.right = '8px';
+        panel.style.bottom = '8px';
+        panel.style.width = 'min(960px, 48vw)';
+        panel.style.height = 'calc(100vh - 16px)';
+        panel.style.maxWidth = '98vw';
+        panel.style.maxHeight = 'calc(100vh - 16px)';
+        panel.style.resize = 'both';
+        return;
+    }
+    panel.style.left = '50%';
+    panel.style.top = '64px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.width = 'min(1200px, 96vw)';
+    panel.style.height = 'min(860px, 92vh)';
+    panel.style.transform = 'translateX(-50%)';
+    panel.style.maxWidth = '98vw';
+    panel.style.maxHeight = '95vh';
+    panel.style.resize = 'both';
+}
+
+function toggleMermaidEditorDockRight() {
+    applyMermaidEditorDockRight(!mermaidEditorModalDockRight);
+}
 
 function bindMermaidEditorModalDrag() {
     if (mermaidEditorModalDragBound) return;
@@ -3319,7 +3370,7 @@ function bindMermaidEditorModalDrag() {
     let startTop = 0;
 
     header.addEventListener('mousedown', function (event) {
-        if (event.button !== 0 || mermaidEditorModalFullscreen) return;
+        if (event.button !== 0 || mermaidEditorModalFullscreen || mermaidEditorModalDockRight) return;
         dragging = true;
         startX = event.clientX;
         startY = event.clientY;
@@ -3352,6 +3403,7 @@ function bindMermaidEditorModalDrag() {
 function toggleMermaidEditorFullscreen() {
     const panel = document.getElementById('mermaid-editor-modal-panel');
     if (!panel) return;
+    if (mermaidEditorModalDockRight) applyMermaidEditorDockRight(false);
     mermaidEditorModalFullscreen = !mermaidEditorModalFullscreen;
     if (mermaidEditorModalFullscreen) {
         panel.style.resize = 'none';
@@ -3714,6 +3766,74 @@ function setViewModeEditEnabledToLocal(enabled) {
     else localStorage.removeItem(VIEW_MODE_EDIT_KEY);
 }
 
+function getSettingsShortcutsFoldedFromLocal() {
+    const v = localStorage.getItem(SETTINGS_SHORTCUTS_FOLD_KEY);
+    return v == null ? true : v === '1';
+}
+
+function setSettingsShortcutsFoldedToLocal(folded) {
+    localStorage.setItem(SETTINGS_SHORTCUTS_FOLD_KEY, folded ? '1' : '0');
+}
+
+function applySettingsShortcutsFold(folded) {
+    const body = document.getElementById('settings-shortcuts-body');
+    const btn = document.getElementById('settings-shortcuts-toggle-btn');
+    const isFolded = !!folded;
+    if (body) body.classList.toggle('hidden', isFolded);
+    if (btn) btn.textContent = isFolded ? '펼치기' : '접기';
+}
+
+function toggleSettingsShortcutsFold() {
+    const next = !getSettingsShortcutsFoldedFromLocal();
+    setSettingsShortcutsFoldedToLocal(next);
+    applySettingsShortcutsFold(next);
+}
+
+function getAiUseFoldedFromLocal() {
+    const v = localStorage.getItem(AI_USE_FOLD_KEY);
+    return v == null ? true : v === '1';
+}
+
+function setAiUseFoldedToLocal(folded) {
+    localStorage.setItem(AI_USE_FOLD_KEY, folded ? '1' : '0');
+}
+
+function applyAiUseFold(folded) {
+    const btn = document.getElementById('ai-use-fold-btn');
+    if (btn) btn.textContent = folded ? '펼치기' : '접기';
+    const check = document.getElementById('ai-use-checkbox');
+    const section = document.getElementById('ai-password-section');
+    if (section) section.classList.toggle('hidden', !!folded || !(check && check.checked));
+}
+
+function toggleAiUseFold() {
+    const next = !getAiUseFoldedFromLocal();
+    setAiUseFoldedToLocal(next);
+    applyAiUseFold(next);
+}
+
+function getShareSettingsFoldedFromLocal() {
+    const v = localStorage.getItem(SHARE_SETTINGS_FOLD_KEY);
+    return v == null ? true : v === '1';
+}
+
+function setShareSettingsFoldedToLocal(folded) {
+    localStorage.setItem(SHARE_SETTINGS_FOLD_KEY, folded ? '1' : '0');
+}
+
+function applyShareSettingsFold(folded) {
+    const btn = document.getElementById('share-settings-fold-btn');
+    const body = document.getElementById('share-destinations-settings-body');
+    if (btn) btn.textContent = folded ? '펼치기' : '접기';
+    if (body) body.classList.toggle('hidden', !!folded);
+}
+
+function toggleShareSettingsFold() {
+    const next = !getShareSettingsFoldedFromLocal();
+    setShareSettingsFoldedToLocal(next);
+    applyShareSettingsFold(next);
+}
+
 function applyEditToolsVisibilityByMode() {
     const editTools = document.getElementById('edit-tools');
     if (!editTools) return;
@@ -3758,6 +3878,31 @@ function getHighlightVisibleFromSettings(settings) {
 function getSitesVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.sitesVisible === true;
+}
+
+function getTemplateVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.templateVisible === true;
+}
+
+function syncHeaderScholarSearchWrapVisibility() {
+    const wrap = document.getElementById('header-scholar-search-wrap');
+    if (!wrap) return;
+    const scholarBtn = document.getElementById('btn-scholar-search');
+    const sitesBtn = document.getElementById('btn-sites-panel');
+    const templateBtn = document.getElementById('btn-template-panel');
+    const scholarEnabled = !!(scholarBtn && !scholarBtn.classList.contains('hidden'));
+    const sitesEnabled = !!(sitesBtn && !sitesBtn.classList.contains('hidden'));
+    const templateEnabled = !!(templateBtn && !templateBtn.classList.contains('hidden'));
+    if (scholarEnabled || sitesEnabled || templateEnabled) {
+        wrap.classList.remove('hidden');
+        wrap.classList.add('flex');
+        wrap.style.display = 'flex';
+    } else {
+        wrap.classList.add('hidden');
+        wrap.classList.remove('flex');
+        wrap.style.display = 'none';
+    }
 }
 
 function normalizeSitesList(rawList) {
@@ -3971,20 +4116,7 @@ function applySitesVisibility(settings) {
         if (enabled) btn.classList.remove('hidden');
         else btn.classList.add('hidden');
     }
-    const wrap = document.getElementById('header-scholar-search-wrap');
-    const scholarBtn = document.getElementById('btn-scholar-search');
-    const scholarEnabled = !!(scholarBtn && !scholarBtn.classList.contains('hidden'));
-    if (wrap) {
-        if (enabled || scholarEnabled) {
-            wrap.classList.remove('hidden');
-            wrap.classList.add('flex');
-            wrap.style.display = 'flex';
-        } else {
-            wrap.classList.add('hidden');
-            wrap.classList.remove('flex');
-            wrap.style.display = 'none';
-        }
-    }
+    syncHeaderScholarSearchWrapVisibility();
     if (!enabled) closeSitesPanel();
 }
 
@@ -4074,22 +4206,9 @@ async function removeSiteAt(index) {
 
 function applyScholarSearchVisibility(settings) {
     const enabled = getScholarSearchVisibleFromSettings(settings || {});
-    const wrap = document.getElementById('header-scholar-search-wrap');
     const scholarBtn = document.getElementById('btn-scholar-search');
-    const sitesBtn = document.getElementById('btn-sites-panel');
     if (scholarBtn) scholarBtn.classList.toggle('hidden', !enabled);
-    const sitesEnabled = !!(sitesBtn && !sitesBtn.classList.contains('hidden'));
-    if (wrap) {
-        if (enabled || sitesEnabled) {
-            wrap.classList.remove('hidden');
-            wrap.classList.add('flex');
-            wrap.style.display = 'flex';
-        } else {
-            wrap.classList.add('hidden');
-            wrap.classList.remove('flex');
-            wrap.style.display = 'none';
-        }
-    }
+    syncHeaderScholarSearchWrapVisibility();
 }
 
 function applyHighlightVisibility(settings) {
@@ -4126,6 +4245,512 @@ async function toggleSitesSection() {
     await setAiSettings({ sitesVisible: enabled });
     const s = await getAiSettings();
     applySitesVisibility(s || { sitesVisible: enabled });
+}
+
+function getTemplateLibrary() {
+    const base = (typeof TMPLS !== 'undefined' && Array.isArray(TMPLS) ? TMPLS : [])
+        .map(function (item, idx) {
+            const name = String(item && item.name ? item.name : '').trim() || ('Template ' + (idx + 1));
+            const desc = String(item && item.desc ? item.desc : '').trim();
+            const content = String(item && item.content ? item.content : '');
+            return { id: 'builtin_' + idx, name: name, desc: desc, content: content, isCustom: false };
+        })
+        .filter(function (item) { return item.content.trim().length > 0; });
+    const custom = normalizeTemplateCustomList(templateCustomList);
+    return base.concat(custom);
+}
+
+function normalizeTemplateCustomList(rawList) {
+    const src = Array.isArray(rawList) ? rawList : [];
+    return src
+        .map(function (item, idx) {
+            const name = String(item && item.name ? item.name : '').trim() || ('Custom Template ' + (idx + 1));
+            const desc = String(item && item.desc ? item.desc : '').trim();
+            const content = String(item && item.content ? item.content : '');
+            const id = String(item && item.id ? item.id : ('custom_' + Date.now() + '_' + idx));
+            return { id: id, name: name, desc: desc, content: content, isCustom: true };
+        })
+        .filter(function (item) { return item.content.trim().length > 0; });
+}
+
+async function saveTemplateCustomListToSettings() {
+    templateCustomList = normalizeTemplateCustomList(templateCustomList);
+    await setAiSettings({
+        templateCustomList: templateCustomList.map(function (item) {
+            return { id: item.id, name: item.name, desc: item.desc, content: item.content };
+        })
+    });
+}
+
+function getTemplateExportPayload() {
+    const selected = getSelectedTemplateItem();
+    const draft = getTemplateEditorDraft();
+    if (!selected && !draft.name && !draft.content) return null;
+    const content = String(draft.content || '').trim() ? String(draft.content || '') : String(selected && selected.content ? selected.content : '');
+    return {
+        name: draft.name || (selected && selected.name ? selected.name : 'template'),
+        desc: draft.desc || (selected && selected.desc ? selected.desc : ''),
+        content: content
+    };
+}
+
+function sanitizeTemplateFileName(name) {
+    const base = String(name || 'template').trim() || 'template';
+    return base
+        .replace(/[\\/:*?"<>|]+/g, '_')
+        .replace(/\s+/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80) || 'template';
+}
+
+function downloadTemplateMdFile(fileName, content) {
+    const blob = new Blob([String(content || '')], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+async function addTemplateFromCurrentContent() {
+    const defaultName = (currentFileName || '새 양식').replace(/\.md$/i, '').trim() || '새 양식';
+    const name = window.prompt('양식 이름을 입력하세요.', defaultName);
+    if (name == null) return;
+    const title = String(name || '').trim();
+    if (!title) {
+        showToast('양식 이름을 입력하세요.');
+        return;
+    }
+    const descInput = window.prompt('양식 설명(선택)', '사용자 양식');
+    if (descInput == null) return;
+    const desc = String(descInput || '').trim();
+    const previewEl = document.getElementById('template-preview');
+    const candidate = String(previewEl && previewEl.value ? previewEl.value : '').trim();
+    const docContent = String(editorTextarea && editorTextarea.value ? editorTextarea.value : '').trim();
+    const content = docContent || candidate;
+    if (!content) {
+        showToast('저장할 양식 내용이 없습니다.');
+        return;
+    }
+    const entry = {
+        id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        name: title,
+        desc: desc || '사용자 양식',
+        content: content,
+        isCustom: true
+    };
+    templateCustomList = normalizeTemplateCustomList(templateCustomList.concat([entry]));
+    await saveTemplateCustomListToSettings();
+    renderTemplatePanel();
+    const select = document.getElementById('template-select');
+    const all = getTemplateLibrary();
+    const idx = all.findIndex(function (item) { return item.id === entry.id; });
+    if (select && idx >= 0) {
+        select.value = String(idx);
+        onTemplateSelectChange();
+    }
+    showToast('양식을 추가했습니다.');
+}
+
+async function saveEditedTemplate() {
+    const draft = getTemplateEditorDraft();
+    const targetName = String(draft.name || '').trim();
+    if (!targetName) {
+        showToast('양식 이름을 입력하세요.');
+        return;
+    }
+    if (!String(draft.content || '').trim()) {
+        showToast('양식 내용이 비어 있습니다.');
+        return;
+    }
+
+    const normalizedName = targetName.toLowerCase();
+    const existingIndex = templateCustomList.findIndex(function (item) {
+        return String(item && item.name ? item.name : '').trim().toLowerCase() === normalizedName;
+    });
+
+    if (existingIndex >= 0) {
+        const prev = templateCustomList[existingIndex] || {};
+        templateCustomList[existingIndex] = {
+            id: String(prev.id || ('custom_' + Date.now() + '_r')),
+            name: targetName,
+            desc: draft.desc || '사용자 양식',
+            content: draft.content,
+            isCustom: true
+        };
+        await saveTemplateCustomListToSettings();
+        renderTemplatePanel();
+        const select = document.getElementById('template-select');
+        const all = getTemplateLibrary();
+        const idx = all.findIndex(function (item) {
+            return item.isCustom && String(item.name || '').trim().toLowerCase() === normalizedName;
+        });
+        if (select && idx >= 0) {
+            select.value = String(idx);
+            onTemplateSelectChange();
+        }
+        showToast('같은 이름 양식을 덮어써서 저장했습니다.');
+        return;
+    }
+
+    const created = {
+        id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        name: targetName,
+        desc: draft.desc || '사용자 양식',
+        content: draft.content,
+        isCustom: true
+    };
+    templateCustomList = normalizeTemplateCustomList(templateCustomList.concat([created]));
+    await saveTemplateCustomListToSettings();
+    renderTemplatePanel();
+    const select = document.getElementById('template-select');
+    const all = getTemplateLibrary();
+    const idx = all.findIndex(function (item) { return item.id === created.id; });
+    if (select && idx >= 0) {
+        select.value = String(idx);
+        onTemplateSelectChange();
+    }
+    showToast('이름이 달라 새 양식으로 저장했습니다.');
+}
+
+function exportSelectedTemplateMd() {
+    const payload = getTemplateExportPayload();
+    if (!payload || !payload.content.trim()) {
+        showToast('내보낼 양식이 없습니다.');
+        return;
+    }
+    const fileName = sanitizeTemplateFileName(payload.name) + '.md';
+    downloadTemplateMdFile(fileName, payload.content);
+    showToast('양식을 .md 파일로 내보냈습니다.');
+}
+
+function triggerTemplateImportMd() {
+    const input = document.getElementById('template-import-file');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+
+async function importTemplateMdFile(event) {
+    const input = event && event.target ? event.target : null;
+    const file = input && input.files ? input.files[0] : null;
+    if (!file) return;
+    const fileName = String(file.name || '').trim() || 'imported-template.md';
+    let text = '';
+    try {
+        text = await file.text();
+    } catch (_) {
+        showToast('양식 파일을 읽지 못했습니다.');
+        if (input) input.value = '';
+        return;
+    }
+    const content = String(text || '').replace(/\r\n/g, '\n').trim();
+    if (!content) {
+        showToast('비어 있는 md 파일입니다.');
+        if (input) input.value = '';
+        return;
+    }
+    const firstLine = content.split('\n').find(function (line) { return String(line || '').trim(); }) || '';
+    const heading = firstLine.replace(/^#+\s*/, '').trim();
+    const guessedName = heading || fileName.replace(/\.md$/i, '').trim() || '가져온 양식';
+    const entry = {
+        id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        name: guessedName,
+        desc: '가져온 양식',
+        content: content,
+        isCustom: true
+    };
+    templateCustomList = normalizeTemplateCustomList(templateCustomList.concat([entry]));
+    await saveTemplateCustomListToSettings();
+    renderTemplatePanel();
+    const select = document.getElementById('template-select');
+    const all = getTemplateLibrary();
+    const idx = all.findIndex(function (item) { return item.id === entry.id; });
+    if (select && idx >= 0) {
+        select.value = String(idx);
+        onTemplateSelectChange();
+    }
+    showToast('md 양식을 가져왔습니다.');
+    if (input) input.value = '';
+}
+
+function getSelectedTemplateItem() {
+    const templates = getTemplateLibrary();
+    if (!templates.length) return null;
+    const select = document.getElementById('template-select');
+    const idx = Math.max(0, Math.min(
+        templates.length - 1,
+        Number(select && select.value ? select.value : 0) || 0
+    ));
+    return templates[idx] || null;
+}
+
+function getTemplateEditorDraft() {
+    const nameEl = document.getElementById('template-name-input');
+    const descEl = document.getElementById('template-desc-input');
+    const previewEl = document.getElementById('template-preview');
+    return {
+        name: String(nameEl && nameEl.value ? nameEl.value : '').trim(),
+        desc: String(descEl && descEl.value ? descEl.value : '').trim(),
+        content: String(previewEl && previewEl.value ? previewEl.value : '')
+    };
+}
+
+function applyTemplateEditorFields(item) {
+    const nameEl = document.getElementById('template-name-input');
+    const descEl = document.getElementById('template-desc-input');
+    const previewEl = document.getElementById('template-preview');
+    if (nameEl) nameEl.value = item && item.name ? item.name : '';
+    if (descEl) descEl.value = item && item.desc ? item.desc : '';
+    if (previewEl) previewEl.value = item && item.content ? item.content : '';
+}
+
+function renderTemplatePanel() {
+    const select = document.getElementById('template-select');
+    const nameEl = document.getElementById('template-name-input');
+    const descInputEl = document.getElementById('template-desc-input');
+    const previewEl = document.getElementById('template-preview');
+    if (!select || !nameEl || !descInputEl || !previewEl) return;
+
+    const templates = getTemplateLibrary();
+    const previous = Number(select.value || 0) || 0;
+    select.innerHTML = '';
+    templates.forEach(function (item, idx) {
+        const option = document.createElement('option');
+        option.value = String(idx);
+        option.textContent = item.name;
+        select.appendChild(option);
+    });
+    if (!templates.length) {
+        applyTemplateEditorFields({ name: '', desc: '', content: '' });
+        return;
+    }
+    const safeIdx = Math.max(0, Math.min(templates.length - 1, previous));
+    select.value = String(safeIdx);
+    const item = templates[safeIdx];
+    applyTemplateEditorFields(item);
+}
+
+function onTemplateSelectChange() {
+    const item = getSelectedTemplateItem();
+    const nameEl = document.getElementById('template-name-input');
+    const descInputEl = document.getElementById('template-desc-input');
+    const previewEl = document.getElementById('template-preview');
+    if (!nameEl || !descInputEl || !previewEl) return;
+    if (!item) {
+        applyTemplateEditorFields({ name: '', desc: '', content: '' });
+        return;
+    }
+    applyTemplateEditorFields(item);
+}
+
+function applyTemplatePanelMode() {
+    const panel = document.getElementById('template-panel');
+    const body = document.getElementById('template-panel-body');
+    const compactBtn = document.getElementById('template-panel-compact-btn');
+    const resizer = document.getElementById('template-panel-resizer');
+    if (!panel || !body) return;
+
+    if (templatePanelCompact) {
+        if (panel.style.width) templatePanelSavedWidth = panel.style.width;
+        if (panel.style.height) templatePanelSavedHeight = panel.style.height;
+        panel.style.left = 'auto';
+        panel.style.right = '12px';
+        panel.style.bottom = '12px';
+        panel.style.top = 'auto';
+        panel.style.width = 'auto';
+        panel.style.height = 'auto';
+        panel.style.maxWidth = 'none';
+        body.classList.add('hidden');
+        if (compactBtn) compactBtn.textContent = '<<';
+        if (resizer) resizer.style.display = 'none';
+    } else {
+        if (templatePanelResized) {
+            panel.style.width = templatePanelSavedWidth || panel.style.width || '640px';
+            panel.style.height = templatePanelSavedHeight || panel.style.height || '';
+            panel.style.maxWidth = 'none';
+        } else {
+            panel.style.width = '';
+            panel.style.height = '';
+            panel.style.maxWidth = '';
+        }
+        if (!templatePanelMoved) {
+            panel.style.left = '';
+            panel.style.top = '';
+            panel.style.right = '12px';
+            panel.style.bottom = '12px';
+        }
+        body.classList.remove('hidden');
+        if (compactBtn) compactBtn.textContent = '>>';
+        if (resizer) resizer.style.display = '';
+    }
+}
+
+function toggleTemplateCompactMode() {
+    templatePanelCompact = !templatePanelCompact;
+    applyTemplatePanelMode();
+}
+
+function bindTemplatePanelDrag() {
+    if (templatePanelDragBound) return;
+    templatePanelDragBound = true;
+    const panel = document.getElementById('template-panel');
+    const header = document.getElementById('template-panel-header');
+    if (!panel || !header) return;
+
+    header.addEventListener('mousedown', function (e) {
+        if (templatePanelResizing) return;
+        const target = e.target;
+        if (target && target.closest && target.closest('button,input,textarea,select,a')) return;
+        if (templatePanelCompact) return;
+        const rect = panel.getBoundingClientRect();
+        templatePanelDragging = true;
+        templatePanelDragOffsetX = e.clientX - rect.left;
+        templatePanelDragOffsetY = e.clientY - rect.top;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+    });
+    document.addEventListener('mousemove', function (e) {
+        if (templatePanelResizing) return;
+        if (!templatePanelDragging || templatePanelCompact) return;
+        const x = Math.max(0, e.clientX - templatePanelDragOffsetX);
+        const y = Math.max(0, e.clientY - templatePanelDragOffsetY);
+        panel.style.left = x + 'px';
+        panel.style.top = y + 'px';
+        templatePanelMoved = true;
+    });
+    document.addEventListener('mouseup', function () {
+        templatePanelDragging = false;
+    });
+}
+
+function bindTemplatePanelResize() {
+    if (templatePanelResizeBound) return;
+    templatePanelResizeBound = true;
+    const panel = document.getElementById('template-panel');
+    const handle = document.getElementById('template-panel-resizer');
+    if (!panel || !handle) return;
+
+    handle.addEventListener('mousedown', function (e) {
+        if (templatePanelCompact) return;
+        e.preventDefault();
+        e.stopPropagation();
+        templatePanelResizing = true;
+    });
+    document.addEventListener('mousemove', function (e) {
+        if (!templatePanelResizing || templatePanelCompact) return;
+        const rect = panel.getBoundingClientRect();
+        const minW = 420;
+        const minH = 260;
+        const maxW = Math.max(minW, window.innerWidth - rect.left - 8);
+        const maxH = Math.max(minH, window.innerHeight - rect.top - 8);
+        const nextW = Math.max(minW, Math.min(maxW, e.clientX - rect.left));
+        const nextH = Math.max(minH, Math.min(maxH, e.clientY - rect.top));
+        panel.style.width = Math.round(nextW) + 'px';
+        panel.style.height = Math.round(nextH) + 'px';
+        panel.style.maxWidth = 'none';
+        templatePanelSavedWidth = panel.style.width;
+        templatePanelSavedHeight = panel.style.height;
+        templatePanelResized = true;
+    });
+    document.addEventListener('mouseup', function () {
+        templatePanelResizing = false;
+    });
+}
+
+function applyTemplateVisibility(settings) {
+    const enabled = getTemplateVisibleFromSettings(settings || {});
+    const btn = document.getElementById('btn-template-panel');
+    if (btn) btn.classList.toggle('hidden', !enabled);
+    syncHeaderScholarSearchWrapVisibility();
+    if (!enabled) closeTemplatePanel();
+}
+
+function openTemplatePanel() {
+    const panel = document.getElementById('template-panel');
+    if (!panel) return;
+    bindTemplatePanelDrag();
+    bindTemplatePanelResize();
+    applyTemplatePanelMode();
+    renderTemplatePanel();
+    panel.classList.remove('hidden');
+    panel.classList.add('flex');
+    templatePanelOpen = true;
+}
+
+function closeTemplatePanel() {
+    const panel = document.getElementById('template-panel');
+    if (!panel) return;
+    panel.classList.add('hidden');
+    panel.classList.remove('flex');
+    templatePanelOpen = false;
+}
+
+function toggleTemplatePanel() {
+    if (templatePanelOpen) closeTemplatePanel();
+    else openTemplatePanel();
+}
+
+function insertTemplateTextAtCursor(templateText) {
+    const text = String(templateText || '');
+    if (!text.trim()) {
+        showToast('양식 내용이 비어 있습니다.');
+        return false;
+    }
+    if (!isEditMode) toggleMode('edit');
+    if (!editorTextarea) return false;
+
+    const start = typeof editorTextarea.selectionStart === 'number' ? editorTextarea.selectionStart : editorTextarea.value.length;
+    const end = typeof editorTextarea.selectionEnd === 'number' ? editorTextarea.selectionEnd : start;
+    const before = start > 0 && editorTextarea.value.charAt(start - 1) !== '\n' ? '\n\n' : '';
+    const after = end < editorTextarea.value.length && editorTextarea.value.charAt(end) !== '\n' ? '\n\n' : '\n';
+    const replacement = before + text + after;
+
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+    currentMarkdown = editorTextarea.value;
+    renderMarkdown();
+    renderTOC();
+    updatePreviewPopupContent();
+    performAutoSave();
+    return true;
+}
+
+function insertSelectedTemplateToDocument() {
+    const item = getSelectedTemplateItem();
+    if (!item) {
+        showToast('사용 가능한 양식이 없습니다.');
+        return;
+    }
+    const ok = insertTemplateTextAtCursor(item.content);
+    if (ok) showToast('양식을 문서에 삽입했습니다.');
+}
+
+function insertSelectedTemplateAsNewFile() {
+    const item = getSelectedTemplateItem();
+    if (!item) {
+        showToast('사용 가능한 양식이 없습니다.');
+        return;
+    }
+    createNewFile();
+    updateContent(item.content);
+    currentMarkdown = editorTextarea ? editorTextarea.value : item.content;
+    performAutoSave();
+    if (isEditMode && editorTextarea) editorTextarea.focus();
+    showToast('새 파일에 양식을 삽입했습니다.');
+}
+
+async function toggleTemplateSection() {
+    const check = document.getElementById('template-visible');
+    const enabled = !!(check && check.checked);
+    await setAiSettings({ templateVisible: enabled });
+    const s = await getAiSettings();
+    applyTemplateVisibility(s || { templateVisible: enabled });
 }
 
 function openScholarSearchWindow(query) {
@@ -4322,124 +4947,182 @@ function bindScholarSearchModalDrag() {
     });
 }
 
+function initScholarRefIfAvailable() {
+    if (!window.ScholarRef || typeof window.ScholarRef.init !== 'function') return Promise.resolve(false);
+    if (scholarRefInitDone) return Promise.resolve(true);
+    return Promise.resolve(window.ScholarRef.init({
+        dbGetter: function () { return db; },
+        getEditor: function () { return editorTextarea; },
+        showToast: showToast
+    })).then(function () {
+        scholarRefInitDone = true;
+        return true;
+    }).catch(function () {
+        return false;
+    });
+}
+
+function ensureScholarRefReady() {
+    if (window.ScholarRef && typeof window.ScholarRef.init === 'function') {
+        return initScholarRefIfAvailable();
+    }
+    if (scholarRefBootPromise) return scholarRefBootPromise;
+
+    const base = getDocumentBaseUrl();
+    const version = '20260402-1';
+    const candidates = [];
+    try {
+        const u1 = new URL('./js/Scholarref/scholarref.js', base);
+        u1.searchParams.set('v', version);
+        candidates.push(u1.href);
+    } catch (_) {}
+    candidates.push('./js/Scholarref/scholarref.js?v=' + version);
+    try {
+        const u2 = new URL('./Scholarref/scholarref.js', base);
+        u2.searchParams.set('v', version);
+        candidates.push(u2.href);
+    } catch (_) {}
+    candidates.push('./Scholarref/scholarref.js?v=' + version);
+
+    scholarRefBootPromise = new Promise(function (resolve) {
+        let idx = 0;
+        function tryNext() {
+            if (window.ScholarRef && typeof window.ScholarRef.init === 'function') {
+                initScholarRefIfAvailable().then(function () { resolve(true); });
+                return;
+            }
+            if (idx >= candidates.length) {
+                resolve(false);
+                return;
+            }
+            const src = candidates[idx++];
+            const script = document.createElement('script');
+            script.charset = 'utf-8';
+            script.async = false;
+            script.src = src;
+            script.onload = function () {
+                initScholarRefIfAvailable().then(function (ok) {
+                    if (ok) resolve(true);
+                    else tryNext();
+                });
+            };
+            script.onerror = function () {
+                tryNext();
+            };
+            document.body.appendChild(script);
+        }
+        tryNext();
+    }).finally(function () {
+        scholarRefBootPromise = null;
+    });
+
+    return scholarRefBootPromise;
+}
+
 function toggleScholarRefPanel() {
     if (window.ScholarRef && typeof window.ScholarRef.togglePanel === 'function') {
         window.ScholarRef.togglePanel();
+        return;
     }
+    ensureScholarRefReady().then(function (ok) {
+        if (!ok) {
+            showToast('Reference management module failed to load.');
+            return;
+        }
+        if (window.ScholarRef && typeof window.ScholarRef.togglePanel === 'function') {
+            window.ScholarRef.togglePanel();
+        }
+    });
+}
+
+function invokeScholarRef(methodName) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    const run = function () {
+        const mod = window.ScholarRef;
+        if (!mod || typeof mod[methodName] !== 'function') return false;
+        mod[methodName].apply(mod, args);
+        return true;
+    };
+    if (run()) return;
+    ensureScholarRefReady().then(function (ok) {
+        if (!ok || !run()) showToast('Reference management module failed to load.');
+    });
 }
 
 function switchScholarRefTab(index) {
-    if (window.ScholarRef && typeof window.ScholarRef.switchTab === 'function') {
-        window.ScholarRef.switchTab(index);
-    }
+    invokeScholarRef('switchTab', index);
 }
 
 function setScholarRefInputMode(mode) {
-    if (window.ScholarRef && typeof window.ScholarRef.setInputMode === 'function') {
-        window.ScholarRef.setInputMode(mode);
-    }
+    invokeScholarRef('setInputMode', mode);
 }
 
 function scholarRefApplyInput() {
-    if (window.ScholarRef && typeof window.ScholarRef.applyInput === 'function') {
-        window.ScholarRef.applyInput();
-    }
+    invokeScholarRef('applyInput');
 }
 
 function scholarRefClearInput() {
-    if (window.ScholarRef && typeof window.ScholarRef.clearInput === 'function') {
-        window.ScholarRef.clearInput();
-    }
+    invokeScholarRef('clearInput');
 }
 
 function openScholarRefTxtImport() {
-    if (window.ScholarRef && typeof window.ScholarRef.openTxtImport === 'function') {
-        window.ScholarRef.openTxtImport();
-    }
+    invokeScholarRef('openTxtImport');
 }
 
 function openScholarRefMdImport() {
-    if (window.ScholarRef && typeof window.ScholarRef.openMdImport === 'function') {
-        window.ScholarRef.openMdImport();
-    }
+    invokeScholarRef('openMdImport');
 }
 
 function importScholarRefTxt(event) {
-    if (window.ScholarRef && typeof window.ScholarRef.importTxt === 'function') {
-        window.ScholarRef.importTxt(event);
-    }
+    invokeScholarRef('importTxt', event);
 }
 
 function importScholarRefMd(event) {
-    if (window.ScholarRef && typeof window.ScholarRef.importMd === 'function') {
-        window.ScholarRef.importMd(event);
-    }
+    invokeScholarRef('importMd', event);
 }
 
 function renderScholarRefSelectionList() {
-    if (window.ScholarRef && typeof window.ScholarRef.renderSelectionList === 'function') {
-        window.ScholarRef.renderSelectionList();
-    }
+    invokeScholarRef('renderSelectionList');
 }
 
 function toggleScholarRefPick(id, checked) {
-    if (window.ScholarRef && typeof window.ScholarRef.togglePick === 'function') {
-        window.ScholarRef.togglePick(id, checked);
-    }
+    invokeScholarRef('togglePick', id, checked);
 }
 
 function selectAllScholarRefs() {
-    if (window.ScholarRef && typeof window.ScholarRef.selectAllFiltered === 'function') {
-        window.ScholarRef.selectAllFiltered();
-    }
+    invokeScholarRef('selectAllFiltered');
 }
 
 function clearScholarRefSelection() {
-    if (window.ScholarRef && typeof window.ScholarRef.clearSelection === 'function') {
-        window.ScholarRef.clearSelection();
-    }
+    invokeScholarRef('clearSelection');
 }
 
 function insertSelectedScholarRefs() {
-    if (window.ScholarRef && typeof window.ScholarRef.insertSelected === 'function') {
-        window.ScholarRef.insertSelected();
-    }
+    invokeScholarRef('insertSelected');
 }
 
 function insertAllScholarRefSection() {
-    if (window.ScholarRef && typeof window.ScholarRef.insertAllSection === 'function') {
-        window.ScholarRef.insertAllSection();
-    }
+    invokeScholarRef('insertAllSection');
 }
 
 function downloadScholarRefTxt() {
-    if (window.ScholarRef && typeof window.ScholarRef.downloadTxt === 'function') {
-        window.ScholarRef.downloadTxt();
-    }
+    invokeScholarRef('downloadTxt');
 }
 
 function downloadScholarRefMd() {
-    if (window.ScholarRef && typeof window.ScholarRef.downloadMd === 'function') {
-        window.ScholarRef.downloadMd();
-    }
+    invokeScholarRef('downloadMd');
 }
 
 function openScholarRefListWindow() {
-    if (window.ScholarRef && typeof window.ScholarRef.openListWindow === 'function') {
-        window.ScholarRef.openListWindow();
-    }
+    invokeScholarRef('openListWindow');
 }
 
 function deleteScholarRefItem(id) {
-    if (window.ScholarRef && typeof window.ScholarRef.deleteOne === 'function') {
-        window.ScholarRef.deleteOne(id);
-    }
+    invokeScholarRef('deleteOne', id);
 }
 
 function clearAllScholarRefs() {
-    if (window.ScholarRef && typeof window.ScholarRef.clearAll === 'function') {
-        window.ScholarRef.clearAll();
-    }
+    invokeScholarRef('clearAll');
 }
 
 function toggleScholarSearchDockRight() {
@@ -4792,13 +5475,13 @@ function setAiPasswordVerifiedUI(state) {
 function toggleAiPasswordSection() {
     const check = document.getElementById('ai-use-checkbox');
     const section = document.getElementById('ai-password-section');
-    if (check && section) section.classList.toggle('hidden', !check.checked);
+    applyAiUseFold(getAiUseFoldedFromLocal());
     if (check && check.checked) {
         setAiSettings({ aiMasterEnabled: true }).then(() => applyAiFeatureVisibility());
     } else if (check && !check.checked) {
         setAiSettings({ aiMasterEnabled: false }).then(() => applyAiFeatureVisibility());
     }
-    if (check && check.checked && section) {
+    if (check && check.checked && section && !getAiUseFoldedFromLocal()) {
         getAiSettings().then(s => updateAiScholarSspimgAvailability(!!(s && s.verified)));
         requestAnimationFrame(() => {
             section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -4903,6 +5586,8 @@ async function persistAiSettingsFromModal() {
     const highlightVisible = !!(highlightVisibleEl && highlightVisibleEl.checked);
     const sitesVisibleEl = document.getElementById('sites-visible');
     const sitesVisible = !!(sitesVisibleEl && sitesVisibleEl.checked);
+    const templateVisibleEl = document.getElementById('template-visible');
+    const templateVisible = !!(templateVisibleEl && templateVisibleEl.checked);
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     await setAiSettings({
@@ -4912,6 +5597,7 @@ async function persistAiSettingsFromModal() {
         scholarSearchVisible: scholarSearchVisible,
         highlightVisible: highlightVisible,
         sitesVisible: sitesVisible,
+        templateVisible: templateVisible,
         sitesList: sitesList.slice(),
         imageUploadEnabled: imageUploadEnabled,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
@@ -5215,10 +5901,11 @@ async function applyAiFeatureVisibility() {
             }
         }
     }
-    if (showAi) ensureSidebarAILoaded();
+    if (showAi) ensureSidebarAILoadedSafe();
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
     applyToDocsVisibility(settings || { toDocsVisible: false });
+    applyTemplateVisibility(settings || { templateVisible: false });
 }
 
 function setAiSidebarWrapVisible(w, isLoading) {
@@ -5338,32 +6025,37 @@ function updateHeaderAiButtonsActive() {
 }
 
 function ensureSidebarAILoadedThen(cb) {
-    function tryCb() {
-        if (document.getElementById('scholar-ai-sidebar') && typeof window.toggleScholarAI === 'function') {
-            cb();
-            return true;
-        }
-        return false;
-    }
-    if (tryCb()) return;
-    ensureSidebarAILoaded();
-    if (tryCb()) return;
-    var n = 0;
-    var t = setInterval(function () {
-        n++;
-        if (n === 8 || n === 24) injectSidebarAIHtml();
-        if (tryCb()) {
-            clearInterval(t);
+    ensureSidebarAILoadedSafe().then(function (ok) {
+        if (!ok) {
+            showToast('Failed to load AI sidebar module.');
             return;
         }
-        if (n > 100) {
-            clearInterval(t);
-            injectSidebarAIHtml().then(function (ok) {
-                if (tryCb()) return;
-                showToast(ok === false ? 'Failed to load AI sidebar HTML. Check file path and server context.' : 'AI sidebar initialized with fallback mode.');
-            });
+        if (typeof cb === 'function') cb();
+    });
+}
+
+function withAiSidebarReady(runFn) {
+    return ensureSidebarAILoadedSafe().then(function (ok) {
+        if (ok) {
+            try {
+                runFn();
+                return true;
+            } catch (_) {}
         }
-    }, 50);
+        return ensureSidebarAILoadedSafe(true).then(function (ok2) {
+            if (!ok2) {
+                showToast('Failed to recover AI sidebar module.');
+                return false;
+            }
+            try {
+                runFn();
+                return true;
+            } catch (e) {
+                showToast('AI sidebar action failed: ' + (e && e.message ? e.message : e));
+                return false;
+            }
+        });
+    });
 }
 
 function openScholarAIFromHeader() {
@@ -5373,22 +6065,20 @@ function openScholarAIFromHeader() {
             return;
         }
         setAiSidebarWrapVisible(380, true);
-        ensureSidebarAILoaded();
-        ensureSidebarAILoadedThen(function () {
-        var scholar = document.getElementById('scholar-ai-sidebar');
-        var ssp = document.getElementById('ssp-ai-sidebar');
-        if (!scholar) return;
-        if (scholar.classList.contains('open')) {
-            if (typeof scholarAIShrink === 'function') scholarAIShrink();
-            else scholar.classList.remove('open');
+        withAiSidebarReady(function () {
+            var scholar = document.getElementById('scholar-ai-sidebar');
+            if (!scholar) throw new Error('ScholarAI panel not found');
+            if (scholar.classList.contains('open')) {
+                if (typeof window.scholarAIShrink === 'function') window.scholarAIShrink();
+                else scholar.classList.remove('open');
+                refreshAiRightSidebarWrap();
+                return;
+            }
+            if (!scholar.classList.contains('open') && typeof window.toggleScholarAI === 'function') window.toggleScholarAI();
             refreshAiRightSidebarWrap();
-            return;
-        }
-        if (!scholar.classList.contains('open') && typeof toggleScholarAI === 'function') toggleScholarAI();
-        refreshAiRightSidebarWrap();
-        requestAnimationFrame(function () {
-            requestAnimationFrame(refreshAiRightSidebarWrap);
-        });
+            requestAnimationFrame(function () {
+                requestAnimationFrame(refreshAiRightSidebarWrap);
+            });
         });
     });
 }
@@ -5400,33 +6090,30 @@ function openSspimgAIFromHeader() {
             return;
         }
         setAiSidebarWrapVisible(400, true);
-        ensureSidebarAILoaded();
-        ensureSidebarAILoadedThen(function () {
-        var ssp = document.getElementById('ssp-ai-sidebar');
-        var scholar = document.getElementById('scholar-ai-sidebar');
-        if (!ssp) return;
-        if (ssp.classList.contains('open')) {
-            if (typeof sspAIShrink === 'function') sspAIShrink();
-            else ssp.classList.remove('open');
+        withAiSidebarReady(function () {
+            var ssp = document.getElementById('ssp-ai-sidebar');
+            if (!ssp) throw new Error('sspimgAI panel not found');
+            if (ssp.classList.contains('open')) {
+                if (typeof window.sspAIShrink === 'function') window.sspAIShrink();
+                else ssp.classList.remove('open');
+                refreshAiRightSidebarWrap();
+                return;
+            }
+            if (!ssp.classList.contains('open') && typeof window.toggleViewerSSP === 'function') window.toggleViewerSSP();
             refreshAiRightSidebarWrap();
-            return;
-        }
-        if (!ssp.classList.contains('open') && typeof toggleViewerSSP === 'function') toggleViewerSSP();
-        refreshAiRightSidebarWrap();
-        requestAnimationFrame(function () {
-            requestAnimationFrame(refreshAiRightSidebarWrap);
-        });
+            requestAnimationFrame(function () {
+                requestAnimationFrame(refreshAiRightSidebarWrap);
+            });
         });
     });
 }
 
 function openImageUploadTool() {
     setAiSidebarWrapVisible(400, true);
-    ensureSidebarAILoaded();
-    ensureSidebarAILoadedThen(function () {
+    withAiSidebarReady(function () {
         var ssp = document.getElementById('ssp-ai-sidebar');
-        if (!ssp) return;
-        if (!ssp.classList.contains('open') && typeof toggleViewerSSP === 'function') toggleViewerSSP();
+        if (!ssp) throw new Error('sspimgAI panel not found');
+        if (!ssp.classList.contains('open') && typeof window.toggleViewerSSP === 'function') window.toggleViewerSSP();
         refreshAiRightSidebarWrap();
         requestAnimationFrame(function () {
             var uploadZone = document.getElementById('ssp-upload-zone');
@@ -5643,10 +6330,13 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
+    const aiSidebarScriptVersion = '20260402-2';
     try {
-        script.src = new URL('./sidebarAI/sidebar-ai.js', base).href;
+        const u = new URL('./sidebarAI/sidebar-ai.js', base);
+        u.searchParams.set('v', aiSidebarScriptVersion);
+        script.src = u.href;
     } catch (e) {
-        script.src = './sidebarAI/sidebar-ai.js';
+        script.src = './sidebarAI/sidebar-ai.js?v=' + aiSidebarScriptVersion;
     }
     script.charset = 'utf-8';
     script.onerror = function () {
@@ -5660,6 +6350,89 @@ function ensureSidebarAILoaded() {
     window.viewerSwitchToEdit = function () { toggleMode('edit'); };
     window.viewerBuildNav = function () {};
     document.body.appendChild(script);
+}
+
+function isAiSidebarRuntimeReady() {
+    return typeof window.toggleScholarAI === 'function'
+        && typeof window.toggleViewerSSP === 'function'
+        && !!document.getElementById('ai-right-sidebar-inner');
+}
+
+function clearAiSidebarRuntimeForReload() {
+    try { delete window.__sidebarAILoaded; } catch (_) { window.__sidebarAILoaded = undefined; }
+    [
+        'toggleScholarAI',
+        'toggleViewerSSP',
+        'scholarAIShrink',
+        'sspAIShrink',
+        'scholarAIRun',
+        'viewerSSPGenerate',
+        'sidebarAIInit'
+    ].forEach(function (key) {
+        try { delete window[key]; } catch (_) { window[key] = undefined; }
+    });
+    const inner = document.getElementById('ai-right-sidebar-inner');
+    if (inner) inner.innerHTML = '';
+}
+
+function waitForAiSidebarRuntimeReady(timeoutMs) {
+    const timeout = Math.max(300, Number(timeoutMs || 2400));
+    return new Promise(function (resolve) {
+        const start = Date.now();
+        const t = setInterval(function () {
+            if (isAiSidebarRuntimeReady()) {
+                clearInterval(t);
+                resolve(true);
+                return;
+            }
+            if (Date.now() - start >= timeout) {
+                clearInterval(t);
+                resolve(false);
+            }
+        }, 50);
+    });
+}
+
+function ensureSidebarAILoadedSafe(forceReload) {
+    const force = forceReload === true;
+    if (aiSidebarBootPromise && !force) return aiSidebarBootPromise;
+
+    aiSidebarBootPromise = (async function () {
+        aiSidebarLoadAttempts += 1;
+        if (force) {
+            clearAiSidebarRuntimeForReload();
+            sidebarAILoaded = false;
+        }
+
+        ensureSidebarAILoaded();
+        let ok = await waitForAiSidebarRuntimeReady(2600);
+        if (!ok) {
+            await injectSidebarAIHtml().catch(function () {});
+            try {
+                if (typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
+            } catch (_) {}
+            ok = await waitForAiSidebarRuntimeReady(1800);
+        }
+
+        if (!ok && !force) {
+            clearAiSidebarRuntimeForReload();
+            sidebarAILoaded = false;
+            ensureSidebarAILoaded();
+            ok = await waitForAiSidebarRuntimeReady(2600);
+            if (!ok) {
+                await injectSidebarAIHtml().catch(function () {});
+                try {
+                    if (typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
+                } catch (_) {}
+                ok = await waitForAiSidebarRuntimeReady(1800);
+            }
+        }
+        return !!ok;
+    })().finally(function () {
+        aiSidebarBootPromise = null;
+    });
+
+    return aiSidebarBootPromise;
 }
 
 function injectSidebarAIHtml() {
@@ -5756,6 +6529,8 @@ async function loadAiSettingsToUI() {
         if (highlightCheckEmpty) highlightCheckEmpty.checked = false;
         const sitesCheckEmpty = document.getElementById('sites-visible');
         if (sitesCheckEmpty) sitesCheckEmpty.checked = false;
+        const templateCheckEmpty = document.getElementById('template-visible');
+        if (templateCheckEmpty) templateCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
         const localEnterBr = getEnterButtonInsertBrFromLocal();
         if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
@@ -5776,11 +6551,16 @@ async function loadAiSettingsToUI() {
         syncImgbbApiKeyInputs('');
         updateAiScholarSspimgAvailability(false);
         sitesList = DEFAULT_SITES_LIST.slice();
+        templateCustomList = [];
         renderSitesPanel();
+        renderTemplatePanel();
         applyImageUploadFeatureVisibility({ imageUploadEnabled: false });
         applyScholarSearchVisibility({ scholarSearchVisible: false });
         applyHighlightVisibility({ highlightVisible: false });
         applySitesVisibility({ sitesVisible: false });
+        applyTemplateVisibility({ templateVisible: false });
+        applyAiUseFold(getAiUseFoldedFromLocal());
+        applyShareSettingsFold(getShareSettingsFoldedFromLocal());
         applyEditToolsVisibilityByMode();
         return;
     }
@@ -5796,6 +6576,8 @@ async function loadAiSettingsToUI() {
     if (highlightCheck) highlightCheck.checked = settings.highlightVisible === true;
     const sitesCheck = document.getElementById('sites-visible');
     if (sitesCheck) sitesCheck.checked = settings.sitesVisible === true;
+    const templateCheck = document.getElementById('template-visible');
+    if (templateCheck) templateCheck.checked = settings.templateVisible === true;
     const enterBrCheck = document.getElementById('enter-button-insert-br');
     const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
     if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
@@ -5853,11 +6635,16 @@ async function loadAiSettingsToUI() {
         window.UserSettingsModule.applyUserInfoToModalFields(settings && settings.userInfo ? settings.userInfo : null);
     }
     sitesList = normalizeSitesList(settings.sitesList);
+    templateCustomList = normalizeTemplateCustomList(settings.templateCustomList);
     renderSitesPanel();
+    renderTemplatePanel();
     applyImageUploadFeatureVisibility(settings);
     applyScholarSearchVisibility(settings);
     applyToDocsVisibility(settings);
     applySitesVisibility(settings);
+    applyTemplateVisibility(settings);
+    applyAiUseFold(getAiUseFoldedFromLocal());
+    applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     applyEditToolsVisibilityByMode();
 }
 
@@ -5888,13 +6675,16 @@ async function initAiVisibility() {
         : getViewModeEditEnabledFromLocal();
     setViewModeEditEnabledToLocal(viewModeEditEnabled);
     sitesList = normalizeSitesList(settings && settings.sitesList);
+    templateCustomList = normalizeTemplateCustomList(settings && settings.templateCustomList);
     renderSitesPanel();
+    renderTemplatePanel();
     updateAiScholarSspimgAvailability(verified);
     applyImageUploadFeatureVisibility(settings || { imageUploadEnabled: false });
     applyScholarSearchVisibility(settings || { scholarSearchVisible: false });
     applyHighlightVisibility(settings || { highlightVisible: false });
     applyToDocsVisibility(settings || { toDocsVisible: false });
     applySitesVisibility(settings || { sitesVisible: false });
+    applyTemplateVisibility(settings || { templateVisible: false });
     applyEditToolsVisibilityByMode();
     await applyAiFeatureVisibility();
 }
@@ -5903,6 +6693,9 @@ function openSettingsModal() {
     ensureInDbStatusUi();
     document.getElementById('settings-modal').classList.remove('hidden');
     document.getElementById('settings-modal').classList.add('flex');
+    applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
+    applyAiUseFold(getAiUseFoldedFromLocal());
+    applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     loadAiSettingsToUI();
 }
 
@@ -6144,6 +6937,18 @@ window.addSiteFromInput = addSiteFromInput;
 window.toggleSitesSection = toggleSitesSection;
 window.toggleSitesCompactMode = toggleSitesCompactMode;
 window.toggleSitesSettingsPanel = toggleSitesSettingsPanel;
+window.toggleTemplatePanel = toggleTemplatePanel;
+window.closeTemplatePanel = closeTemplatePanel;
+window.toggleTemplateCompactMode = toggleTemplateCompactMode;
+window.onTemplateSelectChange = onTemplateSelectChange;
+window.saveEditedTemplate = saveEditedTemplate;
+window.addTemplateFromCurrentContent = addTemplateFromCurrentContent;
+window.exportSelectedTemplateMd = exportSelectedTemplateMd;
+window.triggerTemplateImportMd = triggerTemplateImportMd;
+window.importTemplateMdFile = importTemplateMdFile;
+window.insertSelectedTemplateToDocument = insertSelectedTemplateToDocument;
+window.insertSelectedTemplateAsNewFile = insertSelectedTemplateAsNewFile;
+window.toggleTemplateSection = toggleTemplateSection;
 window.openHighlightPopup = openHighlightPopup;
 window.closeHighlightPopup = closeHighlightPopup;
 window.toggleHighlightPopupDockRight = toggleHighlightPopupDockRight;
@@ -6173,10 +6978,13 @@ window.exportZip = exportZip;
 window.exportMpv = exportMpv;
 window.saveApiKey = saveApiKey;
 window.toggleAiPasswordSection = toggleAiPasswordSection;
+window.toggleAiUseFold = toggleAiUseFold;
+window.toggleShareSettingsFold = toggleShareSettingsFold;
 window.validateApiKeyInputUI = validateApiKeyInputUI;
 window.saveAiPassword = saveAiPassword;
 window.applyAiFeatureVisibility = applyAiFeatureVisibility;
 window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
+window.toggleSettingsShortcutsFold = toggleSettingsShortcutsFold;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;
@@ -6203,6 +7011,7 @@ window.closeTextStyleModal = closeTextStyleModal;
 window.openMermaidEditorModal = openMermaidEditorModal;
 window.closeMermaidEditorModal = closeMermaidEditorModal;
 window.toggleMermaidEditorFullscreen = toggleMermaidEditorFullscreen;
+window.toggleMermaidEditorDockRight = toggleMermaidEditorDockRight;
 window.applyTextStyleToSelection = applyTextStyleToSelection;
 
 // --- Advanced Edit Functions ---

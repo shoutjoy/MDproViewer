@@ -1,0 +1,30 @@
+<!--
+  &#xB17C;&#xBB38; &#xC591;&#xC2DD;(TMPLS) &#xBAA8;&#xB2EC; UI ? index.html &#xC758; #tmpl-modal &#xACFC; &#xB3D9;&#xAE30;&#xD654;
+  &#xB370;&#xC774;&#xD130;: &#xB3D9;&#xC77C; &#xD3F4;&#xB354; templates.js &#x2192; &#xC804;&#xC5ED; TMPLS
+  &#xADF8;&#xB9AC;&#xB4DC; &#xCC44;&#xC6C0;: App.showTmpl() &#xC2DC; el('tmpl-grid').innerHTML = TMPLS.map(...) (index.js)
+-->
+<div class="ov" id="tmpl-modal">
+  <div class="modal lg">
+    <h3>?? &#xB17C;&#xBB38; &#xC591;&#xC2DD; &#xC120;&#xD0DD;</h3>
+    <p style="font-size:12px;color:var(--tx2);margin-bottom:14px">&#xC120;&#xD0DD;&#xD558;&#xBA74; &#xC5D0;&#xB514;&#xD130;&#xC5D0; &#xAD6C;&#xC870;&#xAC00; &#xC790;&#xB3D9; &#xC0BD;&#xC785;&#xB429;&#xB2C8;&#xB2E4;. &#xAE30;&#xC874; &#xB0B4;&#xC6A9;&#xC740; &#xC720;&#xC9C0;&#xB429;&#xB2C8;&#xB2E4;.</p>
+    <div class="tmpl-grid" id="tmpl-grid"></div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--bd)">
+      <h4 style="font-size:12px;color:var(--tx2);margin-bottom:10px">?? &#xC2AC;&#xB77C;&#xC774;&#xB4DC; &#xC591;&#xC2DD;</h4>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
+        <label style="font-size:11px;color:var(--tx3)">&#xC2A4;&#xD0C0;&#xC77C;</label>
+        <select id="slide-tmpl-style" style="font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--bd);border-radius:4px;color:var(--tx1)">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+          <option value="6">6</option>
+        </select>
+        <label style="font-size:11px;color:var(--tx3)">&#xC0DD;&#xC131; &#xD398;&#xC774;&#xC9C0; &#xC218;</label>
+        <input type="number" id="slide-tmpl-count" min="1" max="50" value="5" style="width:60px;font-size:11px;padding:4px 8px;background:var(--bg3);border:1px solid var(--bd);border-radius:4px;color:var(--tx1)">
+        <button type="button" class="btn btn-p btn-sm" onclick="App.insertSlideTmpl()">&#xC0DD;&#xC131; &#xD6C4; &#xC0BD;&#xC785;</button>
+      </div>
+    </div>
+    <div class="mf"><button class="btn btn-g btn-sm" onclick="App.hideModal('tmpl-modal')">&#xB2EB;&#xAE30;</button></div>
+  </div>
+</div>

@@ -14,11 +14,14 @@ const renderDiv = document.getElementById('render');
 const errorDiv = document.getElementById('error');
 const previewScaleLabel = document.getElementById('preview-scale-label');
 const paneDivider = document.getElementById('pane-divider');
+const previewPane = document.getElementById('preview-pane');
+const previewThemeToggleBtn = document.getElementById('preview-theme-toggle-btn');
 
 let renderTimer = null;
 let renderSeq = 0;
 let currentDirection = 'TD';
 let previewScale = 1;
+let previewDarkMode = false;
 let flowNodeSeq = 1;
 const EXAMPLE_LIBRARY = {
   shopping: `flowchart TD
@@ -473,6 +476,30 @@ function resetPreviewScale() {
   applyPreviewScale();
 }
 
+function applyPreviewThemeUI() {
+  if (previewPane) previewPane.classList.toggle('preview-dark', previewDarkMode);
+  if (previewThemeToggleBtn) previewThemeToggleBtn.textContent = previewDarkMode ? 'Light' : 'Dark';
+}
+
+function applyMermaidPreviewTheme() {
+  mermaid.initialize({
+    startOnLoad: false,
+    suppressErrorRendering: true,
+    securityLevel: 'loose',
+    theme: previewDarkMode ? 'dark' : 'default',
+    flowchart: { useMaxWidth: true, htmlLabels: true },
+    themeVariables: {
+      fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif'
+    }
+  });
+}
+
+function togglePreviewTheme() {
+  previewDarkMode = !previewDarkMode;
+  applyPreviewThemeUI();
+  render();
+}
+
 function getMermaidErrorMessage(err, fallback) {
   const raw = err && (err.str || err.message || err.msg || err.description || err.error);
   const text = String(raw || fallback || '').trim();
@@ -488,8 +515,14 @@ function extractSvgErrorText(svg) {
   return '';
 }
 
+function normalizeMermaidDiagramType(source) {
+  const src = String(source || '');
+  // Accept both "treeView" and "treeview" and normalize to the beta keyword.
+  return src.replace(/(^\s*)(treeview|treeView)(?!-beta)(?=\s|$)/im, '$1treeView-beta');
+}
+
 function preprocessMermaidSourceForRender(source) {
-  const src = String(source || '').trim();
+  const src = normalizeMermaidDiagramType(source).trim();
   if (!/^sankey-beta\b/i.test(src)) return { source: src, labelMap: null };
 
   const lines = src.split(/\r?\n/);
@@ -586,6 +619,7 @@ async function render() {
   }
 
   try {
+    applyMermaidPreviewTheme();
     errorDiv.style.display = 'none';
     errorDiv.textContent = '';
     renderDiv.innerHTML = '';
@@ -879,6 +913,16 @@ function initPaneDivider() {
     const main = document.getElementById('main');
     if (!main) return;
     const rect = main.getBoundingClientRect();
+    const stacked = window.getComputedStyle(main).flexDirection === 'column';
+    if (stacked) {
+      const y = e.clientY - rect.top;
+      const min = 180;
+      const max = rect.height - 180 - 10;
+      const clamped = Math.max(min, Math.min(max, y));
+      const percent = (clamped / rect.height) * 100;
+      document.documentElement.style.setProperty('--pane-top', percent + '%');
+      return;
+    }
     const x = e.clientX - rect.left;
     const min = 260;
     const max = rect.width - 260 - 10;
@@ -911,5 +955,6 @@ editor.addEventListener('keydown', function (e) {
 });
 
 initPaneDivider();
+applyPreviewThemeUI();
 applyPreviewScale();
 render();
