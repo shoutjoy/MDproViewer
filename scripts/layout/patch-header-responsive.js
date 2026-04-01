@@ -1,6 +1,6 @@
-/** One-off: saveFile(보내기) 버튼 반응형 클래스 정렬 — 이미 적용됨 */
+/** One-off: saveFile(보내�? 버튼 반응???�래???�렬 ???��? ?�용??*/
 const fs = require('fs');
-const p = require('path').join(__dirname, '..', 'index.html');
+const p = require('path').join(__dirname, '..', '..', 'index.html');
 const lines = fs.readFileSync(p, 'utf8').split(/\r?\n/);
 const idx = lines.findIndex((l) => l.includes('onclick="saveFile()"'));
 if (idx < 0) { console.error('saveFile not found'); process.exit(1); }

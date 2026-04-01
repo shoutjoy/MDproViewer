@@ -305,14 +305,16 @@
         }
 
         .btn-mode {
-            font-size: 0.7em;
-            padding: 4px 10px;
-            border-radius: 6px;
+            font-size: 0.82rem;
+            padding: 6px 14px;
+            border-radius: 8px;
             border: 1px solid var(--primary-purple);
             background: white;
             color: var(--primary-purple);
             margin-left: 5px;
             cursor: pointer;
+            min-height: 32px;
+            line-height: 1.1;
         }
 
         .btn-mode.active {
@@ -525,7 +527,7 @@
             <div class="list-header list-mode-row">
                 <div>
                     <button class="btn-mode active" id="mode-line" onclick="setViewMode('line')">한줄보기</button>
-                    <button class="btn-mode" id="mode-extend" onclick="setViewMode('extend')">Extend View</button>
+                    <button class="btn-mode" id="mode-extend" onclick="setViewMode('extend')">카드보기</button>
                 </div>
             </div>
             <div class="tree-container" id="tree-container"></div>
