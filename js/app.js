@@ -22,6 +22,7 @@ let modalMode = 'link';
 let movingDocId = null;
 let previewPopupWindow = null;
 let previewPopupScale = 1.0;
+let previewPopupWidthScale = 1.0;
 let previewPopupFontSize = 21;
 let previewPopupRenderToken = 0;
 let previewPopupMermaidLoadPromise = null;

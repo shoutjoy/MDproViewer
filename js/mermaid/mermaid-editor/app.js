@@ -32,9 +32,9 @@ a, b, 30
 a, c, 30
 a, s, 40`,
   'sankey-family': `sankey-beta
-박중희, 박중희2, 30
-박중희, 박중희3, 30
-박중희, 박중희4, 40`,
+\uBD80\uBAA8, \uCCAB\uC9F8, 30
+\uBD80\uBAA8, \uB458\uC9F8, 30
+\uBD80\uBAA8, \uC14B\uC9F8, 40`,
   'sankey-config': `---
 config:
   sankey:
@@ -73,6 +73,31 @@ Free Trial,Churn,10`,
     API->>DB: query users
     DB-->>API: rows
     API-->>Client: JSON`,
+  kanban:`---
+config:
+  kanban:
+    ticketBaseUrl: https://github.com/mermaid-js/mermaid/issues/#TICKET#
+  theme: dark
+---
+kanban
+  Todo
+    [Create Documentation]
+    docs[Create Blog about the new diagram]
+  [In progress]
+    id6[Create renderer so that it works in all cases. We also add some extra text here for testing purposes. And some more just for the extra flare.]
+  id9[Ready for deploy]
+    id8[Design grammar]@{ assigned: 'knsv' }
+  id10[Ready for test]
+    id4[Create parsing tests]@{ ticket: 2038, assigned: 'K.Sveidqvist', priority: 'High' }
+    id66[last item]@{ priority: 'Very Low', assigned: 'knsv' }
+  id11[Done]
+    id5[define getData]
+    id2[Title of diagram is more than 100 chars when user duplicates diagram with 100 char]@{ ticket: 2036, priority: 'Very High'}
+    id3[Update DB function]@{ ticket: 2037, assigned: knsv, priority: 'High' }
+
+  id12[Can't reproduce]
+    id13[Weird flickering in Firefox]
+  `,  
   er: `erDiagram
     CUSTOMER ||--o{ ORDER : places
     ORDER ||--|{ LINE_ITEM : contains
@@ -167,7 +192,7 @@ kanban
     id2[Title of diagram is more than 100 chars when user duplicates diagram with 100 char]@{ ticket: 2036, priority: 'Very High'}
     id3[Update DB function]@{ ticket: 2037, assigned: knsv, priority: 'High' }
   id12[Can't reproduce]
-    id3[Weird flickering in Firefox]`,
+    id13[Weird flickering in Firefox]`,
   treemap: `treemap-beta
 "Section 1"
     "Leaf 1.1": 12
@@ -195,10 +220,224 @@ kanban
     Another task     :after a1  , 20d
     section Another
     Task in sec      :2014-01-12  , 12d
-    another task      : 24d`
+    another task      : 24d`,
+  'architecture-basic': `architecture-beta
+    group api(cloud)[API]
+
+    service db(database)[Database] in api
+    service disk1(disk)[Storage] in api
+    service disk2(disk)[Storage] in api
+    service server(server)[Server] in api
+
+    db:L -- R:server
+    disk1:T -- B:server
+    disk2:T -- B:db`,
+  'block-stack': `block-beta
+columns 1
+  db(("DB"))
+  blockArrowId6<["&nbsp;&nbsp;&nbsp;"]>(down)
+  block:ID
+    A
+    B["A wide one in the middle"]
+    C
+  end
+  space
+  D
+  ID --> D
+  C --> D
+  style B fill:#969,stroke:#333,stroke-width:4px`,
+  'block-columns': `block-beta
+  columns 3
+  a b c d`,
+  'radar-grades': `---
+title: "Grades"
+---
+radar-beta
+  axis m["Math"], s["Science"], e["English"]
+  axis h["History"], g["Geography"], a["Art"]
+  curve a["Alice"]{85, 90, 80, 70, 75, 90}
+  curve b["Bob"]{70, 75, 85, 80, 90, 85}
+  max 100
+  min 0`,
+  'radar-restaurant': `radar-beta
+  title Restaurant Comparison
+  axis food["Food Quality"], service["Service"], price["Price"]
+  axis ambiance["Ambiance"]
+  curve a["Restaurant A"]{4, 3, 2, 4}
+  curve b["Restaurant B"]{3, 4, 3, 3}
+  curve c["Restaurant C"]{2, 3, 4, 2}
+  curve d["Restaurant D"]{2, 2, 4, 3}
+  graticule polygon
+  max 5`,
+  'venn-team': `venn-beta
+  title "Team overlap"
+  set Frontend
+  set Backend
+  union Frontend,Backend["APIs"]`,
+  'venn-ab': `venn-beta
+  set A["Alpha"]:20
+  set B["Beta"]:12
+  union A,B["AB"]:3`,
+  'venn-nested': `venn-beta
+  set A["Frontend"]
+    text A1["React"]
+    text A2["Design Systems"]
+  set B["Backend"]
+    text B1["API"]
+  union A,B["Shared"]
+    text AB1["OpenAPI"]`,
+  'venn-styled': `venn-beta
+  set A["Alpha"]:20
+    text A1["React"]
+    text A2["Design Systems"]
+  set B["Beta"]:12
+  union A,B["AB"]:3
+  style A fill:#ff6b6b
+  style A,B color:#333
+  style A1 color:red`,
+  'ishikawa-photo': `ishikawa-beta
+    Blurry Photo
+    Process
+        Out of focus
+        Shutter speed too slow
+        Protective film not removed
+        Beautification filter applied
+    User
+        Shaky hands
+    Equipment
+        LENS
+            Inappropriate lens
+            Damaged lens
+            Dirty lens
+        SENSOR
+            Damaged sensor
+            Dirty sensor
+    Environment
+        Subject moved too quickly
+        Too dark`,
+  'treeview-basic': `treeView-beta
+    "packages"
+        "mermaid"
+            "src"
+        "parser"`,
+  'treeview-config': `---
+config:
+    treeView:
+        rowIndent: 80
+        lineThickness: 3
+    themeVariables:
+        treeView:
+            labelFontSize: '20px'
+            labelColor: '#FF0000'
+            lineColor: '#00FF00'
+---
+treeView-beta
+    "packages"
+        "mermaid"
+            "src"
+        "parser"`,
+  'gitgraph-basic': `gitGraph:
+    commit "Ashish"
+    branch newbranch
+    checkout newbranch
+    commit id:"1111"
+    commit tag:"test"
+    checkout main
+    commit type: HIGHLIGHT
+    commit
+    merge newbranch
+    commit
+    branch b2
+    commit`,
+  'sequence-loop': `sequenceDiagram
+    loop Daily query
+        Alice->>Bob: Hello Bob, how are you?
+        alt is sick
+            Bob->>Alice: Not so good :(
+        else is well
+            Bob->>Alice: Feeling fresh like a daisy
+        end
+        opt Extra response
+            Bob->>Alice: Thanks for asking
+        end
+    end`,
+  'flowchart-lr': `graph LR
+    A[Square Rect] -- Link text --> B((Circle))
+    A --> C(Round Rect)
+    B --> D{Rhombus}
+    C --> D`
 };
 
-// 초기 템플릿 설정
+const CONFIG_TEMPLATE_LIBRARY = {
+  'theme-default': `---
+config:
+  theme: default
+---`,
+  'theme-dark': `---
+config:
+  theme: dark
+---`,
+  'theme-neutral': `---
+config:
+  theme: neutral
+---`,
+  'kanban-ticket': `---
+config:
+  kanban:
+    ticketBaseUrl: https://github.com/mermaid-js/mermaid/issues/#TICKET#
+  theme: dark
+---`,
+  'treeview-style': `---
+config:
+  treeView:
+    rowIndent: 80
+    lineThickness: 3
+  themeVariables:
+    treeView:
+      labelFontSize: '20px'
+      labelColor: '#FF0000'
+      lineColor: '#00FF00'
+---`
+};
+
+function openSyntaxTutorial() {
+  window.open('https://mermaid.ai/open-source/syntax/flowchart.html', '_blank', 'noopener,noreferrer');
+}
+
+function splitFrontMatter(text) {
+  const src = String(text || '');
+  if (!src.startsWith('---')) return null;
+  const m = src.match(/^---\s*\r?\n[\s\S]*?\r?\n---\s*(\r?\n|$)/);
+  if (!m) return null;
+  const front = m[0].trim();
+  const body = src.slice(m[0].length);
+  return { front, body };
+}
+
+function insertConfigTemplate(templateKey) {
+  const key = String(templateKey || '').trim();
+  if (!key || !CONFIG_TEMPLATE_LIBRARY[key]) return;
+  const cfg = String(CONFIG_TEMPLATE_LIBRARY[key] || '').trim();
+  if (!cfg) return;
+
+  const current = String(editor.value || '');
+  const parsed = splitFrontMatter(current);
+  if (parsed) {
+    editor.value = cfg + '\n' + String(parsed.body || '').replace(/^\s+/, '');
+  } else {
+    editor.value = cfg + '\n' + current.replace(/^\s+/, '');
+  }
+  render();
+}
+
+function insertConfigTemplateFromSelect() {
+  const sel = document.getElementById('config-template-select');
+  if (!sel) return;
+  const key = String(sel.value || '').trim();
+  if (!key) return;
+  insertConfigTemplate(key);
+}
+// Initial template
 editor.value = EXAMPLE_LIBRARY.shopping;
 
 function setDirection(dir) {
@@ -342,7 +581,7 @@ async function render() {
 
   if (!code) {
     renderDiv.innerHTML = '';
-    showError('코드가 비어 있습니다.');
+    showError('\uCF54\uB4DC\uAC00 \uBE44\uC5B4 \uC788\uC2B5\uB2C8\uB2E4.');
     return;
   }
 
@@ -357,7 +596,7 @@ async function render() {
     if (isErrorSvg(svg)) {
       renderDiv.innerHTML = '';
       const svgErr = extractSvgErrorText(svg);
-      showError('렌더링 오류\n[render] ' + (svgErr || 'Mermaid returned an error SVG.'));
+      showError('\uB80C\uB354\uB9C1 \uC624\uB958\n[render] ' + (svgErr || 'Mermaid returned an error SVG.'));
       removeMermaidErrorArtifacts();
       return;
     }
@@ -370,7 +609,7 @@ async function render() {
     const hasInlineErrorIcon = !!renderDiv.querySelector('.error-icon, g.error-icon');
     if (hasInlineErrorIcon || renderedText.includes('syntax error in text')) {
       renderDiv.innerHTML = '';
-      showError('렌더링 오류\n[render] Mermaid emitted an inline error marker.');
+      showError('\uB80C\uB354\uB9C1 \uC624\uB958\n[render] Mermaid emitted an inline error marker.');
       removeMermaidErrorArtifacts();
       return;
     }
@@ -402,7 +641,7 @@ async function render() {
       const primary = getMermaidErrorMessage(e, '');
       const secondary = getMermaidErrorMessage(fallbackErr, '');
       const detail = secondary || primary || 'Unknown Mermaid error';
-      showError('렌더링 오류\n[run] ' + detail + (primary && secondary && primary !== secondary ? '\n[render] ' + primary : ''));
+      showError('\uB80C\uB354\uB9C1 \uC624\uB958\n[run] ' + detail + (primary && secondary && primary !== secondary ? '\n[render] ' + primary : ''));
       removeMermaidErrorArtifacts();
     }
   }
@@ -447,8 +686,8 @@ function removeMermaidErrorArtifacts() {
 
 function insertSnippet(type) {
   const snippets = {
-    node: 'A[노드]',
-    decision: 'B{조건}',
+    node: 'A[\uB178\uB4DC]',
+    decision: 'B{\uC870\uAC74}',
     arrow: 'A --> B'
   };
   const snippet = snippets[type] || '';
@@ -474,7 +713,7 @@ function loadTemplate(type) {
 }
 
 function buildNodeSyntax(shape, id, label) {
-  const text = String(label || '노드');
+  const text = String(label || '\uB178\uB4DC');
   if (shape === 'diamond') return `${id}{${text}}`;
   if (shape === 'square') return `${id}[[${text}]]`;
   if (shape === 'circle') return `${id}((${text}))`;
@@ -502,16 +741,16 @@ function insertNodeByShape() {
 async function copyCode() {
   try {
     await navigator.clipboard.writeText(editor.value);
-    alert('코드가 복사되었습니다.');
+    alert('\uCF54\uB4DC\uAC00 \uBCF5\uC0AC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
   } catch {
-    alert('복사에 실패했습니다.');
+    alert('\uBCF5\uC0AC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
   }
 }
 
 function insertIntoDocument() {
   const code = String(editor.value || '').trim();
   if (!code) {
-    alert('삽입할 코드가 없습니다.');
+    alert('\uC0BD\uC785\uD560 \uCF54\uB4DC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.');
     return;
   }
   if (window.parent && window.parent !== window) {
@@ -525,7 +764,7 @@ function insertIntoDocument() {
 function downloadSVG() {
   const svg = renderDiv.querySelector('svg');
   if (!svg) {
-    alert('렌더링된 SVG가 없습니다.');
+    alert('\uB80C\uB354\uB9C1\uB41C SVG\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4.');
     return;
   }
   const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml;charset=utf-8' });
@@ -540,7 +779,7 @@ function downloadSVG() {
 function downloadPNG() {
   const svgEl = renderDiv.querySelector('svg');
   if (!svgEl) {
-    alert('렌더링된 다이어그램이 없습니다.');
+    alert('\uB80C\uB354\uB9C1\uB41C \uB2E4\uC774\uC5B4\uADF8\uB7A8\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.');
     return;
   }
   const svgText = new XMLSerializer().serializeToString(svgEl);
@@ -556,7 +795,7 @@ function downloadPNG() {
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       URL.revokeObjectURL(url);
-      alert('PNG 변환에 실패했습니다.');
+      alert('PNG \uBCC0\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
       return;
     }
     ctx.fillStyle = '#ffffff';
@@ -571,7 +810,7 @@ function downloadPNG() {
   };
   img.onerror = function () {
     URL.revokeObjectURL(url);
-    alert('PNG 변환에 실패했습니다.');
+    alert('PNG \uBCC0\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
   };
   img.src = url;
 }
@@ -652,7 +891,7 @@ function initPaneDivider() {
 
 editor.addEventListener('input', debounceRender);
 
-// 단축키 기능 유지
+// Shortcut bindings
 editor.addEventListener('keydown', function (e) {
   const lines = this.value.split('\n');
   const start = this.selectionStart;

@@ -62,6 +62,9 @@ function getPreviewPopupDocumentHtml() {
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">Zoom Out</button>'
         + '<span id=\"pv-scale-label\" class=\"label\">100%</span>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(0.1)\">Zoom In</button>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(-0.1)\">Width -</button>'
+        + '<span id=\"pv-width-label\" class=\"label\">100%</span>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(0.1)\">Width +</button>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(-1)\">Font -</button>'
         + '<span id=\"pv-font-label\" class=\"label\">21px</span>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(1)\">Font +</button>'
@@ -262,29 +265,38 @@ function applyPreviewPopupViewport() {
     const doc = previewPopupWindow.document;
     const content = doc.getElementById('pv-content');
     const scaleLabel = doc.getElementById('pv-scale-label');
+    const widthLabel = doc.getElementById('pv-width-label');
     const fontLabel = doc.getElementById('pv-font-label');
     if (!content) return;
 
     const scale = Math.max(0.3, Math.min(3, Number(previewPopupScale) || 1));
+    const widthScale = Math.max(0.5, Math.min(2.5, Number(previewPopupWidthScale) || 1));
     const fs = Math.max(8, Math.min(72, Number(previewPopupFontSize) || 21));
     previewPopupScale = scale;
+    previewPopupWidthScale = widthScale;
     previewPopupFontSize = fs;
 
     const baseMaxWidthRem = 56;
-    const widthRem = Math.max(28, baseMaxWidthRem * scale);
-    content.style.zoom = '1';
+    const widthRem = Math.max(28, baseMaxWidthRem * widthScale);
+    content.style.zoom = String(scale);
     content.style.transform = 'none';
-    content.style.width = '100%';
+    content.style.width = '';
     content.style.maxWidth = widthRem + 'rem';
     content.style.marginLeft = 'auto';
     content.style.marginRight = 'auto';
     content.style.fontSize = fs + 'px';
     if (scaleLabel) scaleLabel.textContent = Math.round(scale * 100) + '%';
+    if (widthLabel) widthLabel.textContent = Math.round(widthScale * 100) + '%';
     if (fontLabel) fontLabel.textContent = fs + 'px';
 }
 
 function previewPopupAdjustScale(delta) {
     previewPopupScale = (Number(previewPopupScale) || 1) + Number(delta || 0);
+    applyPreviewPopupViewport();
+}
+
+function previewPopupAdjustWidth(delta) {
+    previewPopupWidthScale = (Number(previewPopupWidthScale) || 1) + Number(delta || 0);
     applyPreviewPopupViewport();
 }
 

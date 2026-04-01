@@ -15,22 +15,23 @@
       <button onclick="setDirection('LR')" id="dir-LR" class="btn">LR</button>
     </div>
     <div class="toolbar-right">
-      <input id="node-label" class="input-like" type="text" placeholder="노드 텍스트" />
+      <!-- Unicode entity labels to avoid encoding issues -->
+      <input id="node-label" class="input-like" type="text" placeholder="&#xB178;&#xB4DC; &#xD14D;&#xC2A4;&#xD2B8;" />
       <select id="node-shape" class="select-like-btn">
-        <option value="rect">사각형 [ ]</option>
-        <option value="diamond">마름모 { }</option>
-        <option value="square">정사각형 [[ ]]</option>
-        <option value="circle">원형 (( ))</option>
+        <option value="rect">&#xC0AC;&#xAC01;&#xD615; [ ]</option>
+        <option value="diamond">&#xB9C8;&#xB984;&#xBAA8; { }</option>
+        <option value="square">&#xC815;&#xC0AC;&#xAC01;&#xD615; [[ ]]</option>
+        <option value="circle">&#xC6D0;&#xD615; (( ))</option>
       </select>
-      <button onclick="insertNodeByShape()" class="btn">노드추가</button>
-      <button onclick="insertSnippet('node')" class="btn">노드</button>
-      <button onclick="insertSnippet('decision')" class="btn">조건</button>
-      <button onclick="insertSnippet('arrow')" class="btn">연결</button>
+      <button onclick="insertNodeByShape()" class="btn">&#xB178;&#xB4DC;&#xCD94;&#xAC00;</button>
+      <button onclick="insertSnippet('node')" class="btn">&#xB178;&#xB4DC;</button>
+      <button onclick="insertSnippet('decision')" class="btn">&#xC870;&#xAC74;</button>
+      <button onclick="insertSnippet('arrow')" class="btn">&#xC5F0;&#xACB0;</button>
       <select id="example-select" class="select-like-btn" onchange="loadTemplate(this.value)">
-        <option value="">사례선택</option>
-        <option value="shopping">Flow 기본</option>
-        <option value="sankey-basic">Sankey 기본</option>
-        <option value="sankey-family">Sankey 한글</option>
+        <option value="">&#xC0D8;&#xD50C;&#xC120;&#xD0DD;</option>
+        <option value="shopping">Flow &#xAE30;&#xBCF8;</option>
+        <option value="sankey-basic">Sankey &#xAE30;&#xBCF8;</option>
+        <option value="sankey-family">Sankey &#xD55C;&#xAE00;</option>
         <option value="sankey-config">Sankey (showValues off)</option>
         <option value="state">State</option>
         <option value="class">Class</option>
@@ -47,30 +48,55 @@
         <option value="treemap">Treemap</option>
         <option value="requirement">Requirement</option>
         <option value="gantt">Gantt</option>
+        <option value="architecture-basic">Architecture (basic)</option>
+        <option value="block-stack">Block (stack)</option>
+        <option value="block-columns">Block (columns)</option>
+        <option value="radar-grades">Radar (grades)</option>
+        <option value="radar-restaurant">Radar (restaurant)</option>
+        <option value="venn-team">Venn (team overlap)</option>
+        <option value="venn-ab">Venn (A/B values)</option>
+        <option value="venn-nested">Venn (nested text)</option>
+        <option value="venn-styled">Venn (styled)</option>
+        <option value="ishikawa-photo">Ishikawa</option>
+        <option value="treeview-basic">TreeView (basic)</option>
+        <option value="treeview-config">TreeView (config)</option>
+        <option value="gitgraph-basic">GitGraph</option>
+        <option value="sequence-loop">Sequence (loop/alt/opt)</option>
+        <option value="flowchart-lr">Flowchart (LR)</option>
       </select>
-      <button onclick="copyCode()" class="btn">복사</button>
+      <button onclick="openSyntaxTutorial()" class="btn">Syntax Tutorial</button>
+      <select id="config-template-select" class="select-like-btn">
+        <option value="">Config insert</option>
+        <option value="theme-default">theme: default</option>
+        <option value="theme-dark">theme: dark</option>
+        <option value="theme-neutral">theme: neutral</option>
+        <option value="kanban-ticket">kanban ticketBaseUrl</option>
+        <option value="treeview-style">treeView style sample</option>
+      </select>
+      <button onclick="insertConfigTemplateFromSelect()" class="btn">Config &#xC0BD;&#xC785;</button>
+      <button onclick="copyCode()" class="btn">&#xBCF5;&#xC0AC;</button>
       <button onclick="downloadSVG()" class="btn">SVG</button>
       <button onclick="downloadPNG()" class="btn">PNG</button>
-      <button onclick="insertIntoDocument()" class="btn">문서삽입</button>
+      <button onclick="insertIntoDocument()" class="btn">&#xBB38;&#xC11C;&#xC0BD;&#xC785;</button>
     </div>
   </header>
 
   <main id="main">
     <section id="editor-pane">
-      <div class="pane-title">코드 편집기</div>
+      <div class="pane-title">&#xCF54;&#xB4DC; &#xD3B8;&#xC9D1;&#xAE30;</div>
       <textarea id="raw-code-editor" spellcheck="false"></textarea>
       <!-- <div class="editor-help">
-        <div>단축키</div>
-        <div>Ctrl + Alt + ↓ : 현재 줄 아래로 복사</div>
-        <div>Alt + ↑ / ↓ : 현재 줄 이동</div>
+        <div>&#xB2E8;&#xCD95;&#xD0A4;</div>
+        <div>Ctrl + Alt + ↓ : &#xD604;&#xC7AC; &#xC904; &#xC544;&#xB798;&#xB85C; &#xBCF5;&#xC0AC;</div>
+        <div>Alt + ↑ / ↓ : &#xD604;&#xC7AC; &#xC904; &#xC774;&#xB3D9;</div>
       </div> -->
     </section>
 
-    <div id="pane-divider" title="좌우 패널 크기 조절"></div>
+    <div id="pane-divider" title="&#xC88C;&#xC6B0; &#xD328;&#xB110; &#xD06C;&#xAE30; &#xC870;&#xC808;"></div>
 
     <section id="preview-pane">
       <div class="pane-title pane-title-row">
-        <span>미리보기</span>
+        <span>&#xBBF8;&#xB9AC;&#xBCF4;&#xAE30;</span>
         <div class="zoom-controls">
           <button type="button" class="btn-light" onclick="adjustPreviewScale(-0.1)">-</button>
           <span id="preview-scale-label">100%</span>
