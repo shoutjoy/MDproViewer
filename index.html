@@ -59,6 +59,12 @@
                 <i data-lucide="folder-open" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
                 <span class="hidden xl:inline text-sm font-medium">열기</span>
             </button>
+            <button type="button" id="btn-html2ppt-panel" onclick="toggleHtml2pptPanel()"
+                class="hidden p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0 border border-slate-300 dark:border-slate-600"
+                title="GenSlide 열기">
+                <i data-lucide="presentation" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
+                <span class="hidden xl:inline text-sm font-medium">GenSlide</span>
+            </button>
             <input type="file" id="file-input" class="hidden" accept=".md,.txt,.mpv,.json,.zip,.mdd" onchange="handleFileSelect(event)">
 
             <button onclick="saveFile()"
@@ -1178,6 +1184,11 @@
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">양식보이기</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="html2ppt-visible" onclick="setTimeout(toggleHtml2pptSection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">GenSlide 보이기</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="image-upload-enabled" onclick="setTimeout(toggleImageUploadSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">이미지 업로드 사용</span>
@@ -1563,6 +1574,27 @@
             </div>
         </div>
         <div id="template-panel-resizer" title="Resize"
+            class="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize opacity-70 hover:opacity-100 select-none"
+            style="background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);"></div>
+    </div>
+
+    <div id="html2ppt-panel" class="fixed top-20 right-3 hidden flex-col z-50 no-print w-[min(980px,96vw)] h-[min(760px,86vh)] rounded-lg border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-sm">
+        <div id="html2ppt-panel-header" class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 cursor-move select-none">
+            <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">GenSlide</h3>
+            <div class="flex items-center gap-1.5">
+                <button type="button" id="html2ppt-panel-full-btn" onclick="toggleHtml2pptPanelFullscreen()"
+                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">전체</button>
+                <button type="button" id="html2ppt-panel-dock-btn" onclick="toggleHtml2pptDockRight()"
+                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">>></button>
+                <button type="button" onclick="closeHtml2pptPanel()"
+                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>
+            </div>
+        </div>
+        <div id="html2ppt-panel-body" class="flex-1 p-2 min-h-0">
+            <iframe id="html2ppt-frame" src="./js/Html2pptx/html2pptx.html"
+                class="w-full h-full border-0 rounded bg-white dark:bg-slate-900" title="GenSlide"></iframe>
+        </div>
+        <div id="html2ppt-panel-resizer" title="Resize"
             class="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize opacity-70 hover:opacity-100 select-none"
             style="background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);"></div>
     </div>

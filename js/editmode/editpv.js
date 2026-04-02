@@ -33,11 +33,11 @@ function getPreviewPopupDocumentHtml() {
         + '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">'
         + '<style>'
         + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;}'
-        + '#pv-root{display:flex;flex-direction:column;height:100%;}'
-        + '#pv-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#e2e8f0;border-bottom:1px solid #cbd5e1;position:sticky;top:0;z-index:10;}'
+        + '#pv-root{height:100%;}'
+        + '#pv-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#e2e8f0;border-bottom:1px solid #cbd5e1;position:fixed;top:0;left:0;right:0;z-index:9999;box-sizing:border-box;}'
         + '#pv-toolbar button{padding:4px 10px;border:1px solid #94a3b8;background:#fff;border-radius:6px;font-weight:700;color:#1e293b;cursor:pointer;}'
         + '#pv-toolbar .label{font-size:12px;color:#334155;min-width:48px;text-align:center;font-weight:700;}'
-        + '#pv-viewport{flex:1;overflow:auto;padding:20px;}'
+        + '#pv-viewport{height:100%;overflow:auto;padding:20px;padding-top:72px;box-sizing:border-box;}'
         + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;margin:0 auto;width:100%;max-width:56rem;}'
         + '#pv-content h1{font-size:2.25rem;font-weight:800;margin-top:1.5rem;margin-bottom:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:.5rem;}'
         + '#pv-content h2{font-size:1.875rem;font-weight:700;margin-top:1.25rem;margin-bottom:.75rem;border-bottom:1px solid #e2e8f0;padding-bottom:.3rem;}'
@@ -275,7 +275,7 @@ function applyPreviewPopupViewport() {
     const fontLabel = doc.getElementById('pv-font-label');
     if (!content) return;
 
-    const scale = Math.max(0.3, Math.min(3, Number(previewPopupScale) || 1));
+    const scale = Math.max(0.1, Math.min(3, Number(previewPopupScale) || 1));
     const widthScale = Math.max(0.5, Math.min(2.5, Number(previewPopupWidthScale) || 1));
     const fs = Math.max(8, Math.min(72, Number(previewPopupFontSize) || 21));
     previewPopupScale = scale;

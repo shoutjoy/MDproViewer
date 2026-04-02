@@ -89,6 +89,19 @@ let templatePanelResizeBound = false;
 let templatePanelResizing = false;
 let templatePanelSavedWidth = '';
 let templatePanelSavedHeight = '';
+let html2pptPanelOpen = false;
+let html2pptDockRight = true;
+let html2pptDragBound = false;
+let html2pptDragging = false;
+let html2pptDragOffsetX = 0;
+let html2pptDragOffsetY = 0;
+let html2pptMoved = false;
+let html2pptResizeBound = false;
+let html2pptResizing = false;
+let html2pptSavedWidth = '';
+let html2pptSavedHeight = '';
+let html2pptFullscreen = false;
+let html2pptRestoreState = null;
 let templateCustomList = [];
 let scholarRefBootPromise = null;
 let scholarRefInitDone = false;
@@ -2008,6 +2021,7 @@ function toggleSidebarCollapse() {
 
 // --- TOC & Sidebar Tabs ---
 let activeSidebarTab = 'files';
+let lastRenderedTocItems = [];
 
 function switchSidebarTab(tab) {
     activeSidebarTab = tab;
@@ -2037,38 +2051,111 @@ function switchSidebarTab(tab) {
     }
 }
 
+function parseTocItemsFromMarkdown(markdownText) {
+    const lines = String(markdownText || '').split('\n');
+    const items = [];
+    let inFence = false;
+    let fenceChar = '';
+
+    lines.forEach((line, index) => {
+        const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
+        if (fenceMatch) {
+            const currentFenceChar = fenceMatch[1].charAt(0);
+            if (!inFence) {
+                inFence = true;
+                fenceChar = currentFenceChar;
+            } else if (fenceChar === currentFenceChar) {
+                inFence = false;
+                fenceChar = '';
+            }
+            return;
+        }
+        if (inFence) return;
+
+        const match = line.match(/^(#{1,6})\s+(.*)$/);
+        if (!match) return;
+
+        const level = match[1].length;
+        const rawText = String(match[2] || '').trim();
+        if (!rawText) return;
+        const text = rawText.replace(/\s+#+\s*$/, '').trim();
+        if (!text) return;
+
+        items.push({
+            level,
+            text,
+            lineIndex: index
+        });
+    });
+
+    return items;
+}
+
 function renderTOC() {
     const tocList = document.getElementById('toc-list');
     if (!tocList) return;
     tocList.innerHTML = '';
+    const esc = (v) => String(v || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const levelToneClass = (level) => {
+        if (level === 1) return 'border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 bg-indigo-50/80 dark:bg-indigo-900/25 hover:bg-indigo-100/90 dark:hover:bg-indigo-900/35';
+        if (level === 2) return 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-900/25 hover:bg-emerald-100/90 dark:hover:bg-emerald-900/35';
+        if (level === 3) return 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/25 hover:bg-amber-100/90 dark:hover:bg-amber-900/35';
+        if (level === 4) return 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 bg-sky-50/80 dark:bg-sky-900/25 hover:bg-sky-100/90 dark:hover:bg-sky-900/35';
+        if (level === 5) return 'border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 bg-fuchsia-50/80 dark:bg-fuchsia-900/25 hover:bg-fuchsia-100/90 dark:hover:bg-fuchsia-900/35';
+        return 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100/90 dark:hover:bg-slate-700/60';
+    };
+    const shortText = (text, n) => Array.from(String(text || '').trim()).slice(0, n).join('');
+
+    const tocItems = parseTocItemsFromMarkdown(currentMarkdown);
+    lastRenderedTocItems = tocItems.slice();
 
     if (isSidebarCollapsed) {
-        tocList.innerHTML = `<div class="p-2 text-center text-xs text-slate-400">Expand the sidebar to view the table of contents.</div>`;
+        if (!tocItems.length) {
+            tocList.innerHTML = `
+                <div class="p-2 flex justify-center">
+                    <button type="button"
+                        class="w-12 h-6 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600 text-[10px] font-bold cursor-not-allowed flex items-center justify-center"
+                        disabled
+                        aria-label="No headings found">-</button>
+                </div>`;
+            return;
+        }
+
+        let compactHtml = '<div class="space-y-1 p-1 flex flex-col items-center">';
+        tocItems.forEach((item) => {
+            const toneClass = levelToneClass(item.level);
+            const label = shortText(item.text, 3) || '#';
+            compactHtml += `
+                <button type="button"
+                    class="w-12 h-6 rounded-md border text-[10px] font-bold transition-colors flex items-center justify-center ${toneClass}"
+                    title="${esc(item.text)}"
+                    aria-label="${esc(item.text)}"
+                    onclick="scrollToLine(${item.lineIndex})"><span class="truncate" style="max-width:2.4rem;display:inline-block">${esc(label)}</span></button>`;
+        });
+        compactHtml += '</div>';
+        tocList.innerHTML = compactHtml;
         return;
     }
 
-    const lines = currentMarkdown.split('\n');
     let tocHtml = '<div class="space-y-1 p-2">';
-    let found = false;
-
-    lines.forEach((line, index) => {
-        const match = line.match(/^(#{1,6})\s+(.*)/);
-        if (match) {
-            found = true;
-            const level = match[1].length;
-            const text = match[2].trim();
-            const padding = (level - 1) * 12;
-            const sizeClasses = level === 1 ? 'font-bold text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400';
-            tocHtml += `<div class="text-xs cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 py-1.5 px-2 rounded truncate transition-colors ${sizeClasses}" style="margin-left: ${padding}px" onclick="scrollToLine(${index})">${text}</div>`;
-        }
+    tocItems.forEach((item) => {
+        const padding = (item.level - 1) * 12;
+        const sizeClasses = item.level === 1 ? 'font-bold text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400';
+        tocHtml += `<div class="text-xs cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 py-1.5 px-2 rounded truncate transition-colors ${sizeClasses}" style="margin-left: ${padding}px" onclick="scrollToLine(${item.lineIndex})">${esc(item.text)}</div>`;
     });
 
     tocHtml += '</div>';
 
-    if (!found) {
+    if (!tocItems.length) {
         tocHtml = '<div class="p-4 text-xs text-slate-400 text-center">No headings found. Add Markdown headings like <code># Title</code> to build a TOC.</div>';
     }
     tocList.innerHTML = tocHtml;
+    try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
 }
 
 function getTextareaCaretTopOffset(textarea, position) {
@@ -2153,18 +2240,37 @@ function scrollToLine(lineIndex) {
         const offsetTop = Math.max(0, top - (lineHeight * 3));
         editorTextarea.scrollTo({ top: offsetTop, behavior: 'smooth' });
     } else {
-        const lines = currentMarkdown.split('\n');
-        let headerIndex = 0;
-        for (let i = 0; i <= lineIndex; i++) {
-            if (/^(#{1,6})\s+(.*)/.test(lines[i])) {
-                if (i === lineIndex) break;
-                headerIndex++;
+        const tocItems = (Array.isArray(lastRenderedTocItems) && lastRenderedTocItems.length)
+            ? lastRenderedTocItems
+            : parseTocItemsFromMarkdown(currentMarkdown);
+
+        const targetIdx = tocItems.findIndex((item) => item.lineIndex === lineIndex);
+        const targetItem = targetIdx >= 0 ? tocItems[targetIdx] : null;
+
+        const headers = Array.from(viewer.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+        if (!headers.length) return;
+
+        if (targetItem) {
+            const normalizedTargetText = String(targetItem.text || '').trim();
+            const sameKeyBefore = tocItems
+                .slice(0, targetIdx + 1)
+                .filter((item) => item.level === targetItem.level && String(item.text || '').trim() === normalizedTargetText)
+                .length - 1;
+
+            const matchingHeaders = headers.filter((h) => {
+                if (!h || !h.tagName) return false;
+                const level = Number(String(h.tagName).replace(/^H/i, ''));
+                return level === targetItem.level && String(h.textContent || '').trim() === normalizedTargetText;
+            });
+
+            if (matchingHeaders[sameKeyBefore]) {
+                matchingHeaders[sameKeyBefore].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                return;
             }
         }
-        const headers = viewer.querySelectorAll('h1, h2, h3, h4, h5, h6');
-        if (headers[headerIndex]) {
-            headers[headerIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
+
+        const fallbackIndex = Math.max(0, Math.min(Number(targetIdx >= 0 ? targetIdx : 0), headers.length - 1));
+        headers[fallbackIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 }
 
@@ -2318,6 +2424,7 @@ async function renderDBList() {
         const req = txDocs.objectStore('documents').getAll();
         req.onsuccess = () => r(req.result);
     });
+    const shortText = (text, n) => Array.from(String(text || '').trim()).slice(0, n).join('');
 
     folders.forEach(folder => {
         const folderDocs = docs.filter(d => d.folderId === folder.id && d.title.toLowerCase().includes(searchTerm));
@@ -2346,16 +2453,18 @@ async function renderDBList() {
 
         folderDocs.forEach(doc => {
             const docItem = document.createElement('div');
-            docItem.className = "group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer";
+            docItem.className = isSidebarCollapsed
+                ? "group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center"
+                : "group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer";
             docItem.title = doc.title;
             docItem.onclick = () => loadFromDB(doc.id);
 
             docItem.innerHTML = `
                 <div class="flex flex-col gap-1 doc-item-inner">
                     <div class="flex items-center gap-2">
-                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0"></i>
+                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ${isSidebarCollapsed ? 'hidden' : ''}"></i>
                         <span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ${isSidebarCollapsed ? '' : 'sidebar-text'}">
-                            ${isSidebarCollapsed ? doc.title.substring(0, 1) : doc.title}
+                            ${isSidebarCollapsed ? shortText(doc.title, 3) : doc.title}
                         </span>
                     </div>
                     <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">
@@ -3571,9 +3680,42 @@ function confirmModalInsert() {
 
 // --- Utility ---
 function adjustPageScale(delta) {
-    pageScale = Math.max(0.6, Math.min(1.8, pageScale + delta));
+    const zoomDelta = Number(delta || 0);
+    const zoomTarget = (!isEditMode && viewerContainer)
+        ? viewerContainer
+        : (document.getElementById('content-viewport') || editorTextarea || null);
+    const prevMetrics = zoomTarget ? {
+        scrollWidth: zoomTarget.scrollWidth || 0,
+        scrollHeight: zoomTarget.scrollHeight || 0,
+        scrollLeft: zoomTarget.scrollLeft || 0,
+        scrollTop: zoomTarget.scrollTop || 0,
+        clientWidth: zoomTarget.clientWidth || 0,
+        clientHeight: zoomTarget.clientHeight || 0
+    } : null;
+
+    pageScale = Math.max(0.1, Math.min(3, pageScale + zoomDelta));
     applyDocumentWidthScale();
     document.getElementById('scale-display').textContent = `${Math.round(pageScale * 100)}%`;
+
+    if (!zoomTarget || !prevMetrics) return;
+    requestAnimationFrame(() => {
+        const nextScrollWidth = zoomTarget.scrollWidth || 0;
+        const nextScrollHeight = zoomTarget.scrollHeight || 0;
+        const nextClientWidth = zoomTarget.clientWidth || prevMetrics.clientWidth || 0;
+        const nextClientHeight = zoomTarget.clientHeight || prevMetrics.clientHeight || 0;
+
+        const prevCenterX = prevMetrics.scrollLeft + (prevMetrics.clientWidth / 2);
+        const prevCenterY = prevMetrics.scrollTop + (prevMetrics.clientHeight / 2);
+        const ratioX = prevMetrics.scrollWidth > 0 ? (prevCenterX / prevMetrics.scrollWidth) : 0.5;
+        const ratioY = prevMetrics.scrollHeight > 0 ? (prevCenterY / prevMetrics.scrollHeight) : 0.5;
+
+        const targetCenterX = ratioX * nextScrollWidth;
+        const targetCenterY = ratioY * nextScrollHeight;
+        const nextLeft = Math.max(0, targetCenterX - (nextClientWidth / 2));
+        const nextTop = Math.max(0, targetCenterY - (nextClientHeight / 2));
+        zoomTarget.scrollLeft = Number.isFinite(nextLeft) ? nextLeft : 0;
+        zoomTarget.scrollTop = Number.isFinite(nextTop) ? nextTop : 0;
+    });
 }
 
 function applyDocumentWidthScale() {
@@ -3883,6 +4025,11 @@ function getSitesVisibleFromSettings(settings) {
 function getTemplateVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.templateVisible === true;
+}
+
+function getHtml2pptVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.html2pptVisible === true;
 }
 
 function syncHeaderScholarSearchWrapVisibility() {
@@ -4752,6 +4899,213 @@ async function toggleTemplateSection() {
     const s = await getAiSettings();
     applyTemplateVisibility(s || { templateVisible: enabled });
 }
+
+function applyHtml2pptPanelLayout() {
+    const panel = document.getElementById('html2ppt-panel');
+    const dockBtn = document.getElementById('html2ppt-panel-dock-btn');
+    const fullBtn = document.getElementById('html2ppt-panel-full-btn');
+    const resizeHandle = document.getElementById('html2ppt-panel-resizer');
+    if (!panel) return;
+
+    if (html2pptFullscreen) {
+        panel.style.left = '8px';
+        panel.style.top = '56px';
+        panel.style.right = '8px';
+        panel.style.bottom = '8px';
+        panel.style.width = 'auto';
+        panel.style.height = 'auto';
+        panel.style.maxWidth = 'none';
+        panel.style.maxHeight = 'none';
+        if (dockBtn) dockBtn.disabled = true;
+        if (resizeHandle) resizeHandle.style.display = 'none';
+    } else if (html2pptDockRight) {
+        panel.style.left = 'auto';
+        panel.style.top = '80px';
+        panel.style.right = '12px';
+        panel.style.bottom = '12px';
+        panel.style.width = html2pptSavedWidth || 'min(980px,96vw)';
+        panel.style.height = html2pptSavedHeight || 'min(760px,86vh)';
+        html2pptMoved = false;
+    } else if (!html2pptMoved) {
+        panel.style.left = '';
+        panel.style.top = '80px';
+        panel.style.right = '12px';
+        panel.style.bottom = '12px';
+    }
+
+    if (!html2pptFullscreen) {
+        if (dockBtn) dockBtn.disabled = false;
+        if (resizeHandle) resizeHandle.style.display = '';
+    }
+
+    if (dockBtn) dockBtn.textContent = html2pptDockRight ? '<<' : '>>';
+    if (fullBtn) fullBtn.textContent = html2pptFullscreen ? '복원' : '전체';
+}
+
+function toggleHtml2pptDockRight() {
+    if (html2pptFullscreen) return;
+    html2pptDockRight = !html2pptDockRight;
+    applyHtml2pptPanelLayout();
+}
+
+function toggleHtml2pptPanelFullscreen() {
+    const panel = document.getElementById('html2ppt-panel');
+    if (panel && !html2pptFullscreen) {
+        html2pptRestoreState = {
+            left: panel.style.left,
+            top: panel.style.top,
+            right: panel.style.right,
+            bottom: panel.style.bottom,
+            width: panel.style.width,
+            height: panel.style.height,
+            maxWidth: panel.style.maxWidth,
+            maxHeight: panel.style.maxHeight,
+            dockRight: html2pptDockRight,
+            moved: html2pptMoved
+        };
+    }
+    html2pptFullscreen = !html2pptFullscreen;
+    if (panel && !html2pptFullscreen && html2pptRestoreState) {
+        panel.style.left = html2pptRestoreState.left;
+        panel.style.top = html2pptRestoreState.top;
+        panel.style.right = html2pptRestoreState.right;
+        panel.style.bottom = html2pptRestoreState.bottom;
+        panel.style.width = html2pptRestoreState.width;
+        panel.style.height = html2pptRestoreState.height;
+        panel.style.maxWidth = html2pptRestoreState.maxWidth;
+        panel.style.maxHeight = html2pptRestoreState.maxHeight;
+        html2pptDockRight = !!html2pptRestoreState.dockRight;
+        html2pptMoved = !!html2pptRestoreState.moved;
+    }
+    applyHtml2pptPanelLayout();
+}
+
+function bindHtml2pptPanelDrag() {
+    if (html2pptDragBound) return;
+    html2pptDragBound = true;
+    const panel = document.getElementById('html2ppt-panel');
+    const header = document.getElementById('html2ppt-panel-header');
+    if (!panel || !header) return;
+
+    header.addEventListener('mousedown', function (e) {
+        if (html2pptResizing || html2pptFullscreen) return;
+        const target = e.target;
+        if (target && target.closest && target.closest('button,input,textarea,select,a,iframe')) return;
+        const rect = panel.getBoundingClientRect();
+        html2pptDragging = true;
+        html2pptDragOffsetX = e.clientX - rect.left;
+        html2pptDragOffsetY = e.clientY - rect.top;
+        html2pptDockRight = false;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        applyHtml2pptPanelLayout();
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!html2pptDragging || html2pptResizing || html2pptFullscreen) return;
+        const panelEl = document.getElementById('html2ppt-panel');
+        if (!panelEl) return;
+        const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - html2pptDragOffsetX));
+        const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - html2pptDragOffsetY));
+        panelEl.style.left = nextLeft + 'px';
+        panelEl.style.top = nextTop + 'px';
+        panelEl.style.right = 'auto';
+        panelEl.style.bottom = 'auto';
+        html2pptMoved = true;
+    });
+
+    document.addEventListener('mouseup', function () {
+        html2pptDragging = false;
+    });
+}
+
+function bindHtml2pptPanelResize() {
+    if (html2pptResizeBound) return;
+    html2pptResizeBound = true;
+    const panel = document.getElementById('html2ppt-panel');
+    const handle = document.getElementById('html2ppt-panel-resizer');
+    if (!panel || !handle) return;
+
+    handle.addEventListener('mousedown', function (e) {
+        if (html2pptFullscreen) return;
+        e.preventDefault();
+        e.stopPropagation();
+        html2pptResizing = true;
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!html2pptResizing || html2pptFullscreen) return;
+        const rect = panel.getBoundingClientRect();
+        const minW = 520;
+        const minH = 360;
+        const maxW = Math.max(minW, window.innerWidth - rect.left - 8);
+        const maxH = Math.max(minH, window.innerHeight - rect.top - 8);
+        const nextW = Math.max(minW, Math.min(maxW, e.clientX - rect.left));
+        const nextH = Math.max(minH, Math.min(maxH, e.clientY - rect.top));
+        panel.style.width = Math.round(nextW) + 'px';
+        panel.style.height = Math.round(nextH) + 'px';
+        panel.style.maxWidth = 'none';
+        html2pptSavedWidth = panel.style.width;
+        html2pptSavedHeight = panel.style.height;
+        html2pptDockRight = false;
+        applyHtml2pptPanelLayout();
+    });
+
+    document.addEventListener('mouseup', function () {
+        html2pptResizing = false;
+    });
+}
+
+function openHtml2pptPanel() {
+    const panel = document.getElementById('html2ppt-panel');
+    if (!panel) return;
+    bindHtml2pptPanelDrag();
+    bindHtml2pptPanelResize();
+    applyHtml2pptPanelLayout();
+    panel.classList.remove('hidden');
+    panel.classList.add('flex');
+    html2pptPanelOpen = true;
+}
+
+function closeHtml2pptPanel() {
+    const panel = document.getElementById('html2ppt-panel');
+    if (!panel) return;
+    panel.classList.add('hidden');
+    panel.classList.remove('flex');
+    html2pptPanelOpen = false;
+    html2pptFullscreen = false;
+}
+
+function toggleHtml2pptPanel() {
+    if (html2pptPanelOpen) closeHtml2pptPanel();
+    else openHtml2pptPanel();
+}
+
+function applyHtml2pptVisibility(settings) {
+    const enabled = getHtml2pptVisibleFromSettings(settings || {});
+    const btn = document.getElementById('btn-html2ppt-panel');
+    if (btn) btn.classList.toggle('hidden', !enabled);
+    if (!enabled) closeHtml2pptPanel();
+}
+
+async function toggleHtml2pptSection() {
+    const check = document.getElementById('html2ppt-visible');
+    const enabled = !!(check && check.checked);
+    await setAiSettings({ html2pptVisible: enabled });
+    const s = await getAiSettings();
+    applyHtml2pptVisibility(s || { html2pptVisible: enabled });
+}
+
+window.addEventListener('message', function (event) {
+    const data = event && event.data ? event.data : null;
+    if (!data || typeof data !== 'object') return;
+    if (data.type !== 'html2ppt-toggle-panel-fullscreen') return;
+    const frame = document.getElementById('html2ppt-frame');
+    if (!frame || event.source !== frame.contentWindow) return;
+    if (!html2pptPanelOpen) openHtml2pptPanel();
+    toggleHtml2pptPanelFullscreen();
+});
 
 function openScholarSearchWindow(query) {
     const q = String(query || '').trim();
@@ -6531,6 +6885,8 @@ async function loadAiSettingsToUI() {
         if (sitesCheckEmpty) sitesCheckEmpty.checked = false;
         const templateCheckEmpty = document.getElementById('template-visible');
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
+        const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
+        if (html2pptCheckEmpty) html2pptCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
         const localEnterBr = getEnterButtonInsertBrFromLocal();
         if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
@@ -6559,6 +6915,7 @@ async function loadAiSettingsToUI() {
         applyHighlightVisibility({ highlightVisible: false });
         applySitesVisibility({ sitesVisible: false });
         applyTemplateVisibility({ templateVisible: false });
+        applyHtml2pptVisibility({ html2pptVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
         applyShareSettingsFold(getShareSettingsFoldedFromLocal());
         applyEditToolsVisibilityByMode();
@@ -6578,6 +6935,8 @@ async function loadAiSettingsToUI() {
     if (sitesCheck) sitesCheck.checked = settings.sitesVisible === true;
     const templateCheck = document.getElementById('template-visible');
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
+    const html2pptCheck = document.getElementById('html2ppt-visible');
+    if (html2pptCheck) html2pptCheck.checked = settings.html2pptVisible === true;
     const enterBrCheck = document.getElementById('enter-button-insert-br');
     const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
     if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
@@ -6643,6 +7002,7 @@ async function loadAiSettingsToUI() {
     applyToDocsVisibility(settings);
     applySitesVisibility(settings);
     applyTemplateVisibility(settings);
+    applyHtml2pptVisibility(settings);
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     applyEditToolsVisibilityByMode();
@@ -6685,6 +7045,7 @@ async function initAiVisibility() {
     applyToDocsVisibility(settings || { toDocsVisible: false });
     applySitesVisibility(settings || { sitesVisible: false });
     applyTemplateVisibility(settings || { templateVisible: false });
+    applyHtml2pptVisibility(settings || { html2pptVisible: false });
     applyEditToolsVisibilityByMode();
     await applyAiFeatureVisibility();
 }
@@ -6949,6 +7310,12 @@ window.importTemplateMdFile = importTemplateMdFile;
 window.insertSelectedTemplateToDocument = insertSelectedTemplateToDocument;
 window.insertSelectedTemplateAsNewFile = insertSelectedTemplateAsNewFile;
 window.toggleTemplateSection = toggleTemplateSection;
+window.toggleHtml2pptPanel = toggleHtml2pptPanel;
+window.openHtml2pptPanel = openHtml2pptPanel;
+window.closeHtml2pptPanel = closeHtml2pptPanel;
+window.toggleHtml2pptDockRight = toggleHtml2pptDockRight;
+window.toggleHtml2pptPanelFullscreen = toggleHtml2pptPanelFullscreen;
+window.toggleHtml2pptSection = toggleHtml2pptSection;
 window.openHighlightPopup = openHighlightPopup;
 window.closeHighlightPopup = closeHighlightPopup;
 window.toggleHighlightPopupDockRight = toggleHighlightPopupDockRight;
