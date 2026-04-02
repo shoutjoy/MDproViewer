@@ -3978,11 +3978,13 @@ function toggleShareSettingsFold() {
 
 function applyEditToolsVisibilityByMode() {
     const editTools = document.getElementById('edit-tools');
+    const toolbar = document.getElementById('toolbar');
     if (!editTools) return;
     const show = !!(isEditMode || viewModeEditEnabled);
-    // Keep toolbar height stable between edit/view modes.
-    editTools.classList.toggle('invisible', !show);
+    editTools.classList.toggle('hidden', !show);
+    editTools.classList.toggle('invisible', false);
     editTools.classList.toggle('pointer-events-none', !show);
+    if (toolbar) toolbar.classList.toggle('toolbar-view-compact', !show);
 }
 
 async function toggleViewModeEditSetting(enabled) {
