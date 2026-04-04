@@ -41,9 +41,7 @@
             <div class="bg-indigo-600 p-1.5 sm:p-2 rounded-lg text-white shrink-0">
                 <i data-lucide="file-text" class="w-4 h-4 sm:w-5 sm:h-5"></i>
             </div>
-            <div class="min-w-0 flex-1 overflow-hidden">
-                <h1 class="app-header-title font-bold text-slate-800 dark:text-slate-100 leading-tight break-words hyphens-auto">MDproViewer</h1>
-            </div>
+            <div class="min-w-0 flex-1 overflow-hidden"></div>
         </div>
 
         <div class="app-header-actions flex flex-wrap items-center justify-end gap-x-0.5 gap-y-1 sm:gap-x-1 sm:gap-y-1.5 w-full lg:w-auto lg:flex-nowrap lg:justify-end min-w-0">
@@ -581,7 +579,11 @@
                 </div>
             </main>
             <div class="no-print border-t border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-3 sm:px-4 md:px-6 py-1.5">
-                <p id="file-name-display" class="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 truncate text-right">새 문서: 문서명이 표시됩니다.</p>
+                <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 min-w-0">
+                    <span class="shrink-0 font-semibold">MDproViewer</span>
+                    <span class="shrink-0 text-slate-300 dark:text-slate-600">|</span>
+                    <p id="file-name-display" class="truncate min-w-0 flex-1">새 문서: 문서명이 표시됩니다.</p>
+                </div>
             </div>
         </div>
     </div>
@@ -1591,7 +1593,7 @@
             </div>
         </div>
         <div id="html2ppt-panel-body" class="flex-1 p-2 min-h-0">
-            <iframe id="html2ppt-frame" src="./js/Html2pptx/html2pptx.html"
+            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html"
                 class="w-full h-full border-0 rounded bg-white dark:bg-slate-900" title="GenSlide"></iframe>
         </div>
         <div id="html2ppt-panel-resizer" title="Resize"

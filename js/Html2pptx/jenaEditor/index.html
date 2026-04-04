@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JenaEditor - Fast WYSIWYG</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <div class="title">JenaEditor</div>
+    <button class="btn dark" id="btnPrev">Prev</button>
+    <button class="btn dark" id="btnNext">Next</button>
+    <button class="btn dark" id="btnGallery">Gallery</button>
+    <div id="slideInfo">1 / 1</div>
+    <div class="spacer"></div>
+    <button class="btn" id="btnInDbSave">inDB Save</button>
+    <button class="btn" id="btnInDbOpen">inDB Open</button>
+    <button class="btn" id="btnImport">mpp Import</button>
+    <button class="btn" id="btnExport">mpp Export</button>
+    <button class="btn" id="btnPptxExport">pptx Export</button>
+    <input id="fileInput" type="file" accept=".mpp,.json,application/json,text/plain" style="display:none">
+  </div>
+
+  <aside class="side">
+    <div class="side-head">
+      <span>Slides</span>
+      <button class="btn tiny" id="btnAdd">+ Add</button>
+    </div>
+    <div class="slides" id="slides"></div>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <span class="info">Lightweight WYSIWYG Mode</span>
+      <button class="btn tiny" id="btnZoomOut">-</button>
+      <div class="zoom" id="zoomView">75%</div>
+      <button class="btn tiny" id="btnZoomIn">+</button>
+      <button class="btn tiny" id="btnSyncToWys">Code -> Editor</button>
+      <button class="btn tiny" id="btnSyncToCode">Editor -> Code</button>
+      <div class="spacer"></div>
+      <button class="btn tiny" id="btnSlideShow">Slide Show</button>
+      <button class="btn tiny" id="btnSlideSettings" title="Slide Settings">⚙</button>
+      <button class="btn tiny" id="btnThemeMode" title="Theme Mode">Theme: Light</button>
+    </div>
+
+    <div class="work">
+      <section class="panel">
+        <div class="panel-head">HTML Code</div>
+        <div class="tools">
+          <button class="btn tiny" data-tag="b">b</button>
+          <button class="btn tiny" data-tag="i">i</button>
+          <button class="btn tiny" data-tag="u">u</button>
+          <button class="btn tiny" data-tag="h1">h1</button>
+          <button class="btn tiny" data-tag="p">p</button>
+          <button class="btn tiny" id="btnWrap">Wrap: Off</button>
+          <button class="btn tiny" id="btnCodeFontDec">C-</button>
+          <div class="code-font-view" id="codeFontView">12px</div>
+          <button class="btn tiny" id="btnCodeFontInc">C+</button>
+          <button class="btn tiny" id="btnCodeTheme">Code: Light</button>
+          <button class="btn tiny" id="btnFormat">Format</button>
+          <button class="btn tiny" id="btnFindReplace">Find/Replace</button>
+        </div>
+        <div class="findbar hidden" id="find-replace-bar">
+          <input id="find-input" class="find-input" type="text" placeholder="Find">
+          <input id="replace-input" class="find-input" type="text" placeholder="Replace">
+          <button class="btn tiny" id="btnFindPrev">Prev</button>
+          <button class="btn tiny" id="btnFindNext">Next</button>
+          <button class="btn tiny" id="btnReplaceOne">Replace</button>
+          <button class="btn tiny" id="btnReplaceAll">All</button>
+          <button class="btn tiny" id="btnFindClose">Close</button>
+        </div>
+        <div class="code-wrap" id="codeWrap">
+          <div id="codeMarker"></div>
+          <pre id="codeLines" aria-hidden="true">1</pre>
+          <pre id="codeView" aria-hidden="true"></pre>
+          <textarea id="code" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+        </div>
+        <div class="foot">
+          <button class="btn" id="btnRevert">Revert</button>
+          <button class="btn primary" id="btnSave">Save Apply</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">jenaeditor</div>
+        <div class="tools">
+          <button class="btn tiny" data-cmd="bold"><b>B</b></button>
+          <button class="btn tiny" data-cmd="italic"><i>I</i></button>
+          <button class="btn tiny" data-cmd="underline"><u>U</u></button>
+          <button class="btn tiny" data-cmd="justifyLeft">L</button>
+          <button class="btn tiny" data-cmd="justifyCenter">C</button>
+          <button class="btn tiny" data-cmd="justifyRight">R</button>
+          <button class="btn tiny" data-cmd="insertUnorderedList">ul</button>
+          <button class="btn tiny" data-cmd="insertOrderedList">ol</button>
+          <button class="btn tiny" id="btnLink">link</button>
+          <button class="btn tiny" id="btnImg">img</button>
+          <button class="btn tiny" id="btnClearText">clear</button>
+          <select id="textPreset" class="find-input quick-select" title="Text Box Preset">
+            <option value="basic" selected>txt-basic</option>
+            <option value="note">txt-note</option>
+            <option value="accent">txt-accent</option>
+            <option value="dark">txt-dark</option>
+          </select>
+          <button class="btn tiny" id="btnTextBox">text</button>
+          <button class="btn tiny" id="btnFontDec">A-</button>
+          <select id="quickFontSize" class="find-input quick-select" title="Font Size">
+            <option value="12">12px</option>
+            <option value="14">14px</option>
+            <option value="16" selected>16px</option>
+            <option value="18">18px</option>
+            <option value="20">20px</option>
+            <option value="24">24px</option>
+            <option value="28">28px</option>
+            <option value="32">32px</option>
+            <option value="40">40px</option>
+          </select>
+           <button class="btn tiny" id="btnFontInc">A+</button>
+           <label class="quick-color-wrap" title="Text Color">T <input id="quickTextColor" type="color" value="#1a2233" class="quick-color"></label>
+           <label class="quick-color-wrap" title="Highlight">H <input id="quickHiliteColor" type="color" value="#fff59d" class="quick-color"></label>
+           <button class="btn tiny" id="btnLayerUp" title="Bring Forward">up</button>
+           <button class="btn tiny" id="btnLayerDown" title="Send Backward">down</button>
+         </div>
+        <div class="wys-wrap">
+          <div class="stage" id="stage">
+            <iframe id="wys" sandbox="allow-same-origin allow-scripts"></iframe>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="addOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Slide</div>
+      <button class="btn tiny" id="btnCloseAdd">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Paste HTML here. Existing text will be replaced with the pasted HTML content.</div>
+      <textarea id="addPaste" placeholder="Paste HTML code here..."></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnCancelAdd">Cancel</button>
+      <button class="btn primary" id="btnConfirmAdd">Add Slide</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="insertOverlay">
+  <div class="modal image-modal" id="insertModalWindow">
+    <div class="modal-head image-modal-head" id="insertModalHead">
+      <div class="modal-title image-modal-title" id="insertModalTitle">Insert IMAGE</div>
+      <button class="btn tiny image-close-btn" id="btnInsertClose">Close</button>
+    </div>
+    <div class="modal-body image-modal-body">
+      <div id="insertLinkPane" class="hidden"></div>
+      <div class="image-grid">
+        <div id="insertImgPane">
+          <div class="img-subtitle">Insert Image</div>
+          <div class="modal-hint">IMAGE DESCRIPTION</div>
+          <input id="insertImgAlt" class="find-input image-input" type="text" placeholder="">
+          <div class="modal-hint" style="margin-top:8px;">URL 주소</div>
+          <input id="insertImgUrl" class="find-input image-input" type="text" placeholder="https://">
+          <div class="modal-hint" style="margin-top:8px;">Image Link (optional)</div>
+          <input id="insertImgLinkUrl" class="find-input image-input" type="text" placeholder="https://">
+        </div>
+        <div class="img-side">
+          <div class="img-drop-wrap">
+            <button class="img-drop-card" id="btnImgUpload" type="button">
+              <strong>이미지 업로드</strong>
+              <span>JPG, PNG, GIF, WebP</span>
+              <span>드래그 앤 드롭</span>
+            </button>
+            <div class="img-drop-card paste" id="insertImgPasteZone">
+              <strong>붙여넣기</strong>
+              <span>Ctrl+V 로 이미지 삽입</span>
+            </div>
+          </div>
+          <div class="modal-hint">Source</div>
+          <div class="tools image-source-tools" style="padding:0;border:none;">
+            <button class="btn tiny" id="btnImgSrcUrl">URL</button>
+            <button class="btn tiny" id="btnImgSrcDb">Image Storage</button>
+          </div>
+          <select id="insertImgDbSelect" class="find-input hidden" style="width:100%;"></select>
+          <input id="insertImgFile" type="file" accept="image/*" class="hidden" style="display:none;">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot image-foot">
+      <button class="btn" id="btnInsertCancel">Cancel</button>
+      <button class="btn primary" id="btnInsertApply">Insert</button>
+    </div>
+    <div class="image-resize-handle" id="insertResizeHandle" aria-hidden="true"></div>
+  </div>
+</div>
+
+<div class="overlay" id="linkOverlay">
+  <div class="modal link-modal" id="linkModal">
+    <div class="modal-head" id="linkModalHead">
+      <div class="modal-title link-title">Insert Link</div>
+    </div>
+    <div class="modal-body">
+      <div class="link-label">DISPLAY TEXT</div>
+      <input id="linkDisplayText" class="link-input" type="text" placeholder="">
+      <div class="link-label">URL 주소</div>
+      <input id="linkUrlText" class="link-input" type="text" placeholder="https://">
+    </div>
+    <div class="modal-foot link-foot">
+      <button class="btn link-btn-cancel" id="btnLinkCancel">취소</button>
+      <button class="btn primary link-btn-insert" id="btnLinkInsert">삽입하기</button>
+    </div>
+    <div class="link-resize-handle" id="linkResizeHandle" aria-hidden="true"></div>
+  </div>
+</div>
+
+<div class="overlay" id="styleOverlay">
+  <div class="modal style-modal">
+    <div class="modal-head">
+      <div class="modal-title">Style Settings (Alt+L)</div>
+      <button class="btn tiny" id="btnStyleClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="style-row">
+        <label class="style-label" for="styleFontSize">Font Size</label>
+        <button class="btn tiny" id="btnStyleSizeDown">-</button>
+        <select id="styleFontSize" class="find-input">
+          <option value="12">12px</option>
+          <option value="14">14px</option>
+          <option value="16" selected>16px</option>
+          <option value="18">18px</option>
+          <option value="20">20px</option>
+          <option value="24">24px</option>
+          <option value="28">28px</option>
+          <option value="32">32px</option>
+          <option value="40">40px</option>
+        </select>
+        <button class="btn tiny" id="btnStyleSizeUp">+</button>
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleTextColor">Text Color</label>
+        <input id="styleTextColor" type="color" value="#1a2233" class="style-color">
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleBgColor">Highlight</label>
+        <input id="styleBgColor" type="color" value="#fff59d" class="style-color">
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleBoldMode">Bold</label>
+        <select id="styleBoldMode" class="find-input">
+          <option value="keep">No change</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleItalicMode">Italic</label>
+        <select id="styleItalicMode" class="find-input">
+          <option value="keep">No change</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnStyleCancel">Cancel</button>
+      <button class="btn primary" id="btnStyleApply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="inDbOverlay">
+  <div class="modal" style="width:min(700px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">inDB Open</div>
+      <button class="btn tiny" id="btnInDbClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Select a saved set to load or delete.</div>
+      <div id="inDbList" class="indb-list"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnInDbDelete">Delete</button>
+      <button class="btn primary" id="btnInDbLoad">Load</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="slideSettingsOverlay">
+  <div class="modal" style="width:min(520px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">Slide Size Settings</div>
+      <button class="btn tiny" id="btnSlideSettingsClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="slideSizeCurrent">Current: 1280 x 720</div>
+      <div class="style-row">
+        <label class="style-label" for="slideSizePreset">Preset</label>
+        <select id="slideSizePreset" class="find-input" style="width:220px;">
+          <option value="current" selected>Current Size</option>
+          <option value="custom">Custom Input</option>
+          <option value="3:4">3:4</option>
+          <option value="4:3">4:3</option>
+          <option value="16:9">16:9</option>
+          <option value="9:16">9:16</option>
+          <option value="a4">A4</option>
+        </select>
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="slideSizeWidth">Width</label>
+        <input id="slideSizeWidth" class="find-input" type="number" min="320" max="4000" step="1" value="1280">
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="slideSizeHeight">Height</label>
+        <input id="slideSizeHeight" class="find-input" type="number" min="240" max="4000" step="1" value="720">
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnSlideSettingsCancel">Cancel</button>
+      <button class="btn primary" id="btnSlideSettingsApply">Apply</button>
+    </div>
+  </div>
+</div>
+<script src="./app.js" defer></script>
+</body>
+</html>

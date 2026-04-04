@@ -1,0 +1,21 @@
+# Global StrongRule (Encoding Safety)
+
+Always apply `Docs/StrongRule/incodingRule.js` policy.
+
+Mandatory:
+- Use `apply_patch` for code/text edits whenever possible.
+- Avoid full-file rewrite patterns for text/code files.
+- Verify UTF-8 safety after edits when content includes Korean text.
+
+Forbidden write patterns for code/text edits:
+- `Get-Content ... -Raw` followed by any full rewrite command
+- `[System.IO.File]::WriteAllText(...)`
+- `Set-Content`, `Out-File`, `Add-Content`
+- redirect writes: `>`, `>>`
+- pipeline redirect writes: `| tee`, `| out-file`, `| set-content`
+
+Validation checklist:
+1. Minimal line-level patch
+2. No dangerous write command patterns
+3. Inspect `git diff --word-diff` for corruption
+4. Run available project validation/build step
