@@ -200,11 +200,12 @@
   function showExportTypeDialog() {
     return showChoiceDialog(
       'Export Format',
-      'MD: 문서만 저장(내부 이미지 미포함) / MDD: 문서+이미지 통합 저장 / ZIP: 문서+images 폴더 저장',
+      'MD: 문서만 저장 / MDD: 통합 저장 / ZIP: 폴더 저장 / HTML: 단일 HTML 문서 내보내기',
       [
         { key: 'md', label: 'MD file' },
         { key: 'mdd', label: 'MDD file (bundle)' },
         { key: 'zip', label: 'ZIP file' },
+        { key: 'html', label: 'HTML file' },
         { key: 'cancel', label: 'Cancel' }
       ],
       'cancel'

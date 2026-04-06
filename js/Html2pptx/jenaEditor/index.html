@@ -7,130 +7,7 @@
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
-<div class="app">
-  <div class="top">
-    <div class="title">JenaEditor</div>
-    <button class="btn dark" id="btnPrev">Prev</button>
-    <button class="btn dark" id="btnNext">Next</button>
-    <button class="btn dark" id="btnGallery">Gallery</button>
-    <div id="slideInfo">1 / 1</div>
-    <div class="spacer"></div>
-    <button class="btn" id="btnInDbSave">inDB Save</button>
-    <button class="btn" id="btnInDbOpen">inDB Open</button>
-    <button class="btn" id="btnImport">mpp Import</button>
-    <button class="btn" id="btnExport">mpp Export</button>
-    <button class="btn" id="btnPptxExport">pptx Export</button>
-    <input id="fileInput" type="file" accept=".mpp,.json,application/json,text/plain" style="display:none">
-  </div>
-
-  <aside class="side">
-    <div class="side-head">
-      <span>Slides</span>
-      <button class="btn tiny" id="btnAdd">+ Add</button>
-    </div>
-    <div class="slides" id="slides"></div>
-  </aside>
-
-  <main class="main">
-    <div class="toolbar">
-      <span class="info">Lightweight WYSIWYG Mode</span>
-      <button class="btn tiny" id="btnZoomOut">-</button>
-      <div class="zoom" id="zoomView">75%</div>
-      <button class="btn tiny" id="btnZoomIn">+</button>
-      <button class="btn tiny" id="btnSyncToWys">Code -> Editor</button>
-      <button class="btn tiny" id="btnSyncToCode">Editor -> Code</button>
-      <div class="spacer"></div>
-      <button class="btn tiny" id="btnSlideShow">Slide Show</button>
-      <button class="btn tiny" id="btnSlideSettings" title="Slide Settings">⚙</button>
-      <button class="btn tiny" id="btnThemeMode" title="Theme Mode">Theme: Light</button>
-    </div>
-
-    <div class="work">
-      <section class="panel">
-        <div class="panel-head">HTML Code</div>
-        <div class="tools">
-          <button class="btn tiny" data-tag="b">b</button>
-          <button class="btn tiny" data-tag="i">i</button>
-          <button class="btn tiny" data-tag="u">u</button>
-          <button class="btn tiny" data-tag="h1">h1</button>
-          <button class="btn tiny" data-tag="p">p</button>
-          <button class="btn tiny" id="btnWrap">Wrap: Off</button>
-          <button class="btn tiny" id="btnCodeFontDec">C-</button>
-          <div class="code-font-view" id="codeFontView">12px</div>
-          <button class="btn tiny" id="btnCodeFontInc">C+</button>
-          <button class="btn tiny" id="btnCodeTheme">Code: Light</button>
-          <button class="btn tiny" id="btnFormat">Format</button>
-          <button class="btn tiny" id="btnFindReplace">Find/Replace</button>
-        </div>
-        <div class="findbar hidden" id="find-replace-bar">
-          <input id="find-input" class="find-input" type="text" placeholder="Find">
-          <input id="replace-input" class="find-input" type="text" placeholder="Replace">
-          <button class="btn tiny" id="btnFindPrev">Prev</button>
-          <button class="btn tiny" id="btnFindNext">Next</button>
-          <button class="btn tiny" id="btnReplaceOne">Replace</button>
-          <button class="btn tiny" id="btnReplaceAll">All</button>
-          <button class="btn tiny" id="btnFindClose">Close</button>
-        </div>
-        <div class="code-wrap" id="codeWrap">
-          <div id="codeMarker"></div>
-          <pre id="codeLines" aria-hidden="true">1</pre>
-          <pre id="codeView" aria-hidden="true"></pre>
-          <textarea id="code" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
-        </div>
-        <div class="foot">
-          <button class="btn" id="btnRevert">Revert</button>
-          <button class="btn primary" id="btnSave">Save Apply</button>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-head">jenaeditor</div>
-        <div class="tools">
-          <button class="btn tiny" data-cmd="bold"><b>B</b></button>
-          <button class="btn tiny" data-cmd="italic"><i>I</i></button>
-          <button class="btn tiny" data-cmd="underline"><u>U</u></button>
-          <button class="btn tiny" data-cmd="justifyLeft">L</button>
-          <button class="btn tiny" data-cmd="justifyCenter">C</button>
-          <button class="btn tiny" data-cmd="justifyRight">R</button>
-          <button class="btn tiny" data-cmd="insertUnorderedList">ul</button>
-          <button class="btn tiny" data-cmd="insertOrderedList">ol</button>
-          <button class="btn tiny" id="btnLink">link</button>
-          <button class="btn tiny" id="btnImg">img</button>
-          <button class="btn tiny" id="btnClearText">clear</button>
-          <select id="textPreset" class="find-input quick-select" title="Text Box Preset">
-            <option value="basic" selected>txt-basic</option>
-            <option value="note">txt-note</option>
-            <option value="accent">txt-accent</option>
-            <option value="dark">txt-dark</option>
-          </select>
-          <button class="btn tiny" id="btnTextBox">text</button>
-          <button class="btn tiny" id="btnFontDec">A-</button>
-          <select id="quickFontSize" class="find-input quick-select" title="Font Size">
-            <option value="12">12px</option>
-            <option value="14">14px</option>
-            <option value="16" selected>16px</option>
-            <option value="18">18px</option>
-            <option value="20">20px</option>
-            <option value="24">24px</option>
-            <option value="28">28px</option>
-            <option value="32">32px</option>
-            <option value="40">40px</option>
-          </select>
-           <button class="btn tiny" id="btnFontInc">A+</button>
-           <label class="quick-color-wrap" title="Text Color">T <input id="quickTextColor" type="color" value="#1a2233" class="quick-color"></label>
-           <label class="quick-color-wrap" title="Highlight">H <input id="quickHiliteColor" type="color" value="#fff59d" class="quick-color"></label>
-           <button class="btn tiny" id="btnLayerUp" title="Bring Forward">up</button>
-           <button class="btn tiny" id="btnLayerDown" title="Send Backward">down</button>
-         </div>
-        <div class="wys-wrap">
-          <div class="stage" id="stage">
-            <iframe id="wys" sandbox="allow-same-origin allow-scripts"></iframe>
-          </div>
-        </div>
-      </section>
-    </div>
-  </main>
-</div>
+<div id="appRoot"></div>
 
 <div class="overlay" id="addOverlay">
   <div class="modal">
@@ -185,6 +62,7 @@
             <button class="btn tiny" id="btnImgSrcDb">Image Storage</button>
           </div>
           <select id="insertImgDbSelect" class="find-input hidden" style="width:100%;"></select>
+          <div id="insertImgGallery" class="insert-img-gallery hidden"></div>
           <input id="insertImgFile" type="file" accept="image/*" class="hidden" style="display:none;">
         </div>
       </div>
@@ -235,7 +113,9 @@
           <option value="24">24px</option>
           <option value="28">28px</option>
           <option value="32">32px</option>
+          <option value="32">36px</option>
           <option value="40">40px</option>
+          <option value="40">48px</option>
         </select>
         <button class="btn tiny" id="btnStyleSizeUp">+</button>
       </div>
@@ -316,6 +196,13 @@
         <label class="style-label" for="slideSizeHeight">Height</label>
         <input id="slideSizeHeight" class="find-input" type="number" min="240" max="4000" step="1" value="720">
       </div>
+      <div class="style-row">
+        <label class="style-label" for="chkShowAbsCoordBtn">Absolute Coord</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+          <input id="chkShowAbsCoordBtn" type="checkbox">
+          <span style="font-size:12px;color:#607092;">Show coordinate button</span>
+        </label>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn" id="btnSlideSettingsCancel">Cancel</button>
@@ -323,6 +210,59 @@
     </div>
   </div>
 </div>
-<script src="./app.js" defer></script>
+
+<div class="overlay" id="absCoordOverlay">
+  <div class="modal" style="width:min(860px,94vw);">
+    <div class="modal-head">
+      <div class="modal-title">Absolute Coordinates</div>
+      <button class="btn tiny" id="btnAbsCoordClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Current absolute position snapshot in slide space.</div>
+      <textarea id="absCoordText" style="width:100%;height:420px;resize:vertical;border:1px solid #d7deef;border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;line-height:1.5;background:#fafbff;color:#1a2233;" readonly></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnAbsCoordCopy">Copy</button>
+      <button class="btn primary" id="btnAbsCoordOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pptxModeOverlay">
+  <div class="modal" style="width:min(640px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">PPTX Export Mode</div>
+      <button class="btn tiny" id="btnPptxModeClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">PPTX export mode를 선택하세요.</div>
+      <div class="pptx-mode-list">
+        <button class="btn" id="btnPptxModeImage">1) image pptx (전체 페이지를 이미지로)</button>
+        <button class="btn" id="btnPptxModeImageText">2) imagepptx + 텍스트 (시각요소 이미지 + 텍스트 추출)</button>
+        <button class="btn" id="btnPptxModeFull">3) full 분리 (실험/보완 필요)</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnPptxModeCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pptxConfirmOverlay">
+  <div class="modal" style="width:min(520px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">PPTX Export</div>
+      <button class="btn tiny" id="btnPptxConfirmClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="pptxConfirmText">pptx를 생성합니다. 진행할까요?</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnPptxConfirmCancel">Cancel</button>
+      <button class="btn primary" id="btnPptxConfirmOk">확인</button>
+    </div>
+  </div>
+</div>
+<script src="./js/controller.js" defer></script>
 </body>
 </html>

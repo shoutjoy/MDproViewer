@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="style.css" />
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.min.js"></script>
 </head>
+
+
 <body>
   <header id="top-bar">
     <div class="toolbar-left">
@@ -14,24 +16,122 @@
       <button onclick="setDirection('TD')" id="dir-TD" class="btn active">TD</button>
       <button onclick="setDirection('LR')" id="dir-LR" class="btn">LR</button>
     </div>
+
+
+
     <div class="toolbar-right">
-      <!-- Unicode entity labels to avoid encoding issues -->
-      <input id="node-label" class="input-like" type="text" placeholder="&#xB178;&#xB4DC; &#xD14D;&#xC2A4;&#xD2B8;" />
-      <select id="node-shape" class="select-like-btn">
-        <option value="rect">&#xC0AC;&#xAC01;&#xD615; [ ]</option>
-        <option value="diamond">&#xB9C8;&#xB984;&#xBAA8; { }</option>
-        <option value="square">&#xC815;&#xC0AC;&#xAC01;&#xD615; [[ ]]</option>
-        <option value="circle">&#xC6D0;&#xD615; (( ))</option>
-      </select>
-      <button onclick="insertNodeByShape()" class="btn">&#xB178;&#xB4DC;&#xCD94;&#xAC00;</button>
-      <button onclick="insertSnippet('node')" class="btn">&#xB178;&#xB4DC;</button>
-      <button onclick="insertSnippet('decision')" class="btn">&#xC870;&#xAC74;</button>
-      <button onclick="insertSnippet('arrow')" class="btn">&#xC5F0;&#xACB0;</button>
-      <select id="example-select" class="select-like-btn" onchange="loadTemplate(this.value)">
-        <option value="">&#xC0D8;&#xD50C;&#xC120;&#xD0DD;</option>
-        <option value="shopping">Flow &#xAE30;&#xBCF8;</option>
-        <option value="sankey-basic">Sankey &#xAE30;&#xBCF8;</option>
-        <option value="sankey-family">Sankey &#xD55C;&#xAE00;</option>
+      <div class="toolbar-row">
+
+        <!--  config insert -->
+        <select id="config-template-select" class="select-like-btn">
+          <option value="">Config insert</option>
+          <option value="theme-default">Theme: default</option>
+          <option value="theme-dark">Theme: dark</option>
+          <option value="theme-neutral">Theme: neutral</option>
+          <option value="theme-forest">Theme: forest</option>
+          <option value="theme-base">Theme: base</option>
+          <option value="curve-linear">Flowchart curve: linear</option>
+          <option value="curve-basis">Flowchart curve: basis</option>
+          <option value="curve-step">Flowchart curve: stepAfter</option>
+          <option value="spacing-wide">Flowchart spacing: wide</option>
+          <option value="html-labels">Flowchart htmlLabels: true</option>
+          <option value="brand-primary">Brand: primaryColor</option>
+          <option value="brand-line">Brand: lineColor</option>
+          <option value="brand-font-family">Brand: fontFamily</option>
+          <option value="brand-font-size">Brand: fontSize</option>
+          <option value="brand-cluster">Brand: clusterBkg</option>
+          <option value="kanban-ticket">Kanban: ticketBaseUrl</option>
+          <option value="sequence-align">Sequence: align + mirrorActors</option>
+          <option value="gantt-compact">Gantt: compact</option>
+          <option value="mindmap-width">Mindmap: maxNodeWidth</option>
+        </select>
+        <button onclick="insertConfigTemplateFromSelect()" class="btn">Config &#xC0BD;&#xC785;</button>
+
+
+        <!-- Unicode entity labels to avoid encoding issues -->
+        <input id="node-label" class="input-like" type="text" placeholder="&#xB178;&#xB4DC; &#xD14D;&#xC2A4;&#xD2B8;" />
+        <select id="node-shape" class="select-like-btn">
+          <option value="rect">&#xC0AC;&#xAC01;&#xD615; [ ]</option> <!-- Rectangle -->
+          <option value="round">&#xB77C;&#xC6B4;&#xB4DC; &#xC0AC;&#xAC01;&#xD615; ( )</option> <!-- Rounded rectangle -->
+          <option value="stadium">&#xC2A4;&#xD0C0;&#xB514;&#xC6C0; ([ ])</option> <!-- Stadium -->
+          <option value="subroutine">&#xC11C;&#xBE0C;&#xB8E8;&#xD2F4; [[ ]]</option> <!-- Subroutine -->
+          <option value="diamond">&#xC870;&#xAC74; (&#xB9C8;&#xB984;&#xBAA8;) { }</option> <!-- Condition (diamond) -->
+          <option value="hexagon">&#xC721;&#xAC01;&#xD615; {{ }}</option> <!-- Hexagon -->
+          <option value="asymmetric">&#xBE44;&#xB300;&#xCE6D; &gt; ]</option> <!-- Asymmetric -->
+          <option value="cylinder">&#xC6D0;&#xAE30;&#xB465; [( )]</option> <!-- Cylinder (database) -->
+          <option value="parallelogram">&#xD3C9;&#xD589;&#xC0AC;&#xBCC0;&#xD615; [/ /]</option> <!-- Parallelogram -->
+          <option value="trapezoid">&#xC0AC;&#xB2E4;&#xB9AC;&#xAF34; [/ \]</option> <!-- Trapezoid -->
+          <option value="circle">&#xC6D0; (( ))</option> <!-- Circle -->
+          <option value="double-circle">&#xC774;&#xC911; &#xC6D0; ((( )))</option> <!-- Double circle -->
+        </select>
+        <div class="node-mode-wrap">
+          <label class="check-pill">
+            <input id="node-mode-all" type="checkbox" checked onchange="onNodeModeChange('all')" />
+            <span>All</span>
+          </label>
+          <label class="check-pill">
+            <input id="node-mode-attr" type="checkbox" onchange="onNodeModeChange('attr')" />
+            <span>attr</span>
+          </label>
+        </div>
+        <button onclick="insertNodeByShape()" class="btn">Add node</button>
+
+     
+
+      </div>
+
+      <div class="toolbar-row">
+        <!-- add edge value  -->
+        <select id="edge-type" class="select-like-btn">
+          <option value="" selected>&#xD654;&#xC0B4;&#xD45C; &#xC120;&#xD0DD;: --&gt;</option> <!-- Arrow select -->
+          <option value="solid">&#xAE30;&#xBCF8; &#xC2E4;&#xC120; --&gt;</option> <!-- Solid -->
+          <option value="thick">&#xB450;&#xAEBC;&#xC6B4; &#xC120; ==&gt;</option> <!-- Thick -->
+          <option value="dashed">&#xC810;&#xC120; -.-&gt;</option> <!-- Dashed -->
+          <option value="reverse">&#xC5ED;&#xBC29;&#xD5A5; &lt;--</option> <!-- Reverse -->
+          <option value="both">&#xC591;&#xCABD; &#xC2E4;&#xC120; A &lt;--&gt; B</option> <!-- Bidirectional solid -->
+          <option value="circle-end">&#xC6D0;&#xD615; &#xB9C8;&#xAC10; --o</option> <!-- Circle end -->
+          <option value="circle-both">&#xC591;&#xCABD; &#xC6D0;&#xD615; A o--o B</option> <!-- Circle both ends -->
+          <option value="x-end">X&#xC790; &#xB9C8;&#xAC10; --x</option> <!-- X end -->
+          <option value="x-both">&#xC591;&#xCABD; X &#xD45C;&#xC2DC; A x--x B</option> <!-- X both ends -->
+          <option value="normal-link">&#xC77C;&#xBC18; &#xC2E4;&#xC120; A --- B</option> <!-- Normal link -->
+          <option value="thick-link">&#xB450;&#xAEBC;&#xC6B4; &#xC2E4;&#xC120; A === B</option> <!-- Thick link -->
+          <option value="dashed-link">&#xC810;&#xC120; A -.- B</option> <!-- Dashed link -->
+          <option value="invisible-link">&#xBCF4;&#xC774;&#xC9C0; &#xC54A;&#xB294; &#xC120; A ~~~ B</option> <!-- Invisible link -->
+          <option value="solid-text-static">&#xC2E4;&#xC120; + &#xD14D;&#xC2A4;&#xD2B8; A --&gt;|&#xC870;&#xAC74;| B</option> <!-- Solid with text -->
+          <option value="thick-text-static">&#xB450;&#xAEBC;&#xC6B4; &#xC120; + &#xD14D;&#xC2A4;&#xD2B8; A == &#xC911;&#xC694;&#xACBD;&#xB85C; ==&gt; B</option> <!-- Thick with text -->
+          <option value="dashed-text-static">&#xC810;&#xC120; + &#xD14D;&#xC2A4;&#xD2B8; A -. &#xBCF4;&#xC870;&#xC124;&#xBA85; .-&gt; B</option> <!-- Dashed with text -->
+          <option value="no-arrow-text">&#xD654;&#xC0B4;&#xD45C; &#xC5C6;&#xB294; &#xD14D;&#xC2A4;&#xD2B8; A -- &#xD14D;&#xC2A4;&#xD2B8; --- B</option> <!-- No arrow with text -->
+          <option value="one-to-many">&#xB2E4;&#xC911; &#xCD9C;&#xB825; A --&gt; B &amp; C &amp; D</option> <!-- One to many -->
+          <option value="many-to-one">&#xB2E4;&#xC911; &#xC785;&#xB825; B &amp; C &amp; D --&gt; E</option> <!-- Many to one -->
+          <option value="chaining">&#xC5F0;&#xC18D; &#xC5F0;&#xACB0; A --&gt; B --&gt; C --&gt; D</option> <!-- Chaining -->
+          <option value="complex-chaining">&#xBCF5;&#xD569; &#xCCB4;&#xC774;&#xB2DD; A --&gt; B &amp; C --&gt; D</option> <!-- Complex chaining -->
+
+
+        </select>
+        <div class="node-mode-wrap">
+          <label class="check-pill">
+            <input id="edge-mode-arrow" type="checkbox" checked onchange="onEdgeModeChange('arrow')" />
+            <span>&#xD654;&#xC0B4;&#xD45C;&#xB9CC;</span>
+          </label>
+          <label class="check-pill">
+            <input id="edge-mode-arrow-label" type="checkbox" onchange="onEdgeModeChange('arrow-label')" />
+            <span>&#xD654;&#xC0B4;&#xD45C;+&#xC774;&#xB984;</span>
+          </label>
+          <label class="check-pill">
+            <input id="edge-mode-label-only" type="checkbox" onchange="onEdgeModeChange('label-only')" />
+            <span>&#xC774;&#xB984;&#xB9CC;</span>
+          </label>
+        </div>
+        <input id="edge-label" class="input-like" type="text" placeholder="&#xC5F0;&#xACB0; &#xC774;&#xB984; (&#xC120;&#xD0DD;)" />
+        <button onclick="insertEdgeByType()" class="btn">&#xC5F0;&#xACB0; &#xCD94;&#xAC00;</button> <!-- Add connection -->
+        
+
+   
+        <select id="example-select" class="select-like-btn" onchange="loadTemplate(this.value)">
+        <option value="">&#xC0D8;&#xD50C;&#xC120;&#xD0DD;</option> <!-- Select sample -->
+        <option value="shopping" selected>Flow &#xAE30;&#xBCF8;</option> <!-- Flow basic -->
+        <option value="sankey-basic">Sankey &#xAE30;&#xBCF8;</option> <!-- Sankey basic -->
+        <option value="sankey-family">Sankey &#xD55C;&#xAE00;</option> <!-- Sankey (Korean labels) -->
         <option value="sankey-config">Sankey (showValues off)</option>
         <option value="state">State</option>
         <option value="class">Class</option>
@@ -63,27 +163,32 @@
         <option value="gitgraph-basic">GitGraph</option>
         <option value="sequence-loop">Sequence (loop/alt/opt)</option>
         <option value="flowchart-lr">Flowchart (LR)</option>
-      </select>
-      <button onclick="openSyntaxTutorial()" class="btn">Syntax Tutorial</button>
-      <select id="config-template-select" class="select-like-btn">
-        <option value="">Config insert</option>
-        <option value="theme-default">theme: default</option>
-        <option value="theme-dark">theme: dark</option>
-        <option value="theme-neutral">theme: neutral</option>
-        <option value="kanban-ticket">kanban ticketBaseUrl</option>
-        <option value="treeview-style">treeView style sample</option>
-      </select>
-      <button onclick="insertConfigTemplateFromSelect()" class="btn">Config &#xC0BD;&#xC785;</button>
-      <button onclick="copyCode()" class="btn">&#xBCF5;&#xC0AC;</button>
-      <button onclick="downloadSVG()" class="btn">SVG</button>
-      <button onclick="downloadPNG()" class="btn">PNG</button>
-      <button onclick="insertIntoDocument()" class="btn">&#xBB38;&#xC11C;&#xC0BD;&#xC785;</button>
+        </select>
+        <button onclick="openSyntaxTutorial()" class="btn">Syntax Tutorial</button>
+        <button onclick="copyCode()" class="btn">&#xBCF5;&#xC0AC;</button>
+                <button onclick="downloadSVG()" class="btn">SVG</button>
+           <button onclick="downloadPNG()" class="btn">PNG</button>
+        <button onclick="insertIntoDocument()" class="btn">&#xBB38;&#xC11C;&#xC0BD;&#xC785;</button>
+      </div>
+
+      <!-- <div class="toolbar-row"> -->
+      <!-- </div> -->
     </div>
   </header>
 
   <main id="main">
     <section id="editor-pane">
-      <div class="pane-title">&#xCF54;&#xB4DC; &#xD3B8;&#xC9D1;&#xAE30;</div>
+      <div class="pane-title pane-title-row">
+        <span>&#xCF54;&#xB4DC; &#xD3B8;&#xC9D1;&#xAE30;</span>
+        <div class="zoom-controls">
+          <button type="button" class="btn-light" id="editor-theme-toggle-btn" onclick="toggleEditorTheme()">Dark</button>
+          <button type="button" class="btn-light" onclick="adjustEditorScale(-0.1)">-</button>
+          <span id="editor-scale-label">100%</span>
+          <button type="button" class="btn-light" onclick="adjustEditorScale(0.1)">+</button>
+          <button type="button" class="btn-light" onclick="resetEditorScale()">Reset</button>
+        </div>
+      </div>
+      <!-- code editor  -->
       <textarea id="raw-code-editor" spellcheck="false"></textarea>
       <!-- <div class="editor-help">
         <div>&#xB2E8;&#xCD95;&#xD0A4;</div>
@@ -94,10 +199,12 @@
 
     <div id="pane-divider" title="&#xC88C;&#xC6B0; &#xD328;&#xB110; &#xD06C;&#xAE30; &#xC870;&#xC808;"></div>
 
+    <!-- Preview Zoom in out  -->
     <section id="preview-pane">
       <div class="pane-title pane-title-row">
         <span>&#xBBF8;&#xB9AC;&#xBCF4;&#xAE30;</span>
         <div class="zoom-controls">
+
           <button type="button" class="btn-light" id="preview-theme-toggle-btn" onclick="togglePreviewTheme()">Dark</button>
           <button type="button" class="btn-light" onclick="adjustPreviewScale(-0.1)">-</button>
           <span id="preview-scale-label">100%</span>

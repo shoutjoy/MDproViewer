@@ -1,3 +1,4 @@
+;(() => {
 const START_HTML = '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:"Segoe UI",sans-serif;background:#f7f9ff;} .slide{width:1280px;height:720px;padding:72px;background:#fff;} h1{margin:0 0 16px;color:#0a2a66;} p{font-size:28px;color:#334155;}</style></head><body><div class="slide"><h1>New Slide</h1><p>Edit on the right and sync to HTML code.</p></div></body></html>';
 
 let slides = [{ html: START_HTML }];
@@ -19,8 +20,10 @@ let lastCodeIndex = 0;
 let expandedSlideIndex = -1;
 let lastFindIndex = -1;
 const INTERNAL_RE = /internal:\/\/([A-Za-z0-9._~%\-]+)/g;
-const IDB_NAME = "MarkdownProDB";
+const APP_NAMESPACE = "genslide";
+const IDB_NAME = "GenSlideDB";
 const IDB_VERSION = 4;
+const MSG_OPEN_SLIDE = `${APP_NAMESPACE}-open-slide`;
 let currentInsertMode = "link";
 let currentImgSource = "url";
 let activeWysObjectUrls = [];
@@ -30,6 +33,7 @@ let appDarkMode = false;
 let codeDarkMode = false;
 let codeThemeFollowApp = true;
 let codeFontSize = 12;
+let objectEditMode = false;
 const SLIDE_SIZE_PRESETS = {
   "3:4": { w: 1080, h: 1440 },
   "4:3": { w: 1024, h: 768 },
@@ -38,6 +42,25 @@ const SLIDE_SIZE_PRESETS = {
   a4: { w: 1050, h: 1485 }
 };
 let codeWrapEnabled = false;
+
+function refreshObjectEditModeButton() {
+  const btn = els.objectEditModeBtn;
+  if (!btn) return;
+  btn.textContent = objectEditMode ? "편집모드: ON" : "편집모드: OFF";
+  btn.classList.toggle("primary", objectEditMode);
+}
+
+function setObjectEditMode(next) {
+  objectEditMode = !!next;
+  refreshObjectEditModeButton();
+  const d = getWysDoc();
+  if (d && d.__jenaImageEditor && typeof d.__jenaImageEditor.setEnabled === "function") {
+    d.__jenaImageEditor.setEnabled(objectEditMode);
+  }
+  if (d && d.__jenaContainerEditor && typeof d.__jenaContainerEditor.setEnabled === "function") {
+    d.__jenaContainerEditor.setEnabled(objectEditMode);
+  }
+}
 
 const els = {
   slides: document.getElementById("slides"),
@@ -80,6 +103,7 @@ const els = {
   quickFontSize: document.getElementById("quickFontSize"),
   quickTextColor: document.getElementById("quickTextColor"),
   quickHiliteColor: document.getElementById("quickHiliteColor"),
+  objectEditModeBtn: document.getElementById("btnObjectEditMode"),
   textPreset: document.getElementById("textPreset"),
   inDbOverlay: document.getElementById("inDbOverlay"),
   inDbList: document.getElementById("inDbList"),
@@ -575,6 +599,7 @@ function changeSelectedLayerOrder(step) {
 function bindImageResizeEditor(doc) {
   if (!doc || doc.__jenaImgResizeBound) return;
   doc.__jenaImgResizeBound = true;
+  let enabled = !!objectEditMode;
 
   const ui = doc.createElement("div");
   ui.id = "jena-img-resize-ui";
@@ -672,6 +697,7 @@ function bindImageResizeEditor(doc) {
   }
 
   function startResize(e, nextMode) {
+    if (!enabled) return;
     if (!activeImg) return;
     e.preventDefault();
     e.stopPropagation();
@@ -683,6 +709,7 @@ function bindImageResizeEditor(doc) {
   }
 
   function startMove(e) {
+    if (!enabled) return;
     if (!activeImg) return;
     e.preventDefault();
     e.stopPropagation();
@@ -705,6 +732,7 @@ function bindImageResizeEditor(doc) {
   }
 
   function onMove(e) {
+    if (!enabled) return;
     if (!activeImg || !mode) return;
     const dx = e.clientX - sx;
     const dy = e.clientY - sy;
@@ -730,6 +758,7 @@ function bindImageResizeEditor(doc) {
   }
 
   function onUp() {
+    if (!enabled) return;
     if (!mode) return;
     mode = "";
     syncApplyButton();
@@ -750,6 +779,7 @@ function bindImageResizeEditor(doc) {
   doc.addEventListener("mousemove", onMove, true);
   doc.addEventListener("mouseup", onUp, true);
   doc.addEventListener("mousedown", (e) => {
+    if (!enabled) return;
     const t = e.target;
     if (!t || !t.tagName) return;
     if (String(t.tagName).toLowerCase() !== "img") return;
@@ -761,6 +791,7 @@ function bindImageResizeEditor(doc) {
   doc.defaultView.addEventListener("resize", () => { if (activeImg) syncBox(); });
 
   doc.addEventListener("click", (e) => {
+    if (!enabled) return;
     const t = e.target;
     if (t && t.tagName && String(t.tagName).toLowerCase() === "img") {
       showFor(t);
@@ -769,11 +800,19 @@ function bindImageResizeEditor(doc) {
     if (t === applyBtn || applyBtn.contains(t)) return;
     if (!ui.contains(t)) hide();
   }, true);
+
+  doc.__jenaImageEditor = {
+    setEnabled(next) {
+      enabled = !!next;
+      if (!enabled) hide();
+    }
+  };
 }
 
 function bindContainerObjectEditor(doc) {
   if (!doc || doc.__jenaContainerEditBound) return;
   doc.__jenaContainerEditBound = true;
+  let enabled = !!objectEditMode;
 
   const ui = doc.createElement("div");
   ui.id = "jena-obj-resize-ui";
@@ -843,6 +882,7 @@ function bindContainerObjectEditor(doc) {
   let st = 0;
   let moveNeedsAbs = false;
   let hasPending = false;
+  let textEditMode = false;
 
   function syncApplyButton() {
     if (!activeEl || !hasPending) {
@@ -945,6 +985,7 @@ function bindContainerObjectEditor(doc) {
     setWysLayerSelection(doc, el);
     ui.style.display = "block";
     hasPending = false;
+    textEditMode = false;
     syncBox();
   }
 
@@ -952,11 +993,13 @@ function bindContainerObjectEditor(doc) {
     activeEl = null;
     mode = "";
     hasPending = false;
+    textEditMode = false;
     ui.style.display = "none";
     applyBtn.style.display = "none";
   }
 
   function startResize(e, nextMode) {
+    if (!enabled) return;
     if (!activeEl) return;
     e.preventDefault();
     e.stopPropagation();
@@ -971,6 +1014,7 @@ function bindContainerObjectEditor(doc) {
   }
 
   function startMove(e) {
+    if (!enabled) return;
     if (!activeEl) return;
     e.preventDefault();
     e.stopPropagation();
@@ -984,6 +1028,7 @@ function bindContainerObjectEditor(doc) {
   }
 
   function startMoveLazy(e) {
+    if (!enabled) return;
     if (!activeEl) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1008,6 +1053,7 @@ function bindContainerObjectEditor(doc) {
   }
 
   function onMove(e) {
+    if (!enabled) return;
     if (!activeEl || !mode) return;
     const dx = e.clientX - sx;
     const dy = e.clientY - sy;
@@ -1036,6 +1082,7 @@ function bindContainerObjectEditor(doc) {
   }
 
   function onUp() {
+    if (!enabled) return;
     if (!mode) return;
     mode = "";
     syncApplyButton();
@@ -1062,6 +1109,7 @@ function bindContainerObjectEditor(doc) {
   doc.defaultView.addEventListener("resize", () => { if (activeEl) syncBox(); });
 
   doc.addEventListener("mousedown", (e) => {
+    if (!enabled) return;
     const t = e.target;
     if (!t) return;
     if (t.tagName && String(t.tagName).toLowerCase() === "img") return; // image editor handles img
@@ -1069,6 +1117,8 @@ function bindContainerObjectEditor(doc) {
     const box = findSelectable(t);
     if (box) {
       showFor(box);
+      // In text edit mode, allow native caret/text input behavior.
+      if (textEditMode && activeEl === box) return;
       // single click: select object only (no text caret edit)
       e.preventDefault();
       e.stopPropagation();
@@ -1080,14 +1130,24 @@ function bindContainerObjectEditor(doc) {
 
   // double click: enter text edit mode inside selected container
   doc.addEventListener("dblclick", (e) => {
+    if (!enabled) return;
     const t = e.target;
     if (!t) return;
     if (t.tagName && String(t.tagName).toLowerCase() === "img") return;
     const box = findSelectable(t);
     if (!box) return;
     showFor(box);
+    textEditMode = true;
+    if (box.setAttribute) box.setAttribute("contenteditable", "true");
     focusFirstTextNode(box);
   }, true);
+
+  doc.__jenaContainerEditor = {
+    setEnabled(next) {
+      enabled = !!next;
+      if (!enabled) hide();
+    }
+  };
 }
 
 function bindTextBoxEditor(doc) {
@@ -1385,7 +1445,7 @@ function buildGalleryWindowHtml(snapshotSlides, activeIndex) {
     const openBtn = card.querySelector(".g-open");
     const go = () => {
       if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({ type: "jenaeditor-open-slide", index: i }, "*");
+        window.opener.postMessage({ type: MSG_OPEN_SLIDE, index: i }, "*");
       }
     };
     card.addEventListener("dblclick", go);
@@ -1398,7 +1458,7 @@ function buildGalleryWindowHtml(snapshotSlides, activeIndex) {
 
 function openGalleryWindow() {
   const snapshot = slides.map((s) => ({ html: String((s && s.html) || START_HTML) }));
-  const popup = window.open("", "jenaeditor_gallery", "width=1400,height=900,resizable=yes,scrollbars=yes");
+  const popup = window.open("", "genslide_gallery", "width=1400,height=900,resizable=yes,scrollbars=yes");
   if (!popup) {
     alert("Popup blocked. Please allow popups for this page.");
     return;
@@ -1428,7 +1488,7 @@ function buildSlideShowWindowHtml(snapshotSlides, startIndex) {
 <body>
   <div class="ss-root"><iframe id="ssFrame" sandbox="allow-same-origin allow-scripts"></iframe></div>
   <div class="hud" id="ssInfo"></div>
-  <div class="hint">Click: next · Left/Right: prev/next · Esc: close</div>
+  <div class="hint">Click: next 쨌 Left/Right: prev/next 쨌 Esc: close</div>
 <script>
   const slides = JSON.parse(decodeURIComponent("${escapeAttr(payload)}"));
   let idx = ${start};
@@ -1479,7 +1539,7 @@ async function openSlideShowWindow() {
     renderedSnapshot = snapshot;
     objectUrls = [];
   }
-  const popup = window.open("", "jenaeditor_slideshow", "width=1440,height=900,resizable=yes,scrollbars=no");
+  const popup = window.open("", "genslide_slideshow", "width=1440,height=900,resizable=yes,scrollbars=no");
   if (!popup) {
     for (let i = 0; i < objectUrls.length; i++) {
       try { URL.revokeObjectURL(objectUrls[i]); } catch (_) {}
@@ -2040,7 +2100,7 @@ function renderInDbList(records) {
     html.push(
       `<div class="indb-item${active}" data-indb-id="${sanitizeText(id)}">` +
       `<div class="indb-title">${name}</div>` +
-      `<div class="indb-meta">${fmtInDbDate(r.updatedAt)} · ${slidesCount} slides</div>` +
+      `<div class="indb-meta">${fmtInDbDate(r.updatedAt)} 쨌 ${slidesCount} slides</div>` +
       `</div>`
     );
   }
@@ -3355,20 +3415,69 @@ async function renderFrameToPptObjects(frame, slide, pptW, pptH) {
 }
 
 function askPptxExportMode() {
-  const msg = [
-    "PPTX export mode를 선택하세요:",
-    "1) image pptx (전체 페이지를 이미지로)",
-    "2) imagepptx+텍스트 (시각요소 이미지 + 텍스트 추출)",
-    "3) full 분리 (실험/보완 필요)",
-    "",
-    "번호(1/2/3)를 입력 후 확인하세요."
-  ].join("\n");
-  const raw = prompt(msg, "2");
-  if (raw == null) return "";
-  const v = String(raw || "").trim();
-  if (v === "1") return "image";
-  if (v === "3") return "full";
-  return "image_text";
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("pptxModeOverlay");
+    const btnClose = document.getElementById("btnPptxModeClose");
+    const btnCancel = document.getElementById("btnPptxModeCancel");
+    const btnImage = document.getElementById("btnPptxModeImage");
+    const btnImageText = document.getElementById("btnPptxModeImageText");
+    const btnFull = document.getElementById("btnPptxModeFull");
+    if (!overlay || !btnClose || !btnCancel || !btnImage || !btnImageText || !btnFull) {
+      resolve("image_text");
+      return;
+    }
+
+    const done = (mode) => {
+      overlay.classList.remove("open");
+      btnClose.onclick = null;
+      btnCancel.onclick = null;
+      btnImage.onclick = null;
+      btnImageText.onclick = null;
+      btnFull.onclick = null;
+      overlay.onclick = null;
+      resolve(mode || "");
+    };
+
+    btnClose.onclick = () => done("");
+    btnCancel.onclick = () => done("");
+    btnImage.onclick = () => done("image");
+    btnImageText.onclick = () => done("image_text");
+    btnFull.onclick = () => done("full");
+    overlay.onclick = (e) => { if (e.target === overlay) done(""); };
+    overlay.classList.add("open");
+  });
+}
+
+function askPptxExportConfirm(mode) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById("pptxConfirmOverlay");
+    const txt = document.getElementById("pptxConfirmText");
+    const btnClose = document.getElementById("btnPptxConfirmClose");
+    const btnCancel = document.getElementById("btnPptxConfirmCancel");
+    const btnOk = document.getElementById("btnPptxConfirmOk");
+    if (!overlay || !txt || !btnClose || !btnCancel || !btnOk) {
+      resolve(true);
+      return;
+    }
+
+    const modeLabel = mode === "image" ? "image" : (mode === "full" ? "full" : "image_text");
+    txt.textContent = `pptx를 생성합니다. 진행할까요? (${modeLabel})`;
+
+    const done = (ok) => {
+      overlay.classList.remove("open");
+      btnClose.onclick = null;
+      btnCancel.onclick = null;
+      btnOk.onclick = null;
+      overlay.onclick = null;
+      resolve(!!ok);
+    };
+
+    btnClose.onclick = () => done(false);
+    btnCancel.onclick = () => done(false);
+    btnOk.onclick = () => done(true);
+    overlay.onclick = (e) => { if (e.target === overlay) done(false); };
+    overlay.classList.add("open");
+  });
 }
 
 async function renderFrameToPptObjectsByMode(frame, slide, pptW, pptH, mode) {
@@ -3658,12 +3767,9 @@ async function renderSlideHtmlToPptByMode(slideHtml, slide, pptW, pptH, mode) {
 
 async function exportPptx() {
   if (pptxExportInProgress) return;
-  const mode = askPptxExportMode();
+  const mode = await askPptxExportMode();
   if (!mode) return;
-  if (mode === "full") {
-    alert("full 분리는 아직 보완이 필요합니다. (실험 모드)");
-  }
-  if (!confirm("pptx를 생성합니다. 진행할까요?")) return;
+  if (!(await askPptxExportConfirm(mode))) return;
 
   const btn = document.getElementById("btnPptxExport");
   pptxExportInProgress = true;
@@ -3673,12 +3779,15 @@ async function exportPptx() {
   }
   let objectUrls = [];
   try {
-    setPptxProgress(2, `준비 중... (${mode})`);
+    // Starting export pipeline
+    setPptxProgress(2, `\uC900\uBE44 \uC911... (${mode})`);
     await ensurePptxDeps();
-    setPptxProgress(8, "라이브러리 준비 완료");
+    // Dependencies are loaded
+    setPptxProgress(8, "\uB77C\uC774\uBE0C\uB7EC\uB9AC \uC900\uBE44 \uC644\uB8CC");
     const urlMap = await buildInternalImageUrlMapFromSlides(slides);
     objectUrls = Array.from(urlMap.values());
-    setPptxProgress(12, "슬라이드 분석 중...");
+    // Slide content parsing
+    setPptxProgress(12, "\uC2AC\uB77C\uC774\uB4DC \uBD84\uC11D \uC911...");
 
     const Pptx = window.PptxGenJS;
     const pptx = new Pptx();
@@ -3694,20 +3803,25 @@ async function exportPptx() {
 
       for (let i = 0; i < slides.length; i++) {
         const donePct = slides.length > 0 ? Math.round((i / slides.length) * 80) : 80;
-        setPptxProgress(15 + donePct, `슬라이드 처리 중... (${i + 1}/${slides.length})`);
+        // Rendering each slide
+        setPptxProgress(15 + donePct, `\uC2AC\uB77C\uC774\uB4DC \uCC98\uB9AC \uC911... (${i + 1}/${slides.length})`);
         const html = replaceInternalImagesForRender(String((slides[i] && slides[i].html) || START_HTML), urlMap);
         const s = pptx.addSlide();
         await renderSlideHtmlToPptByMode(html, s, pptW, pptH, mode);
         const stepPct = slides.length > 0 ? Math.round(((i + 1) / slides.length) * 80) : 80;
-        setPptxProgress(15 + stepPct, `슬라이드 완료 (${i + 1}/${slides.length})`);
+        // Slide finished
+        setPptxProgress(15 + stepPct, `\uC2AC\uB77C\uC774\uB4DC \uC644\uB8CC (${i + 1}/${slides.length})`);
       }
-    setPptxProgress(97, "파일 생성 중...");
+    // Writing final PPTX file
+    setPptxProgress(97, "\uD30C\uC77C \uC0DD\uC131 \uC911...");
     const fname = `jena_slides_${Date.now()}.pptx`;
     await pptx.writeFile({ fileName: fname });
-    setPptxProgress(100, "완료");
+    // Export done
+    setPptxProgress(100, "\uC644\uB8CC");
     hidePptxProgress(1600);
   } catch (e) {
-    setPptxProgress(100, "실패");
+    // Export failed
+    setPptxProgress(100, "\uC2E4\uD328");
     hidePptxProgress(2200);
     alert("pptx export failed.");
   } finally {
@@ -3776,7 +3890,7 @@ async function exportMpp() {
   let images = [];
   try { images = await collectIndexedDbImagesForMpp(slides); } catch (_) { images = []; }
   const payload = {
-    format: "mdproviewer-html2pptx-mpp",
+    format: "genslide-html2pptx-mpp",
     version: 2,
     exportedAt: new Date().toISOString(),
     currentIndex: cur,
@@ -3947,6 +4061,10 @@ const btnClearText = document.getElementById("btnClearText");
 if (btnClearText) btnClearText.onclick = clearEnteredText;
 const btnTextBox = document.getElementById("btnTextBox");
 if (btnTextBox) btnTextBox.onclick = insertTextBox;
+const btnObjectEditMode = document.getElementById("btnObjectEditMode");
+if (btnObjectEditMode) {
+  btnObjectEditMode.onclick = () => setObjectEditMode(!objectEditMode);
+}
 const btnLayerUp = document.getElementById("btnLayerUp");
 if (btnLayerUp) btnLayerUp.onclick = () => changeSelectedLayerOrder(1);
 const btnLayerDown = document.getElementById("btnLayerDown");
@@ -4114,7 +4232,7 @@ document.addEventListener("keydown", (e) => {
 
 window.addEventListener("message", (e) => {
   const data = e && e.data;
-  if (!data || data.type !== "jenaeditor-open-slide") return;
+  if (!data || data.type !== MSG_OPEN_SLIDE) return;
   const idx = clamp(Number(data.index) || 0, 0, slides.length - 1);
   cur = idx;
   expandedSlideIndex = cur;
@@ -4152,6 +4270,7 @@ document.addEventListener("keydown", (e) => {
 async function initApp() {
   initLinkModalWindowControls();
   initImageModalWindowControls();
+  setObjectEditMode(false);
   setCodeFontSize(codeFontSize);
   setAppThemeMode(false);
   // initial: code theme follows app theme
@@ -4163,3 +4282,6 @@ async function initApp() {
 }
 
 initApp();
+
+
+})();

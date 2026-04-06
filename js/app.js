@@ -1,4 +1,5 @@
 ﻿// IndexedDB Logic
+﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
 const DB_VERSION = 4;
 let db;
@@ -136,6 +137,7 @@ if (editorTextarea) {
     }, true);
 }
 
+// Sites component 
 let pendingExternalContent = null;
 let receivedExternalContent = false;
 let notebookLmEqualsHrPreprocess = false;
@@ -1483,6 +1485,7 @@ async function chooseExportType() {
     const pick = String(window.prompt('Export type: md / mdd / zip (cancel = empty)', 'md') || '').trim().toLowerCase();
     if (!pick) return 'cancel';
     if (pick === 'md' || pick === 'mdd' || pick === 'zip') return pick;
+        if (pick === 'md' || pick === 'mdd' || pick === 'zip' || pick === 'html') return pick;
     return 'cancel';
 }
 
@@ -1501,6 +1504,11 @@ async function exportCurrentDocumentByChoice() {
         markPersistedState();
         return true;
     }
+        if (choice === 'html') {
+            if (typeof HtmlExport !== 'undefined' && HtmlExport.exportToHTML) await HtmlExport.exportToHTML();
+            markPersistedState();
+            return true;
+        }
     const hasInternalImages = !!(window.ImageDB
         && typeof window.ImageDB.hasInternalImages === 'function'
         && window.ImageDB.hasInternalImages(String(currentMarkdown || '')));

@@ -11,18 +11,26 @@ mermaid.initialize({
 
 const editor = document.getElementById('raw-code-editor');
 const renderDiv = document.getElementById('render');
+const renderWrapper = document.getElementById('render-wrapper');
 const errorDiv = document.getElementById('error');
+const editorScaleLabel = document.getElementById('editor-scale-label');
 const previewScaleLabel = document.getElementById('preview-scale-label');
 const paneDivider = document.getElementById('pane-divider');
 const previewPane = document.getElementById('preview-pane');
+const editorThemeToggleBtn = document.getElementById('editor-theme-toggle-btn');
 const previewThemeToggleBtn = document.getElementById('preview-theme-toggle-btn');
 
 let renderTimer = null;
 let renderSeq = 0;
 let currentDirection = 'TD';
+let editorScale = 1;
+let editorDarkMode = false;
 let previewScale = 1;
 let previewDarkMode = false;
 let flowNodeSeq = 1;
+const editorUndoStack = [];
+const MAX_EDITOR_UNDO = 300;
+let applyingEditorUndo = false;
 const EXAMPLE_LIBRARY = {
   shopping: `flowchart TD
   A[Start] --> B{Decision}
@@ -372,39 +380,66 @@ treeView-beta
 };
 
 const CONFIG_TEMPLATE_LIBRARY = {
-  'theme-default': `---
-config:
-  theme: default
----`,
-  'theme-dark': `---
-config:
-  theme: dark
----`,
-  'theme-neutral': `---
-config:
-  theme: neutral
----`,
-  'kanban-ticket': `---
-config:
-  kanban:
-    ticketBaseUrl: https://github.com/mermaid-js/mermaid/issues/#TICKET#
-  theme: dark
----`,
-  'treeview-style': `---
-config:
-  treeView:
-    rowIndent: 80
-    lineThickness: 3
-  themeVariables:
-    treeView:
-      labelFontSize: '20px'
-      labelColor: '#FF0000'
-      lineColor: '#00FF00'
----`
+  'theme-default': `%%{init: { "theme": "default" }}%%`,
+  'theme-dark': `%%{init: { "theme": "dark" }}%%`,
+  'theme-neutral': `%%{init: { "theme": "neutral" }}%%`,
+  'theme-forest': `%%{init: { "theme": "forest" }}%%`,
+  'theme-base': `%%{init: { "theme": "base" }}%%`,
+  'curve-linear': `%%{init: { "flowchart": { "curve": "linear" } }}%%`,
+  'curve-basis': `%%{init: { "flowchart": { "curve": "basis" } }}%%`,
+  'curve-step': `%%{init: { "flowchart": { "curve": "stepAfter" } }}%%`,
+  'spacing-wide': `%%{init: { "flowchart": { "rankSpacing": 80, "nodeSpacing": 80 } }}%%`,
+  'html-labels': `%%{init: { "flowchart": { "htmlLabels": true } }}%%`,
+  'brand-primary': `%%{init: { "themeVariables": { "primaryColor": "#4f46e5" } }}%%`,
+  'brand-line': `%%{init: { "themeVariables": { "lineColor": "#111827" } }}%%`,
+  'brand-font-family': `%%{init: { "themeVariables": { "fontFamily": "Pretendard" } }}%%`,
+  'brand-font-size': `%%{init: { "themeVariables": { "fontSize": "16px" } }}%%`,
+  'brand-cluster': `%%{init: { "themeVariables": { "clusterBkg": "#f0f0f0" } }}%%`,
+  'kanban-ticket': `%%{init: { "kanban": { "ticketBaseUrl": "https://github.com/mermaid-js/mermaid/issues/#TICKET#" } }}%%`,
+  'sequence-align': `%%{init: { "sequence": { "messageAlign": "center", "mirrorActors": true } }}%%`,
+  'gantt-compact': `%%{init: { "gantt": { "displayMode": "compact" } }}%%`,
+  'mindmap-width': `%%{init: { "mindmap": { "maxNodeWidth": 200 } }}%%`
 };
 
 function openSyntaxTutorial() {
   window.open('https://mermaid.ai/open-source/syntax/flowchart.html', '_blank', 'noopener,noreferrer');
+}
+
+function captureEditorState() {
+  return {
+    value: String(editor.value || ''),
+    start: editor.selectionStart || 0,
+    end: editor.selectionEnd || 0
+  };
+}
+
+function pushEditorUndoState() {
+  if (applyingEditorUndo) return;
+  const state = captureEditorState();
+  const last = editorUndoStack[editorUndoStack.length - 1];
+  if (last && last.value === state.value && last.start === state.start && last.end === state.end) return;
+  editorUndoStack.push(state);
+  if (editorUndoStack.length > MAX_EDITOR_UNDO) editorUndoStack.shift();
+}
+
+function restoreEditorState(state) {
+  if (!state) return;
+  applyingEditorUndo = true;
+  editor.value = String(state.value || '');
+  const end = editor.value.length;
+  const s = Math.max(0, Math.min(state.start || 0, end));
+  const e = Math.max(0, Math.min(state.end || 0, end));
+  editor.focus();
+  editor.setSelectionRange(s, e);
+  applyingEditorUndo = false;
+  render();
+}
+
+function undoEditorChange() {
+  if (!editorUndoStack.length) return false;
+  const prev = editorUndoStack.pop();
+  restoreEditorState(prev);
+  return true;
 }
 
 function splitFrontMatter(text) {
@@ -417,6 +452,15 @@ function splitFrontMatter(text) {
   return { front, body };
 }
 
+function splitInitDirective(text) {
+  const src = String(text || '');
+  const m = src.match(/^%%\{init:\s*[\s\S]*?\}%%\s*(\r?\n|$)/);
+  if (!m) return null;
+  const init = m[0].trim();
+  const body = src.slice(m[0].length);
+  return { init, body };
+}
+
 function insertConfigTemplate(templateKey) {
   const key = String(templateKey || '').trim();
   if (!key || !CONFIG_TEMPLATE_LIBRARY[key]) return;
@@ -424,8 +468,12 @@ function insertConfigTemplate(templateKey) {
   if (!cfg) return;
 
   const current = String(editor.value || '');
+  const initParsed = splitInitDirective(current);
   const parsed = splitFrontMatter(current);
-  if (parsed) {
+  pushEditorUndoState();
+  if (initParsed) {
+    editor.value = cfg + '\n' + String(initParsed.body || '').replace(/^\s+/, '');
+  } else if (parsed) {
     editor.value = cfg + '\n' + String(parsed.body || '').replace(/^\s+/, '');
   } else {
     editor.value = cfg + '\n' + current.replace(/^\s+/, '');
@@ -450,6 +498,7 @@ function setDirection(dir) {
 
   const lines = editor.value.split('\n');
   if (lines.length > 0 && /^\s*(flowchart|graph)\s+(TD|LR|TB|BT|RL)/i.test(lines[0])) {
+    pushEditorUndoState();
     lines[0] = lines[0].replace(/\b(TD|LR|TB|BT|RL)\b/i, dir);
     editor.value = lines.join('\n');
     render();
@@ -459,6 +508,32 @@ function setDirection(dir) {
 function debounceRender() {
   clearTimeout(renderTimer);
   renderTimer = setTimeout(render, 300);
+}
+
+function applyEditorScale() {
+  editor.style.fontSize = `${Math.round(14 * editorScale)}px`;
+  if (editorScaleLabel) editorScaleLabel.textContent = `${Math.round(editorScale * 100)}%`;
+}
+// code editor and preview pane
+function adjustEditorScale(delta) {
+  editorScale = Math.max(0.7, Math.min(2.2, editorScale + delta));
+  applyEditorScale();
+}
+
+function resetEditorScale() {
+  editorScale = 1;
+  applyEditorScale();
+}
+
+function applyEditorThemeUI() {
+  if (!editorThemeToggleBtn) return;
+  editorThemeToggleBtn.textContent = editorDarkMode ? 'Light' : 'Dark';
+  editor.classList.toggle('editor-dark', editorDarkMode);
+}
+
+function toggleEditorTheme() {
+  editorDarkMode = !editorDarkMode;
+  applyEditorThemeUI();
 }
 
 function applyPreviewScale() {
@@ -474,6 +549,16 @@ function adjustPreviewScale(delta) {
 function resetPreviewScale() {
   previewScale = 1;
   applyPreviewScale();
+}
+
+function initPreviewWheelZoom() {
+  if (!renderWrapper) return;
+  renderWrapper.addEventListener('wheel', function (e) {
+    if (!e.deltaY) return;
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.08 : -0.08;
+    adjustPreviewScale(delta);
+  }, { passive: false });
 }
 
 function applyPreviewThemeUI() {
@@ -707,6 +792,16 @@ function showError(message) {
   errorDiv.textContent = message;
 }
 
+async function renderWithStartupRecovery() {
+  await render();
+  if (!errorDiv || errorDiv.style.display !== 'block') return;
+  const startupFallback = `flowchart TD
+  A[Start] --> B[Process]
+  B --> C[End]`;
+  editor.value = startupFallback;
+  await render();
+}
+
 function removeMermaidErrorArtifacts() {
   if (!renderDiv) return;
   try {
@@ -719,12 +814,19 @@ function removeMermaidErrorArtifacts() {
 }
 
 function insertSnippet(type) {
-  const snippets = {
-    node: 'A[\uB178\uB4DC]',
-    decision: 'B{\uC870\uAC74}',
-    arrow: 'A --> B'
-  };
-  const snippet = snippets[type] || '';
+  let snippet = '';
+  if (type === 'node') {
+    snippet = 'A[\uB178\uB4DC]';
+  } else if (type === 'decision') {
+    const shapeEl = document.getElementById('node-shape');
+    const selectedShape = shapeEl ? shapeEl.value : 'diamond';
+    const logicShapes = new Set(['diamond', 'hexagon', 'asymmetric']);
+    const shape = logicShapes.has(selectedShape) ? selectedShape : 'diamond';
+    const nodeId = 'N' + flowNodeSeq++;
+    snippet = buildNodeSyntax(shape, nodeId, '\uC870\uAC74', true);
+  } else if (type === 'arrow') {
+    snippet = 'A --> B';
+  }
   if (!snippet) return;
 
   const start = editor.selectionStart;
@@ -732,6 +834,7 @@ function insertSnippet(type) {
   const before = editor.value.slice(0, start);
   const after = editor.value.slice(end);
   const insertText = (before && !before.endsWith('\n') ? '\n' : '') + snippet;
+  pushEditorUndoState();
   editor.value = before + insertText + after;
   const caret = (before + insertText).length;
   editor.focus();
@@ -742,30 +845,151 @@ function insertSnippet(type) {
 function loadTemplate(type) {
   const key = String(type || '').trim();
   if (!key || !EXAMPLE_LIBRARY[key]) return;
+  pushEditorUndoState();
   editor.value = String(EXAMPLE_LIBRARY[key] || '');
   render();
 }
 
-function buildNodeSyntax(shape, id, label) {
+function buildNodeSyntax(shape, id, label, includeId) {
   const text = String(label || '\uB178\uB4DC');
-  if (shape === 'diamond') return `${id}{${text}}`;
-  if (shape === 'square') return `${id}[[${text}]]`;
-  if (shape === 'circle') return `${id}((${text}))`;
-  return `${id}[${text}]`;
+  const prefix = includeId ? id : '';
+  if (shape === 'round') return `${prefix}(${text})`;
+  if (shape === 'stadium') return `${prefix}([${text}])`;
+  if (shape === 'subroutine') return `${prefix}[[${text}]]`;
+  if (shape === 'diamond') return `${prefix}{${text}}`;
+  if (shape === 'hexagon') return `${prefix}{{${text}}}`;
+  if (shape === 'asymmetric') return `${prefix}>${text}]`;
+  if (shape === 'cylinder') return `${prefix}[(${text})]`;
+  if (shape === 'parallelogram') return `${prefix}[/${text}/]`;
+  if (shape === 'trapezoid') return `${prefix}[/${text}\\]`;
+  if (shape === 'circle') return `${prefix}((${text}))`;
+  if (shape === 'double-circle') return `${prefix}(((${text})))`;
+  return `${prefix}[${text}]`;
 }
 
-function insertNodeByShape() {
+function onNodeModeChange(mode) {
+  const allEl = document.getElementById('node-mode-all');
+  const attrEl = document.getElementById('node-mode-attr');
+  if (!allEl || !attrEl) return;
+  if (mode === 'all' && allEl.checked) attrEl.checked = false;
+  if (mode === 'attr' && attrEl.checked) allEl.checked = false;
+  if (!allEl.checked && !attrEl.checked) allEl.checked = true;
+}
+
+function onEdgeModeChange(mode) {
+  const arrowEl = document.getElementById('edge-mode-arrow');
+  const arrowLabelEl = document.getElementById('edge-mode-arrow-label');
+  const labelOnlyEl = document.getElementById('edge-mode-label-only');
+  if (!arrowEl || !arrowLabelEl || !labelOnlyEl) return;
+
+  if (mode === 'arrow' && arrowEl.checked) {
+    arrowLabelEl.checked = false;
+    labelOnlyEl.checked = false;
+  }
+  if (mode === 'arrow-label' && arrowLabelEl.checked) {
+    arrowEl.checked = false;
+    labelOnlyEl.checked = false;
+  }
+  if (mode === 'label-only' && labelOnlyEl.checked) {
+    arrowEl.checked = false;
+    arrowLabelEl.checked = false;
+  }
+  if (!arrowEl.checked && !arrowLabelEl.checked && !labelOnlyEl.checked) arrowEl.checked = true;
+}
+
+function insertNodeByShape(mode) {
   const shapeEl = document.getElementById('node-shape');
   const labelEl = document.getElementById('node-label');
+  const allEl = document.getElementById('node-mode-all');
+  const attrEl = document.getElementById('node-mode-attr');
   const shape = shapeEl ? shapeEl.value : 'rect';
+  let insertMode = mode === 'attr' ? 'attr' : (mode === 'all' ? 'all' : '');
+  if (!insertMode) insertMode = attrEl && attrEl.checked ? 'attr' : 'all';
+  const includeId = insertMode === 'all';
+  if (allEl && attrEl && !allEl.checked && !attrEl.checked) allEl.checked = true;
   const label = labelEl && labelEl.value ? labelEl.value.trim() : '';
-  const nodeId = 'N' + flowNodeSeq++;
-  const nodeSyntax = buildNodeSyntax(shape, nodeId, label || ('Node ' + flowNodeSeq));
+  const seq = flowNodeSeq;
+  const nodeId = 'N' + seq;
+  const nodeSyntax = buildNodeSyntax(shape, nodeId, label || ('Node ' + seq), includeId);
+  if (includeId) flowNodeSeq += 1;
 
   const start = editor.selectionStart;
   const before = editor.value.slice(0, start);
   const insertText = (before && !before.endsWith('\n') ? '\n' : '') + '    ' + nodeSyntax;
+  pushEditorUndoState();
   editor.value = before + insertText + editor.value.slice(start);
+  const caret = (before + insertText).length;
+  editor.focus();
+  editor.setSelectionRange(caret, caret);
+  render();
+}
+// mermaid edge valuew 
+function buildEdgeSyntax(type) {
+  const edgeType = String(type || 'solid');
+  if (edgeType === 'thick') return 'A ==> B';
+  if (edgeType === 'dashed') return 'A -.-> B';
+  if (edgeType === 'reverse') return 'A <-- B';
+  if (edgeType === 'both') return 'A <--> B';
+  if (edgeType === 'circle-end') return 'A --o B';
+  if (edgeType === 'circle-both') return 'A o--o B';
+  if (edgeType === 'x-end') return 'A --x B';
+  if (edgeType === 'x-both') return 'A x--x B';
+  if (edgeType === 'normal-link') return 'A --- B';
+  if (edgeType === 'thick-link') return 'A === B';
+  if (edgeType === 'dashed-link') return 'A -.- B';
+  if (edgeType === 'invisible-link') return 'A ~~~ B';
+  if (edgeType === 'solid-text-static') return 'A -->|condition| B';
+  if (edgeType === 'thick-text-static') return 'A == important ==> B';
+  if (edgeType === 'dashed-text-static') return 'A -. note .-> B';
+  if (edgeType === 'no-arrow-text') return 'A -- text --- B';
+  if (edgeType === 'one-to-many') return 'A --> B & C & D';
+  if (edgeType === 'many-to-one') return 'B & C & D --> E';
+  if (edgeType === 'chaining') return 'A --> B --> C --> D';
+  if (edgeType === 'complex-chaining') return 'A --> B & C --> D';
+  return 'A --> B';
+}
+
+function insertEdgeByType() {
+  const edgeEl = document.getElementById('edge-type');
+  const edgeLabelEl = document.getElementById('edge-label');
+  const arrowEl = document.getElementById('edge-mode-arrow');
+  const arrowLabelEl = document.getElementById('edge-mode-arrow-label');
+  const labelOnlyEl = document.getElementById('edge-mode-label-only');
+  const edgeTypeRaw = edgeEl ? String(edgeEl.value || '').trim() : '';
+  const edgeType = edgeTypeRaw || 'solid';
+  const edgeLabel = edgeLabelEl && edgeLabelEl.value ? edgeLabelEl.value.trim() : '';
+  const baseSnippet = buildEdgeSyntax(edgeType);
+  const dynamicLabelTypes = new Set([
+    'solid', 'thick', 'dashed', 'reverse', 'both', 'circle-end', 'circle-both',
+    'x-end', 'x-both', 'normal-link', 'thick-link', 'dashed-link'
+  ]);
+  const parts = baseSnippet.split(' ');
+  const arrowToken = parts.length >= 3 ? parts[1] : '-->';
+  const mode = labelOnlyEl && labelOnlyEl.checked
+    ? 'label-only'
+    : (arrowLabelEl && arrowLabelEl.checked ? 'arrow-label' : (arrowEl && arrowEl.checked ? 'arrow' : 'arrow'));
+  let snippet = '';
+  if (mode === 'label-only') {
+    snippet = edgeLabel ? `|${edgeLabel}|` : '|value|';
+  } else if (mode === 'arrow-label') {
+    if (!dynamicLabelTypes.has(edgeType)) {
+      snippet = baseSnippet;
+    } else {
+      const labelText = edgeLabel || 'value';
+      snippet = `A ${arrowToken}|${labelText}| B`;
+    }
+  } else {
+    snippet = baseSnippet;
+  }
+  if (!snippet) return;
+
+  const start = editor.selectionStart;
+  const end = editor.selectionEnd;
+  const before = editor.value.slice(0, start);
+  const after = editor.value.slice(end);
+  const insertText = (before && !before.endsWith('\n') ? '\n' : '') + snippet;
+  pushEditorUndoState();
+  editor.value = before + insertText + after;
   const caret = (before + insertText).length;
   editor.focus();
   editor.setSelectionRange(caret, caret);
@@ -860,6 +1084,7 @@ function getCurrentLineContext(ed) {
 
 function duplicateLine() {
   const ed = editor;
+  pushEditorUndoState();
   const s = ed.selectionStart;
   const e = ed.selectionEnd;
   if (s !== e) {
@@ -878,6 +1103,7 @@ function duplicateLine() {
 
 function moveCurrentLine(dir) {
   const ed = editor;
+  pushEditorUndoState();
   const v = ed.value;
   const s = ed.selectionStart;
   const e = ed.selectionEnd;
@@ -889,15 +1115,59 @@ function moveCurrentLine(dir) {
   const endLine = v.substring(0, blockEnd).split('\n').length - 1;
   const target = dir < 0 ? startLine - 1 : endLine + 1;
   if (target < 0 || target >= lines.length) return;
+  const blockLineCount = endLine - startLine + 1;
+  let newStartLine = startLine;
 
   if (dir < 0) {
     const moved = lines.splice(startLine, endLine - startLine + 1);
     lines.splice(startLine - 1, 0, ...moved);
+    newStartLine = startLine - 1;
   } else {
     const moved = lines.splice(startLine, endLine - startLine + 1);
     lines.splice(startLine + 1, 0, ...moved);
+    newStartLine = startLine + 1;
   }
-  ed.value = lines.join('\n');
+  const newEndLine = newStartLine + blockLineCount - 1;
+  const newValue = lines.join('\n');
+  let newSelStart = 0;
+  for (let i = 0; i < newStartLine; i++) newSelStart += lines[i].length + 1;
+  let newSelEnd = 0;
+  for (let i = 0; i < newEndLine; i++) newSelEnd += lines[i].length + 1;
+  newSelEnd += lines[newEndLine].length;
+
+  ed.value = newValue;
+  ed.focus();
+  ed.setSelectionRange(newSelStart, newSelEnd);
+  render();
+}
+
+function toggleMermaidComment() {
+  const ed = editor;
+  pushEditorUndoState();
+  const v = ed.value;
+  const s = ed.selectionStart;
+  const e = ed.selectionEnd;
+  const blockStart = v.lastIndexOf('\n', s - 1) + 1;
+  let blockEnd = v.indexOf('\n', e);
+  if (blockEnd === -1) blockEnd = v.length;
+
+  const block = v.slice(blockStart, blockEnd);
+  const lines = block.split('\n');
+  const nonEmptyLines = lines.filter(function (line) { return line.trim() !== ''; });
+  const allCommented = nonEmptyLines.length > 0 && nonEmptyLines.every(function (line) {
+    return /^\s*%%\s?/.test(line);
+  });
+
+  const nextLines = lines.map(function (line) {
+    if (line.trim() === '') return line;
+    if (allCommented) return line.replace(/^(\s*)%%\s?/, '$1');
+    return `%% ${line}`;
+  });
+
+  const nextBlock = nextLines.join('\n');
+  ed.value = v.slice(0, blockStart) + nextBlock + v.slice(blockEnd);
+  ed.focus();
+  ed.setSelectionRange(blockStart, blockStart + nextBlock.length);
   render();
 }
 
@@ -934,6 +1204,9 @@ function initPaneDivider() {
 }
 
 editor.addEventListener('input', debounceRender);
+editor.addEventListener('beforeinput', function () {
+  pushEditorUndoState();
+});
 
 // Shortcut bindings
 editor.addEventListener('keydown', function (e) {
@@ -942,9 +1215,22 @@ editor.addEventListener('keydown', function (e) {
   const beforeCursor = this.value.substring(0, start);
   const lineIdx = beforeCursor.split('\n').length - 1;
 
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'z' || e.key === 'Z')) {
+    if (undoEditorChange()) {
+      e.preventDefault();
+      return;
+    }
+  }
+
   if ((e.ctrlKey && e.altKey && e.key === 'ArrowDown') || (e.altKey && e.shiftKey && e.key === 'ArrowDown')) {
     e.preventDefault();
     duplicateLine();
+    return;
+  }
+
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === '/' || e.key === '?' || e.code === 'Slash')) {
+    e.preventDefault();
+    toggleMermaidComment();
     return;
   }
 
@@ -955,6 +1241,9 @@ editor.addEventListener('keydown', function (e) {
 });
 
 initPaneDivider();
+initPreviewWheelZoom();
+applyEditorThemeUI();
+applyEditorScale();
 applyPreviewThemeUI();
 applyPreviewScale();
-render();
+renderWithStartupRecovery();
