@@ -227,6 +227,7 @@
                   <h3>ScholarAI</h3>
                   <span>
                     <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="축소">&gt;축소</button>
+                    <button type="button" class="sa-btn sa-popup-toggle-btn" onclick="scholarAIPopupToggle()" title="팝업창">Popup</button>
                     <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="크게 보기">전체화면</button>
                   </span>
                 </div>
@@ -236,6 +237,11 @@
                     <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">모델선택</button>
                   </div>
                   <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px 0">
+                      <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('researcher')">Researcher</button>
+                      <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
+                      <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
+                    </div>
                     <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="사전 프롬프트를 입력하거나 편집하세요. 필요시 내용을 추가할 수 있습니다." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
                   </div>
                   <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
@@ -281,6 +287,8 @@
                       <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">커서위치삽입</button>
                       <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">문서 한줄 아래에 삽입</button>
                       <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">선택 내용 대체</button>
+                      <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">GenSlide HTMLCode 삽입</button>
+                      <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME) 삽입</button>
                     </div>
                   </div>
                   <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="결과를 크게 보기">🔍 결과 크게 보기</button>
@@ -311,11 +319,15 @@
                     </div>
                   </div>
                 </div>
-                <div class="scholar-ai-history">
-                  <label>히스토리</label>
-                  <input type="text" id="scholar-ai-history-search" placeholder="히스토리 검색..." class="scholar-ai-history-search">
-                  <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
-                  <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()" style="margin-top:4px">히스토리 전체저장</button>
+                <div class="scholar-ai-history" id="scholar-ai-history">
+                  <div class="scholar-ai-history-toolbar" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                    <button type="button" id="scholar-ai-history-toggle-btn" class="sa-btn ghost" onclick="scholarAIToggleHistoryPanel()">히스토리보기</button>
+                    <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()">히스토리 전체저장</button>
+                  </div>
+                  <div id="scholar-ai-history-panel" style="display:none;margin-top:6px">
+                    <input type="text" id="scholar-ai-history-search" placeholder="히스토리 검색..." class="scholar-ai-history-search">
+                    <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -325,6 +337,7 @@
               <div class="ssp-inner">
                 <div class="ssp-header">
                   <h3>🖼 SSP 이미지 생성기</h3>
+                  <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" style="font-size:10px">Popup</button>
                   <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">× 닫기</button>
                 </div>
                 <div class="ssp-main">
@@ -793,7 +806,7 @@
     </div>
 
     <!-- Settings Modal -->
-    <div id="settings-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
+    <div id="settings-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-[2147483645] no-print">
         <div
             class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4 max-h-[90vh] flex flex-col">
             <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0">
@@ -1613,6 +1626,7 @@
     <script src="./js/Scholarref/scholarref.js?v=20260402-1" charset="utf-8" defer></script>
     <script src="./js/templates/templates.js" charset="utf-8" defer></script>
     <script src="./js/extendFiles/extend-files.js" charset="utf-8" defer></script>
+    <script src="./sidebarAI/Scholarai_prompt.js?v=20260406-1" charset="utf-8" defer></script>
     <script src="./trt/editorRule.js" charset="utf-8" defer></script>
     <script src="./googleDocs/googleDocs.js?v=20260330-1" charset="utf-8" defer></script>
     <script src="./js/export/html-export.js" charset="utf-8" defer></script>

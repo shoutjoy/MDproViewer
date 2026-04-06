@@ -6257,8 +6257,10 @@ async function applyAiFeatureVisibility() {
         } else {
             const sch = document.getElementById('scholar-ai-sidebar');
             const ssp = document.getElementById('ssp-ai-sidebar');
-            const anyOpen = (sch && sch.classList.contains('open')) || (ssp && ssp.classList.contains('open'));
-            if (!anyOpen) {
+            const schDockOpen = sch && sch.classList.contains('open') && !sch.classList.contains('popup') && !sch.classList.contains('fullscreen');
+            const sspDockOpen = ssp && ssp.classList.contains('open') && !ssp.classList.contains('popup');
+            const anyDockOpen = !!(schDockOpen || sspDockOpen);
+            if (!anyDockOpen) {
                 wrap.classList.add('hidden');
                 wrap.style.width = '0';
                 wrap.style.display = 'none';
@@ -6281,17 +6283,25 @@ function setAiSidebarWrapVisible(w, isLoading) {
     var sb = document.getElementById('sidebar');
     width = Math.min(width, Math.max(300, window.innerWidth - (sb ? sb.offsetWidth : 0) - 260));
     const isDark = document.documentElement.classList.contains('dark');
+    const header = document.querySelector('header.app-header');
+    const topOffset = header ? Math.max(0, Math.round(header.getBoundingClientRect().bottom)) : 0;
+    const overlayZ = 2147483200;
     wrap.classList.remove('hidden');
     wrap.style.cssText = [
         'display:flex',
         'flex-direction:column',
+        'position:fixed',
+        'top:' + topOffset + 'px',
+        'right:0',
+        'bottom:0',
+        'z-index:' + overlayZ,
+        'pointer-events:auto',
         'flex-shrink:0',
-        'align-self:stretch',
         'width:' + width + 'px',
         'min-width:0',
-        'max-width:96vw',
+        'max-width:min(96vw, calc(100vw - 120px))',
         'min-height:0',
-        'height:auto',
+        'height:calc(100vh - ' + topOffset + 'px)',
         'overflow:hidden',
         'box-shadow:-4px 0 16px rgba(0,0,0,0.08)',
         'border-left:1px solid ' + (isDark ? '#334155' : '#e2e8f0'),
@@ -6316,19 +6326,21 @@ function refreshAiRightSidebarWrap() {
     const ssp = document.getElementById('ssp-ai-sidebar');
     const schOpen = sch && sch.classList.contains('open');
     const sspOpen = ssp && ssp.classList.contains('open');
-    if (!schOpen && !sspOpen) {
+    const schDockOpen = schOpen && !sch.classList.contains('popup') && !sch.classList.contains('fullscreen');
+    const sspDockOpen = sspOpen && !ssp.classList.contains('popup');
+    if (!schDockOpen && !sspDockOpen) {
         wrap.classList.add('hidden');
         wrap.style.cssText = 'width:0!important;min-width:0!important;max-width:0!important;display:none!important;flex:0!important;overflow:hidden!important;border:none!important;box-shadow:none!important;padding:0!important;margin:0!important;';
         updateHeaderAiButtonsActive();
         return;
     }
     var w = 400;
-    if (schOpen && sspOpen) {
+    if (schDockOpen && sspDockOpen) {
         var sw = (sch && sch.offsetWidth > 80) ? sch.offsetWidth : 380;
         var pw = (ssp && ssp.offsetWidth > 80) ? ssp.offsetWidth : 400;
         w = Math.min(Math.max(sw + pw, 720), Math.floor(window.innerWidth * 0.96));
-    } else if (schOpen) w = Math.max(360, Math.min((sch && sch.offsetWidth) || 380, 520));
-    else if (sspOpen) w = Math.max(360, Math.min((ssp && ssp.offsetWidth) || 400, 520));
+    } else if (schDockOpen) w = Math.max(360, Math.min((sch && sch.offsetWidth) || 380, 520));
+    else if (sspDockOpen) w = Math.max(360, Math.min((ssp && ssp.offsetWidth) || 400, 520));
     w = Math.min(w, Math.floor(window.innerWidth * 0.96));
     var sidebarLeft = document.getElementById('sidebar');
     var leftW = sidebarLeft ? sidebarLeft.offsetWidth : 0;
@@ -6336,17 +6348,25 @@ function refreshAiRightSidebarWrap() {
     var maxAi = Math.max(300, window.innerWidth - leftW - minMain);
     w = Math.min(w, maxAi);
     const isDark = document.documentElement.classList.contains('dark');
+    const header = document.querySelector('header.app-header');
+    const topOffset = header ? Math.max(0, Math.round(header.getBoundingClientRect().bottom)) : 0;
+    const overlayZ = 2147483200;
     wrap.classList.remove('hidden');
     wrap.style.cssText = [
         'display:flex',
         'flex-direction:column',
+        'position:fixed',
+        'top:' + topOffset + 'px',
+        'right:0',
+        'bottom:0',
+        'z-index:' + overlayZ,
+        'pointer-events:auto',
         'flex-shrink:0',
-        'align-self:stretch',
         'width:' + w + 'px',
         'min-width:0',
-        'max-width:96vw',
+        'max-width:min(96vw, calc(100vw - 120px))',
         'min-height:0',
-        'height:auto',
+        'height:calc(100vh - ' + topOffset + 'px)',
         'overflow:hidden',
         'box-shadow:-4px 0 16px rgba(0,0,0,0.08)',
         'border-left:1px solid ' + (isDark ? '#334155' : '#e2e8f0'),
@@ -6358,7 +6378,7 @@ function refreshAiRightSidebarWrap() {
         inner.style.display = 'flex';
         inner.style.flexDirection = 'row';
         inner.style.alignItems = 'stretch';
-        inner.style.overflowX = schOpen && sspOpen ? 'auto' : 'hidden';
+        inner.style.overflowX = schDockOpen && sspDockOpen ? 'auto' : 'hidden';
         inner.style.overflowY = 'hidden';
         inner.style.width = '100%';
     }
@@ -6672,8 +6692,19 @@ function ensureSidebarAILoaded() {
                     if (window._abortController === ctrl) window._abortController = null;
                 }
             },
-            getScholarAISystemInstruction: function () { return localStorage.getItem('ss_scholar_ai_system') || ''; },
-            setScholarAISystemInstruction: function (text) { localStorage.setItem('ss_scholar_ai_system', text || ''); },
+            getScholarAISystemInstruction: function () {
+                const saved = (localStorage.getItem('ss_scholar_ai_system') || '').trim();
+                if (saved) return saved;
+                if (typeof window.getDefaultScholarAIPrompt === 'function') {
+                    try { return window.getDefaultScholarAIPrompt() || ''; } catch (e) {}
+                }
+                return '';
+            },
+            setScholarAISystemInstruction: function (text) {
+                const next = String(text || '').trim();
+                if (!next) localStorage.removeItem('ss_scholar_ai_system');
+                else localStorage.setItem('ss_scholar_ai_system', next);
+            },
             getScholarAIModelId: function () { return localStorage.getItem('ss_scholar_ai_model') || 'gemini-2.5-pro'; },
             setScholarAIModelId: function (id) { localStorage.setItem('ss_scholar_ai_model', id || ''); },
             getImageModelId: function () { return localStorage.getItem('ss_image_model') || 'gemini-2.5-flash-image'; },

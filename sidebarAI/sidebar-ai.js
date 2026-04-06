@@ -32,6 +32,7 @@
       <h3>ScholarAI</h3>
       <span>
         <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
+        <button type="button" class="sa-btn sa-popup-toggle-btn" onclick="scholarAIPopupToggle()" title="Popup window">Popup</button>
         <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">Fullscreen</button>
       </span>
     </div>
@@ -41,6 +42,11 @@
         <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">Model</button>
       </div>
       <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px 0">
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('researcher')">Researcher</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
+        </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
       </div>
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
@@ -86,6 +92,8 @@
           <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
           <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
           <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
+          <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">GenSlide HTMLCode</button>
+          <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
       </div>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
@@ -116,11 +124,15 @@
         </div>
       </div>
     </div>
-    <div class="scholar-ai-history">
-      <label>History</label>
-      <input type="text" id="scholar-ai-history-search" placeholder="Search history..." class="scholar-ai-history-search">
-      <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()" style="margin-top:4px">Save all history</button>
+    <div class="scholar-ai-history" id="scholar-ai-history">
+      <div class="scholar-ai-history-toolbar" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button type="button" id="scholar-ai-history-toggle-btn" class="sa-btn ghost" onclick="scholarAIToggleHistoryPanel()">히스토리보기</button>
+        <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()">히스토리 전체저장</button>
+      </div>
+      <div id="scholar-ai-history-panel" style="display:none;margin-top:6px">
+        <input type="text" id="scholar-ai-history-search" placeholder="히스토리 검색..." class="scholar-ai-history-search">
+        <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -130,6 +142,7 @@
   <div class="ssp-inner">
     <div class="ssp-header">
       <h3>SSP Image Generator</h3>
+      <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" style="font-size:10px">Popup</button>
       <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">Close</button>
     </div>
     <div class="ssp-main">
@@ -239,6 +252,7 @@
       <h3>ScholarAI</h3>
       <span>
         <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
+        <button type="button" class="sa-btn sa-popup-toggle-btn" onclick="scholarAIPopupToggle()" title="Popup window">Popup</button>
         <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">Fullscreen</button>
       </span>
     </div>
@@ -248,6 +262,11 @@
         <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">Model</button>
       </div>
       <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px 0">
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('researcher')">Researcher</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
+        </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
       </div>
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
@@ -293,6 +312,8 @@
           <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
           <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
           <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
+          <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">GenSlide HTMLCode</button>
+          <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
       </div>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
@@ -323,11 +344,15 @@
         </div>
       </div>
     </div>
-    <div class="scholar-ai-history">
-      <label>History</label>
-      <input type="text" id="scholar-ai-history-search" placeholder="Search history..." class="scholar-ai-history-search">
-      <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
-      <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()" style="margin-top:4px">Save all history</button>
+    <div class="scholar-ai-history" id="scholar-ai-history">
+      <div class="scholar-ai-history-toolbar" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button type="button" id="scholar-ai-history-toggle-btn" class="sa-btn ghost" onclick="scholarAIToggleHistoryPanel()">히스토리보기</button>
+        <button type="button" class="sa-btn ghost" onclick="scholarAIHistorySaveAll()">히스토리 전체저장</button>
+      </div>
+      <div id="scholar-ai-history-panel" style="display:none;margin-top:6px">
+        <input type="text" id="scholar-ai-history-search" placeholder="히스토리 검색..." class="scholar-ai-history-search">
+        <div id="scholar-ai-history-list" class="scholar-ai-history-list"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -337,6 +362,7 @@
   <div class="ssp-inner">
     <div class="ssp-header">
       <h3>SSP Image Generator</h3>
+      <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" style="font-size:10px">Popup</button>
       <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">Close</button>
     </div>
     <div class="ssp-main">
@@ -433,6 +459,8 @@
 `;
 
   var __scholarAISelStart = null, __scholarAISelEnd = null, __scholarAICursorPos = null, __scholarAIResultFontSize = 13;
+  var __scholarAILastSelectionTarget = null, __scholarAILastSelectionDoc = null;
+  var __scholarAIActiveResultTab = 'insert';
   var __scholarAIZoomPercent = 100, __scholarAIZoomMode = 'edit';
   window.__scholarAIZoomMode = __scholarAIZoomMode;
   var __scholarAIRunning = false;
@@ -443,6 +471,11 @@
   var __viewerSSPExternalFsGallery = [];
   var LS_SSP_IMG_HISTORY = 'ss_viewer_ssp_img_history';
   var LS_SSP_PANEL_SPLIT = 'ss_viewer_ssp_panel_split';
+  var LS_SA_POPUP_MODE = 'ss_viewer_sa_popup_mode';
+  var LS_SSP_POPUP_MODE = 'ss_viewer_ssp_popup_mode';
+  var LS_SA_HISTORY_COLLAPSED = 'ss_viewer_sa_history_collapsed';
+  var LS_SA_POPUP_RECT = 'ss_viewer_sa_popup_rect';
+  var LS_SSP_POPUP_RECT = 'ss_viewer_ssp_popup_rect';
   var LS_SA_TONE_PRESET = 'ss_viewer_scholar_ai_tone_preset';
   var SA_TONE_DEFAULT = 'academic_ida';
   var SSP_IMG_HISTORY_MAX = 10;
@@ -480,6 +513,157 @@
   }
   function getSidebarAIHtml() {
     return CLEAN_SIDEBAR_AI_HTML;
+  }
+
+  function getPopupModeKey(panelId) {
+    return panelId === 'ssp-ai-sidebar' ? LS_SSP_POPUP_MODE : LS_SA_POPUP_MODE;
+  }
+
+  function getPopupRectKey(panelId) {
+    return panelId === 'ssp-ai-sidebar' ? LS_SSP_POPUP_RECT : LS_SA_POPUP_RECT;
+  }
+
+  function isPanelPopupMode(panelId) {
+    var key = getPopupModeKey(panelId);
+    try { return localStorage.getItem(key) === '1'; } catch (e) { return false; }
+  }
+
+  function updatePopupToggleLabels() {
+    var sa = document.getElementById('scholar-ai-sidebar');
+    var sp = document.getElementById('ssp-ai-sidebar');
+    var saPopup = !!(sa && sa.classList.contains('popup'));
+    var spPopup = !!(sp && sp.classList.contains('popup'));
+    var saBtns = document.querySelectorAll('.sa-popup-toggle-btn');
+    var spBtns = document.querySelectorAll('.ssp-popup-toggle-btn');
+    for (var i = 0; i < saBtns.length; i++) saBtns[i].textContent = saPopup ? 'Dock' : 'Popup';
+    for (var j = 0; j < spBtns.length; j++) spBtns[j].textContent = spPopup ? 'Dock' : 'Popup';
+  }
+
+  function savePanelPopupRect(panelId, panel) {
+    if (!panel || !panel.classList.contains('popup') || !panel.classList.contains('open')) return;
+    var rect = panel.getBoundingClientRect();
+    var payload = {
+      left: Math.round(rect.left),
+      top: Math.round(rect.top),
+      width: Math.round(rect.width),
+      height: Math.round(rect.height)
+    };
+    try { localStorage.setItem(getPopupRectKey(panelId), JSON.stringify(payload)); } catch (e) {}
+  }
+
+  function loadPanelPopupRect(panelId) {
+    try {
+      var raw = localStorage.getItem(getPopupRectKey(panelId));
+      if (!raw) return null;
+      var obj = JSON.parse(raw);
+      if (!obj || !isFinite(obj.left) || !isFinite(obj.top) || !isFinite(obj.width) || !isFinite(obj.height)) return null;
+      return obj;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function applyPanelPopupRect(panelId, panel) {
+    if (!panel) return;
+    var vw = Math.max(320, window.innerWidth || 1280);
+    var vh = Math.max(240, window.innerHeight || 720);
+    var saved = loadPanelPopupRect(panelId);
+    var defaultRect = panelId === 'ssp-ai-sidebar'
+      ? { left: Math.max(12, vw - 460), top: 72, width: 420, height: Math.min(760, Math.round(vh * 0.82)) }
+      : { left: Math.max(12, vw - 520), top: 72, width: 480, height: Math.min(780, Math.round(vh * 0.84)) };
+    var rect = saved || defaultRect;
+    var minW = 320, minH = 280;
+    var width = Math.max(minW, Math.min(vw - 24, rect.width));
+    var height = Math.max(minH, Math.min(vh - 24, rect.height));
+    var left = Math.max(8, Math.min(vw - width - 8, rect.left));
+    var top = Math.max(8, Math.min(vh - height - 8, rect.top));
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+    panel.style.width = width + 'px';
+    panel.style.height = height + 'px';
+  }
+
+  function setPanelPopupMode(panelId, enable) {
+    var panel = document.getElementById(panelId);
+    var inner = document.getElementById('ai-right-sidebar-inner');
+    if (!panel) return;
+    var on = !!enable;
+    try { localStorage.setItem(getPopupModeKey(panelId), on ? '1' : '0'); } catch (e) {}
+    if (on) {
+      panel.classList.add('popup');
+      panel.classList.remove('fullscreen');
+      if (panel.classList.contains('open')) {
+        if (panel.parentNode !== document.body) document.body.appendChild(panel);
+        applyPanelPopupRect(panelId, panel);
+      }
+    } else {
+      savePanelPopupRect(panelId, panel);
+      panel.classList.remove('popup');
+      panel.classList.remove('fullscreen');
+      panel.style.left = '';
+      panel.style.top = '';
+      panel.style.height = '';
+      panel.style.width = '';
+      if (inner && panel.parentNode !== inner) {
+        if (panelId === 'scholar-ai-sidebar') inner.insertBefore(panel, inner.firstChild);
+        else inner.appendChild(panel);
+      }
+    }
+    updatePopupToggleLabels();
+    try { if (typeof window.refreshAiRightSidebarWrap === 'function') window.refreshAiRightSidebarWrap(); } catch (e) {}
+  }
+
+  function ensurePanelPopupDraggable(panelId, headerSelector) {
+    var panel = document.getElementById(panelId);
+    var header = document.querySelector(headerSelector);
+    if (!panel || !header || header.__popupDragBound) return;
+    header.__popupDragBound = true;
+    header.addEventListener('pointerdown', function (e) {
+      if (!panel.classList.contains('popup') || !panel.classList.contains('open')) return;
+      var t = e.target;
+      if (t && t.closest && t.closest('button, input, select, textarea, a, .sa-btn')) return;
+      var rect = panel.getBoundingClientRect();
+      var startX = e.clientX;
+      var startY = e.clientY;
+      var startLeft = rect.left;
+      var startTop = rect.top;
+      if (header.setPointerCapture) {
+        try { header.setPointerCapture(e.pointerId); } catch (err) {}
+      }
+      document.body.style.userSelect = 'none';
+      var onMove = function (ev) {
+        var vw = Math.max(320, window.innerWidth || 1280);
+        var vh = Math.max(240, window.innerHeight || 720);
+        var nextLeft = startLeft + (ev.clientX - startX);
+        var nextTop = startTop + (ev.clientY - startY);
+        nextLeft = Math.max(8, Math.min(vw - panel.offsetWidth - 8, nextLeft));
+        nextTop = Math.max(8, Math.min(vh - panel.offsetHeight - 8, nextTop));
+        panel.style.left = Math.round(nextLeft) + 'px';
+        panel.style.top = Math.round(nextTop) + 'px';
+      };
+      var onUp = function () {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
+        document.body.style.userSelect = '';
+        savePanelPopupRect(panelId, panel);
+      };
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+      document.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  function scholarAIPopupToggle() {
+    var panel = document.getElementById('scholar-ai-sidebar');
+    if (!panel) return;
+    setPanelPopupMode('scholar-ai-sidebar', !panel.classList.contains('popup'));
+  }
+
+  function sspAIPopupToggle() {
+    var panel = document.getElementById('ssp-ai-sidebar');
+    if (!panel) return;
+    setPanelPopupMode('ssp-ai-sidebar', !panel.classList.contains('popup'));
   }
 
   function notifyUser(message, isError) {
@@ -853,54 +1037,101 @@
     return document.getElementById('viewer') || document.getElementById('page-content');
   }
 
+  function isAiPanelElement(node) {
+    if (!node) return false;
+    var el = node.nodeType === 1 ? node : node.parentElement;
+    if (!el || !el.closest) return false;
+    return !!el.closest('#scholar-ai-sidebar, #ssp-ai-sidebar, #ai-right-sidebar-wrap');
+  }
+
+  function isTextSelectionControl(el) {
+    if (!el || !el.tagName) return false;
+    var tag = String(el.tagName).toUpperCase();
+    if (tag === 'TEXTAREA') return true;
+    if (tag !== 'INPUT') return false;
+    var type = String(el.type || 'text').toLowerCase();
+    return ['text', 'search', 'url', 'tel', 'password', 'email', 'number'].indexOf(type) >= 0;
+  }
+
+  function captureSelectionFromTextControl(docRef) {
+    if (!docRef) return null;
+    var active = docRef.activeElement;
+    if (!isTextSelectionControl(active) || isAiPanelElement(active)) return null;
+    var s = Number(active.selectionStart);
+    var e = Number(active.selectionEnd);
+    if (!isFinite(s) || !isFinite(e) || s === e) return null;
+    var start = Math.max(0, Math.min(s, e));
+    var end = Math.max(0, Math.max(s, e));
+    var raw = String(active.value || '');
+    var text = raw.slice(start, end).trim();
+    if (!text) return null;
+    return { text: text, start: start, end: end, target: active, doc: docRef, source: 'text-control' };
+  }
+
+  function captureSelectionFromDom(docRef, rootLimit) {
+    if (!docRef || typeof docRef.getSelection !== 'function') return null;
+    var sel = null;
+    try { sel = docRef.getSelection(); } catch (e) { return null; }
+    if (!sel || sel.isCollapsed || !sel.anchorNode) return null;
+    var anchor = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+    if (!anchor) return null;
+    if (isAiPanelElement(anchor)) return null;
+    if (rootLimit && !rootLimit.contains(anchor)) return null;
+    var text = String(sel.toString() || '').trim();
+    if (!text) return null;
+    return { text: text, start: null, end: null, target: null, doc: docRef, source: 'dom' };
+  }
+
+  function captureSelectionFromIframes() {
+    var iframes = document.querySelectorAll('iframe');
+    for (var i = 0; i < iframes.length; i++) {
+      var frame = iframes[i];
+      var fd = null;
+      try { fd = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document); } catch (e) { fd = null; }
+      if (!fd) continue;
+      var fromControl = captureSelectionFromTextControl(fd);
+      if (fromControl) return fromControl;
+      var fromDom = captureSelectionFromDom(fd, null);
+      if (fromDom) return fromDom;
+    }
+    return null;
+  }
+
   var __aiDocSelTimer = null;
  
   function syncAiPanelsFromDocumentSelection() {
     var viewer = getViewerMarkdownRoot();
-    var editTa = document.getElementById('viewer-edit-ta');
-    var vp = document.getElementById('content-viewport');
-    var isEdit = vp && vp.classList.contains('viewer-edit-active') && !vp.classList.contains('hidden');
     var taPassage = document.getElementById('scholar-ai-selected');
     var sspPrompt = document.getElementById('ssp-prompt');
     if (!taPassage && !sspPrompt) return;
-    var text = '';
-    var edStart, edEnd, fromEditor = false;
-    if (isEdit && editTa) {
-      var s = editTa.selectionStart, e = editTa.selectionEnd;
-      if (s !== e) {
-        text = editTa.value.slice(s, e).trim();
-        if (text) {
-          fromEditor = true;
-          edStart = s;
-          edEnd = e;
-        }
+
+    var pick = null;
+    if (!pick) pick = captureSelectionFromTextControl(document);
+    if (!pick && viewer) pick = captureSelectionFromDom(document, viewer);
+    if (!pick) pick = captureSelectionFromDom(document, null);
+    if (!pick) pick = captureSelectionFromIframes();
+
+    if (!pick || !pick.text) {
+      if (taPassage && (window.__contentType || '') === 'summary' && (!taPassage.value || !String(taPassage.value).trim())) {
+        taPassage.value = 'Select a passage from the document to start the AI analysis.';
       }
+      return;
     }
-    if (!text && viewer) {
-      var sel = window.getSelection && window.getSelection();
-      if (sel && !sel.isCollapsed && sel.anchorNode && viewer.contains(sel.anchorNode)) {
-        var schBar = document.getElementById('scholar-ai-sidebar');
-        var sspBar = document.getElementById('ssp-ai-sidebar');
-        if (schBar && schBar.contains(sel.anchorNode)) return;
-        if (sspBar && sspBar.contains(sel.anchorNode)) return;
-        text = sel.toString().trim();
-      }
-    }
-if (!text) {
-  if (taPassage && (window.__contentType || '') === 'summary' && (!taPassage.value || !String(taPassage.value).trim())) {
-    
-    taPassage.value = 'Select a passage from the document to start the AI analysis.';
-  }
-  return;
-}
-    if (fromEditor) {
-      __scholarAISelStart = edStart;
-      __scholarAISelEnd = edEnd;
+
+    if (pick.source === 'text-control') {
+      __scholarAISelStart = pick.start;
+      __scholarAISelEnd = pick.end;
+      __scholarAICursorPos = pick.end;
+      __scholarAILastSelectionTarget = pick.target || null;
+      __scholarAILastSelectionDoc = pick.doc || null;
     } else {
       __scholarAISelStart = __scholarAISelEnd = null;
+      __scholarAILastSelectionTarget = null;
+      __scholarAILastSelectionDoc = pick.doc || null;
     }
-    if (taPassage) taPassage.value = text;
-    if (sspPrompt) sspPrompt.value = text;
+
+    if (taPassage) taPassage.value = pick.text;
+    if (sspPrompt) sspPrompt.value = pick.text;
   }
 
   function onAiGlobalSelectionChange() {
@@ -913,6 +1144,11 @@ if (!text) {
     if (!el) return;
     el.classList.toggle('open');
     if (el.classList.contains('open')) {
+      if (el.classList.contains('popup') || isPanelPopupMode('scholar-ai-sidebar')) {
+        el.classList.add('popup');
+        if (el.parentNode !== document.body) document.body.appendChild(el);
+        applyPanelPopupRect('scholar-ai-sidebar', el);
+      }
       syncAiPanelsFromDocumentSelection();
       scholarAIInitResize();
       scholarAILoadPrePrompt();
@@ -920,9 +1156,11 @@ if (!text) {
       scholarAIInitToneSelect();
     } else {
       el.classList.remove('fullscreen');
-      var inner = document.getElementById('ai-right-sidebar-inner');
-      if (inner && el.parentNode !== inner) {
-        inner.insertBefore(el, inner.firstChild);
+      if (!el.classList.contains('popup')) {
+        var inner = document.getElementById('ai-right-sidebar-inner');
+        if (inner && el.parentNode !== inner) {
+          inner.insertBefore(el, inner.firstChild);
+        }
       }
       try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
     }
@@ -960,9 +1198,10 @@ if (!text) {
     var el = document.getElementById('scholar-ai-sidebar');
     var inner = document.getElementById('ai-right-sidebar-inner');
     if (el) {
+      savePanelPopupRect('scholar-ai-sidebar', el);
       el.classList.remove('open');
       el.classList.remove('fullscreen');
-      if (inner && el.parentNode !== inner) {
+      if (!el.classList.contains('popup') && inner && el.parentNode !== inner) {
         inner.insertBefore(el, inner.firstChild);
       }
     }
@@ -1005,6 +1244,17 @@ if (!text) {
         if (typeof setter === 'function') setter(el.value || '');
       });
     }
+  }
+  function scholarAIUsePromptRole(role) {
+    var el = document.getElementById('scholar-ai-pre-prompt-text');
+    if (!el) return;
+    if (typeof window.getScholarAIPromptByRole !== 'function') return;
+    var next = '';
+    try { next = window.getScholarAIPromptByRole(role) || ''; } catch (e) { next = ''; }
+    if (!next) return;
+    el.value = next;
+    var setter = getCallback('setScholarAISystemInstruction');
+    if (typeof setter === 'function') setter(next);
   }
   function scholarAIInitModelSelect() {
     var sel = document.getElementById('scholar-ai-model-select');
@@ -1056,7 +1306,10 @@ if (!text) {
     var inner = document.getElementById('ai-right-sidebar-inner');
     if (el.classList.contains('fullscreen')) {
       el.classList.remove('fullscreen');
-      if (inner && el.parentNode !== inner) {
+      if (el.classList.contains('popup')) {
+        if (el.parentNode !== document.body) document.body.appendChild(el);
+        applyPanelPopupRect('scholar-ai-sidebar', el);
+      } else if (inner && el.parentNode !== inner) {
         inner.insertBefore(el, inner.firstChild);
       }
     } else {
@@ -1073,6 +1326,27 @@ if (!text) {
   function scholarAIHistoryAdd(promptSnippet, resultText) {
     __scholarAIHistory.unshift({ id: Date.now(), prompt: promptSnippet || '', result: resultText || '', at: new Date().toISOString() });
     scholarAIHistorySave();
+  }
+  function scholarAISetHistoryCollapsed(collapsed) {
+    var panel = document.getElementById('scholar-ai-history-panel');
+    var btn = document.getElementById('scholar-ai-history-toggle-btn');
+    var nextCollapsed = !!collapsed;
+    if (panel) panel.style.display = nextCollapsed ? 'none' : 'block';
+    if (btn) btn.textContent = nextCollapsed ? '히스토리보기' : '히스토리닫기';
+    try { localStorage.setItem(LS_SA_HISTORY_COLLAPSED, nextCollapsed ? '1' : '0'); } catch (e) {}
+  }
+  function scholarAIToggleHistoryPanel() {
+    var panel = document.getElementById('scholar-ai-history-panel');
+    if (!panel) return;
+    var collapsed = panel.style.display === 'none' || !panel.style.display;
+    scholarAISetHistoryCollapsed(!collapsed);
+  }
+  function scholarAIInitHistoryPanel() {
+    var collapsed = true;
+    try {
+      collapsed = (localStorage.getItem(LS_SA_HISTORY_COLLAPSED) || '1') !== '0';
+    } catch (e) {}
+    scholarAISetHistoryCollapsed(collapsed);
   }
   function scholarAIHistoryRender() {
     var list = document.getElementById('scholar-ai-history-list');
@@ -1092,8 +1366,7 @@ if (!text) {
   function scholarAIHistoryShowResult(idx) {
     var h = __scholarAIHistory[idx];
     if (!h) return;
-    var el = document.getElementById('scholar-ai-result');
-    if (el) el.value = h.result;
+    scholarAIApplyResultText(h.result || '');
   }
   function scholarAIHistoryDelete(idx) {
     __scholarAIHistory.splice(idx, 1);
@@ -1143,22 +1416,148 @@ if (!text) {
       try { abortFn(); } catch (e) {}
     }
     var resultEl = document.getElementById('scholar-ai-result');
+    var insertEl = document.getElementById('scholar-ai-result-insert');
     if (resultEl && resultEl.value === 'Running ScholarAI...') {
       resultEl.value = 'Stopped by user.';
     }
+    if (insertEl && insertEl.value === 'Running ScholarAI...') insertEl.value = '';
     scholarAISetRunningState(false);
+  }
+
+  function scholarAIEnsureResultTabs() {
+    var wrap = document.getElementById('scholar-ai-result-wrap');
+    if (!wrap || wrap.getAttribute('data-sa-tabs-ready') === '1') return;
+    var explainTa = document.getElementById('scholar-ai-result');
+    if (!explainTa) return;
+    var label = wrap.querySelector('label');
+    if (label) label.textContent = '결과';
+
+    var tabBar = document.createElement('div');
+    tabBar.className = 'scholar-ai-result-tabs';
+    tabBar.style.cssText = 'display:flex;gap:6px;align-items:center;margin:4px 0 6px 0;';
+    tabBar.innerHTML = ''
+      + '<button type="button" id="scholar-ai-tab-explanation" class="sa-btn ghost" style="font-size:11px;padding:4px 8px" onclick="scholarAISetResultTab(\'explanation\')">설명</button>'
+      + '<button type="button" id="scholar-ai-tab-insert" class="sa-btn ghost" style="font-size:11px;padding:4px 8px" onclick="scholarAISetResultTab(\'insert\')">삽입 결과</button>';
+    if (label && label.parentNode) label.parentNode.insertBefore(tabBar, explainTa);
+
+    var insertTa = document.getElementById('scholar-ai-result-insert');
+    if (!insertTa) {
+      insertTa = explainTa.cloneNode(false);
+      insertTa.id = 'scholar-ai-result-insert';
+      insertTa.className = (insertTa.className || '') + ' scholar-ai-result-insert';
+      insertTa.placeholder = '문서에 삽입할 최종 결과가 여기에 표시됩니다.';
+      insertTa.style.display = 'none';
+      if (explainTa.nextSibling) wrap.insertBefore(insertTa, explainTa.nextSibling);
+      else wrap.appendChild(insertTa);
+    }
+    wrap.setAttribute('data-sa-tabs-ready', '1');
+    scholarAISetResultTab(__scholarAIActiveResultTab || 'insert');
+  }
+
+  function scholarAISetResultTab(tab) {
+    __scholarAIActiveResultTab = tab === 'explanation' ? 'explanation' : 'insert';
+    var explainTa = document.getElementById('scholar-ai-result');
+    var insertTa = document.getElementById('scholar-ai-result-insert');
+    var tabExplain = document.getElementById('scholar-ai-tab-explanation');
+    var tabInsert = document.getElementById('scholar-ai-tab-insert');
+    if (!explainTa || !insertTa) return;
+    var showExplain = __scholarAIActiveResultTab === 'explanation';
+    explainTa.style.display = showExplain ? 'block' : 'none';
+    insertTa.style.display = showExplain ? 'none' : 'block';
+    if (tabExplain) tabExplain.classList.toggle('active', showExplain);
+    if (tabInsert) tabInsert.classList.toggle('active', !showExplain);
+  }
+
+  function scholarAIGetActiveResultTextarea() {
+    var explainTa = document.getElementById('scholar-ai-result');
+    var insertTa = document.getElementById('scholar-ai-result-insert');
+    if (__scholarAIActiveResultTab === 'explanation') return explainTa || insertTa;
+    return insertTa || explainTa;
+  }
+
+  function scholarAINormalizeResultText(text) {
+    var t = String(text || '').trim();
+    if (!t) return '';
+    t = t.replace(/^html\s*\n/i, '').replace(/^markdown\s*\n/i, '').replace(/^md\s*\n/i, '').trim();
+    t = t.replace(/^```[a-zA-Z0-9_-]*\n?/, '').replace(/```$/, '').trim();
+    return t;
+  }
+
+  function scholarAIParseExplanationResult(raw) {
+    var text = String(raw || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return { explanation: '', result: '' };
+
+    var markerRe = /\[\s*(EXPLANATION|RESULT|설명|결과)\s*(?::[^\]]*)?\]/ig;
+    var marks = [];
+    var m = null;
+    while ((m = markerRe.exec(text)) !== null) {
+      var rawKey = String(m[1] || '');
+      var normKey = (/^설명$/i.test(rawKey) ? 'EXPLANATION' : (/^결과$/i.test(rawKey) ? 'RESULT' : rawKey.toUpperCase()));
+      marks.push({ key: normKey, idx: m.index, end: markerRe.lastIndex });
+    }
+    if (marks.length) {
+      var explanation = '';
+      var result = '';
+      for (var i = 0; i < marks.length; i++) {
+        var cur = marks[i];
+        var next = marks[i + 1];
+        var seg = text.slice(cur.end, next ? next.idx : text.length).trim();
+        if (cur.key === 'EXPLANATION') explanation += (explanation ? '\n\n' : '') + seg;
+        if (cur.key === 'RESULT') result += (result ? '\n\n' : '') + seg;
+      }
+      return { explanation: explanation.trim(), result: scholarAINormalizeResultText(result) };
+    }
+
+    var fenceMatch = text.match(/```[a-zA-Z0-9_-]*\n([\s\S]*?)```/);
+    if (fenceMatch && fenceMatch[1]) {
+      var code = String(fenceMatch[1] || '').trim();
+      var explanationPart = text.replace(fenceMatch[0], '').trim();
+      return { explanation: explanationPart, result: scholarAINormalizeResultText(code) };
+    }
+
+    if (/^\s*<!DOCTYPE html/i.test(text) || /^\s*<html[\s>]/i.test(text) || /^\s*<(div|section|article|main|style|script)[\s>]/i.test(text)) {
+      return { explanation: '', result: scholarAINormalizeResultText(text) };
+    }
+    return { explanation: text, result: '' };
+  }
+
+  function scholarAIApplyResultText(rawText) {
+    scholarAIEnsureResultTabs();
+    var parsed = scholarAIParseExplanationResult(rawText);
+    var explainEl = document.getElementById('scholar-ai-result');
+    var insertEl = document.getElementById('scholar-ai-result-insert');
+    if (explainEl) explainEl.value = parsed.explanation || '';
+    if (insertEl) insertEl.value = parsed.result || '';
+    if (insertEl && insertEl.value) scholarAISetResultTab('insert');
+    else scholarAISetResultTab('explanation');
+    return {
+      explanation: explainEl ? explainEl.value : '',
+      result: insertEl ? insertEl.value : ''
+    };
+  }
+
+  function scholarAIGetInsertResultText() {
+    var insertEl = document.getElementById('scholar-ai-result-insert');
+    var explainEl = document.getElementById('scholar-ai-result');
+    var insertText = insertEl && insertEl.value ? String(insertEl.value).trim() : '';
+    if (insertText) return insertText;
+    var explainText = explainEl && explainEl.value ? String(explainEl.value).trim() : '';
+    var parsed = scholarAIParseExplanationResult(explainText);
+    return parsed.result || '';
   }
 
   async function scholarAIRun() {
     var sel = document.getElementById('scholar-ai-selected');
     var promptEl = document.getElementById('scholar-ai-prompt');
     var resultEl = document.getElementById('scholar-ai-result');
+    var insertEl = document.getElementById('scholar-ai-result-insert');
     var passage = (sel && sel.value) ? sel.value.trim() : '';
     var userQ = (promptEl && promptEl.value) ? promptEl.value.trim() : '';
     if (!passage) { alert('Please provide selected text to analyze.'); return; }
     var callGemini = getCallback('callGemini');
     if (typeof callGemini !== 'function') { alert('ScholarAI API is not available. Please check your settings.'); return; }
     if (resultEl) resultEl.value = 'Running ScholarAI...';
+    if (insertEl) insertEl.value = '';
     scholarAISetRunningState(true);
     try {
       var fullPrompt = passage + '\n\nQuestion/Instruction: ' + (userQ || 'Please summarize and explain the passage clearly.');
@@ -1169,8 +1568,9 @@ if (!text) {
       var modelId = invokeSync('getScholarAIModelId') || null;
       var res = await callGemini(fullPrompt, sys, false, modelId);
       var text = res && res.text ? res.text : (res || '');
-      if (resultEl) resultEl.value = typeof text === 'string' ? text : JSON.stringify(text);
-      scholarAIHistoryAdd(userQ || passage.substring(0, 80), resultEl ? resultEl.value : '');
+      var finalText = typeof text === 'string' ? text : JSON.stringify(text);
+      scholarAIApplyResultText(finalText);
+      scholarAIHistoryAdd(userQ || passage.substring(0, 80), finalText);
       scholarAIHistoryRender();
     } catch (e) {
       var msg = (e && e.message) ? String(e.message) : String(e || '');
@@ -1178,12 +1578,14 @@ if (!text) {
         if ((e && e.name === 'AbortError') || /aborted|abort/i.test(msg)) resultEl.value = 'Stopped by user.';
         else resultEl.value = 'Error: ' + msg;
       }
+      if (insertEl) insertEl.value = '';
+      scholarAISetResultTab('explanation');
     } finally {
       scholarAISetRunningState(false);
     }
   }
   function scholarAICopyResult() {
-    var el = document.getElementById('scholar-ai-result');
+    var el = scholarAIGetActiveResultTextarea();
     if (el && el.value) {
       navigator.clipboard.writeText(el.value).then(function () { alert('Result copied to clipboard.'); }).catch(function () { alert('Failed to copy result.'); });
     } else {
@@ -1191,14 +1593,18 @@ if (!text) {
     }
   }
   function scholarAIClearResult() {
-    var el = document.getElementById('scholar-ai-result');
-    if (el) el.value = '';
+    var explainEl = document.getElementById('scholar-ai-result');
+    var insertEl = document.getElementById('scholar-ai-result-insert');
+    if (explainEl) explainEl.value = '';
+    if (insertEl) insertEl.value = '';
   }
   function scholarAIResultFont(delta) {
-    var el = document.getElementById('scholar-ai-result');
-    if (!el) return;
+    var explainEl = document.getElementById('scholar-ai-result');
+    var insertEl = document.getElementById('scholar-ai-result-insert');
+    if (!explainEl && !insertEl) return;
     __scholarAIResultFontSize = Math.max(10, Math.min(24, __scholarAIResultFontSize + delta));
-    el.style.fontSize = __scholarAIResultFontSize + 'px';
+    if (explainEl) explainEl.style.fontSize = __scholarAIResultFontSize + 'px';
+    if (insertEl) insertEl.style.fontSize = __scholarAIResultFontSize + 'px';
   }
   function scholarAIApplyZoomUi() {
     var ta = document.getElementById('scholar-ai-result-zoom-ta');
@@ -1271,7 +1677,7 @@ if (!text) {
     });
   }
   function scholarAIResultZoomOpen() {
-    var resultEl = document.getElementById('scholar-ai-result');
+    var resultEl = scholarAIGetActiveResultTextarea();
     var overlay = document.getElementById('scholar-ai-result-zoom-overlay');
     var zoomTa = document.getElementById('scholar-ai-result-zoom-ta');
     if (!resultEl || !overlay || !zoomTa) return;
@@ -1425,6 +1831,7 @@ if (!text) {
     if (!isEdit) { alert('Switching to edit mode first.'); if (viewerSwitchToEdit) viewerSwitchToEdit(); return; }
     var ta = document.getElementById('viewer-edit-ta');
     if (ta) __scholarAICursorPos = ta.selectionStart;
+    scholarAISetResultTab('insert');
     toggleScholarAIInsertMenu();
   }
   function toggleScholarAIInsertMenu() {
@@ -1436,14 +1843,118 @@ if (!text) {
     if (m) m.classList.remove('open');
   }
   function scholarAIInsertDoc(mode) {
-    var resultEl = document.getElementById('scholar-ai-result');
-    var resultText = resultEl && resultEl.value ? resultEl.value.trim() : '';
+    var resultText = scholarAIGetInsertResultText();
     if (!resultText) { alert('There is no ScholarAI result to insert.'); return; }
+
+    function findDocFromFrames(selectors) {
+      for (var i = 0; i < selectors.length; i++) {
+        var frame = document.querySelector(selectors[i]);
+        if (!frame) continue;
+        try {
+          var d = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+          if (d) return d;
+        } catch (e) {}
+      }
+      return null;
+    }
+    function findWritableControlInDoc(docRef, preferredId) {
+      if (!docRef) return null;
+      if (preferredId) {
+        var preferred = docRef.getElementById(preferredId);
+        if (isTextSelectionControl(preferred) && !preferred.disabled && !preferred.readOnly) return preferred;
+      }
+      var active = docRef.activeElement;
+      if (isTextSelectionControl(active) && !active.disabled && !active.readOnly) return active;
+      var first = docRef.querySelector('textarea:not([disabled]):not([readonly]),input[type="text"]:not([disabled]):not([readonly])');
+      if (isTextSelectionControl(first)) return first;
+      return null;
+    }
+    function insertIntoTextControl(target, text, appendMode) {
+      if (!target) return false;
+      var raw = String(target.value || '');
+      var s = isFinite(target.selectionStart) ? target.selectionStart : raw.length;
+      var e = isFinite(target.selectionEnd) ? target.selectionEnd : s;
+      s = Math.max(0, Math.min(s, raw.length));
+      e = Math.max(0, Math.min(e, raw.length));
+      var before = raw.slice(0, s);
+      var selected = raw.slice(s, e);
+      var after = raw.slice(e);
+      var next = appendMode ? (before + selected + '\n\n' + text + after) : (before + text + after);
+      target.value = next;
+      var caret = appendMode ? (s + selected.length + 2 + text.length) : (s + text.length);
+      if (typeof target.focus === 'function') target.focus();
+      if (typeof target.setSelectionRange === 'function') target.setSelectionRange(caret, caret);
+      try {
+        var evCtor = (target.ownerDocument && target.ownerDocument.defaultView && target.ownerDocument.defaultView.Event) || Event;
+        target.dispatchEvent(new evCtor('input', { bubbles: true }));
+        target.dispatchEvent(new evCtor('change', { bubbles: true }));
+      } catch (e2) {}
+      return true;
+    }
+
+    if (mode === 3) {
+      var gsDoc = findDocFromFrames([
+        '#html2ppt-frame',
+        'iframe[title="GenSlide"]',
+        'iframe[src*="Html2pptx/jenaEditor"]'
+      ]);
+      var gsTarget = findWritableControlInDoc(gsDoc, 'code');
+      if (!gsTarget) { alert('GenSlide HTMLCode 입력창을 찾지 못했습니다. GenSlide를 먼저 열어주세요.'); return; }
+      insertIntoTextControl(gsTarget, resultText, false);
+      __scholarAILastSelectionTarget = gsTarget;
+      __scholarAISelStart = __scholarAISelEnd = null;
+      __scholarAICursorPos = isFinite(gsTarget.selectionStart) ? gsTarget.selectionStart : String(gsTarget.value || '').length;
+      return;
+    }
+
+    if (mode === 4) {
+      var mmDoc = findDocFromFrames([
+        '#mermaid-editor-frame',
+        'iframe[title="Mermaid Editor"]',
+        'iframe[src*="mermaid-editor/index.html"]'
+      ]);
+      var mmTarget = findWritableControlInDoc(mmDoc, 'raw-code-editor');
+      if (!mmTarget) { alert('Mermaid 코드 입력창을 찾지 못했습니다. Mermaid Editor를 먼저 열어주세요.'); return; }
+      insertIntoTextControl(mmTarget, resultText, false);
+      __scholarAILastSelectionTarget = mmTarget;
+      __scholarAISelStart = __scholarAISelEnd = null;
+      __scholarAICursorPos = isFinite(mmTarget.selectionStart) ? mmTarget.selectionStart : String(mmTarget.value || '').length;
+      return;
+    }
+
     var ta = document.getElementById('viewer-edit-ta');
     var isEdit = document.getElementById('content-viewport') && document.getElementById('content-viewport').classList.contains('viewer-edit-active');
-    var viewerSwitchToEdit = typeof window.viewerSwitchToEdit === 'function' ? window.viewerSwitchToEdit : function () {};
     var viewerBuildNav = typeof window.viewerBuildNav === 'function' ? window.viewerBuildNav : function () {};
-    if (!isEdit || !ta) {
+
+    var target = (isEdit && ta) ? ta : null;
+
+    if (!target && __scholarAILastSelectionTarget && __scholarAILastSelectionTarget.isConnected && isTextSelectionControl(__scholarAILastSelectionTarget)) {
+      target = __scholarAILastSelectionTarget;
+    }
+    if (!target && isTextSelectionControl(document.activeElement) && !isAiPanelElement(document.activeElement)) {
+      target = document.activeElement;
+    }
+
+    if (!target) {
+      var gsFrame = document.getElementById('html2ppt-frame');
+      try {
+        var gsDoc2 = gsFrame && (gsFrame.contentDocument || (gsFrame.contentWindow && gsFrame.contentWindow.document));
+        if (gsDoc2) {
+          var gsActive = gsDoc2.activeElement;
+          if (isTextSelectionControl(gsActive) && !gsActive.disabled && !gsActive.readOnly) target = gsActive;
+          if (!target) {
+            var gsCode = gsDoc2.getElementById('code');
+            if (isTextSelectionControl(gsCode) && !gsCode.disabled && !gsCode.readOnly) target = gsCode;
+          }
+          if (!target) {
+            var gsAny = gsDoc2.querySelector('textarea:not([disabled]):not([readonly]),input[type="text"]:not([disabled]):not([readonly])');
+            if (isTextSelectionControl(gsAny)) target = gsAny;
+          }
+        }
+      } catch (e) {}
+    }
+
+    if (!target) {
       var vp = document.getElementById('content-viewport');
       var wrap = document.getElementById('viewer-edit-wrap');
       if (vp) vp.classList.add('viewer-edit-active');
@@ -1455,40 +1966,61 @@ if (!text) {
       if (eb) eb.style.display = 'none';
       if (vb) vb.style.display = 'inline-block';
       if (viewerBuildNav) viewerBuildNav();
+      target = document.getElementById('viewer-edit-ta');
     }
-    ta = document.getElementById('viewer-edit-ta');
-    if (!ta) return;
-    var start, end, raw = ta.value;
+    if (!target) return;
+
+    var start, end, raw = String(target.value || '');
     if (mode === 0) {
-      start = end = (__scholarAICursorPos != null ? __scholarAICursorPos : ta.selectionStart);
-    } else if (__scholarAISelStart != null && __scholarAISelEnd != null) {
+      var fallbackPos = isFinite(target.selectionStart) ? target.selectionStart : raw.length;
+      start = end = (__scholarAICursorPos != null ? __scholarAICursorPos : fallbackPos);
+    } else if (__scholarAISelStart != null && __scholarAISelEnd != null && __scholarAILastSelectionTarget === target) {
       start = __scholarAISelStart;
       end = __scholarAISelEnd;
     } else {
       var selTa = document.getElementById('scholar-ai-selected');
       var selText = (selTa && selTa.value) ? selTa.value.trim() : '';
       var idx = selText ? raw.indexOf(selText) : -1;
-      if (idx >= 0) { start = idx; end = idx + selText.length; } else { start = ta.selectionStart; end = ta.selectionEnd; }
+      if (idx >= 0) {
+        start = idx;
+        end = idx + selText.length;
+      } else {
+        start = isFinite(target.selectionStart) ? target.selectionStart : raw.length;
+        end = isFinite(target.selectionEnd) ? target.selectionEnd : start;
+      }
     }
+    start = Math.max(0, Math.min(start, raw.length));
+    end = Math.max(0, Math.min(end, raw.length));
     var before = raw.slice(0, start);
     var after = raw.slice(end);
     var newVal = mode === 1 ? before + raw.slice(start, end) + '\n\n' + resultText + after : before + resultText + after;
-    ta.value = newVal;
-    window.__rawText = newVal;
+    target.value = newVal;
+    if (target === document.getElementById('viewer-edit-ta')) window.__rawText = newVal;
     var insertEnd = mode === 1 ? start + (end - start) + 2 + resultText.length : start + resultText.length;
     __scholarAICursorPos = insertEnd;
-    ta.focus();
-    ta.setSelectionRange(insertEnd, insertEnd);
-    var lines = (ta.value.substring(0, insertEnd).match(/\n/g) || []).length;
-    var lineHeight = parseInt(getComputedStyle(ta).lineHeight, 10) || 20;
-    ta.scrollTop = Math.max(0, lines * lineHeight - ta.clientHeight / 2);
+    __scholarAISelStart = __scholarAISelEnd = null;
+    __scholarAILastSelectionTarget = target;
+    target.focus();
+    if (typeof target.setSelectionRange === 'function') target.setSelectionRange(insertEnd, insertEnd);
+    var lines = (target.value.substring(0, insertEnd).match(/\n/g) || []).length;
+    var lineHeight = parseInt(getComputedStyle(target).lineHeight, 10) || 20;
+    if (isFinite(target.scrollTop)) target.scrollTop = Math.max(0, lines * lineHeight - target.clientHeight / 2);
+    try {
+      var evCtor = (target.ownerDocument && target.ownerDocument.defaultView && target.ownerDocument.defaultView.Event) || Event;
+      target.dispatchEvent(new evCtor('input', { bubbles: true }));
+      target.dispatchEvent(new evCtor('change', { bubbles: true }));
+    } catch (e) {}
   }
-
   function toggleViewerSSP() {
     var el = document.getElementById('ssp-ai-sidebar');
     if (!el) return;
     el.classList.toggle('open');
     if (el.classList.contains('open')) {
+      if (el.classList.contains('popup') || isPanelPopupMode('ssp-ai-sidebar')) {
+        el.classList.add('popup');
+        if (el.parentNode !== document.body) document.body.appendChild(el);
+        applyPanelPopupRect('ssp-ai-sidebar', el);
+      }
       syncAiPanelsFromDocumentSelection();
       viewerSSPInit();
     } else {
@@ -1497,7 +2029,10 @@ if (!text) {
   }
   function sspAIShrink() {
     var el = document.getElementById('ssp-ai-sidebar');
-    if (el) el.classList.remove('open');
+    if (el) {
+      savePanelPopupRect('ssp-ai-sidebar', el);
+      el.classList.remove('open');
+    }
     try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
   }
   function viewerSSPSyncSelection() {
@@ -2246,11 +2781,14 @@ function viewerSSPFsUploadImgbb() {
   window.toggleScholarAI = toggleScholarAI;
   window.scholarAIInitResize = scholarAIInitResize;
   window.scholarAIShrink = scholarAIShrink;
+  window.scholarAIPopupToggle = scholarAIPopupToggle;
   window.toggleScholarAIPrePrompt = toggleScholarAIPrePrompt;
+  window.scholarAIUsePromptRole = scholarAIUsePromptRole;
   window.toggleScholarAIModelSelect = toggleScholarAIModelSelect;
   window.scholarAIFullscreen = scholarAIFullscreen;
   window.scholarAISyncSelection = scholarAISyncSelection;
   window.scholarAIHistoryAdd = scholarAIHistoryAdd;
+  window.scholarAIToggleHistoryPanel = scholarAIToggleHistoryPanel;
   window.scholarAIHistoryRender = scholarAIHistoryRender;
   window.scholarAIHistoryShowResult = scholarAIHistoryShowResult;
   window.scholarAIHistoryDelete = scholarAIHistoryDelete;
@@ -2264,6 +2802,7 @@ function viewerSSPFsUploadImgbb() {
   window.scholarAIRenderZoomMarkdown = scholarAIRenderZoomMarkdown;
   window.scholarAIAdjustZoom = scholarAIAdjustZoom;
   window.scholarAISetZoomMode = scholarAISetZoomMode;
+  window.scholarAISetResultTab = scholarAISetResultTab;
   window.scholarAICopyZoomMarkdown = scholarAICopyZoomMarkdown;
   window.scholarAIResultZoomOpen = scholarAIResultZoomOpen;
   window.scholarAIResultZoomClose = scholarAIResultZoomClose;
@@ -2273,6 +2812,7 @@ function viewerSSPFsUploadImgbb() {
   window.scholarAIInsertDoc = scholarAIInsertDoc;
   window.toggleViewerSSP = toggleViewerSSP;
   window.sspAIShrink = sspAIShrink;
+  window.sspAIPopupToggle = sspAIPopupToggle;
   window.viewerSSPSyncSelection = viewerSSPSyncSelection;
   window.viewerSSPInit = viewerSSPInit;
   window.viewerSSPGenerate = viewerSSPGenerate;
@@ -2300,13 +2840,35 @@ function viewerSSPFsUploadImgbb() {
   window.getSidebarAIHtml = getSidebarAIHtml;
 
   window.sidebarAIInit = function () {
+    setPanelPopupMode('scholar-ai-sidebar', isPanelPopupMode('scholar-ai-sidebar'));
+    setPanelPopupMode('ssp-ai-sidebar', isPanelPopupMode('ssp-ai-sidebar'));
+    updatePopupToggleLabels();
+    ensurePanelPopupDraggable('scholar-ai-sidebar', '#scholar-ai-sidebar .scholar-ai-header');
+    ensurePanelPopupDraggable('ssp-ai-sidebar', '#ssp-ai-sidebar .ssp-header');
+    if (!window.__aiPopupResizeSaveBound) {
+      window.__aiPopupResizeSaveBound = true;
+      window.addEventListener('mouseup', function () {
+        savePanelPopupRect('scholar-ai-sidebar', document.getElementById('scholar-ai-sidebar'));
+        savePanelPopupRect('ssp-ai-sidebar', document.getElementById('ssp-ai-sidebar'));
+      });
+      window.addEventListener('resize', function () {
+        var sa = document.getElementById('scholar-ai-sidebar');
+        var sp = document.getElementById('ssp-ai-sidebar');
+        if (sa && sa.classList.contains('popup') && sa.classList.contains('open')) applyPanelPopupRect('scholar-ai-sidebar', sa);
+        if (sp && sp.classList.contains('popup') && sp.classList.contains('open')) applyPanelPopupRect('ssp-ai-sidebar', sp);
+      });
+    }
     scholarAISelectedWrapInitResize();
     scholarAIPromptWrapInitResize();
     scholarAIResultWrapInitResize();
+    scholarAIEnsureResultTabs();
     scholarAIInitToneSelect();
+    scholarAIInitHistoryPanel();
     scholarAIHistoryRender();
     var resTa = document.getElementById('scholar-ai-result');
+    var resInsertTa = document.getElementById('scholar-ai-result-insert');
     if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + 'px';
+    if (resInsertTa) resInsertTa.style.fontSize = __scholarAIResultFontSize + 'px';
     scholarAISetRunningState(false);
     var histSearch = document.getElementById('scholar-ai-history-search');
     if (histSearch) histSearch.addEventListener('input', scholarAIHistoryRender);
@@ -2332,6 +2894,8 @@ function viewerSSPFsUploadImgbb() {
     if (!window.__aiDocSelectionBound) {
       window.__aiDocSelectionBound = true;
       document.addEventListener('selectionchange', onAiGlobalSelectionChange);
+      document.addEventListener('mouseup', onAiGlobalSelectionChange);
+      document.addEventListener('keyup', onAiGlobalSelectionChange);
     }
     var vc = document.getElementById('viewer-container');
     if (vc && !vc.__aiMouseupSel) {
@@ -2345,6 +2909,22 @@ function viewerSSPFsUploadImgbb() {
       editTa.addEventListener('keyup', function (e) {
         if (e.key === 'Shift' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'Home' || e.key === 'End') setTimeout(syncAiPanelsFromDocumentSelection, 50);
       });
+    }
+
+    var frames = document.querySelectorAll('iframe');
+    for (var i = 0; i < frames.length; i++) {
+      var frame = frames[i];
+      if (frame.__aiSelBound) continue;
+      frame.__aiSelBound = true;
+      frame.addEventListener('load', function () { setTimeout(syncAiPanelsFromDocumentSelection, 60); });
+      try {
+        var fd = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+        if (fd) {
+          fd.addEventListener('selectionchange', onAiGlobalSelectionChange);
+          fd.addEventListener('mouseup', onAiGlobalSelectionChange);
+          fd.addEventListener('keyup', onAiGlobalSelectionChange);
+        }
+      } catch (e) {}
     }
   };
 

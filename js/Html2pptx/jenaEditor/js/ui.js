@@ -1,18 +1,10 @@
 function applyZoom() {
-  function isFullscreenLike() {
-    if (document.fullscreenElement) return true;
-    const sw = window.screen ? (window.screen.availWidth || window.screen.width || 0) : 0;
-    const sh = window.screen ? (window.screen.availHeight || window.screen.height || 0) : 0;
-    if (!sw || !sh) return false;
-    return (window.innerWidth >= sw - 4) && (window.innerHeight >= sh - 4);
-  }
-
   let effectiveZoom = zoom;
   const extraCanvasPad = objectEditMode ? 700 : 0;
   const viewWidth = slideWidth + extraCanvasPad;
   const viewHeight = slideHeight + extraCanvasPad;
   const canvasArea = els.stage && els.stage.parentElement ? els.stage.parentElement : null;
-  if (canvasArea && isFullscreenLike()) {
+  if (canvasArea) {
     const availW = Math.max(1, (canvasArea.clientWidth || 0) - 8);
     const availH = Math.max(1, (canvasArea.clientHeight || 0) - 8);
     const fitZoom = Math.min(availW / Math.max(1, slideWidth), availH / Math.max(1, slideHeight));

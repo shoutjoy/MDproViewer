@@ -521,35 +521,7 @@ function bindPanelSplitter() {
   let dragging = false;
   let moved = false;
   let rafId = 0;
-  const FIXED_EDITOR_WIDTH = 1000;
   const SPLITTER_TRACK_WIDTH = 8;
-
-  function isFullscreenLike() {
-    if (document.fullscreenElement) return true;
-    const sw = window.screen ? (window.screen.availWidth || window.screen.width || 0) : 0;
-    const sh = window.screen ? (window.screen.availHeight || window.screen.height || 0) : 0;
-    if (!sw || !sh) return false;
-    // F11/full-window mode fallback detection.
-    return (window.innerWidth >= sw - 4) && (window.innerHeight >= sh - 4);
-  }
-
-  function setLeftWidthForRightPanelPx(targetRightPx) {
-    const rect = root.getBoundingClientRect();
-    if (!rect || rect.width <= 0) return;
-    const minLeft = 320;
-    const minRight = 320;
-    const usable = Math.max(0, rect.width - SPLITTER_TRACK_WIDTH);
-    const right = clamp(Number(targetRightPx) || FIXED_EDITOR_WIDTH, minRight, Math.max(minRight, usable - minLeft));
-    const leftPx = clamp(usable - right, minLeft, Math.max(minLeft, usable - minRight));
-    const leftPct = (leftPx / rect.width) * 100;
-    const next = `${Math.round(leftPct * 1000) / 1000}%`;
-    root.style.setProperty("--left-pane-width", next);
-  }
-
-  function enforceFixedEditorWidth() {
-    setLeftWidthForRightPanelPx(FIXED_EDITOR_WIDTH);
-    schedulePreviewRelayout();
-  }
 
   function schedulePreviewRelayout() {
     if (rafId) return;
@@ -608,12 +580,7 @@ function bindPanelSplitter() {
       rafId = 0;
     }
     if (moved) stabilizeAfterPanelResize();
-    enforceFixedEditorWidth();
   });
-
-  window.addEventListener("resize", enforceFixedEditorWidth);
-  document.addEventListener("fullscreenchange", enforceFixedEditorWidth);
-  enforceFixedEditorWidth();
 }
 
 function initSlideResizeHandle() {

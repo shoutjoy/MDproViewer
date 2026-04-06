@@ -36,6 +36,7 @@ let codeThemeFollowApp = true;
 let codeFontSize = 12;
 let objectEditMode = false;
 const SLIDE_SIZE_PRESETS = {
+  default: { w: 1280, h: 720 },
   "3:4": { w: 1080, h: 1440 },
   "4:3": { w: 1024, h: 768 },
   "16:9": { w: 1280, h: 720 },
