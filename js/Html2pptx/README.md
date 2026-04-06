@@ -34,6 +34,21 @@ This folder is designed to run independently from the main mdproviewer app.
 - Do not import files under `jenaEditor/js/` into the main mdproviewer bundle.
 - Keep all new GenSlide features implemented under `js/Html2pptx/**` only.
 
+## Electron stability (fixed state)
+- Current stable fix is applied in `jenaEditor/js/controller.js`.
+- `controller.js` now:
+  - Resolves UI/script paths from the `jenaEditor` app base (not parent page location).
+  - Uses `fetch` + XHR fallback for local file loading.
+  - Normalizes broken UI fragment text before mounting:
+    - strips BOM/mojibake prefix (`ï»¿`, `癤?`)
+    - if wrapped as full HTML document, extracts only `body.innerHTML`
+- This prevents UI mount failures in packaged Electron (`file://`) environments.
+
+### Build pipeline caution
+- Do not re-encode or wrap files under `js/Html2pptx/jenaEditor/ui/*.html`.
+- If a packaging step injects `<html><body>` wrappers or corrupts leading bytes, GenSlide layout can collapse without obvious JS runtime errors.
+- Keep UI fragments as raw partial HTML snippets.
+
 ## Cleanup candidate
 - `legacy/html2pptx_ex.js` appears to be old sample code and is not referenced by current pages.
 - `legacy/jenaEditor_app.js` is the previous monolithic script backup and is not loaded by current pages.
