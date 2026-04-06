@@ -8,10 +8,13 @@ function applyZoom() {
     const availW = Math.max(1, (canvasArea.clientWidth || 0) - 8);
     const availH = Math.max(1, (canvasArea.clientHeight || 0) - 8);
     const fitZoom = Math.min(availW / Math.max(1, slideWidth), availH / Math.max(1, slideHeight));
-    if (Number.isFinite(fitZoom) && fitZoom > 0) {
+    // Avoid unstable 0% zoom when layout is not fully measured yet in Electron.
+    if (Number.isFinite(fitZoom) && fitZoom >= 0.1 && availW > 60 && availH > 60) {
       effectiveZoom = Math.min(zoom, fitZoom);
     }
   }
+  if (!Number.isFinite(effectiveZoom) || effectiveZoom <= 0) effectiveZoom = 0.75;
+  effectiveZoom = clamp(effectiveZoom, 0.1, 2);
 
   const w = Math.round(slideWidth * effectiveZoom);
   const h = Math.round(slideHeight * effectiveZoom);
@@ -217,8 +220,16 @@ function renderSidebar() {
   });
 }
 function loadCurrent() {
-  const html = String(slides[cur]?.html || START_HTML);
-  const formatted = formatHtml(html);
+  if (!Array.isArray(slides) || !slides.length) {
+    slides = [{ html: START_HTML }];
+    cur = 0;
+  }
+  cur = clamp(Number(cur) || 0, 0, slides.length - 1);
+  const raw = String((slides[cur] && slides[cur].html) || START_HTML);
+  const safeHtml = ensureUsableSlideHtml(raw);
+  if (!slides[cur]) slides[cur] = { html: safeHtml };
+  if (slides[cur].html !== safeHtml) slides[cur].html = safeHtml;
+  const formatted = formatHtml(safeHtml);
   els.code.value = formatted;
   renderCodeLineNumbers();
   backup = formatted;
@@ -227,6 +238,16 @@ function loadCurrent() {
   loadWys(formatted);
   hideCodeMarker();
   applyZoom();
+}
+
+function resetSlidesWorkspace() {
+  if (!confirm("Reset GenSlide workspace? All current slides will be cleared.")) return;
+  pushHistory();
+  slides = [{ html: START_HTML }];
+  cur = 0;
+  expandedSlideIndex = 0;
+  backup = START_HTML;
+  loadCurrent();
 }
 
 function saveCurrent() {
@@ -266,6 +287,21 @@ function normalizeHtml(html) {
   if (!src) return START_HTML;
   if (/^\s*<!DOCTYPE/i.test(src) || /^\s*<html[\s>]/i.test(src)) return src;
   return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;">${src}</body></html>`;
+}
+
+function ensureUsableSlideHtml(html) {
+  const normalized = normalizeHtml(html);
+  try {
+    const doc = new DOMParser().parseFromString(normalized, "text/html");
+    if (!doc || !doc.body) return START_HTML;
+    const body = doc.body;
+    const txt = String(body.textContent || "").replace(/\s+/g, "");
+    const hasVisualNode = !!body.querySelector("img,svg,canvas,video,iframe,table,div,section,article,h1,h2,h3,h4,h5,h6,p,ul,ol,li,span");
+    if (!txt && !hasVisualNode) return START_HTML;
+    return normalized;
+  } catch (_) {
+    return START_HTML;
+  }
 }
 
 function openAddModal() {

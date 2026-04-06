@@ -16,6 +16,7 @@ function bindClick(id, action, handler) {
 }
 
 bindClick("btnAdd", null, openAddModal);
+bindClick("btnResetSlides", null, resetSlidesWorkspace);
 document.getElementById("btnGallery").onclick = openGalleryWindow;
 document.getElementById("btnSlideShow").onclick = () => { openSlideShowWindow().catch(() => {}); };
 document.getElementById("btnSlideSettings").onclick = openSlideSettingsModal;
