@@ -249,7 +249,6 @@
             + '  <div id="share-links-modal-header" class="flex items-center justify-between mb-3 cursor-move select-none">'
             + '    <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100">Share</h3>'
             + '    <div class="flex items-center gap-2">'
-            + '      <button type="button" onclick="moveShareLinksModalToRightSide()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">[>>]</button>'
             + '      <button type="button" onclick="closeShareLinksModal()" class="px-3 py-1 rounded border border-slate-300 dark:border-slate-600 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>'
             + '    </div>'
             + '  </div>'
