@@ -99,6 +99,12 @@ let lastEditCaretPos = 0;
 let viewerInternalImageObjectUrls = [];
 let previewInternalImageObjectUrls = [];
 let lastPersistedContent = '';
+let autoSaveDebounceTimer = null;
+let tocDebounceTimer = null;
+let miniPreviewDebounceTimer = null;
+let previewPopupDebounceTimer = null;
+let lastAutoSavedContent = '';
+let lastAutoSavedTitle = '';
 
 // Sidebar states
 let isSidebarHidden = true;
@@ -245,6 +251,10 @@ function parseGithubRepoInput(repoInput) {
 function getGithubConfigFromSettings(settings) {
     const s = settings || {};
     const parsed = parseGithubRepoInput(s.githubRepo || '');
+    const rawPullMax = Number(s.githubPullMaxFiles);
+    const pullMaxFiles = Number.isFinite(rawPullMax)
+        ? Math.max(1, Math.min(10000, Math.floor(rawPullMax)))
+        : 10000;
     return {
         enabled: !!s.githubEnabled,
         token: String(s.githubToken || '').trim(),
@@ -255,6 +265,7 @@ function getGithubConfigFromSettings(settings) {
         name: parsed ? parsed.repo : '',
         basePath: parsed ? parsed.basePath : '',
         repoWithPath: parsed ? parsed.fullWithPath : '',
+        pullMaxFiles: pullMaxFiles,
         cacheDocs: Array.isArray(s.githubCacheDocs) ? s.githubCacheDocs : [],
         lastPulledAt: s.githubLastPulledAt || ''
     };
@@ -816,7 +827,7 @@ function toggleMiniPreview() {
     setMiniPreviewEnabledToLocal(miniPreviewEnabled);
     applyMiniPreviewVisibility();
     if (miniPreviewEnabled) {
-        renderMarkdown();
+        renderMiniPreviewContent();
     }
 }
 
@@ -839,8 +850,9 @@ function initUserSettingsModule() {
         getEditorTextarea: function () { return editorTextarea; },
         onEditorChanged: function () {
             currentMarkdown = editorTextarea.value;
-            performAutoSave();
-            if (activeSidebarTab === 'toc') renderTOC();
+            const baseDelay = getEditorInputDebounceMs();
+            schedulePerformAutoSave(baseDelay);
+            scheduleRenderTOC(baseDelay + 20);
         }
     });
 }
@@ -956,10 +968,11 @@ window.onload = async () => {
 
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
-        performAutoSave();
-        updatePreviewPopupContent();
-        if (miniPreviewEnabled) renderMarkdown();
-        if (activeSidebarTab === 'toc') renderTOC();
+        const baseDelay = getEditorInputDebounceMs();
+        schedulePerformAutoSave(baseDelay);
+        scheduleUpdatePreviewPopupContent(baseDelay + 40);
+        scheduleMiniPreviewRender(baseDelay + 40);
+        scheduleRenderTOC(baseDelay + 20);
         if (window.GoogleDocs && typeof window.GoogleDocs.handleEditorChanged === 'function') {
             window.GoogleDocs.handleEditorChanged();
         }
@@ -3203,9 +3216,11 @@ async function pullGithubRepo() {
             const p = String(it.path || '');
             return p.startsWith(basePrefix);
         });
+        const maxFiles = Math.max(1, Math.min(10000, Number(cfg.pullMaxFiles) || 10000));
+        const limitedFiles = files.slice(0, maxFiles);
         const docs = [];
-        for (let i = 0; i < files.length; i++) {
-            const f = files[i];
+        for (let i = 0; i < limitedFiles.length; i++) {
+            const f = limitedFiles[i];
             const remotePath = String(f.path || '').trim();
             if (!remotePath) continue;
             const relPath = basePrefix && remotePath.startsWith(basePrefix)
@@ -3232,11 +3247,15 @@ async function pullGithubRepo() {
             githubToken: cfg.token,
             githubRepo: cfg.repo,
             githubBranch: cfg.branch,
+            githubPullMaxFiles: maxFiles,
             githubCacheDocs: docs,
             githubLastPulledAt: new Date().toISOString()
         });
-        setGithubFeedback('Pulled ' + docs.length + ' files from GitHub.', 'ok');
-        showToast('GitHub pull complete: ' + docs.length + ' files');
+        const limitedNote = files.length > maxFiles
+            ? ' (limited to ' + maxFiles + ' of ' + files.length + ')'
+            : '';
+        setGithubFeedback('Pulled ' + docs.length + ' files from GitHub' + limitedNote + '.', 'ok');
+        showToast('GitHub pull complete: ' + docs.length + ' files' + limitedNote);
         if (currentStorageSourceTab === 'github' || activeSidebarTab === 'files') renderDBList();
     } catch (e) {
         setGithubFeedback(String(e && e.message ? e.message : e), 'error');
@@ -3285,15 +3304,20 @@ async function saveGithubSettingsFromModal() {
     const tokenEl = document.getElementById('github-token-input');
     const repoEl = document.getElementById('github-repo-input');
     const branchEl = document.getElementById('github-branch-input');
+    const pullMaxEl = document.getElementById('github-pull-max-files-input');
     const enabled = !!(enabledEl && enabledEl.checked);
     const token = String(tokenEl && tokenEl.value ? tokenEl.value : '').trim();
     const repo = String(repoEl && repoEl.value ? repoEl.value : '').trim();
     const branch = String(branchEl && branchEl.value ? branchEl.value : 'main').trim() || 'main';
+    const rawPullMax = Number(pullMaxEl && pullMaxEl.value ? pullMaxEl.value : 10000);
+    const pullMaxFiles = Number.isFinite(rawPullMax) ? Math.max(1, Math.min(10000, Math.floor(rawPullMax))) : 10000;
+    if (pullMaxEl) pullMaxEl.value = String(pullMaxFiles);
     await setAiSettings({
         githubEnabled: enabled,
         githubToken: token,
         githubRepo: repo,
-        githubBranch: branch
+        githubBranch: branch,
+        githubPullMaxFiles: pullMaxFiles
     });
     await applyGithubUiState();
     setGithubFeedback('GitHub settings saved.', 'ok');
@@ -3756,16 +3780,87 @@ async function moveDocToFolder(docId, folderId) {
     };
 }
 
-// --- AutoSave & Recovery ---
-function performAutoSave() {
-    if (!db) return;
-    const tx = db.transaction('autosave', 'readwrite');
-    tx.objectStore('autosave').put({
-        id: 'last_work',
-        content: currentMarkdown,
-        title: currentFileName,
-        timestamp: Date.now()
+function getEditorInputDebounceMs() {
+    const len = String(currentMarkdown || '').length;
+    if (len >= 300000) return 520;
+    if (len >= 180000) return 380;
+    if (len >= 90000) return 260;
+    return 120;
+}
+
+function schedulePerformAutoSave(delayMs) {
+    clearTimeout(autoSaveDebounceTimer);
+    autoSaveDebounceTimer = setTimeout(function () {
+        autoSaveDebounceTimer = null;
+        performAutoSave();
+    }, Math.max(40, Number(delayMs) || 0));
+}
+
+function scheduleRenderTOC(delayMs) {
+    if (activeSidebarTab !== 'toc') return;
+    clearTimeout(tocDebounceTimer);
+    tocDebounceTimer = setTimeout(function () {
+        tocDebounceTimer = null;
+        if (activeSidebarTab === 'toc') renderTOC();
+    }, Math.max(60, Number(delayMs) || 0));
+}
+
+function scheduleMiniPreviewRender(delayMs) {
+    if (!miniPreviewEnabled || !isEditMode) return;
+    clearTimeout(miniPreviewDebounceTimer);
+    miniPreviewDebounceTimer = setTimeout(function () {
+        miniPreviewDebounceTimer = null;
+        if (miniPreviewEnabled && isEditMode) renderMiniPreviewContent();
+    }, Math.max(80, Number(delayMs) || 0));
+}
+
+function scheduleUpdatePreviewPopupContent(delayMs) {
+    if (!(typeof isPreviewPopupAlive === 'function' && isPreviewPopupAlive())) return;
+    clearTimeout(previewPopupDebounceTimer);
+    previewPopupDebounceTimer = setTimeout(function () {
+        previewPopupDebounceTimer = null;
+        if (typeof updatePreviewPopupContent === 'function') updatePreviewPopupContent();
+    }, Math.max(80, Number(delayMs) || 0));
+}
+
+async function saveCurrentDocumentToInDbQuietly() {
+    if (!db) return false;
+    if (!currentDbDocId) return false;
+    syncCurrentMarkdownFromEditor();
+    const content = String(currentMarkdown || '');
+    const title = String((currentFileName || 'Untitled').replace(/\.md$/i, '')).trim() || 'Untitled';
+    return await new Promise((resolve) => {
+        const tx = db.transaction('documents', 'readwrite');
+        const store = tx.objectStore('documents');
+        const req = store.get(String(currentDbDocId));
+        req.onsuccess = function () {
+            const doc = req.result;
+            if (!doc) {
+                resolve(false);
+                return;
+            }
+            doc.title = title;
+            doc.content = content;
+            doc.updatedAt = new Date();
+            store.put(doc);
+        };
+        req.onerror = function () { resolve(false); };
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { resolve(false); };
     });
+}
+
+// --- AutoSave & Recovery ---
+function performAutoSave(options) {
+    if (!db) return;
+    const opts = options || {};
+    const force = !!opts.force;
+    const content = String(currentMarkdown || '');
+    const title = String(currentFileName || 'untitled.md');
+    if (!force && content === lastAutoSavedContent && title === lastAutoSavedTitle) return;
+    lastAutoSavedContent = content;
+    lastAutoSavedTitle = title;
+    saveCurrentDocumentToInDbQuietly().catch(function () {});
 }
 
 async function clearUnusedCache() {
@@ -3880,44 +3975,22 @@ function tryLoadFromUrl() {
 }
 
 async function checkAutoSave() {
-    const tx = db.transaction('autosave', 'readonly');
-    const saved = await new Promise(r => {
-        const req = tx.objectStore('autosave').get('last_work');
-        req.onsuccess = () => r(req.result);
-    });
-    if (saved && saved.content.length > 50) {
-        document.getElementById('recovery-modal').classList.remove('hidden');
-        document.getElementById('recovery-modal').classList.add('flex');
-    }
+    return;
 }
 
 function applyRecovery() {
-    const tx = db.transaction('autosave', 'readonly');
-    tx.objectStore('autosave').get('last_work').onsuccess = (e) => {
-        const data = e.target.result;
-        if (data) {
-            currentFileName = data.title;
-            fileNameDisplay.textContent = currentFileName;
-            updateContent(data.content);
-            markPersistedState();
-            showToast("Recovered unsaved work from the previous session.");
-        }
-        dismissRecovery();
-    };
+    dismissRecovery();
 }
 
 function dismissRecovery() {
-    document.getElementById('recovery-modal').classList.add('hidden');
-    document.getElementById('recovery-modal').classList.remove('flex');
-    const tx = db.transaction('autosave', 'readwrite');
-    tx.objectStore('autosave').delete('last_work');
+    const modal = document.getElementById('recovery-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
 }
 
 function pasteFromClipboardAndDismiss() {
-    document.getElementById('recovery-modal').classList.add('hidden');
-    document.getElementById('recovery-modal').classList.remove('flex');
-    const tx = db.transaction('autosave', 'readwrite');
-    tx.objectStore('autosave').delete('last_work');
+    dismissRecovery();
 
     updateContent('');
     if (!isEditMode) toggleMode('edit');
@@ -7173,6 +7246,7 @@ async function persistAiSettingsFromModal() {
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
+    const githubPullMaxEl = document.getElementById('github-pull-max-files-input');
     const githubToken = String(githubTokenEl && githubTokenEl.value ? githubTokenEl.value : '').trim();
     const githubRepo = String(githubRepoEl && githubRepoEl.value ? githubRepoEl.value : '').trim();
     const githubBranch = String(githubBranchEl && githubBranchEl.value ? githubBranchEl.value : 'main').trim() || 'main';
@@ -8195,6 +8269,7 @@ async function loadAiSettingsToUI() {
         applyImageUploadFeatureVisibility({ imageUploadEnabled: false });
         applyScholarSearchVisibility({ scholarSearchVisible: false });
         applyHighlightVisibility({ highlightVisible: false });
+        applyToDocsVisibility({ googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false });
         applySitesVisibility({ sitesVisible: false });
         applyMacroVisibility({ macroVisible: false });
         applyTemplateVisibility({ templateVisible: false });
@@ -8282,12 +8357,18 @@ async function loadAiSettingsToUI() {
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
+    const githubPullMaxEl = document.getElementById('github-pull-max-files-input');
     if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
     if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
     if (githubEl) githubEl.checked = !!settings.githubEnabled;
     if (githubTokenEl) githubTokenEl.value = settings.githubToken || '';
     if (githubRepoEl) githubRepoEl.value = settings.githubRepo || '';
     if (githubBranchEl) githubBranchEl.value = settings.githubBranch || 'main';
+    if (githubPullMaxEl) {
+        const rawMax = Number(settings.githubPullMaxFiles);
+        const maxFiles = Number.isFinite(rawMax) ? Math.max(1, Math.min(10000, Math.floor(rawMax))) : 10000;
+        githubPullMaxEl.value = String(maxFiles);
+    }
     toggleGithubSettingsSection();
     updateAiScholarSspimgAvailability(verified);
     if (window.UserSettingsModule && typeof window.UserSettingsModule.applyUserInfoToModalFields === 'function') {
