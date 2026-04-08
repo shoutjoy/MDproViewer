@@ -158,6 +158,16 @@ let miniPreviewStartY = 0;
 let miniPreviewStartW = 0;
 let miniPreviewStartH = 0;
 let miniPreviewRenderToken = 0;
+let tableInsertPickerBuilt = false;
+let math99PopupBound = false;
+let math99PopupDragging = false;
+let math99PopupResizing = false;
+let math99PopupDragOffsetX = 0;
+let math99PopupDragOffsetY = 0;
+let math99PopupStartX = 0;
+let math99PopupStartY = 0;
+let math99PopupStartW = 0;
+let math99PopupStartH = 0;
 
 function loadFolderCollapseState() {
     try {
@@ -5094,22 +5104,247 @@ function toggleMathQuickMenu() {
     panel.classList.toggle('hidden');
 }
 
-function openProcessOnVisualSite() {
-    const url = 'https://www.processon.io/ko/visual';
-    const win = window.open(url, '_blank', 'noopener,noreferrer');
-    if (!win && typeof showToast === 'function') showToast('Popup blocked. 브라우저 팝업 허용이 필요합니다.');
+function wrapSelectionWithDelimiters(left, right, placeholder) {
+    if (!isEditMode || !editorTextarea) {
+        showToast('Use this in edit mode.');
+        return;
+    }
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const selectedText = editorTextarea.value.substring(start, end);
+    const content = selectedText || String(placeholder || '');
+    const replacement = String(left || '') + content + String(right || '');
+    const scrollTop = editorTextarea.scrollTop;
+    const scrollLeft = editorTextarea.scrollLeft;
+
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+    currentMarkdown = editorTextarea.value;
+    editorTextarea.scrollTop = scrollTop;
+    editorTextarea.scrollLeft = scrollLeft;
+
+    if (selectedText) {
+        editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
+    } else {
+        const posStart = start + String(left || '').length;
+        editorTextarea.setSelectionRange(posStart, posStart + content.length);
+    }
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+}
+
+function bindMath99PopupInteractions() {
+    if (math99PopupBound) return;
+    const panel = document.getElementById('math99-popup-panel');
+    const header = document.getElementById('math99-popup-header');
+    const resize = document.getElementById('math99-popup-resize-handle');
+    const wrap = document.getElementById('math99-popup');
+    if (!panel || !header || !resize || !wrap) return;
+    math99PopupBound = true;
+
+    wrap.addEventListener('mousedown', function (e) {
+        if (e.target === wrap) closeMath99Popup();
+    });
+
+    header.addEventListener('mousedown', function (e) {
+        const t = e.target;
+        if (t && t.closest && t.closest('button,input,textarea,select,a')) return;
+        const rect = panel.getBoundingClientRect();
+        math99PopupDragging = true;
+        math99PopupDragOffsetX = e.clientX - rect.left;
+        math99PopupDragOffsetY = e.clientY - rect.top;
+        panel.style.right = 'auto';
+        e.preventDefault();
+    });
+
+    resize.addEventListener('mousedown', function (e) {
+        const rect = panel.getBoundingClientRect();
+        math99PopupResizing = true;
+        math99PopupStartX = e.clientX;
+        math99PopupStartY = e.clientY;
+        math99PopupStartW = rect.width;
+        math99PopupStartH = rect.height;
+        panel.style.right = 'auto';
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (math99PopupDragging) {
+            const x = Math.max(8, Math.min(window.innerWidth - panel.offsetWidth - 8, e.clientX - math99PopupDragOffsetX));
+            const y = Math.max(8, Math.min(window.innerHeight - panel.offsetHeight - 8, e.clientY - math99PopupDragOffsetY));
+            panel.style.left = x + 'px';
+            panel.style.top = y + 'px';
+            return;
+        }
+        if (math99PopupResizing) {
+            const rect = panel.getBoundingClientRect();
+            const minW = 360;
+            const minH = 260;
+            const maxW = Math.max(minW, window.innerWidth - rect.left - 8);
+            const maxH = Math.max(minH, window.innerHeight - rect.top - 8);
+            const w = Math.max(minW, Math.min(maxW, math99PopupStartW + (e.clientX - math99PopupStartX)));
+            const h = Math.max(minH, Math.min(maxH, math99PopupStartH + (e.clientY - math99PopupStartY)));
+            panel.style.width = Math.round(w) + 'px';
+            panel.style.height = Math.round(h) + 'px';
+        }
+    });
+
+    document.addEventListener('mouseup', function () {
+        math99PopupDragging = false;
+        math99PopupResizing = false;
+    });
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeMath99Popup();
+    });
+}
+
+function openMath99Popup() {
+    const wrap = document.getElementById('math99-popup');
+    const panel = document.getElementById('math99-popup-panel');
+    if (!wrap || !panel) return;
+    bindMath99PopupInteractions();
+    wrap.classList.remove('hidden');
+    if (!panel.style.left) {
+        panel.style.left = Math.max(8, window.innerWidth - panel.offsetWidth - 16) + 'px';
+        panel.style.top = '80px';
+        panel.style.right = 'auto';
+    }
+}
+
+function closeMath99Popup() {
+    const wrap = document.getElementById('math99-popup');
+    if (!wrap) return;
+    wrap.classList.add('hidden');
+}
+
+function ensureTableInsertPickerBuilt() {
+    if (tableInsertPickerBuilt) return;
+    const grid = document.getElementById('table-insert-grid');
+    if (!grid) return;
+    tableInsertPickerBuilt = true;
+    const maxRows = 10;
+    const maxCols = 10;
+    for (let r = 1; r <= maxRows; r += 1) {
+        for (let c = 1; c <= maxCols; c += 1) {
+            const cell = document.createElement('button');
+            cell.type = 'button';
+            cell.className = 'w-4 h-4 rounded-[2px] border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 hover:border-indigo-500';
+            cell.dataset.rows = String(r);
+            cell.dataset.cols = String(c);
+            cell.onmouseenter = function () { previewTableInsertSize(r, c); };
+            cell.onclick = function () { selectTableInsertSize(r, c); };
+            grid.appendChild(cell);
+        }
+    }
+    grid.addEventListener('mouseleave', function () {
+        previewTableInsertSize(0, 0);
+    });
+}
+
+function previewTableInsertSize(rows, cols) {
+    const label = document.getElementById('table-insert-size-label');
+    if (label) {
+        label.textContent = (rows > 0 && cols > 0) ? (rows + 'x' + cols + ' 표') : '표 삽입';
+    }
+    const grid = document.getElementById('table-insert-grid');
+    if (!grid) return;
+    const cells = grid.querySelectorAll('button[data-rows][data-cols]');
+    for (let i = 0; i < cells.length; i += 1) {
+        const cell = cells[i];
+        const r = Number(cell.dataset.rows || 0);
+        const c = Number(cell.dataset.cols || 0);
+        const on = rows > 0 && cols > 0 && r <= rows && c <= cols;
+        cell.classList.toggle('bg-amber-300', on);
+        cell.classList.toggle('border-amber-500', on);
+        cell.classList.toggle('bg-slate-100', !on);
+        cell.classList.toggle('dark:bg-slate-800', !on);
+    }
+}
+
+function closeTableInsertPicker() {
+    const panel = document.getElementById('table-insert-picker');
+    if (!panel) return;
+    panel.classList.add('hidden');
+    previewTableInsertSize(0, 0);
+}
+
+function bindTableInsertPickerDismiss() {
+    if (document.body && document.body.__tableInsertPickerBound) return;
+    if (document.body) document.body.__tableInsertPickerBound = true;
+    document.addEventListener('click', function (e) {
+        const panel = document.getElementById('table-insert-picker');
+        const btn = document.getElementById('btn-table-insert-picker');
+        if (!panel || panel.classList.contains('hidden')) return;
+        const target = e.target;
+        if (panel.contains(target) || (btn && btn.contains(target))) return;
+        closeTableInsertPicker();
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') closeTableInsertPicker();
+    });
+}
+
+function toggleTableInsertPicker() {
+    ensureTableInsertPickerBuilt();
+    bindTableInsertPickerDismiss();
+    const panel = document.getElementById('table-insert-picker');
+    if (!panel) return;
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) previewTableInsertSize(0, 0);
+}
+
+function insertMarkdownTableBySize(rowsInput, colsInput) {
+    if (!isEditMode || !editorTextarea) {
+        showToast('Use this in edit mode.');
+        return;
+    }
+    const rows = Math.max(1, Math.min(10, Number(rowsInput) || 0));
+    const cols = Math.max(1, Math.min(10, Number(colsInput) || 0));
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const text = editorTextarea.value;
+    const scrollTop = editorTextarea.scrollTop;
+    const headers = [];
+    for (let c = 1; c <= cols; c += 1) headers.push('Header ' + c);
+    const lines = [];
+    lines.push('| ' + headers.join(' | ') + ' |');
+    lines.push('|' + Array(cols).fill(' --- ').join('|') + '|');
+    const bodyRows = Math.max(0, rows - 1);
+    for (let r = 0; r < bodyRows; r += 1) {
+        lines.push('| ' + Array(cols).fill(' ').join(' | ') + ' |');
+    }
+    const prefix = (start > 0 && text[start - 1] !== '\n') ? '\n' : '';
+    const suffix = '\n';
+    const replacement = prefix + lines.join('\n') + suffix;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+    currentMarkdown = editorTextarea.value;
+    editorTextarea.scrollTop = scrollTop;
+    const pos = start + replacement.length;
+    editorTextarea.setSelectionRange(pos, pos);
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+}
+
+function selectTableInsertSize(rows, cols) {
+    insertMarkdownTableBySize(rows, cols);
+    closeTableInsertPicker();
 }
 
 function insertInlineMathTemplate() {
-    insertLiteralAtCursor('$x$');
+    wrapSelectionWithDelimiters('$', '$', 'x');
 }
 
 function insertDisplayMathTemplate() {
-    insertLiteralAtCursor('$$\n\\begin{pmatrix}\n1 & 0 \\\\\n0 & 1\n\\end{pmatrix}\n$$');
+    wrapSelectionWithDelimiters('$$', '$$', '\\frac{x}{y}');
 }
 
 function insertMathRefTemplate() {
-    insertLiteralAtCursor('$$\n\\begin{aligned}\n\\label{eq:math1}\na &= b\n\\end{aligned}\n$$\n\nmathRef: \\eqref{eq:math1}');
+    insertLiteralAtCursor('$x = \\frac{-b \\pm \\sqrt{D}}{2a}$');
 }
 
 function macroApi(name) {
@@ -8337,7 +8572,8 @@ window.toggleMathQuickMenu = toggleMathQuickMenu;
 window.insertInlineMathTemplate = insertInlineMathTemplate;
 window.insertDisplayMathTemplate = insertDisplayMathTemplate;
 window.insertMathRefTemplate = insertMathRefTemplate;
-window.openProcessOnVisualSite = openProcessOnVisualSite;
+window.openMath99Popup = openMath99Popup;
+window.closeMath99Popup = closeMath99Popup;
 window.validateApiKeyInputUI = validateApiKeyInputUI;
 window.saveAiPassword = saveAiPassword;
 window.applyAiFeatureVisibility = applyAiFeatureVisibility;
@@ -8369,6 +8605,7 @@ window.scrollToLine = scrollToLine;
 window.applyHeading = applyHeading;
 window.insertListAtSelection = insertListAtSelection;
 window.handleTableInsertion = handleTableInsertion;
+window.toggleTableInsertPicker = toggleTableInsertPicker;
 window.convertSelectionPatternToTable = convertSelectionPatternToTable;
 window.convertSelectionMarkdownToHtml = convertSelectionMarkdownToHtml;
 window.insertLiteralAtCursor = insertLiteralAtCursor;
