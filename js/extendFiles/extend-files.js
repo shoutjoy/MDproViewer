@@ -197,28 +197,35 @@
     );
   }
 
-  function showExportTypeDialog() {
+    function showExportTypeDialog() {
+    var choices = [
+      { key: 'md', label: 'MD file' },
+      { key: 'mdd', label: 'MDD file (bundle)' },
+      { key: 'zip', label: 'ZIP file' },
+      { key: 'html', label: 'HTML file' }
+    ];
+    try {
+      if (typeof global.isGithubExportEnabled === 'function' && global.isGithubExportEnabled()) {
+        choices.push({ key: 'github', label: 'GitHub (push)' });
+      }
+    } catch (_) {}
+    choices.push({ key: 'cancel', label: 'Cancel' });
+
     return showChoiceDialog(
       'Export Format',
       'MD: 문서만 저장 / MDD: 통합 저장 / ZIP: 폴더 저장 / HTML: 단일 HTML 문서 내보내기',
-      [
-        { key: 'md', label: 'MD file' },
-        { key: 'mdd', label: 'MDD file (bundle)' },
-        { key: 'zip', label: 'ZIP file' },
-        { key: 'html', label: 'HTML file' },
-        { key: 'cancel', label: 'Cancel' }
-      ],
+      choices,
       'cancel'
     );
   }
 
   function showMdImageLossWarningDialog() {
     return showChoiceDialog(
-      '이미지 포함 문서 안내',
-      'MD 파일로 저장하면 내부(IndexedDB) 이미지는 저장되지 않습니다.\nMDD는 문서+이미지를 통합 저장하고, ZIP은 문서와 images 폴더로 저장합니다.\nMD로 계속 저장하시겠습니까?',
+      '?대?吏 ?ы븿 臾몄꽌 ?덈궡',
+      'MD ?뚯씪濡???ν븯硫??대?(IndexedDB) ?대?吏????λ릺吏 ?딆뒿?덈떎.\nMDD??臾몄꽌+?대?吏瑜??듯빀 ??ν븯怨? ZIP? 臾몄꽌? images ?대뜑濡???ν빀?덈떎.\nMD濡?怨꾩냽 ??ν븯?쒓쿋?듬땲源?',
       [
-        { key: 'continue_md', label: 'MD로 계속 저장' },
-        { key: 'cancel', label: '취소' }
+        { key: 'continue_md', label: 'MD濡?怨꾩냽 ??? },
+        { key: 'cancel', label: '痍⑥냼' }
       ],
       'cancel'
     );

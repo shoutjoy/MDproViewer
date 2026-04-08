@@ -20,7 +20,7 @@
     };
 
     // \* \_ \[ \] \( \) \# \- \. \! 등 불필요 escape 해제
-    const ESCAPED_MD_TOKEN_RE = /\\([\\`*_{}\[\]()#+\-.!~>])/g;
+    const ESCAPED_MD_TOKEN_RE = /\\([`*_{}\[\]()#+\-.!~>])/g;
     const NUMERIC_REFERENCE_RE = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
     const FENCE_RE = /^```/;
 

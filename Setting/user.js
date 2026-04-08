@@ -85,7 +85,7 @@
             return;
         }
         const lines = [];
-        if (String(u.name || '').trim()) lines.push('Name: ' + String(u.name).trim());
+        if (String(u.name || '').trim()) lines.push(String(u.name).trim());
         if (String(u.id || '').trim()) lines.push('Student ID: ' + String(u.id).trim());
         if (String(u.major || '').trim()) lines.push('Major: ' + String(u.major).trim());
         if (String(u.contact || '').trim()) lines.push('Contact: ' + String(u.contact).trim());

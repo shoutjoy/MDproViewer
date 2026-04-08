@@ -49,7 +49,7 @@
     async function injectGoogleDocsUiFragments() {
         let injected = false;
         const toolbarSlot = document.getElementById('google-docs-toolbar-slot');
-        if (toolbarSlot && !document.getElementById('btn-export-gdocs')) {
+        if (toolbarSlot && !document.getElementById('btn-docsync')) {
             const toolbarHtml = await loadHtmlFragment('./googleDocs/googleDocs-toolbar.html');
             if (toolbarHtml) {
                 toolbarSlot.innerHTML = toolbarHtml;
@@ -75,7 +75,7 @@
     }
 
     async function ensureGoogleDocsUiReady() {
-        if (document.getElementById('btn-export-gdocs') && document.getElementById('gdocs-settings')) return;
+        if (document.getElementById('btn-docsync') && document.getElementById('gdocs-settings')) return;
         await injectGoogleDocsUiFragments();
     }
 
@@ -377,37 +377,25 @@
         if (body) body.classList.toggle('hidden', !googleDocsUseEnabled);
     }
 
-    function applyToDocsVisibility(settings) {
+    function refreshDocSyncButtonVisibility(settings) {
         const s = settings || {};
         googleDocsUseEnabled = getGoogleDocsUseEnabledFromSettings(s);
-        applyGoogleDocsUseSectionVisibility(s);
-        const toDocsCheck = document.getElementById('todocs-visible');
-        toDocsVisible = getToDocsVisibleFromSettings(s) || !!(toDocsCheck && toDocsCheck.checked);
         docSyncVisible = getDocSyncVisibleFromSettings(s);
-        customShareDestinations = normalizeCustomShareDestinations(s.customShareDestinations);
-        renderCustomShareDestinationSettings();
-        shareSites = normalizeShareSites(s);
-        syncShareSiteCheckboxes(shareSites);
-
-        const toDocsBtn = document.getElementById('btn-export-gdocs');
         const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
-        if (toDocsBtn) {
-            if (!toDocsVisible || inEditMode) toDocsBtn.classList.add('hidden');
-            else toDocsBtn.classList.remove('hidden');
-            toDocsBtn.textContent = 'Share';
-        }
-        const shareSettingsBox = document.getElementById('share-destinations-settings');
-        if (shareSettingsBox) shareSettingsBox.classList.toggle('hidden', !toDocsVisible);
-
         const docSyncBtn = document.getElementById('btn-docsync');
-        if (docSyncBtn) {
-            if (!googleDocsUseEnabled || !docSyncVisible || inEditMode) docSyncBtn.classList.add('hidden');
-            else docSyncBtn.classList.remove('hidden');
-            setDocSyncButtonState('', false);
-        }
+        if (!docSyncBtn) return;
+        if (!googleDocsUseEnabled || !docSyncVisible || inEditMode) docSyncBtn.classList.add('hidden');
+        else docSyncBtn.classList.remove('hidden');
+        setDocSyncButtonState('', false);
+    }
 
-        if (!toDocsVisible || inEditMode) shareMenuExpanded = false;
-        renderShareLinksMenu();
+    function applyToDocsVisibility(settings) {
+        const s = settings || {};
+        applyGoogleDocsUseSectionVisibility(s);
+        if (window.ShareModule && typeof window.ShareModule.applyToDocsVisibility === 'function') {
+            window.ShareModule.applyToDocsVisibility(s);
+        }
+        refreshDocSyncButtonVisibility(s);
     }
 
     async function toggleGoogleDocsUseSection() {
@@ -421,18 +409,17 @@
     }
 
     async function toggleToDocsSection() {
+        if (window.ShareModule && typeof window.ShareModule.toggleToDocsSection === 'function') {
+            await window.ShareModule.toggleToDocsSection();
+            const s = await getAiSettings();
+            refreshDocSyncButtonVisibility(s || {});
+            return;
+        }
         const check = document.getElementById('todocs-visible');
         const enabled = !!(check && check.checked);
         await setAiSettings({ toDocsVisible: enabled });
         const s = await getAiSettings();
         applyToDocsVisibility(s || { toDocsVisible: enabled });
-        const toDocsBtn = document.getElementById('btn-export-gdocs');
-        const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
-        if (toDocsBtn) toDocsBtn.classList.toggle('hidden', !enabled || inEditMode);
-        const shareSettingsBox = document.getElementById('share-destinations-settings');
-        if (shareSettingsBox) shareSettingsBox.classList.toggle('hidden', !enabled);
-        if (!enabled) shareMenuExpanded = false;
-        renderShareLinksMenu();
     }
 
     async function toggleDocSyncSection() {
@@ -444,6 +431,9 @@
     }
 
     function shouldShowInViewMode() {
+        if (window.ShareModule && typeof window.ShareModule.shouldShowInViewMode === 'function') {
+            return !!window.ShareModule.shouldShowInViewMode();
+        }
         return !!toDocsVisible;
     }
 
@@ -690,6 +680,9 @@
     }
 
     async function openToDocs() {
+        if (window.ShareModule && typeof window.ShareModule.openShareDestination === 'function') {
+            return window.ShareModule.openShareDestination('docs');
+        }
         return openShareDestination('docs');
     }
 
@@ -704,6 +697,9 @@
     }
 
     async function openShareDestination(destKey) {
+        if (window.ShareModule && typeof window.ShareModule.openShareDestination === 'function') {
+            return window.ShareModule.openShareDestination(destKey);
+        }
         await ensureGoogleDocsUiReady();
         const destination = findShareDestination(destKey);
         if (!destination) {
@@ -732,6 +728,9 @@
     }
 
     async function toggleShareSiteSelection() {
+        if (window.ShareModule && typeof window.ShareModule.toggleShareSiteSelection === 'function') {
+            return window.ShareModule.toggleShareSiteSelection();
+        }
         await ensureGoogleDocsUiReady();
         const selectedKeys = getAllShareDestinations()
             .filter(function (item) {
@@ -749,6 +748,9 @@
     }
 
     async function addShareDestinationFromSettings() {
+        if (window.ShareModule && typeof window.ShareModule.addShareDestinationFromSettings === 'function') {
+            return window.ShareModule.addShareDestinationFromSettings();
+        }
         await ensureGoogleDocsUiReady();
         const nameInput = document.getElementById('share-custom-name');
         const urlInput = document.getElementById('share-custom-url');
@@ -795,6 +797,9 @@
     }
 
     async function removeCustomShareDestination(key) {
+        if (window.ShareModule && typeof window.ShareModule.removeCustomShareDestination === 'function') {
+            return window.ShareModule.removeCustomShareDestination(key);
+        }
         const targetKey = String(key || '').trim();
         if (!targetKey) return;
         customShareDestinations = customShareDestinations.filter(function (item) { return item.key !== targetKey; });
@@ -808,6 +813,9 @@
     }
 
     async function toggleShareLinksMenu() {
+        if (window.ShareModule && typeof window.ShareModule.toggleShareLinksMenu === 'function') {
+            return window.ShareModule.toggleShareLinksMenu();
+        }
         await ensureGoogleDocsUiReady();
         if (!toDocsVisible) {
             shareMenuExpanded = false;
@@ -1025,27 +1033,22 @@
         const pickerFeedback = document.getElementById('gdocs-picker-api-key-feedback');
         if (pickerFeedback) pickerFeedback.textContent = '';
 
-        shareSites = DEFAULT_SHARE_SITES.slice();
-        customShareDestinations = [];
-        renderCustomShareDestinationSettings();
-        syncShareSiteCheckboxes(shareSites);
-        shareMenuExpanded = false;
+        if (window.ShareModule && typeof window.ShareModule.resetShareSettingsUI === 'function') {
+            window.ShareModule.resetShareSettingsUI();
+        }
 
         stopDocSync(false);
-        applyToDocsVisibility({ googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: shareSites, customShareDestinations: [] });
+        applyToDocsVisibility({ googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: DEFAULT_SHARE_SITES.slice(), customShareDestinations: [] });
     }
 
     function loadGoogleDocsSettingsUI(settings) {
         const useCheck = document.getElementById('gdocs-use-enabled');
         if (useCheck) useCheck.checked = !!(settings && settings.googleDocsUseEnabled === true);
-        const toDocsCheck = document.getElementById('todocs-visible');
-        if (toDocsCheck) toDocsCheck.checked = !!(settings && settings.toDocsVisible === true);
         const docSyncCheck = document.getElementById('docsync-visible');
         if (docSyncCheck) docSyncCheck.checked = !!(settings && settings.docSyncVisible === true);
-        customShareDestinations = normalizeCustomShareDestinations(settings && settings.customShareDestinations);
-        renderCustomShareDestinationSettings();
-        shareSites = normalizeShareSites(settings || {});
-        syncShareSiteCheckboxes(shareSites);
+        if (window.ShareModule && typeof window.ShareModule.loadShareSettingsUI === 'function') {
+            window.ShareModule.loadShareSettingsUI(settings || {});
+        }
 
         const clientInput = document.getElementById('gdocs-client-id');
         if (clientInput) clientInput.value = settings && settings.googleDocsClientId ? settings.googleDocsClientId : '';
@@ -1057,7 +1060,7 @@
         if (feedback) feedback.textContent = '';
 
         validateGoogleDocsCredentialInputsUI();
-        applyToDocsVisibility(settings || { googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: shareSites });
+        applyToDocsVisibility(settings || { googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: DEFAULT_SHARE_SITES.slice() });
     }
 
     function onGoogleApiJsLoaded() {
@@ -1092,6 +1095,7 @@
         toggleGoogleDocsUseSection,
         toggleToDocsSection,
         toggleDocSyncSection,
+        refreshDocSyncButtonVisibility,
         handleEditorChanged,
         handleActiveDocumentChanged,
         shouldShowInViewMode,
@@ -1104,20 +1108,20 @@
     window.onGoogleApiJsLoaded = onGoogleApiJsLoaded;
     window.onGoogleGisLoaded = onGoogleGisLoaded;
     window.openToDocs = openToDocs;
-    window.openShareDestination = openShareDestination;
+    window.openShareDestination = (window.ShareModule && window.ShareModule.openShareDestination) ? window.ShareModule.openShareDestination : openShareDestination;
     window.exportCurrentToGoogleDocs = openToDocs;
     window.toggleGoogleDocSync = toggleGoogleDocSync;
-    window.toggleShareLinksMenu = toggleShareLinksMenu;
-    window.closeShareLinksModal = closeShareLinksModal;
-    window.moveShareLinksModalToRightSide = moveShareLinksModalToRightSide;
-    window.toggleShareSiteSelection = toggleShareSiteSelection;
-    window.addShareDestinationFromSettings = addShareDestinationFromSettings;
-    window.removeCustomShareDestination = removeCustomShareDestination;
+    window.toggleShareLinksMenu = (window.ShareModule && window.ShareModule.toggleShareLinksMenu) ? window.ShareModule.toggleShareLinksMenu : toggleShareLinksMenu;
+    window.closeShareLinksModal = (window.ShareModule && window.ShareModule.closeShareLinksModal) ? window.ShareModule.closeShareLinksModal : closeShareLinksModal;
+    window.moveShareLinksModalToRightSide = (window.ShareModule && window.ShareModule.moveShareLinksModalToRightSide) ? window.ShareModule.moveShareLinksModalToRightSide : moveShareLinksModalToRightSide;
+    window.toggleShareSiteSelection = (window.ShareModule && window.ShareModule.toggleShareSiteSelection) ? window.ShareModule.toggleShareSiteSelection : toggleShareSiteSelection;
+    window.addShareDestinationFromSettings = (window.ShareModule && window.ShareModule.addShareDestinationFromSettings) ? window.ShareModule.addShareDestinationFromSettings : addShareDestinationFromSettings;
+    window.removeCustomShareDestination = (window.ShareModule && window.ShareModule.removeCustomShareDestination) ? window.ShareModule.removeCustomShareDestination : removeCustomShareDestination;
     window.saveGoogleDocsCredentials = saveGoogleDocsCredentials;
     window.validateGoogleDocsCredentialInputsUI = validateGoogleDocsCredentialInputsUI;
-    window.applyToDocsVisibility = applyToDocsVisibility;
+    window.applyToDocsVisibility = (window.ShareModule && window.ShareModule.applyToDocsVisibility) ? window.ShareModule.applyToDocsVisibility : applyToDocsVisibility;
     window.toggleGoogleDocsUseSection = toggleGoogleDocsUseSection;
-    window.toggleToDocsSection = toggleToDocsSection;
+    window.toggleToDocsSection = (window.ShareModule && window.ShareModule.toggleToDocsSection) ? window.ShareModule.toggleToDocsSection : toggleToDocsSection;
     window.toggleDocSyncSection = toggleDocSyncSection;
     window.handleGoogleDocActiveDocumentChanged = handleActiveDocumentChanged;
     window.getReusableGooglePickerApiKey = getReusableGooglePickerApiKey;

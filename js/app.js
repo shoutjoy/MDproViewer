@@ -1,4 +1,4 @@
-﻿// IndexedDB Logic
+// IndexedDB Logic
 ﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
 const DB_VERSION = 4;
@@ -12,6 +12,7 @@ const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
 const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
+const GITHUB_SETTINGS_FOLD_KEY = 'md_viewer_github_settings_folded';
 
 // State
 let currentMarkdown = "";
@@ -64,20 +65,6 @@ let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
 let selectionWrapEnabled = true;
 let viewModeEditEnabled = false;
-let sitesPanelOpen = false;
-let sitesList = [];
-let sitesPanelCompact = false;
-let sitesPanelSettingsOpen = false;
-let sitesPanelDragBound = false;
-let sitesPanelDragging = false;
-let sitesPanelDragOffsetX = 0;
-let sitesPanelDragOffsetY = 0;
-let sitesPanelMoved = false;
-let sitesPanelResized = false;
-let sitesPanelResizeBound = false;
-let sitesPanelResizing = false;
-let sitesPanelSavedWidth = '';
-let sitesPanelSavedHeight = '';
 let templatePanelOpen = false;
 let templatePanelCompact = false;
 let templatePanelDragBound = false;
@@ -121,12 +108,18 @@ let isSidebarCollapsed = false;
 // Theme
 const THEME_KEY = 'md_viewer_theme';
 const EDITOR_LIGHT_KEY = 'md_viewer_editor_light';
+const MINI_PREVIEW_KEY = 'md_viewer_minipv_enabled';
+const MINI_PREVIEW_LAYOUT_KEY = 'md_viewer_minipv_layout';
 
 const sidebar = document.getElementById('sidebar');
 const viewerContainer = document.getElementById('viewer-container');
 const viewer = document.getElementById('viewer');
 const editorContainer = document.getElementById('content-viewport');
 const editorTextarea = document.getElementById('viewer-edit-ta');
+const miniPreviewPanel = document.getElementById('mini-preview-panel');
+const miniPreviewContent = document.getElementById('mini-preview-content');
+const miniPreviewHeader = document.getElementById('mini-preview-header');
+const miniPreviewResizeHandle = document.getElementById('mini-preview-resize-handle');
 const fileNameDisplay = document.getElementById('file-name-display');
 const dropZone = document.getElementById('drop-zone');
 const inputModal = document.getElementById('input-modal');
@@ -149,15 +142,22 @@ const LOCAL_BOOT_DELETE_TITLES = new Set([
     'shoutjoy/mdlivedata',
     'shoutjoy/mdlivedata.md'
 ]);
-const DEFAULT_SITES_LIST = [
-    { name: 'data visualization', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
-    { name: 'Serial Mediation effect', url: 'https://parkjoonghee.shinyapps.io/sobel/' },
-    { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' },
-    { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
-    { name: 'colab.new', url: 'http://colab.new' }
-];
 const FOLDER_COLLAPSE_STATE_KEY = 'md_viewer_folder_collapse_state';
+const STORAGE_SOURCE_TAB_KEY = 'md_viewer_storage_source_tab';
+const GITHUB_DOC_EXT_RE = /\.(md|markdown|txt)$/i;
 let folderCollapseState = {};
+let currentStorageSourceTab = 'indb';
+let miniPreviewEnabled = false;
+let miniPreviewDragBound = false;
+let miniPreviewDragging = false;
+let miniPreviewResizing = false;
+let miniPreviewDragOffsetX = 0;
+let miniPreviewDragOffsetY = 0;
+let miniPreviewStartX = 0;
+let miniPreviewStartY = 0;
+let miniPreviewStartW = 0;
+let miniPreviewStartH = 0;
+let miniPreviewRenderToken = 0;
 
 function loadFolderCollapseState() {
     try {
@@ -190,6 +190,157 @@ function toggleFolderCollapse(folderId) {
     if (!key) return;
     folderCollapseState[key] = !isFolderCollapsed(key);
     saveFolderCollapseState();
+    renderDBList();
+}
+
+function getStorageSourceTabFromLocal() {
+    try {
+        const v = String(localStorage.getItem(STORAGE_SOURCE_TAB_KEY) || '').trim().toLowerCase();
+        return v === 'github' ? 'github' : 'indb';
+    } catch (_) {
+        return 'indb';
+    }
+}
+
+function setStorageSourceTabToLocal(tab) {
+    try {
+        localStorage.setItem(STORAGE_SOURCE_TAB_KEY, tab === 'github' ? 'github' : 'indb');
+    } catch (_) {}
+}
+
+function escapeHtmlText(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function parseGithubRepoInput(repoInput) {
+    const raw = String(repoInput || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
+    const parts = raw.split('/').filter(Boolean);
+    if (parts.length < 2) return null;
+    const owner = parts[0];
+    const repo = parts[1];
+    const basePath = parts.slice(2).join('/').replace(/^\/+|\/+$/g, '');
+    return {
+        owner: owner,
+        repo: repo,
+        full: owner + '/' + repo,
+        basePath: basePath,
+        fullWithPath: basePath ? (owner + '/' + repo + '/' + basePath) : (owner + '/' + repo)
+    };
+}
+
+function getGithubConfigFromSettings(settings) {
+    const s = settings || {};
+    const parsed = parseGithubRepoInput(s.githubRepo || '');
+    return {
+        enabled: !!s.githubEnabled,
+        token: String(s.githubToken || '').trim(),
+        branch: String(s.githubBranch || 'main').trim() || 'main',
+        repoInput: String(s.githubRepo || '').trim(),
+        repo: parsed ? parsed.full : '',
+        owner: parsed ? parsed.owner : '',
+        name: parsed ? parsed.repo : '',
+        basePath: parsed ? parsed.basePath : '',
+        repoWithPath: parsed ? parsed.fullWithPath : '',
+        cacheDocs: Array.isArray(s.githubCacheDocs) ? s.githubCacheDocs : [],
+        lastPulledAt: s.githubLastPulledAt || ''
+    };
+}
+
+function getGithubLinkPathFromConfig(cfg) {
+    const rawInput = String(cfg && cfg.repoInput ? cfg.repoInput : '').trim();
+    const normalized = rawInput
+        .replace(/^https?:\/\/github\.com\//i, '')
+        .replace(/\.git$/i, '')
+        .replace(/^\/+|\/+$/g, '');
+    if (normalized) return normalized;
+    const fallback = String(cfg && cfg.repo ? cfg.repo : '').trim().replace(/^\/+|\/+$/g, '');
+    return fallback;
+}
+
+function setGithubFeedback(message, kind) {
+    const el = document.getElementById('github-settings-feedback');
+    if (!el) return;
+    el.textContent = String(message || '');
+    const t = String(kind || '').toLowerCase();
+    if (t === 'error') el.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
+    else if (t === 'ok') el.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
+    else el.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
+}
+
+function toggleGithubSettingsSection() {
+    const checked = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
+    const folded = getGithubSettingsFoldedFromLocal();
+    const body = document.getElementById('github-settings-body');
+    if (!body) return;
+    body.classList.toggle('hidden', !checked || folded);
+}
+
+function updateStorageSourceTabsUI() {
+    const indbBtn = document.getElementById('tab-storage-indb');
+    const ghBtn = document.getElementById('tab-storage-github');
+    if (!indbBtn || !ghBtn) return;
+    const active = 'px-2 py-1 text-xs font-semibold border border-indigo-500 rounded bg-indigo-600 text-white';
+    const inactive = 'px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200';
+    indbBtn.className = currentStorageSourceTab === 'indb' ? active : inactive;
+    ghBtn.className = currentStorageSourceTab === 'github' ? active : inactive;
+}
+
+async function applyGithubUiState(settingsInput) {
+    const settings = settingsInput || await getAiSettings() || {};
+    const cfg = getGithubConfigFromSettings(settings);
+    const tabsWrap = document.getElementById('storage-source-tabs');
+    const repoLink = document.getElementById('tab-storage-github-link');
+    const syncBtn = document.getElementById('btn-github-sync');
+    const syncLabel = document.getElementById('github-sync-label');
+
+    if (tabsWrap) {
+        const showTabs = !!cfg.enabled;
+        tabsWrap.classList.toggle('hidden', !showTabs);
+        tabsWrap.classList.toggle('flex', showTabs);
+    }
+    if (syncBtn) {
+        const showSync = !!cfg.enabled;
+        syncBtn.classList.toggle('hidden', !showSync);
+        syncBtn.classList.toggle('flex', showSync);
+    }
+    if (syncLabel) {
+        const labelTarget = cfg.repoWithPath || cfg.repo;
+        syncLabel.textContent = labelTarget ? ('sync ' + labelTarget) : 'sync';
+    }
+    if (repoLink) {
+        const linkPath = getGithubLinkPathFromConfig(cfg);
+        const hasRepo = !!linkPath;
+        repoLink.classList.toggle('hidden', !(cfg.enabled && hasRepo));
+        if (cfg.enabled && hasRepo) {
+            const url = 'https://github.com/' + linkPath;
+            repoLink.href = url;
+            repoLink.title = 'GitHub 저장소 열기: ' + linkPath;
+        } else {
+            repoLink.href = '#';
+            repoLink.title = 'GitHub 저장소 열기';
+        }
+    }
+
+    if (!cfg.enabled && currentStorageSourceTab === 'github') {
+        currentStorageSourceTab = 'indb';
+        setStorageSourceTabToLocal('indb');
+    }
+    updateStorageSourceTabsUI();
+    if (activeSidebarTab === 'files') renderDBList();
+}
+
+function switchStorageSourceTab(tab) {
+    const next = String(tab || '').toLowerCase() === 'github' ? 'github' : 'indb';
+    const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
+    if (next === 'github' && !githubEnabled) return;
+    currentStorageSourceTab = next;
+    setStorageSourceTabToLocal(next);
+    updateStorageSourceTabsUI();
     renderDBList();
 }
 
@@ -433,6 +584,233 @@ function updateEditorLightButton() {
     if (btn) btn.title = isLight ? 'Switch editor to dark mode' : 'Switch editor to light mode';
 }
 
+function getMiniPreviewEnabledFromLocal() {
+    try {
+        return localStorage.getItem(MINI_PREVIEW_KEY) === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+function setMiniPreviewEnabledToLocal(enabled) {
+    try {
+        localStorage.setItem(MINI_PREVIEW_KEY, enabled ? '1' : '0');
+    } catch (_) {}
+}
+
+function getMiniPreviewLayoutFromLocal() {
+    try {
+        const raw = localStorage.getItem(MINI_PREVIEW_LAYOUT_KEY);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') return null;
+        return {
+            left: Number(parsed.left),
+            top: Number(parsed.top),
+            width: Number(parsed.width),
+            height: Number(parsed.height)
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function setMiniPreviewLayoutToLocal(layout) {
+    try {
+        localStorage.setItem(MINI_PREVIEW_LAYOUT_KEY, JSON.stringify(layout || {}));
+    } catch (_) {}
+}
+
+function getMiniPreviewContainerRect() {
+    const container = editorContainer || document.getElementById('content-viewport');
+    if (!container) return null;
+    return container.getBoundingClientRect();
+}
+
+function clampMiniPreviewLayout(layoutInput) {
+    const layout = layoutInput || {};
+    const rect = getMiniPreviewContainerRect();
+    if (!rect) return { left: 8, top: 8, width: 340, height: 380 };
+    const minW = 240;
+    const minH = 180;
+    const maxW = Math.max(minW, Math.floor(rect.width - 16));
+    const maxH = Math.max(minH, Math.floor(rect.height - 16));
+    const width = Math.max(minW, Math.min(Number(layout.width) || 340, maxW));
+    const height = Math.max(minH, Math.min(Number(layout.height) || Math.floor(rect.height * 0.68), maxH));
+    const left = Math.max(8, Math.min(Number(layout.left), Math.max(8, Math.floor(rect.width - width - 8))));
+    const top = Math.max(8, Math.min(Number(layout.top), Math.max(8, Math.floor(rect.height - height - 8))));
+    return {
+        left: Number.isFinite(left) ? left : Math.max(8, Math.floor(rect.width - width - 8)),
+        top: Number.isFinite(top) ? top : 8,
+        width: width,
+        height: height
+    };
+}
+
+function applyMiniPreviewLayout(layoutInput) {
+    if (!miniPreviewPanel) return;
+    const layout = clampMiniPreviewLayout(layoutInput || getMiniPreviewLayoutFromLocal() || {});
+    miniPreviewPanel.style.left = layout.left + 'px';
+    miniPreviewPanel.style.top = layout.top + 'px';
+    miniPreviewPanel.style.width = layout.width + 'px';
+    miniPreviewPanel.style.height = layout.height + 'px';
+    miniPreviewPanel.style.right = 'auto';
+    setMiniPreviewLayoutToLocal(layout);
+}
+
+function updateMiniPreviewButton() {
+    const btn = document.getElementById('btn-mini-pv');
+    if (!btn) return;
+    const on = !!miniPreviewEnabled;
+    btn.classList.toggle('border-indigo-500', on);
+    btn.classList.toggle('text-indigo-600', on);
+    btn.classList.toggle('dark:text-indigo-300', on);
+}
+
+function renderMiniPreviewContent() {
+    if (!miniPreviewContent) return;
+    if (!miniPreviewEnabled || !isEditMode) {
+        miniPreviewRenderToken += 1;
+        revokeObjectUrls(previewInternalImageObjectUrls);
+        miniPreviewContent.innerHTML = '';
+        return;
+    }
+    const token = ++miniPreviewRenderToken;
+    const raw = String(currentMarkdown ?? '');
+    revokeObjectUrls(previewInternalImageObjectUrls);
+    resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
+        if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
+
+        function finalizeMini(html) {
+            if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
+            miniPreviewContent.innerHTML = String(html || '');
+            try { hydrateInternalImagesInElement(miniPreviewContent, registerPreviewInternalObjectUrl); } catch (_) {}
+            try { if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(miniPreviewContent); } catch (_) {}
+            try {
+                if (window.MermaidTRT && typeof window.MermaidTRT.renderIn === 'function') {
+                    window.MermaidTRT.renderIn(miniPreviewContent).catch(function () {});
+                }
+            } catch (_) {}
+        }
+
+        try {
+            const preprocessed = preprocessMarkdownForView(resolvedRaw);
+            if (typeof marked === 'undefined' || !marked.parse) {
+                finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
+                return;
+            }
+            const mathProtected = _protectMathSegments(preprocessed);
+            const out = marked.parse(mathProtected.text);
+            if (out != null && typeof out.then === 'function') {
+                out.then(function (h) {
+                    finalizeMini(mathProtected.restoreHtml(h || ''));
+                }).catch(function () {
+                    finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
+                });
+                return;
+            }
+            finalizeMini(mathProtected.restoreHtml(out || ''));
+        } catch (_) {
+            finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
+        }
+    }).catch(function () {
+        if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
+        miniPreviewContent.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+    });
+}
+
+function bindMiniPreviewInteractions() {
+    if (miniPreviewDragBound) return;
+    miniPreviewDragBound = true;
+    if (!miniPreviewPanel) return;
+
+    if (miniPreviewHeader) {
+        miniPreviewHeader.addEventListener('mousedown', function (e) {
+            const target = e.target;
+            if (target && (target.closest('button') || target.closest('a') || target.closest('input'))) return;
+            const panelRect = miniPreviewPanel.getBoundingClientRect();
+            const hostRect = getMiniPreviewContainerRect();
+            if (!hostRect) return;
+            miniPreviewDragging = true;
+            miniPreviewDragOffsetX = e.clientX - panelRect.left;
+            miniPreviewDragOffsetY = e.clientY - panelRect.top;
+            e.preventDefault();
+        });
+    }
+
+    if (miniPreviewResizeHandle) {
+        miniPreviewResizeHandle.addEventListener('mousedown', function (e) {
+            const layout = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+            miniPreviewResizing = true;
+            miniPreviewStartX = e.clientX;
+            miniPreviewStartY = e.clientY;
+            miniPreviewStartW = layout.width;
+            miniPreviewStartH = layout.height;
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    }
+
+    document.addEventListener('mousemove', function (e) {
+        if (!miniPreviewEnabled || !miniPreviewPanel || miniPreviewPanel.classList.contains('hidden')) return;
+        const hostRect = getMiniPreviewContainerRect();
+        if (!hostRect) return;
+
+        if (miniPreviewDragging) {
+            const cur = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+            const next = clampMiniPreviewLayout({
+                left: e.clientX - hostRect.left - miniPreviewDragOffsetX,
+                top: e.clientY - hostRect.top - miniPreviewDragOffsetY,
+                width: cur.width,
+                height: cur.height
+            });
+            applyMiniPreviewLayout(next);
+            return;
+        }
+
+        if (miniPreviewResizing) {
+            const cur = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+            const next = clampMiniPreviewLayout({
+                left: cur.left,
+                top: cur.top,
+                width: miniPreviewStartW + (e.clientX - miniPreviewStartX),
+                height: miniPreviewStartH + (e.clientY - miniPreviewStartY)
+            });
+            applyMiniPreviewLayout(next);
+        }
+    });
+
+    document.addEventListener('mouseup', function () {
+        miniPreviewDragging = false;
+        miniPreviewResizing = false;
+    });
+
+    window.addEventListener('resize', function () {
+        if (miniPreviewEnabled) applyMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+    });
+}
+
+function applyMiniPreviewVisibility() {
+    if (!miniPreviewPanel) return;
+    const show = !!(miniPreviewEnabled && isEditMode);
+    miniPreviewPanel.classList.toggle('hidden', !show);
+    if (show) {
+        bindMiniPreviewInteractions();
+        applyMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+        renderMiniPreviewContent();
+    }
+    updateMiniPreviewButton();
+}
+
+function toggleMiniPreview() {
+    miniPreviewEnabled = !miniPreviewEnabled;
+    setMiniPreviewEnabledToLocal(miniPreviewEnabled);
+    applyMiniPreviewVisibility();
+    if (miniPreviewEnabled) {
+        renderMarkdown();
+    }
+}
+
 function relocateAiIntegrationSettingsIntoAiUse() {
     const card = document.getElementById('ai-link-settings-block');
     const slot = document.getElementById('ai-integration-settings-slot');
@@ -462,6 +840,9 @@ window.onload = async () => {
     try {
         initTheme();
         initSettings();
+        miniPreviewEnabled = getMiniPreviewEnabledFromLocal();
+        updateMiniPreviewButton();
+        initMacroFeature();
         initUserSettingsModule();
         relocateAiIntegrationSettingsIntoAiUse();
         lucide.createIcons();
@@ -469,6 +850,8 @@ window.onload = async () => {
 
         await initDB();
         loadFolderCollapseState();
+        currentStorageSourceTab = getStorageSourceTabFromLocal();
+        updateStorageSourceTabsUI();
         await ensureRootFolder();
         await cleanupBootBlockedDocuments();
         renderDBList();
@@ -566,6 +949,7 @@ window.onload = async () => {
         currentMarkdown = editorTextarea.value;
         performAutoSave();
         updatePreviewPopupContent();
+        if (miniPreviewEnabled) renderMarkdown();
         if (activeSidebarTab === 'toc') renderTOC();
         if (window.GoogleDocs && typeof window.GoogleDocs.handleEditorChanged === 'function') {
             window.GoogleDocs.handleEditorChanged();
@@ -1023,6 +1407,158 @@ function preprocessStandaloneHrAfterHardBreak(raw) {
     return out.join('\n');
 }
 
+function normalizeMatrixRowBreaksInMath(inner) {
+    const text = String(inner ?? '');
+    const hasMatrixEnv = /\\begin\{(?:[pbvBV]?matrix|matrix|array|aligned|cases)\}/.test(text);
+    if (!hasMatrixEnv) return text;
+    return text.replace(/(^|[^\\])\\\\([ \t]*\n)/g, function (_, prefix, tail) {
+        return String(prefix || '') + '\\\\\\\\' + String(tail || '\n');
+    });
+}
+
+function preprocessMultilineInlineMathToDisplay(raw) {
+    const src = String(raw ?? '');
+    if (!src.includes('$')) return src;
+    let out = '';
+    let i = 0;
+    while (i < src.length) {
+        const ch = src[i];
+        if (ch !== '$') {
+            out += ch;
+            i += 1;
+            continue;
+        }
+        const prev = i > 0 ? src[i - 1] : '';
+        const next = i + 1 < src.length ? src[i + 1] : '';
+        if (prev === '\\' || next === '$') {
+            out += ch;
+            i += 1;
+            continue;
+        }
+        let j = i + 1;
+        let close = -1;
+        while (j < src.length) {
+            if (src[j] === '$' && src[j - 1] !== '\\' && src[j + 1] !== '$') {
+                close = j;
+                break;
+            }
+            j += 1;
+        }
+        if (close === -1) {
+            out += ch;
+            i += 1;
+            continue;
+        }
+        const inner = normalizeMatrixRowBreaksInMath(src.slice(i + 1, close));
+        const shouldDisplay = inner.includes('\n');
+        if (shouldDisplay) out += '$$' + inner + '$$';
+        else out += '$' + inner + '$';
+        i = close + 1;
+    }
+    return out;
+}
+
+function preprocessDisplayMathMatrixRowBreaks(raw) {
+    let src = String(raw ?? '');
+    src = src.replace(/\$\$([\s\S]*?)\$\$/g, function (_, inner) {
+        return '$$' + normalizeMatrixRowBreaksInMath(inner) + '$$';
+    });
+    src = src.replace(/\\\[([\s\S]*?)\\\]/g, function (_, inner) {
+        return '\\[' + normalizeMatrixRowBreaksInMath(inner) + '\\]';
+    });
+    return src;
+}
+
+function _escapeHtmlForMathSegment(s) {
+    return String(s || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+function _protectMathSegments(md) {
+    const src = String(md || '');
+    const chunks = src.split(/(```[\s\S]*?```)/g);
+    const slots = [];
+
+    function protectChunk(text) {
+        const s = String(text || '');
+        const out = [];
+        let i = 0;
+
+        function pushSlot(seg) {
+            const token = '@@MATHSEG_' + slots.length + '@@';
+            slots.push(seg);
+            out.push(token);
+        }
+
+        while (i < s.length) {
+            if (s[i] === '$' && s[i + 1] === '$' && (i === 0 || s[i - 1] !== '\\')) {
+                let k = i + 2;
+                let end = -1;
+                while (k < s.length - 1) {
+                    if (s[k] === '$' && s[k + 1] === '$' && s[k - 1] !== '\\') { end = k; break; }
+                    k += 1;
+                }
+                if (end >= 0) {
+                    pushSlot(s.slice(i, end + 2));
+                    i = end + 2;
+                    continue;
+                }
+            }
+            if (s[i] === '$' && (i === 0 || s[i - 1] !== '\\')) {
+                let k = i + 1;
+                let end = -1;
+                while (k < s.length) {
+                    if (s[k] === '$' && s[k - 1] !== '\\') { end = k; break; }
+                    k += 1;
+                }
+                if (end >= 0) {
+                    pushSlot(s.slice(i, end + 1));
+                    i = end + 1;
+                    continue;
+                }
+            }
+            if (s.slice(i, i + 2) === '\\[') {
+                const end = s.indexOf('\\]', i + 2);
+                if (end >= 0) {
+                    pushSlot(s.slice(i, end + 2));
+                    i = end + 2;
+                    continue;
+                }
+            }
+            if (s.slice(i, i + 2) === '\\(') {
+                const end = s.indexOf('\\)', i + 2);
+                if (end >= 0) {
+                    pushSlot(s.slice(i, end + 2));
+                    i = end + 2;
+                    continue;
+                }
+            }
+            out.push(s[i]);
+            i += 1;
+        }
+
+        return out.join('');
+    }
+
+    const protectedText = chunks.map(function (c) {
+        return /^```[\s\S]*```$/.test(c) ? c : protectChunk(c);
+    }).join('');
+
+    return {
+        text: protectedText,
+        restoreHtml: function (html) {
+            let out = String(html || '');
+            for (let i = 0; i < slots.length; i += 1) {
+                const token = '@@MATHSEG_' + i + '@@';
+                out = out.split(token).join(_escapeHtmlForMathSegment(slots[i]));
+            }
+            return out;
+        }
+    };
+}
+
 function normalizeFootnoteId(label) {
     const base = String(label ?? '')
         .trim()
@@ -1094,6 +1630,8 @@ function preprocessFootnotesForView(raw) {
 }
 function preprocessMarkdownForView(raw) {
     let s = String(raw ?? '');
+    s = preprocessMultilineInlineMathToDisplay(s);
+    s = preprocessDisplayMathMatrixRowBreaks(s);
     s = preprocessFootnotesForView(s);
     if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForRender === 'function') {
         s = specialTRT.prepareForRender(s);
@@ -1148,6 +1686,7 @@ function renderMarkdown() {
             }
         } catch (e) {}
         try { updatePreviewPopupContent(); } catch (e) {}
+        try { renderMiniPreviewContent(); } catch (e) {}
     }
     revokeObjectUrls(viewerInternalImageObjectUrls);
     resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
@@ -1157,18 +1696,20 @@ function renderMarkdown() {
             viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
             return;
         }
-        const out = marked.parse(preprocessed);
+        const mathProtected = _protectMathSegments(preprocessed);
+        const out = marked.parse(mathProtected.text);
         if (out != null && typeof out.then === 'function') {
             out.then(function (h) {
-                viewer.innerHTML = h || '';
+                viewer.innerHTML = mathProtected.restoreHtml(h || '');
                 runPostRenderHooks();
             }).catch(function () {
                 try {
-                    const fallback = marked.parse(resolvedRaw);
+                    const fallbackProtected = _protectMathSegments(preprocessMarkdownForView(resolvedRaw));
+                    const fallback = marked.parse(fallbackProtected.text);
                     viewer.innerHTML = (fallback && typeof fallback.then === 'function') ? '' : (fallback || '');
                     if (fallback && typeof fallback.then === 'function') {
                         fallback.then(function (html) {
-                            viewer.innerHTML = html || '';
+                            viewer.innerHTML = fallbackProtected.restoreHtml(html || '');
                             runPostRenderHooks();
                         }).catch(function () {
                             viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
@@ -1176,6 +1717,7 @@ function renderMarkdown() {
                         });
                         return;
                     }
+                    viewer.innerHTML = fallbackProtected.restoreHtml(viewer.innerHTML || '');
                     runPostRenderHooks();
                 } catch (e) {
                     viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
@@ -1184,15 +1726,16 @@ function renderMarkdown() {
             });
             return;
         }
-        viewer.innerHTML = out || '';
+        viewer.innerHTML = mathProtected.restoreHtml(out || '');
         runPostRenderHooks();
     } catch (e) {
         try {
             if (typeof marked !== 'undefined' && marked.parse) {
-                const fallback = marked.parse(resolvedRaw);
+                const fallbackProtected = _protectMathSegments(preprocessMarkdownForView(resolvedRaw));
+                const fallback = marked.parse(fallbackProtected.text);
                 if (fallback != null && typeof fallback.then === 'function') {
                     fallback.then(function (h) {
-                        viewer.innerHTML = h || '';
+                        viewer.innerHTML = fallbackProtected.restoreHtml(h || '');
                         runPostRenderHooks();
                     }).catch(function () {
                         viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
@@ -1200,7 +1743,7 @@ function renderMarkdown() {
                     });
                     return;
                 }
-                viewer.innerHTML = fallback || '';
+                viewer.innerHTML = fallbackProtected.restoreHtml(fallback || '');
                 runPostRenderHooks();
                 return;
             }
@@ -1299,6 +1842,7 @@ function toggleMode(mode) {
             lastEditCaretPos = safePos;
         }
         viewClickMappedCaretPos = null;
+        applyMiniPreviewVisibility();
     } else {
         if (editorTextarea) {
             lastEditCaretPos = Math.max(0, editorTextarea.selectionStart || 0);
@@ -1347,6 +1891,7 @@ function toggleMode(mode) {
                 setScrollRatio(vc, ratioFromCaret);
             });
         });
+        applyMiniPreviewVisibility();
     }
 }
 
@@ -1482,16 +2027,20 @@ async function chooseExportType() {
     if (window.ExtendFiles && typeof window.ExtendFiles.showExportTypeDialog === 'function') {
         return await window.ExtendFiles.showExportTypeDialog();
     }
-    const pick = String(window.prompt('Export type: md / mdd / zip (cancel = empty)', 'md') || '').trim().toLowerCase();
+    const pick = String(window.prompt('Export type: md / mdd / zip / html / github (cancel = empty)', 'md') || '').trim().toLowerCase();
     if (!pick) return 'cancel';
-    if (pick === 'md' || pick === 'mdd' || pick === 'zip') return pick;
-        if (pick === 'md' || pick === 'mdd' || pick === 'zip' || pick === 'html') return pick;
+    if (pick === 'md' || pick === 'mdd' || pick === 'zip' || pick === 'html' || pick === 'github') return pick;
     return 'cancel';
 }
 
 async function exportCurrentDocumentByChoice() {
     const choice = await chooseExportType();
     if (choice === 'cancel') return false;
+    if (choice === 'github') {
+        const ok = await pushCurrentContentToGithub();
+        if (ok) markPersistedState();
+        return !!ok;
+    }
     if (choice === 'zip') {
         await exportCurrentDocumentAsZipWithInternalImages();
         showToast('ZIP exported. Document + images folder saved.');
@@ -2353,6 +2902,62 @@ function createNewFolder() {
     input.focus();
 }
 
+async function deleteFolderFromDB(folderId) {
+    const id = String(folderId || '').trim();
+    if (!id) return;
+    if (id === 'root') {
+        showToast('ROOT folder cannot be deleted.');
+        return;
+    }
+    if (!db) return;
+
+    const docsInFolder = await new Promise(function (resolve) {
+        const tx = db.transaction('documents', 'readonly');
+        const req = tx.objectStore('documents').getAll();
+        req.onsuccess = function () {
+            const all = Array.isArray(req.result) ? req.result : [];
+            resolve(all.filter(function (d) { return String(d.folderId || '') === id; }));
+        };
+        req.onerror = function () { resolve([]); };
+    });
+
+    const count = docsInFolder.length;
+    const ok = window.confirm(
+        count > 0
+            ? 'Delete this folder?\n' + count + ' document(s) will be moved to ROOT.'
+            : 'Delete this empty folder?'
+    );
+    if (!ok) return;
+
+    await new Promise(function (resolve, reject) {
+        try {
+            const tx = db.transaction(['folders', 'documents'], 'readwrite');
+            const foldersStore = tx.objectStore('folders');
+            const docsStore = tx.objectStore('documents');
+
+            docsInFolder.forEach(function (doc) {
+                docsStore.put({ ...(doc || {}), folderId: 'root' });
+            });
+            foldersStore.delete(id);
+
+            tx.oncomplete = resolve;
+            tx.onerror = function () { reject(tx.error || new Error('Delete folder failed.')); };
+        } catch (e) {
+            reject(e);
+        }
+    }).catch(function (e) {
+        showToast('Delete folder failed: ' + (e && e.message ? e.message : e));
+    });
+
+    if (folderCollapseState && Object.prototype.hasOwnProperty.call(folderCollapseState, id)) {
+        delete folderCollapseState[id];
+        saveFolderCollapseState();
+    }
+    await ensureRootFolder();
+    renderDBList();
+    showToast('Folder deleted.');
+}
+
 function getSelectedTextForSave() {
     const sel = window.getSelection && window.getSelection();
     if (sel && sel.toString && sel.toString().trim()) {
@@ -2416,80 +3021,533 @@ function confirmSaveModal() {
 }
 
 
-async function renderDBList() {
-    const listEl = document.getElementById('db-list');
-    const searchTerm = document.getElementById('db-search').value.toLowerCase();
-    listEl.innerHTML = "";
+function githubApiHeaders(token) {
+    return {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': 'token ' + String(token || '').trim(),
+        'X-GitHub-Api-Version': '2022-11-28'
+    };
+}
 
+async function githubApiRequest(url, options, token) {
+    const opts = options || {};
+    const method = opts.method || 'GET';
+    const headers = { ...(opts.headers || {}), ...githubApiHeaders(token) };
+    if (opts.body !== undefined && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+    const res = await fetch(url, { ...opts, method, headers });
+    if (!res.ok) {
+        let msg = 'GitHub API error: ' + res.status;
+        try {
+            const j = await res.json();
+            if (j && j.message) msg = j.message;
+        } catch (_) {}
+        const err = new Error(msg);
+        err.status = res.status;
+        err.url = url;
+        throw err;
+    }
+    if (res.status === 204) return null;
+    const ct = String(res.headers.get('content-type') || '').toLowerCase();
+    if (ct.includes('application/json')) return await res.json();
+    return await res.text();
+}
+
+function decodeGithubBase64ToText(encoded) {
+    const clean = String(encoded || '').replace(/\n/g, '');
+    const bin = atob(clean);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+}
+
+function encodeTextToGithubBase64(text) {
+    const bytes = new TextEncoder().encode(String(text || ''));
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+}
+
+function getGithubDocTitleFromPath(path) {
+    const p = String(path || '');
+    const parts = p.split('/');
+    const file = parts[parts.length - 1] || 'untitled.md';
+    return file.replace(/\.(md|markdown|txt)$/i, '');
+}
+
+async function pullGithubRepo() {
+    const settings = await getAiSettings() || {};
+    const cfg = getGithubConfigFromSettings(settings);
+    if (!cfg.enabled) {
+        showToast('Enable github first in Settings.');
+        return;
+    }
+    if (!cfg.token || !cfg.repo || !cfg.branch) {
+        showToast('Enter PAT, repository, and branch first.');
+        setGithubFeedback('PAT / 저장소 / 브랜치를 입력하세요.', 'error');
+        return;
+    }
+    setGithubFeedback('Pulling from GitHub...', 'info');
+    try {
+        const treeUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/git/trees/' + encodeURIComponent(cfg.branch) + '?recursive=1';
+        const treeData = await githubApiRequest(treeUrl, {}, cfg.token);
+        const treeItems = Array.isArray(treeData && treeData.tree) ? treeData.tree : [];
+        const basePrefix = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/') : '';
+        const files = treeItems.filter(function (it) {
+            if (!(it && it.type === 'blob' && GITHUB_DOC_EXT_RE.test(String(it.path || '')))) return false;
+            if (!basePrefix) return true;
+            const p = String(it.path || '');
+            return p.startsWith(basePrefix);
+        });
+        const docs = [];
+        for (let i = 0; i < files.length; i++) {
+            const f = files[i];
+            const remotePath = String(f.path || '').trim();
+            if (!remotePath) continue;
+            const relPath = basePrefix && remotePath.startsWith(basePrefix)
+                ? remotePath.slice(basePrefix.length)
+                : remotePath;
+            if (!relPath) continue;
+            const contentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
+            const contentData = await githubApiRequest(contentUrl, {}, cfg.token);
+            const text = decodeGithubBase64ToText(contentData && contentData.content ? contentData.content : '');
+            const folderPath = relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : 'root';
+            docs.push({
+                id: 'gh:' + relPath,
+                path: relPath,
+                remotePath: remotePath,
+                title: getGithubDocTitleFromPath(relPath),
+                folderPath: folderPath || 'root',
+                content: text,
+                sha: String(contentData && contentData.sha ? contentData.sha : ''),
+                updatedAt: new Date().toISOString()
+            });
+        }
+        await setAiSettings({
+            githubEnabled: true,
+            githubToken: cfg.token,
+            githubRepo: cfg.repo,
+            githubBranch: cfg.branch,
+            githubCacheDocs: docs,
+            githubLastPulledAt: new Date().toISOString()
+        });
+        setGithubFeedback('Pulled ' + docs.length + ' files from GitHub.', 'ok');
+        showToast('GitHub pull complete: ' + docs.length + ' files');
+        if (currentStorageSourceTab === 'github' || activeSidebarTab === 'files') renderDBList();
+    } catch (e) {
+        setGithubFeedback(String(e && e.message ? e.message : e), 'error');
+        showToast('GitHub pull failed.');
+    }
+}
+
+async function createGithubRepository() {
+    const tokenInput = document.getElementById('github-token-input');
+    const branchInput = document.getElementById('github-branch-input');
+    const newRepoInput = document.getElementById('github-new-repo-name-input');
+    const token = String(tokenInput && tokenInput.value ? tokenInput.value : '').trim();
+    const branch = String(branchInput && branchInput.value ? branchInput.value : 'main').trim() || 'main';
+    const newRepo = String(newRepoInput && newRepoInput.value ? newRepoInput.value : '').trim();
+    if (!token || !newRepo) {
+        setGithubFeedback('PAT와 새 저장소명을 입력하세요.', 'error');
+        showToast('PAT and new repository name are required.');
+        return;
+    }
+    setGithubFeedback('Creating repository...', 'info');
+    try {
+        const created = await githubApiRequest('https://api.github.com/user/repos', {
+            method: 'POST',
+            body: JSON.stringify({ name: newRepo, private: false, auto_init: true })
+        }, token);
+        const fullName = String(created && created.full_name ? created.full_name : '');
+        const repoInput = document.getElementById('github-repo-input');
+        if (repoInput && fullName) repoInput.value = fullName;
+        await setAiSettings({
+            githubEnabled: true,
+            githubToken: token,
+            githubRepo: fullName || (repoInput && repoInput.value ? repoInput.value.trim() : ''),
+            githubBranch: branch
+        });
+        await applyGithubUiState();
+        setGithubFeedback('Repository created: ' + fullName, 'ok');
+        showToast('GitHub repository created.');
+    } catch (e) {
+        setGithubFeedback(String(e && e.message ? e.message : e), 'error');
+        showToast('GitHub repository creation failed.');
+    }
+}
+
+async function saveGithubSettingsFromModal() {
+    const enabledEl = document.getElementById('ai-github-enabled');
+    const tokenEl = document.getElementById('github-token-input');
+    const repoEl = document.getElementById('github-repo-input');
+    const branchEl = document.getElementById('github-branch-input');
+    const enabled = !!(enabledEl && enabledEl.checked);
+    const token = String(tokenEl && tokenEl.value ? tokenEl.value : '').trim();
+    const repo = String(repoEl && repoEl.value ? repoEl.value : '').trim();
+    const branch = String(branchEl && branchEl.value ? branchEl.value : 'main').trim() || 'main';
+    await setAiSettings({
+        githubEnabled: enabled,
+        githubToken: token,
+        githubRepo: repo,
+        githubBranch: branch
+    });
+    await applyGithubUiState();
+    setGithubFeedback('GitHub settings saved.', 'ok');
+    showToast('GitHub settings saved.');
+}
+
+async function loadFromGithubCache(path) {
+    const target = String(path || '').trim();
+    if (!target) return;
+    const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+    if (!canProceed) {
+        showToast('Open canceled.');
+        return;
+    }
+    const settings = await getAiSettings() || {};
+    const docs = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs : [];
+    const doc = docs.find(function (d) { return String(d.path || '') === target; });
+    if (!doc) {
+        showToast('File not found in local GitHub cache. Pull first.');
+        return;
+    }
+    currentDbDocId = null;
+    setCurrentDocumentInfo((doc.title || 'github-doc') + '.md', doc.path || null);
+    updateContent(doc.content || '');
+    markPersistedState();
+    showToast('Loaded from GitHub cache.');
+    if (window.innerWidth < 1024 && !isSidebarHidden) toggleSidebarVisibility();
+}
+
+async function pushDocToGithub(docId) {
+    const id = String(docId || '').trim();
+    if (!id) return;
+    const settings = await getAiSettings() || {};
+    const cfg = getGithubConfigFromSettings(settings);
+    if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
+        showToast('Set GitHub token/repo/branch first.');
+        return;
+    }
+
+    const tx = db.transaction(['documents', 'folders'], 'readonly');
+    const docsStore = tx.objectStore('documents');
+    const foldersStore = tx.objectStore('folders');
+    const doc = await new Promise(function (resolve) {
+        const req = docsStore.get(id);
+        req.onsuccess = function () { resolve(req.result || null); };
+        req.onerror = function () { resolve(null); };
+    });
+    if (!doc) {
+        showToast('Document not found.');
+        return;
+    }
+
+    const folder = await new Promise(function (resolve) {
+        const req = foldersStore.get(String(doc.folderId || 'root'));
+        req.onsuccess = function () { resolve(req.result || null); };
+        req.onerror = function () { resolve(null); };
+    });
+    const folderName = folder && String(folder.id || '') !== 'root'
+        ? String(folder.name || '').trim().replace(/[\\/:*?"<>|]+/g, '_')
+        : '';
+    const docName = String(doc.title || 'untitled').trim().replace(/[\\/:*?"<>|]+/g, '_') || 'untitled';
+    const path = folderName ? (folderName + '/' + docName + '.md') : (docName + '.md');
+    const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
+    const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
+
+    try {
+        let existingSha = '';
+        try {
+            const existing = await githubApiRequest(getContentUrl, {}, cfg.token);
+            existingSha = String(existing && existing.sha ? existing.sha : '');
+        } catch (e) {
+            const status = Number(e && e.status ? e.status : 0);
+            const msg = String(e && e.message ? e.message : '').toLowerCase();
+            const notFound = status === 404 || msg.includes('404') || msg.includes('not found');
+            if (!notFound) throw e;
+        }
+
+        const body = {
+            message: 'push: ' + docName + ' (' + new Date().toISOString() + ')',
+            content: encodeTextToGithubBase64(doc.content || ''),
+            branch: cfg.branch
+        };
+        if (existingSha) body.sha = existingSha;
+
+        const putUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/');
+        const pushed = await githubApiRequest(putUrl, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+        }, cfg.token);
+
+        const nextCache = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs.slice() : [];
+        const idx = nextCache.findIndex(function (d) { return String(d.path || '') === path; });
+        const entry = {
+            id: 'gh:' + path,
+            path: path,
+            remotePath: remotePath,
+            title: getGithubDocTitleFromPath(path),
+            folderPath: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : 'root',
+            content: String(doc.content || ''),
+            sha: String(pushed && pushed.content && pushed.content.sha ? pushed.content.sha : ''),
+            updatedAt: new Date().toISOString()
+        };
+        if (idx >= 0) nextCache[idx] = entry;
+        else nextCache.push(entry);
+
+        await setAiSettings({ githubCacheDocs: nextCache });
+        showToast('Pushed to GitHub: ' + remotePath);
+        if (currentStorageSourceTab === 'github') renderDBList();
+    } catch (e) {
+        showToast('GitHub push failed: ' + String(e && e.message ? e.message : e));
+    }
+}
+
+function isGithubExportEnabled() {
+    const enabledEl = document.getElementById('ai-github-enabled');
+    const tokenEl = document.getElementById('github-token-input');
+    const repoEl = document.getElementById('github-repo-input');
+    const branchEl = document.getElementById('github-branch-input');
+    const enabled = !!(enabledEl && enabledEl.checked);
+    const token = String(tokenEl && tokenEl.value ? tokenEl.value : '').trim();
+    const repo = String(repoEl && repoEl.value ? repoEl.value : '').trim();
+    const branch = String(branchEl && branchEl.value ? branchEl.value : '').trim();
+    return !!(enabled && token && repo && branch);
+}
+
+async function pushCurrentContentToGithub() {
+    const settings = await getAiSettings() || {};
+    const cfg = getGithubConfigFromSettings(settings);
+    if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
+        showToast('Set GitHub token/repo/branch first.');
+        return false;
+    }
+    if (currentDbDocId) {
+        await pushDocToGithub(currentDbDocId);
+        return true;
+    }
+
+    let fileName = String(currentFileName || 'untitled.md').trim().replace(/[/\\:*?"<>|]+/g, '_');
+    if (!fileName) fileName = 'untitled.md';
+    if (!/\.[a-z0-9]+$/i.test(fileName)) fileName += '.md';
+    const path = fileName;
+    const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
+    const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
+
+    try {
+        let existingSha = '';
+        try {
+            const existing = await githubApiRequest(getContentUrl, {}, cfg.token);
+            existingSha = String(existing && existing.sha ? existing.sha : '');
+        } catch (e) {
+            const status = Number(e && e.status ? e.status : 0);
+            const msg = String(e && e.message ? e.message : '').toLowerCase();
+            const notFound = status === 404 || msg.includes('404') || msg.includes('not found');
+            if (!notFound) throw e;
+        }
+
+        const body = {
+            message: 'export push: ' + fileName + ' (' + new Date().toISOString() + ')',
+            content: encodeTextToGithubBase64(currentMarkdown || ''),
+            branch: cfg.branch
+        };
+        if (existingSha) body.sha = existingSha;
+
+        const putUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/');
+        const pushed = await githubApiRequest(putUrl, {
+            method: 'PUT',
+            body: JSON.stringify(body)
+        }, cfg.token);
+
+        const nextCache = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs.slice() : [];
+        const idx = nextCache.findIndex(function (d) { return String(d.path || '') === path; });
+        const entry = {
+            id: 'gh:' + path,
+            path: path,
+            remotePath: remotePath,
+            title: getGithubDocTitleFromPath(path),
+            folderPath: 'root',
+            content: String(currentMarkdown || ''),
+            sha: String(pushed && pushed.content && pushed.content.sha ? pushed.content.sha : ''),
+            updatedAt: new Date().toISOString()
+        };
+        if (idx >= 0) nextCache[idx] = entry;
+        else nextCache.push(entry);
+        await setAiSettings({ githubCacheDocs: nextCache });
+        showToast('Pushed to GitHub: ' + remotePath);
+        return true;
+    } catch (e) {
+        showToast('GitHub push failed: ' + String(e && e.message ? e.message : e));
+        return false;
+    }
+}
+
+function renderInDbList(listEl, searchTerm, githubReady) {
     const txFolders = db.transaction('folders', 'readonly');
-    const folders = await new Promise(r => {
-        const req = txFolders.objectStore('folders').getAll();
-        req.onsuccess = () => r(req.result);
-    });
+    return new Promise(function (resolve) {
+        const folderReq = txFolders.objectStore('folders').getAll();
+        folderReq.onsuccess = async function () {
+            const folders = Array.isArray(folderReq.result) ? folderReq.result : [];
+            const txDocs = db.transaction('documents', 'readonly');
+            const docs = await new Promise(function (r) {
+                const req = txDocs.objectStore('documents').getAll();
+                req.onsuccess = function () { r(Array.isArray(req.result) ? req.result : []); };
+                req.onerror = function () { r([]); };
+            });
+            const shortText = function (text, n) { return Array.from(String(text || '').trim()).slice(0, n).join(''); };
 
-    const txDocs = db.transaction('documents', 'readonly');
-    const docs = await new Promise(r => {
-        const req = txDocs.objectStore('documents').getAll();
-        req.onsuccess = () => r(req.result);
-    });
-    const shortText = (text, n) => Array.from(String(text || '').trim()).slice(0, n).join('');
+            folders.forEach(function (folder) {
+                const folderDocs = docs.filter(function (d) {
+                    return d.folderId === folder.id && String(d.title || '').toLowerCase().includes(searchTerm);
+                });
+                const folderDisplayName = folder.id === 'root' ? ROOT_FOLDER_NAME : String(folder.name || 'Folder');
+                const collapsedByState = isFolderCollapsed(folder.id);
+                const isCollapsedFolder = !searchTerm && collapsedByState;
 
-    folders.forEach(folder => {
-        const folderDocs = docs.filter(d => d.folderId === folder.id && d.title.toLowerCase().includes(searchTerm));
-        const folderDisplayName = folder.id === 'root'
-            ? ROOT_FOLDER_NAME
-            : String(folder.name || 'Folder');
-        const collapsedByState = isFolderCollapsed(folder.id);
-        const isCollapsedFolder = !searchTerm && collapsedByState;
+                const folderDiv = document.createElement('div');
+                folderDiv.className = 'mb-2';
+                const folderHeader = document.createElement('div');
+                folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
+                const folderDeleteBtn = folder.id === 'root'
+                    ? ''
+                    : '<button onclick="event.stopPropagation(); deleteFolderFromDB(\'' + escapeHtmlText(folder.id) + '\')" class="ml-auto text-[10px] px-1 py-0.5 rounded border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-600 hover:text-white" title="폴더 삭제">x</button>';
+                folderHeader.innerHTML = ''
+                    + '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i>'
+                    + '<i data-lucide="folder" class="w-3 h-3"></i>'
+                    + '<span class="sidebar-text">' + escapeHtmlText(folderDisplayName) + '</span>'
+                    + folderDeleteBtn;
+                folderHeader.addEventListener('click', function () { toggleFolderCollapse(folder.id); });
+                folderDiv.appendChild(folderHeader);
+
+                const docContainer = document.createElement('div');
+                docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'pl-2 space-y-1') + (isCollapsedFolder ? ' hidden' : '');
+
+                folderDocs.forEach(function (doc) {
+                    const docItem = document.createElement('div');
+                    docItem.className = isSidebarCollapsed
+                        ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
+                        : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
+                    docItem.title = String(doc.title || '');
+                    docItem.onclick = function () { loadFromDB(doc.id); };
+
+                    const pushBtn = githubReady
+                        ? '<button onclick="event.stopPropagation(); pushDocToGithub(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">github</button>'
+                        : '';
+
+                    docItem.innerHTML = ''
+                        + '<div class="flex flex-col gap-1 doc-item-inner">'
+                        + '<div class="flex items-center gap-2">'
+                        + '<i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>'
+                        + '<span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
+                        + escapeHtmlText(isSidebarCollapsed ? shortText(doc.title, 3) : doc.title)
+                        + '</span>'
+                        + '</div>'
+                        + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
+                        + '<button onclick="event.stopPropagation(); loadFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>'
+                        + '<button onclick="event.stopPropagation(); openMoveModal(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">이동</button>'
+                        + pushBtn
+                        + '<button onclick="event.stopPropagation(); deleteFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 font-bold hover:bg-red-600 hover:text-white ml-auto">X</button>'
+                        + '</div>'
+                        + '</div>';
+                    docContainer.appendChild(docItem);
+                });
+
+                if (folderDocs.length > 0 || searchTerm === '') {
+                    folderDiv.appendChild(docContainer);
+                    listEl.appendChild(folderDiv);
+                }
+            });
+            resolve();
+        };
+        folderReq.onerror = function () { resolve(); };
+    });
+}
+
+async function renderGithubCachedList(listEl, searchTerm) {
+    const settings = await getAiSettings() || {};
+    const docs = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs.slice() : [];
+    const filtered = docs.filter(function (d) {
+        const title = String(d && d.title ? d.title : '').toLowerCase();
+        const path = String(d && d.path ? d.path : '').toLowerCase();
+        return !searchTerm || title.includes(searchTerm) || path.includes(searchTerm);
+    });
+    const groups = new Map();
+    filtered.forEach(function (doc) {
+        const key = String(doc && doc.folderPath ? doc.folderPath : 'root') || 'root';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(doc);
+    });
+    const keys = Array.from(groups.keys()).sort(function (a, b) { return a.localeCompare(b); });
+    keys.forEach(function (folderPath) {
+        const items = groups.get(folderPath) || [];
+        const folderId = 'gh-folder:' + folderPath;
+        const isCollapsedFolder = !searchTerm && isFolderCollapsed(folderId);
 
         const folderDiv = document.createElement('div');
-        folderDiv.className = "mb-2";
+        folderDiv.className = 'mb-2';
         const folderHeader = document.createElement('div');
-        folderHeader.className = `flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ${isSidebarCollapsed ? 'justify-center' : ''}`;
-        folderHeader.innerHTML = `
-            <i data-lucide="${isCollapsedFolder ? 'chevron-right' : 'chevron-down'}" class="w-3 h-3"></i>
-            <i data-lucide="folder" class="w-3 h-3"></i>
-            <span class="sidebar-text">${folderDisplayName}</span>
-        `;
-        folderHeader.addEventListener('click', function () {
-            toggleFolderCollapse(folder.id);
-        });
+        folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
+        folderHeader.innerHTML = ''
+            + '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i>'
+            + '<i data-lucide="folder-git-2" class="w-3 h-3"></i>'
+            + '<span class="sidebar-text">' + escapeHtmlText(folderPath === 'root' ? 'ROOT' : folderPath) + '</span>';
+        folderHeader.addEventListener('click', function () { toggleFolderCollapse(folderId); });
         folderDiv.appendChild(folderHeader);
 
         const docContainer = document.createElement('div');
-        docContainer.className = (isSidebarCollapsed ? "space-y-1" : "pl-2 space-y-1") + (isCollapsedFolder ? " hidden" : "");
-
-        folderDocs.forEach(doc => {
+        docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'pl-2 space-y-1') + (isCollapsedFolder ? ' hidden' : '');
+        items.forEach(function (doc) {
+            const path = String(doc && doc.path ? doc.path : '');
+            const title = String(doc && doc.title ? doc.title : getGithubDocTitleFromPath(path));
+            const shortTitle = Array.from(title).slice(0, 3).join('');
             const docItem = document.createElement('div');
             docItem.className = isSidebarCollapsed
-                ? "group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center"
-                : "group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer";
-            docItem.title = doc.title;
-            docItem.onclick = () => loadFromDB(doc.id);
-
-            docItem.innerHTML = `
-                <div class="flex flex-col gap-1 doc-item-inner">
-                    <div class="flex items-center gap-2">
-                        <i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ${isSidebarCollapsed ? 'hidden' : ''}"></i>
-                        <span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ${isSidebarCollapsed ? '' : 'sidebar-text'}">
-                            ${isSidebarCollapsed ? shortText(doc.title, 3) : doc.title}
-                        </span>
-                    </div>
-                    <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">
-                        <button onclick="event.stopPropagation(); loadFromDB('${doc.id}')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>
-                        <button onclick="event.stopPropagation(); openMoveModal('${doc.id}')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">이동</button>
-                        <button onclick="event.stopPropagation(); deleteFromDB('${doc.id}')" class="text-[10px] bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 font-bold hover:bg-red-600 hover:text-white ml-auto">X</button>
-                    </div>
-                </div>
-            `;
+                ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
+                : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
+            docItem.title = path || title;
+            docItem.onclick = function () { loadFromGithubCache(path); };
+            docItem.innerHTML = ''
+                + '<div class="flex flex-col gap-1 doc-item-inner">'
+                + '<div class="flex items-center gap-2">'
+                + '<i data-lucide="file-code-2" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>'
+                + '<span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
+                + escapeHtmlText(isSidebarCollapsed ? shortTitle : title)
+                + '</span>'
+                + '</div>'
+                + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
+                + '<button onclick="event.stopPropagation(); loadFromGithubCache(\'' + escapeHtmlText(path) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>'
+                + '</div>'
+                + '</div>';
             docContainer.appendChild(docItem);
         });
 
-        if (folderDocs.length > 0 || searchTerm === "") {
-            folderDiv.appendChild(docContainer);
-            listEl.appendChild(folderDiv);
-        }
+        folderDiv.appendChild(docContainer);
+        listEl.appendChild(folderDiv);
     });
+
+    if (!keys.length) {
+        const empty = document.createElement('div');
+        empty.className = 'px-2 py-4 text-xs text-slate-500 dark:text-slate-400';
+        empty.textContent = 'GitHub 목록이 비어 있습니다. sync 버튼으로 pull 하세요.';
+        listEl.appendChild(empty);
+    }
+}
+
+async function renderDBList() {
+    const listEl = document.getElementById('db-list');
+    if (!listEl) return;
+    const searchInput = document.getElementById('db-search');
+    const searchTerm = String(searchInput && searchInput.value ? searchInput.value : '').toLowerCase();
+    listEl.innerHTML = '';
+
+    const settings = await getAiSettings() || {};
+    const cfg = getGithubConfigFromSettings(settings);
+    const githubReady = !!cfg.enabled;
+
+    if (currentStorageSourceTab === 'github' && cfg.enabled) {
+        await renderGithubCachedList(listEl, searchTerm);
+    } else {
+        await renderInDbList(listEl, searchTerm, githubReady);
+    }
     lucide.createIcons();
 }
 
@@ -3984,6 +5042,27 @@ function toggleShareSettingsFold() {
     applyShareSettingsFold(next);
 }
 
+function getGithubSettingsFoldedFromLocal() {
+    const v = localStorage.getItem(GITHUB_SETTINGS_FOLD_KEY);
+    return v == null ? false : v === '1';
+}
+
+function setGithubSettingsFoldedToLocal(folded) {
+    localStorage.setItem(GITHUB_SETTINGS_FOLD_KEY, folded ? '1' : '0');
+}
+
+function applyGithubSettingsFold(folded) {
+    const btn = document.getElementById('github-settings-fold-btn');
+    if (btn) btn.textContent = folded ? '펼치기' : '접기';
+    toggleGithubSettingsSection();
+}
+
+function toggleGithubSettingsFold() {
+    const next = !getGithubSettingsFoldedFromLocal();
+    setGithubSettingsFoldedToLocal(next);
+    applyGithubSettingsFold(next);
+}
+
 function applyEditToolsVisibilityByMode() {
     const editTools = document.getElementById('edit-tools');
     const toolbar = document.getElementById('toolbar');
@@ -3995,6 +5074,99 @@ function applyEditToolsVisibilityByMode() {
     if (toolbar) toolbar.classList.toggle('toolbar-view-compact', !show);
 }
 
+function bindMathQuickMenuDismiss() {
+    if (document.body && document.body.__mathQuickMenuBound) return;
+    if (document.body) document.body.__mathQuickMenuBound = true;
+    document.addEventListener('click', function (e) {
+        const panel = document.getElementById('math-quick-panel');
+        const btn = document.getElementById('btn-math-quick');
+        if (!panel || panel.classList.contains('hidden')) return;
+        const target = e.target;
+        if (panel.contains(target) || (btn && btn.contains(target))) return;
+        panel.classList.add('hidden');
+    });
+}
+
+function toggleMathQuickMenu() {
+    const panel = document.getElementById('math-quick-panel');
+    if (!panel) return;
+    bindMathQuickMenuDismiss();
+    panel.classList.toggle('hidden');
+}
+
+function openProcessOnVisualSite() {
+    const url = 'https://www.processon.io/ko/visual';
+    const win = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!win && typeof showToast === 'function') showToast('Popup blocked. 브라우저 팝업 허용이 필요합니다.');
+}
+
+function insertInlineMathTemplate() {
+    insertLiteralAtCursor('$x$');
+}
+
+function insertDisplayMathTemplate() {
+    insertLiteralAtCursor('$$\n\\begin{pmatrix}\n1 & 0 \\\\\n0 & 1\n\\end{pmatrix}\n$$');
+}
+
+function insertMathRefTemplate() {
+    insertLiteralAtCursor('$$\n\\begin{aligned}\n\\label{eq:math1}\na &= b\n\\end{aligned}\n$$\n\nmathRef: \\eqref{eq:math1}');
+}
+
+function macroApi(name) {
+    if (!window.TRTMacro) return null;
+    const fn = window.TRTMacro[name];
+    return (typeof fn === 'function') ? fn : null;
+}
+
+function toggleMacroMenu() {
+    const fn = macroApi('toggleMacroMenu');
+    if (fn) fn();
+}
+
+function toggleMacroRecord(on) {
+    const fn = macroApi('toggleMacroRecord');
+    if (fn) fn(!!on);
+}
+
+async function runCheckedMacroActions() {
+    const fn = macroApi('runCheckedMacroActions');
+    if (fn) await fn();
+}
+
+function runMacroEntry(entryId) {
+    const fn = macroApi('runMacroEntry');
+    if (fn) fn(entryId);
+}
+
+function toggleMacroEntryEnabled(entryId, enabled) {
+    const fn = macroApi('toggleMacroEntryEnabled');
+    if (fn) fn(entryId, !!enabled);
+}
+
+function clearMacroEntries() {
+    const fn = macroApi('clearMacroEntries');
+    if (fn) fn();
+}
+
+function registerMacroEntryShortcut(entryId) {
+    const fn = macroApi('registerMacroEntryShortcut');
+    if (fn) fn(entryId);
+}
+
+function clearMacroEntryShortcut(entryId) {
+    const fn = macroApi('clearMacroEntryShortcut');
+    if (fn) fn(entryId);
+}
+
+function dockMacroMenuRight() {
+    const fn = macroApi('dockMacroMenuRight');
+    if (fn) fn();
+}
+
+function initMacroFeature() {
+    const fn = macroApi('init');
+    if (fn) fn();
+}
 async function toggleViewModeEditSetting(enabled) {
     const on = !!enabled;
     viewModeEditEnabled = on;
@@ -4027,11 +5199,6 @@ function getHighlightVisibleFromSettings(settings) {
     return settings.highlightVisible === true;
 }
 
-function getSitesVisibleFromSettings(settings) {
-    if (!settings) return false;
-    return settings.sitesVisible === true;
-}
-
 function getTemplateVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.templateVisible === true;
@@ -4040,6 +5207,32 @@ function getTemplateVisibleFromSettings(settings) {
 function getHtml2pptVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.html2pptVisible === true;
+}
+
+function getMacroVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.macroVisible === true;
+}
+
+function applyMacroVisibility(settings) {
+    const enabled = getMacroVisibleFromSettings(settings || {});
+    const wrap = document.getElementById('macro-toolbar-wrap');
+    if (wrap) {
+        wrap.classList.toggle('hidden', !enabled);
+        wrap.classList.toggle('inline-flex', enabled);
+    }
+    const panel = document.getElementById('macro-menu-panel');
+    if (!enabled && panel && !panel.classList.contains('hidden')) {
+        toggleMacroMenu();
+    }
+}
+
+async function toggleMacroVisibilitySection() {
+    const check = document.getElementById('macro-visible');
+    const enabled = !!(check && check.checked);
+    await setAiSettings({ macroVisible: enabled });
+    const s = await getAiSettings();
+    applyMacroVisibility(s || { macroVisible: enabled });
 }
 
 function syncHeaderScholarSearchWrapVisibility() {
@@ -4060,305 +5253,6 @@ function syncHeaderScholarSearchWrapVisibility() {
         wrap.classList.remove('flex');
         wrap.style.display = 'none';
     }
-}
-
-function normalizeSitesList(rawList) {
-    const src = Array.isArray(rawList) ? rawList : [];
-    const out = src
-        .map(function (item) {
-            const name = String(item && item.name ? item.name : '').trim();
-            const url = String(item && item.url ? item.url : '').trim();
-            return { name: name, url: url };
-        })
-        .filter(function (item) { return !!item.url; });
-
-    const base = out.length ? out : DEFAULT_SITES_LIST.slice();
-    function normalizeUrl(u) {
-        return String(u || '').trim().toLowerCase().replace(/\/+$/, '');
-    }
-    const hasMermaidAi = base.some(function (item) {
-        const u = normalizeUrl(item && item.url ? item.url : '');
-        return u === 'https://mermaid.ai';
-    });
-    if (!hasMermaidAi) base.push({ name: 'Mermaid AI', url: 'https://mermaid.ai/' });
-    const hasColabNew = base.some(function (item) {
-        const u = normalizeUrl(item && item.url ? item.url : '');
-        return u === 'http://colab.new' || u === 'https://colab.new';
-    });
-    if (!hasColabNew) base.push({ name: 'colab.new', url: 'http://colab.new' });
-    return base;
-}
-
-function renderSitesPanel() {
-    const listEl = document.getElementById('sites-list');
-    if (!listEl) return;
-    listEl.innerHTML = '';
-    sitesList.forEach(function (site, idx) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        if (sitesPanelCompact) {
-            btn.className = 'inline-flex items-center px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs whitespace-nowrap w-auto shrink-0';
-        } else {
-            btn.className = 'w-full text-left px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs';
-        }
-        btn.textContent = site.name || site.url;
-        btn.title = site.url;
-        btn.onclick = function () { openSiteInNewWindow(site.url); };
-        listEl.appendChild(btn);
-    });
-    renderSitesSettingsList();
-}
-
-function renderSitesSettingsList() {
-    const listEl = document.getElementById('sites-list-settings');
-    if (!listEl) return;
-    listEl.innerHTML = '';
-    sitesList.forEach(function (site, idx) {
-        const row = document.createElement('div');
-        row.className = 'flex items-center gap-2';
-
-        const name = document.createElement('div');
-        name.className = 'flex-1 text-[11px] text-slate-700 dark:text-slate-200 truncate';
-        name.title = site.url;
-        name.textContent = site.name || site.url;
-        row.appendChild(name);
-
-        const del = document.createElement('button');
-        del.type = 'button';
-        del.className = 'px-2 py-1 rounded border border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-[11px]';
-        del.textContent = 'Delete';
-        del.onclick = function () { removeSiteAt(idx); };
-        row.appendChild(del);
-
-        listEl.appendChild(row);
-    });
-}
-
-function applySitesPanelMode() {
-    const panel = document.getElementById('sites-panel');
-    const list = document.getElementById('sites-list');
-    const addRow = document.getElementById('sites-add-row');
-    const compactBtn = document.getElementById('sites-panel-compact-btn');
-    const resizer = document.getElementById('sites-panel-resizer');
-    if (!panel || !list) return;
-
-    if (sitesPanelCompact) {
-        if (panel.style.width) sitesPanelSavedWidth = panel.style.width;
-        if (panel.style.height) sitesPanelSavedHeight = panel.style.height;
-        panel.style.left = '12px';
-        panel.style.right = '12px';
-        panel.style.bottom = '10px';
-        panel.style.top = 'auto';
-        panel.style.width = 'auto';
-        panel.style.height = 'auto';
-        panel.style.maxWidth = 'none';
-        list.className = 'flex items-center gap-1.5 overflow-x-auto whitespace-nowrap py-1';
-        if (addRow) addRow.classList.add('hidden');
-        if (compactBtn) compactBtn.textContent = '<<';
-        if (resizer) resizer.style.display = 'none';
-    } else {
-        if (sitesPanelResized) {
-            panel.style.width = sitesPanelSavedWidth || panel.style.width || '520px';
-            panel.style.height = sitesPanelSavedHeight || panel.style.height || '';
-            panel.style.maxWidth = 'none';
-        } else {
-            panel.style.width = '';
-            panel.style.height = '';
-            panel.style.maxWidth = '';
-        }
-        if (!sitesPanelMoved) {
-            panel.style.left = '';
-            panel.style.top = '';
-            panel.style.right = '12px';
-            panel.style.bottom = '12px';
-        }
-        list.className = 'space-y-1.5 max-h-52 overflow-auto pr-1';
-        if (addRow) addRow.classList.remove('hidden');
-        if (compactBtn) compactBtn.textContent = '>>';
-        if (resizer) resizer.style.display = '';
-    }
-    renderSitesPanel();
-}
-
-function toggleSitesCompactMode() {
-    sitesPanelCompact = !sitesPanelCompact;
-    applySitesPanelMode();
-}
-
-function toggleSitesSettingsPanel() {
-    const wrap = document.getElementById('sites-settings-wrap');
-    if (!wrap) return;
-    sitesPanelSettingsOpen = !sitesPanelSettingsOpen;
-    wrap.classList.toggle('hidden', !sitesPanelSettingsOpen);
-}
-
-function bindSitesPanelDrag() {
-    if (sitesPanelDragBound) return;
-    sitesPanelDragBound = true;
-    const panel = document.getElementById('sites-panel');
-    const header = document.getElementById('sites-panel-header');
-    if (!panel || !header) return;
-
-    header.addEventListener('mousedown', function (e) {
-        if (sitesPanelResizing) return;
-        const target = e.target;
-        if (target && target.closest && target.closest('button,input,textarea,select,a')) return;
-        if (sitesPanelCompact) return;
-        const rect = panel.getBoundingClientRect();
-        sitesPanelDragging = true;
-        sitesPanelDragOffsetX = e.clientX - rect.left;
-        sitesPanelDragOffsetY = e.clientY - rect.top;
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
-    });
-    document.addEventListener('mousemove', function (e) {
-        if (sitesPanelResizing) return;
-        if (!sitesPanelDragging || sitesPanelCompact) return;
-        const x = Math.max(0, e.clientX - sitesPanelDragOffsetX);
-        const y = Math.max(0, e.clientY - sitesPanelDragOffsetY);
-        panel.style.left = x + 'px';
-        panel.style.top = y + 'px';
-        sitesPanelMoved = true;
-    });
-    document.addEventListener('mouseup', function () {
-        sitesPanelDragging = false;
-    });
-}
-
-function bindSitesPanelResize() {
-    if (sitesPanelResizeBound) return;
-    sitesPanelResizeBound = true;
-    const panel = document.getElementById('sites-panel');
-    const handle = document.getElementById('sites-panel-resizer');
-    if (!panel || !handle) return;
-
-    handle.addEventListener('mousedown', function (e) {
-        if (sitesPanelCompact) return;
-        e.preventDefault();
-        e.stopPropagation();
-        sitesPanelResizing = true;
-    });
-    document.addEventListener('mousemove', function (e) {
-        if (!sitesPanelResizing || sitesPanelCompact) return;
-        const rect = panel.getBoundingClientRect();
-        const minW = 320;
-        const minH = 220;
-        const maxW = Math.max(minW, window.innerWidth - rect.left - 8);
-        const maxH = Math.max(minH, window.innerHeight - rect.top - 8);
-        const nextW = Math.max(minW, Math.min(maxW, e.clientX - rect.left));
-        const nextH = Math.max(minH, Math.min(maxH, e.clientY - rect.top));
-        panel.style.width = Math.round(nextW) + 'px';
-        panel.style.height = Math.round(nextH) + 'px';
-        panel.style.maxWidth = 'none';
-        sitesPanelSavedWidth = panel.style.width;
-        sitesPanelSavedHeight = panel.style.height;
-        sitesPanelResized = true;
-    });
-    document.addEventListener('mouseup', function () {
-        sitesPanelResizing = false;
-    });
-}
-
-function openSiteInNewWindow(url) {
-    const u = String(url || '').trim();
-    if (!u) return;
-    const win = window.open(u, '_blank', 'noopener,noreferrer,width=1300,height=900');
-    if (!win) showToast('Popup blocked. Please allow popups for this site.');
-}
-
-function applySitesVisibility(settings) {
-    const enabled = getSitesVisibleFromSettings(settings || {});
-    const btn = document.getElementById('btn-sites-panel');
-    if (btn) {
-        if (enabled) btn.classList.remove('hidden');
-        else btn.classList.add('hidden');
-    }
-    syncHeaderScholarSearchWrapVisibility();
-    if (!enabled) closeSitesPanel();
-}
-
-function openSitesPanel() {
-    const panel = document.getElementById('sites-panel');
-    if (!panel) return;
-    bindSitesPanelDrag();
-    bindSitesPanelResize();
-    applySitesPanelMode();
-    renderSitesPanel();
-    panel.classList.remove('hidden');
-    panel.classList.add('flex');
-    sitesPanelOpen = true;
-}
-
-function closeSitesPanel() {
-    const panel = document.getElementById('sites-panel');
-    if (!panel) return;
-    panel.classList.add('hidden');
-    panel.classList.remove('flex');
-    sitesPanelOpen = false;
-}
-
-function toggleSitesPanel() {
-    if (sitesPanelOpen) closeSitesPanel();
-    else openSitesPanel();
-}
-
-function buildSiteNameFromUrl(url) {
-    try {
-        const u = new URL(url);
-        const base = (u.hostname || 'site').replace(/^www\./, '');
-        return base;
-    } catch (_) {
-        return 'Custom Site';
-    }
-}
-
-async function saveSitesListToSettings() {
-    await setAiSettings({ sitesList: sitesList.slice() });
-}
-
-async function addSiteFromInput() {
-    const nameInput = document.getElementById('sites-add-name-input');
-    const urlInput = document.getElementById('sites-add-url-input');
-    if (!urlInput) return;
-    const raw = String(urlInput.value || '').trim();
-    if (!raw) {
-        showToast('Enter a site URL first.');
-        return;
-    }
-    let normalized = raw;
-    if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
-    try {
-        const parsed = new URL(normalized);
-        normalized = parsed.href;
-    } catch (_) {
-        showToast('Invalid URL.');
-        return;
-    }
-    function normalizeForCompare(url) {
-        return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
-    }
-    const exists = sitesList.some(function (s) {
-        return normalizeForCompare(s && s.url) === normalizeForCompare(normalized);
-    });
-    if (exists) {
-        showToast('Site already exists.');
-        return;
-    }
-    const displayName = String(nameInput && nameInput.value ? nameInput.value : '').trim() || buildSiteNameFromUrl(normalized);
-    sitesList.push({ name: displayName, url: normalized });
-    await saveSitesListToSettings();
-    renderSitesPanel();
-    if (nameInput) nameInput.value = '';
-    urlInput.value = '';
-    showToast('Site added.');
-}
-
-async function removeSiteAt(index) {
-    if (index < 0 || index >= sitesList.length) return;
-    sitesList.splice(index, 1);
-    if (!sitesList.length) sitesList = DEFAULT_SITES_LIST.slice();
-    await saveSitesListToSettings();
-    renderSitesPanel();
 }
 
 function applyScholarSearchVisibility(settings) {
@@ -4394,14 +5288,6 @@ async function toggleHighlightSection() {
     await setAiSettings({ highlightVisible: enabled });
     const s = await getAiSettings();
     applyHighlightVisibility(s || { highlightVisible: enabled });
-}
-
-async function toggleSitesSection() {
-    const check = document.getElementById('sites-visible');
-    const enabled = !!(check && check.checked);
-    await setAiSettings({ sitesVisible: enabled });
-    const s = await getAiSettings();
-    applySitesVisibility(s || { sitesVisible: enabled });
 }
 
 function getTemplateLibrary() {
@@ -5950,17 +6836,29 @@ async function persistAiSettingsFromModal() {
     const highlightVisible = !!(highlightVisibleEl && highlightVisibleEl.checked);
     const sitesVisibleEl = document.getElementById('sites-visible');
     const sitesVisible = !!(sitesVisibleEl && sitesVisibleEl.checked);
+    const macroVisibleEl = document.getElementById('macro-visible');
+    const macroVisible = !!(macroVisibleEl && macroVisibleEl.checked);
     const templateVisibleEl = document.getElementById('template-visible');
     const templateVisible = !!(templateVisibleEl && templateVisibleEl.checked);
+    const githubTokenEl = document.getElementById('github-token-input');
+    const githubRepoEl = document.getElementById('github-repo-input');
+    const githubBranchEl = document.getElementById('github-branch-input');
+    const githubToken = String(githubTokenEl && githubTokenEl.value ? githubTokenEl.value : '').trim();
+    const githubRepo = String(githubRepoEl && githubRepoEl.value ? githubRepoEl.value : '').trim();
+    const githubBranch = String(githubBranchEl && githubBranchEl.value ? githubBranchEl.value : 'main').trim() || 'main';
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     await setAiSettings({
         scholarAI: !!scholarOn,
         sspimgAI: !!sspimgOn,
         githubEnabled: !!(githubEl && githubEl.checked),
+        githubToken: githubToken,
+        githubRepo: githubRepo,
+        githubBranch: githubBranch,
         scholarSearchVisible: scholarSearchVisible,
         highlightVisible: highlightVisible,
         sitesVisible: sitesVisible,
+        macroVisible: macroVisible,
         templateVisible: templateVisible,
         sitesList: sitesList.slice(),
         imageUploadEnabled: imageUploadEnabled,
@@ -5971,6 +6869,7 @@ async function persistAiSettingsFromModal() {
     });
     if (imgbbKey) localStorage.setItem('ss_imgbb_api_key', imgbbKey);
     else localStorage.removeItem('ss_imgbb_api_key');
+    await applyGithubUiState();
 }
 
 async function closeSettingsModal() {
@@ -6924,6 +7823,8 @@ async function loadAiSettingsToUI() {
         if (highlightCheckEmpty) highlightCheckEmpty.checked = false;
         const sitesCheckEmpty = document.getElementById('sites-visible');
         if (sitesCheckEmpty) sitesCheckEmpty.checked = false;
+        const macroCheckEmpty = document.getElementById('macro-visible');
+        if (macroCheckEmpty) macroCheckEmpty.checked = false;
         const templateCheckEmpty = document.getElementById('template-visible');
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
@@ -6942,6 +7843,16 @@ async function loadAiSettingsToUI() {
         viewModeEditEnabled = localViewModeEditEnabled;
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
+        const githubEnabledEmpty = document.getElementById('ai-github-enabled');
+        if (githubEnabledEmpty) githubEnabledEmpty.checked = false;
+        const githubTokenEmpty = document.getElementById('github-token-input');
+        if (githubTokenEmpty) githubTokenEmpty.value = '';
+        const githubRepoEmpty = document.getElementById('github-repo-input');
+        if (githubRepoEmpty) githubRepoEmpty.value = '';
+        const githubBranchEmpty = document.getElementById('github-branch-input');
+        if (githubBranchEmpty) githubBranchEmpty.value = 'main';
+        toggleGithubSettingsSection();
+        setGithubFeedback('', 'info');
         if (window.GoogleDocs && typeof window.GoogleDocs.resetGoogleDocsSettingsUI === 'function') {
             window.GoogleDocs.resetGoogleDocsSettingsUI();
         }
@@ -6955,11 +7866,20 @@ async function loadAiSettingsToUI() {
         applyScholarSearchVisibility({ scholarSearchVisible: false });
         applyHighlightVisibility({ highlightVisible: false });
         applySitesVisibility({ sitesVisible: false });
+        applyMacroVisibility({ macroVisible: false });
         applyTemplateVisibility({ templateVisible: false });
         applyHtml2pptVisibility({ html2pptVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
         applyShareSettingsFold(getShareSettingsFoldedFromLocal());
+        applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
         applyEditToolsVisibilityByMode();
+        await applyGithubUiState({
+            githubEnabled: false,
+            githubToken: '',
+            githubRepo: '',
+            githubBranch: 'main',
+            githubCacheDocs: []
+        });
         return;
     }
     const apiInput = document.getElementById('ai-api-key');
@@ -6974,6 +7894,8 @@ async function loadAiSettingsToUI() {
     if (highlightCheck) highlightCheck.checked = settings.highlightVisible === true;
     const sitesCheck = document.getElementById('sites-visible');
     if (sitesCheck) sitesCheck.checked = settings.sitesVisible === true;
+    const macroCheck = document.getElementById('macro-visible');
+    if (macroCheck) macroCheck.checked = settings.macroVisible === true;
     const templateCheck = document.getElementById('template-visible');
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
     const html2pptCheck = document.getElementById('html2ppt-visible');
@@ -7027,9 +7949,16 @@ async function loadAiSettingsToUI() {
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
+    const githubTokenEl = document.getElementById('github-token-input');
+    const githubRepoEl = document.getElementById('github-repo-input');
+    const githubBranchEl = document.getElementById('github-branch-input');
     if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
     if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
     if (githubEl) githubEl.checked = !!settings.githubEnabled;
+    if (githubTokenEl) githubTokenEl.value = settings.githubToken || '';
+    if (githubRepoEl) githubRepoEl.value = settings.githubRepo || '';
+    if (githubBranchEl) githubBranchEl.value = settings.githubBranch || 'main';
+    toggleGithubSettingsSection();
     updateAiScholarSspimgAvailability(verified);
     if (window.UserSettingsModule && typeof window.UserSettingsModule.applyUserInfoToModalFields === 'function') {
         window.UserSettingsModule.applyUserInfoToModalFields(settings && settings.userInfo ? settings.userInfo : null);
@@ -7042,11 +7971,14 @@ async function loadAiSettingsToUI() {
     applyScholarSearchVisibility(settings);
     applyToDocsVisibility(settings);
     applySitesVisibility(settings);
+    applyMacroVisibility(settings);
     applyTemplateVisibility(settings);
     applyHtml2pptVisibility(settings);
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
+    applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
     applyEditToolsVisibilityByMode();
+    await applyGithubUiState(settings);
 }
 
 async function initAiVisibility() {
@@ -7054,6 +7986,7 @@ async function initAiVisibility() {
     const useCheck = document.getElementById('ai-use-checkbox');
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
+    const githubEl = document.getElementById('ai-github-enabled');
     const verified = !!(settings && settings.verified);
     if (settings) {
         if (useCheck) {
@@ -7062,9 +7995,11 @@ async function initAiVisibility() {
         }
         if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
         if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
+        if (githubEl) githubEl.checked = !!settings.githubEnabled;
     } else {
         if (scholarEl) scholarEl.checked = false;
         if (sspimgEl) sspimgEl.checked = false;
+        if (githubEl) githubEl.checked = false;
     }
     enterButtonInsertBr = !!((settings && settings.enterButtonInsertBr === true) || getEnterButtonInsertBrFromLocal());
     selectionWrapEnabled = settings && typeof settings.selectionWrapEnabled === 'boolean'
@@ -7085,9 +8020,11 @@ async function initAiVisibility() {
     applyHighlightVisibility(settings || { highlightVisible: false });
     applyToDocsVisibility(settings || { toDocsVisible: false });
     applySitesVisibility(settings || { sitesVisible: false });
+    applyMacroVisibility(settings || { macroVisible: false });
     applyTemplateVisibility(settings || { templateVisible: false });
     applyHtml2pptVisibility(settings || { html2pptVisible: false });
     applyEditToolsVisibilityByMode();
+    await applyGithubUiState(settings || { githubEnabled: false, githubCacheDocs: [] });
     await applyAiFeatureVisibility();
 }
 
@@ -7098,6 +8035,7 @@ function openSettingsModal() {
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
+    applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
     loadAiSettingsToUI();
 }
 
@@ -7251,6 +8189,7 @@ function saveToDB() {
 // Global exports for inline HTML handlers
 window.toggleTheme = toggleTheme;
 window.toggleEditorLightMode = toggleEditorLightMode;
+window.toggleMiniPreview = toggleMiniPreview;
 window.updateContent = updateContent;
 window.renderMarkdown = renderMarkdown;
 window.toggleMode = toggleMode;
@@ -7268,6 +8207,7 @@ window.toggleSidebarVisibility = toggleSidebarVisibility;
 window.toggleSidebarCollapse = toggleSidebarCollapse;
 window.ensureRootFolder = ensureRootFolder;
 window.createNewFolder = createNewFolder;
+window.deleteFolderFromDB = deleteFolderFromDB;
 window.saveToDB = saveToDB;
 window.renderDBList = renderDBList;
 window.loadFromDB = loadFromDB;
@@ -7333,12 +8273,6 @@ window.deleteScholarRefItem = deleteScholarRefItem;
 window.clearAllScholarRefs = clearAllScholarRefs;
 window.toggleScholarSearchDockRight = toggleScholarSearchDockRight;
 window.toggleScholarSearchShrink = toggleScholarSearchShrink;
-window.toggleSitesPanel = toggleSitesPanel;
-window.closeSitesPanel = closeSitesPanel;
-window.addSiteFromInput = addSiteFromInput;
-window.toggleSitesSection = toggleSitesSection;
-window.toggleSitesCompactMode = toggleSitesCompactMode;
-window.toggleSitesSettingsPanel = toggleSitesSettingsPanel;
 window.toggleTemplatePanel = toggleTemplatePanel;
 window.closeTemplatePanel = closeTemplatePanel;
 window.toggleTemplateCompactMode = toggleTemplateCompactMode;
@@ -7388,6 +8322,22 @@ window.saveApiKey = saveApiKey;
 window.toggleAiPasswordSection = toggleAiPasswordSection;
 window.toggleAiUseFold = toggleAiUseFold;
 window.toggleShareSettingsFold = toggleShareSettingsFold;
+window.toggleGithubSettingsFold = toggleGithubSettingsFold;
+window.toggleMacroMenu = toggleMacroMenu;
+window.toggleMacroRecord = toggleMacroRecord;
+window.runCheckedMacroActions = runCheckedMacroActions;
+window.runMacroEntry = runMacroEntry;
+window.toggleMacroEntryEnabled = toggleMacroEntryEnabled;
+window.clearMacroEntries = clearMacroEntries;
+window.registerMacroEntryShortcut = registerMacroEntryShortcut;
+window.clearMacroEntryShortcut = clearMacroEntryShortcut;
+window.dockMacroMenuRight = dockMacroMenuRight;
+window.toggleMacroVisibilitySection = toggleMacroVisibilitySection;
+window.toggleMathQuickMenu = toggleMathQuickMenu;
+window.insertInlineMathTemplate = insertInlineMathTemplate;
+window.insertDisplayMathTemplate = insertDisplayMathTemplate;
+window.insertMathRefTemplate = insertMathRefTemplate;
+window.openProcessOnVisualSite = openProcessOnVisualSite;
 window.validateApiKeyInputUI = validateApiKeyInputUI;
 window.saveAiPassword = saveAiPassword;
 window.applyAiFeatureVisibility = applyAiFeatureVisibility;
@@ -7405,6 +8355,15 @@ window.applyCodeColorSettings = applyCodeColorSettings;
 window.resetCodeColorSettings = resetCodeColorSettings;
 window.clearUnusedCache = clearUnusedCache;
 window.switchSidebarTab = switchSidebarTab;
+window.switchStorageSourceTab = switchStorageSourceTab;
+window.toggleGithubSettingsSection = toggleGithubSettingsSection;
+window.saveGithubSettingsFromModal = saveGithubSettingsFromModal;
+window.createGithubRepository = createGithubRepository;
+window.pullGithubRepo = pullGithubRepo;
+window.pushDocToGithub = pushDocToGithub;
+window.pushCurrentContentToGithub = pushCurrentContentToGithub;
+window.isGithubExportEnabled = isGithubExportEnabled;
+window.loadFromGithubCache = loadFromGithubCache;
 window.renderTOC = renderTOC;
 window.scrollToLine = scrollToLine;
 window.applyHeading = applyHeading;

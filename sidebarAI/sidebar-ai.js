@@ -2806,10 +2806,41 @@ function viewerSSPFsUploadImgbb() {
   window.scholarAICopyZoomMarkdown = scholarAICopyZoomMarkdown;
   window.scholarAIResultZoomOpen = scholarAIResultZoomOpen;
   window.scholarAIResultZoomClose = scholarAIResultZoomClose;
-  window.handleScholarAIInsertClick = handleScholarAIInsertClick;
-  window.toggleScholarAIInsertMenu = toggleScholarAIInsertMenu;
-  window.closeScholarAIInsertMenu = closeScholarAIInsertMenu;
-  window.scholarAIInsertDoc = scholarAIInsertDoc;
+  window.SidebarAIInsertDeps = {
+    getInsertResultText: scholarAIGetInsertResultText,
+    isTextSelectionControl: isTextSelectionControl,
+    isAiPanelElement: isAiPanelElement,
+    setResultTab: scholarAISetResultTab,
+    getSelectionState: function () {
+      return {
+        selStart: __scholarAISelStart,
+        selEnd: __scholarAISelEnd,
+        cursorPos: __scholarAICursorPos,
+        lastSelectionTarget: __scholarAILastSelectionTarget,
+        lastSelectionDoc: __scholarAILastSelectionDoc
+      };
+    },
+    setSelectionState: function (next) {
+      var n = next || {};
+      if (Object.prototype.hasOwnProperty.call(n, 'selStart')) __scholarAISelStart = n.selStart;
+      if (Object.prototype.hasOwnProperty.call(n, 'selEnd')) __scholarAISelEnd = n.selEnd;
+      if (Object.prototype.hasOwnProperty.call(n, 'cursorPos')) __scholarAICursorPos = n.cursorPos;
+      if (Object.prototype.hasOwnProperty.call(n, 'lastSelectionTarget')) __scholarAILastSelectionTarget = n.lastSelectionTarget;
+      if (Object.prototype.hasOwnProperty.call(n, 'lastSelectionDoc')) __scholarAILastSelectionDoc = n.lastSelectionDoc;
+    }
+  };
+  window.handleScholarAIInsertClick = (window.SidebarAIInsert && window.SidebarAIInsert.handleScholarAIInsertClick)
+    ? window.SidebarAIInsert.handleScholarAIInsertClick
+    : handleScholarAIInsertClick;
+  window.toggleScholarAIInsertMenu = (window.SidebarAIInsert && window.SidebarAIInsert.toggleScholarAIInsertMenu)
+    ? window.SidebarAIInsert.toggleScholarAIInsertMenu
+    : toggleScholarAIInsertMenu;
+  window.closeScholarAIInsertMenu = (window.SidebarAIInsert && window.SidebarAIInsert.closeScholarAIInsertMenu)
+    ? window.SidebarAIInsert.closeScholarAIInsertMenu
+    : closeScholarAIInsertMenu;
+  window.scholarAIInsertDoc = (window.SidebarAIInsert && window.SidebarAIInsert.scholarAIInsertDoc)
+    ? window.SidebarAIInsert.scholarAIInsertDoc
+    : scholarAIInsertDoc;
   window.toggleViewerSSP = toggleViewerSSP;
   window.sspAIShrink = sspAIShrink;
   window.sspAIPopupToggle = sspAIPopupToggle;
