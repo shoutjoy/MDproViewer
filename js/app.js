@@ -105,6 +105,8 @@ let miniPreviewDebounceTimer = null;
 let previewPopupDebounceTimer = null;
 let lastAutoSavedContent = '';
 let lastAutoSavedTitle = '';
+let pauseMainRenderWhileEditing = true;
+let mainRenderDirty = true;
 
 // Sidebar states
 let isSidebarHidden = true;
@@ -827,6 +829,7 @@ function toggleMiniPreview() {
     setMiniPreviewEnabledToLocal(miniPreviewEnabled);
     applyMiniPreviewVisibility();
     if (miniPreviewEnabled) {
+        mainRenderDirty = true;
         renderMiniPreviewContent();
     }
 }
@@ -851,7 +854,6 @@ function initUserSettingsModule() {
         onEditorChanged: function () {
             currentMarkdown = editorTextarea.value;
             const baseDelay = getEditorInputDebounceMs();
-            schedulePerformAutoSave(baseDelay);
             scheduleRenderTOC(baseDelay + 20);
         }
     });
@@ -969,10 +971,10 @@ window.onload = async () => {
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
         const baseDelay = getEditorInputDebounceMs();
-        schedulePerformAutoSave(baseDelay);
         scheduleUpdatePreviewPopupContent(baseDelay + 40);
         scheduleMiniPreviewRender(baseDelay + 40);
         scheduleRenderTOC(baseDelay + 20);
+        mainRenderDirty = true;
         if (window.GoogleDocs && typeof window.GoogleDocs.handleEditorChanged === 'function') {
             window.GoogleDocs.handleEditorChanged();
         }
@@ -1323,9 +1325,10 @@ function updateContent(md) {
     notebookLmEqualsHrPreprocess = false;
     currentMarkdown = md;
     if (editorTextarea) editorTextarea.value = md;
-    renderMarkdown();
+    mainRenderDirty = true;
+    renderMarkdown({ force: !isEditMode });
     renderTOC();
-    updatePreviewPopupContent();
+    scheduleUpdatePreviewPopupContent(80);
     if (window.GoogleDocs && typeof window.GoogleDocs.handleEditorChanged === 'function') {
         window.GoogleDocs.handleEditorChanged();
     }
@@ -1693,8 +1696,16 @@ function bindFootnoteLinkNavigation() {
     });
 }
 
-function renderMarkdown() {
+function renderMarkdown(options) {
     if (!viewer) return;
+    const opts = options || {};
+    const force = !!opts.force;
+    const popupAlive = !!(typeof isPreviewPopupAlive === 'function' && isPreviewPopupAlive());
+    if (isEditMode && pauseMainRenderWhileEditing && !force && !miniPreviewEnabled && !popupAlive) {
+        mainRenderDirty = true;
+        return;
+    }
+    mainRenderDirty = false;
     const raw = String(currentMarkdown ?? '');
     let preprocessed = raw;
     function runPostRenderHooks() {
@@ -1707,8 +1718,8 @@ function renderMarkdown() {
                 window.MermaidTRT.renderIn(viewer).catch(function () {});
             }
         } catch (e) {}
-        try { updatePreviewPopupContent(); } catch (e) {}
-        try { renderMiniPreviewContent(); } catch (e) {}
+        try { scheduleUpdatePreviewPopupContent(120); } catch (e) {}
+        try { scheduleMiniPreviewRender(120); } catch (e) {}
     }
     revokeObjectUrls(viewerInternalImageObjectUrls);
     resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
@@ -1894,18 +1905,18 @@ function toggleMode(mode) {
         if (btnView) btnView.classList.add(...activeClasses);
         if (btnEdit) btnEdit.classList.remove(...activeClasses);
         vc.classList.remove('hidden');
-        renderMarkdown();
+        renderMarkdown({ force: true });
         requestAnimationFrame(function () {
             if (isEditMode) return;
             if (editorTextarea) {
                 const v = String(editorTextarea.value ?? '');
                 if (v !== currentMarkdown) {
                     currentMarkdown = v;
-                    renderMarkdown();
+                    renderMarkdown({ force: true });
                 }
             }
             if (currentMarkdown.trim() && viewer && !viewer.textContent.trim()) {
-                renderMarkdown();
+                renderMarkdown({ force: true });
             }
             const ratioFromCaret = getMarkdownRatioFromCharPos(lastEditCaretPos);
             requestAnimationFrame(function () {
@@ -3861,6 +3872,13 @@ function performAutoSave(options) {
     lastAutoSavedContent = content;
     lastAutoSavedTitle = title;
     saveCurrentDocumentToInDbQuietly().catch(function () {});
+}
+
+function setLiveRenderInEditMode(enabled) {
+    pauseMainRenderWhileEditing = !enabled;
+    if (!pauseMainRenderWhileEditing && mainRenderDirty) {
+        renderMarkdown({ force: true });
+    }
 }
 
 async function clearUnusedCache() {
@@ -8627,6 +8645,7 @@ window.openMoveModal = openMoveModal;
 window.closeMoveModal = closeMoveModal;
 window.moveDocToFolder = moveDocToFolder;
 window.performAutoSave = performAutoSave;
+window.setLiveRenderInEditMode = setLiveRenderInEditMode;
 window.checkAutoSave = checkAutoSave;
 window.applyRecovery = applyRecovery;
 window.dismissRecovery = dismissRecovery;
