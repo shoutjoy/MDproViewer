@@ -78,6 +78,12 @@
     return String(payload && payload.format || '').trim().toLowerCase();
   }
 
+  function parseJsonWithOptionalFormatApi(text) {
+    var api = global.MdViewerFileFormat;
+    if (api && typeof api.parseJsonText === 'function') return api.parseJsonText(text);
+    return JSON.parse(text);
+  }
+
   function makeSafeImageId(seed, index) {
     var raw = String(seed || '').trim();
     var base = raw.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._~-]/g, '_');
@@ -109,9 +115,10 @@
 
     var name = String(fileName || 'document.mdd');
     if (!/\.mdd$/i.test(name)) name += '.mdd';
+    var formatApi = global.MdViewerFileFormat || {};
     var payload = {
-      format: 'mdviewer/mdd',
-      version: 1,
+      format: typeof formatApi.getFormatId === 'function' ? formatApi.getFormatId('mdd') : 'mdviewer/mdd',
+      version: typeof formatApi.getFormatVersion === 'function' ? formatApi.getFormatVersion('mdd') : 1,
       exportedAt: new Date().toISOString(),
       document: {
         fileName: name.replace(/\.mdd$/i, '.md'),
@@ -129,10 +136,15 @@
 
   async function importMddToIndexedDb(db, textOrObject) {
     var imageDb = ensureImageDb();
-    var payload = typeof textOrObject === 'string' ? JSON.parse(textOrObject) : textOrObject;
+    var formatApi = global.MdViewerFileFormat || {};
+    var payload = typeof textOrObject === 'string' ? parseJsonWithOptionalFormatApi(textOrObject) : textOrObject;
+    if (typeof formatApi.normalizeMddPayload === 'function') {
+      payload = formatApi.normalizeMddPayload(payload);
+    }
     var format = safeMddFormat(payload);
-
-    if (format !== 'mdviewer/mdd' && format !== 'mdlive/mdd') {
+    if (typeof formatApi.isMddPayload === 'function') {
+      if (!formatApi.isMddPayload(payload)) throw new Error('Invalid MDD format.');
+    } else if (format !== 'mdviewer/mdd' && format !== 'mdlive/mdd') {
       throw new Error('Invalid MDD format.');
     }
 
@@ -196,8 +208,7 @@
       'cancel'
     );
   }
-
-    function showExportTypeDialog() {
+  function showExportTypeDialog() {
     var choices = [
       { key: 'md', label: 'MD file' },
       { key: 'mdd', label: 'MDD file (bundle)' },
@@ -213,7 +224,7 @@
 
     return showChoiceDialog(
       'Export Format',
-      'MD: 문서만 저장 / MDD: 통합 저장 / ZIP: 폴더 저장 / HTML: 단일 HTML 문서 내보내기',
+      'MD: text only / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document',
       choices,
       'cancel'
     );
@@ -221,16 +232,15 @@
 
   function showMdImageLossWarningDialog() {
     return showChoiceDialog(
-      '?대?吏 ?ы븿 臾몄꽌 ?덈궡',
-      'MD ?뚯씪濡???ν븯硫??대?(IndexedDB) ?대?吏????λ릺吏 ?딆뒿?덈떎.\nMDD??臾몄꽌+?대?吏瑜??듯빀 ??ν븯怨? ZIP? 臾몄꽌? images ?대뜑濡???ν빀?덈떎.\nMD濡?怨꾩냽 ??ν븯?쒓쿋?듬땲源?',
+      'Internal Images Warning',
+      'MD exports text only. Internal images (IndexedDB) are not included.\nUse MDD to keep document + images together, or ZIP for markdown + images folder.\nDo you want to continue with MD export?',
       [
-        { key: 'continue_md', label: 'MD濡?怨꾩냽 ??? },
-        { key: 'cancel', label: '痍⑥냼' }
+        { key: 'continue_md', label: 'Continue with MD' },
+        { key: 'cancel', label: 'Cancel' }
       ],
       'cancel'
     );
   }
-
   global.ExtendFiles = {
     showChoiceDialog: showChoiceDialog,
     showCloseActionDialog: showCloseActionDialog,

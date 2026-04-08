@@ -64,7 +64,7 @@
                 <i data-lucide="presentation" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
                 <span class="hidden xl:inline text-sm font-medium">GenSlide</span>
             </button>
-            <input type="file" id="file-input" class="hidden" accept=".md,.txt,.mpv,.json,.zip,.mdd" onchange="handleFileSelect(event)">
+            <input type="file" id="file-input" class="hidden" accept=".md,.txt,.csv,.html,.htm,.mpv,.mpp,.json,.zip,.mdd" onchange="handleFileSelect(event)">
 
             <button onclick="saveFile()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0"
@@ -1672,6 +1672,7 @@
     <script src="./imageDB/image_insert.js" charset="utf-8" defer></script>
     <script src="./js/Scholarref/scholarref.js?v=20260402-1" charset="utf-8" defer></script>
     <script src="./js/templates/templates.js" charset="utf-8" defer></script>
+    <script src="./file_format/file_format.js?v=20260408-1" charset="utf-8" defer></script>
     <script src="./js/extendFiles/extend-files.js" charset="utf-8" defer></script>
     <script src="./sidebarAI/Scholarai_prompt.js?v=20260406-1" charset="utf-8" defer></script>
     <script src="./sidebarAI/insert.js?v=20260407-1" charset="utf-8" defer></script>

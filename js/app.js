@@ -1,5 +1,4 @@
 // IndexedDB Logic
-﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
 const DB_VERSION = 4;
 let db;
@@ -1923,8 +1922,12 @@ function createNewFile() {
     if (isEditMode) editorTextarea.focus();
 }
 
-const MPV_FORMAT = 'mdviewer/mpv';
-const MPV_VERSION = 1;
+const MPV_FORMAT = (window.MdViewerFileFormat && typeof window.MdViewerFileFormat.getFormatId === 'function'
+    ? window.MdViewerFileFormat.getFormatId('mpv')
+    : 'mdviewer/mpv');
+const MPV_VERSION = (window.MdViewerFileFormat && typeof window.MdViewerFileFormat.getFormatVersion === 'function'
+    ? window.MdViewerFileFormat.getFormatVersion('mpv')
+    : 1);
 
 function setCurrentDocumentInfo(fileName, filePath = null) {
     currentFileName = fileName;
@@ -2033,14 +2036,68 @@ async function exportCurrentDocumentAsMdd() {
     downloadBlobFile(out.blob, out.fileName || getMddSaveFileName());
 }
 
+function showExportTypeDialogFallback() {
+    return new Promise(function (resolve) {
+        const choices = [
+            { key: 'md', label: 'MD file' },
+            { key: 'mdd', label: 'MDD file (bundle)' },
+            { key: 'zip', label: 'ZIP file' },
+            { key: 'html', label: 'HTML file' }
+        ];
+        try {
+            if (typeof isGithubExportEnabled === 'function' && isGithubExportEnabled()) {
+                choices.push({ key: 'github', label: 'GitHub (push)' });
+            }
+        } catch (_) {}
+        choices.push({ key: 'cancel', label: 'Cancel' });
+
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+
+        const card = document.createElement('div');
+        card.style.cssText = 'width:min(560px,96vw);background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:12px;box-shadow:0 20px 40px rgba(0,0,0,.35);padding:16px;';
+
+        const title = document.createElement('h3');
+        title.textContent = 'Export Format';
+        title.style.cssText = 'margin:0 0 8px;font-size:16px;font-weight:700;';
+        card.appendChild(title);
+
+        const desc = document.createElement('p');
+        desc.textContent = 'Choose export format.';
+        desc.style.cssText = 'margin:0 0 14px;font-size:13px;line-height:1.5;color:#cbd5e1;';
+        card.appendChild(desc);
+
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+
+        function done(key) {
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            resolve(key || 'cancel');
+        }
+
+        choices.forEach(function (choice) {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = choice.label;
+            btn.style.cssText = 'padding:8px 12px;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;font-size:13px;font-weight:600;cursor:pointer;';
+            btn.addEventListener('click', function () { done(choice.key); });
+            row.appendChild(btn);
+        });
+
+        card.appendChild(row);
+        overlay.appendChild(card);
+        overlay.addEventListener('click', function (ev) {
+            if (ev.target === overlay) done('cancel');
+        });
+        document.body.appendChild(overlay);
+    });
+}
+
 async function chooseExportType() {
     if (window.ExtendFiles && typeof window.ExtendFiles.showExportTypeDialog === 'function') {
         return await window.ExtendFiles.showExportTypeDialog();
     }
-    const pick = String(window.prompt('Export type: md / mdd / zip / html / github (cancel = empty)', 'md') || '').trim().toLowerCase();
-    if (!pick) return 'cancel';
-    if (pick === 'md' || pick === 'mdd' || pick === 'zip' || pick === 'html' || pick === 'github') return pick;
-    return 'cancel';
+    return await showExportTypeDialogFallback();
 }
 
 async function exportCurrentDocumentByChoice() {
@@ -2099,14 +2156,18 @@ async function readFile(file, options) {
             return;
         }
     }
+    const formatApi = window.MdViewerFileFormat || null;
     const name = (file && file.name ? file.name : '').toLowerCase();
-    if (name.endsWith('.mdd')) {
+    const kindByName = (formatApi && typeof formatApi.detectKindFromFileName === 'function')
+        ? formatApi.detectKindFromFileName(name)
+        : '';
+    if (kindByName === 'mdd' || name.endsWith('.mdd')) {
         importMddDocumentFile(file).catch(function (e) {
             showToast('Failed to import MDD: ' + (e && e.message ? e.message : e));
         });
         return;
     }
-    if (name.endsWith('.zip')) {
+    if (kindByName === 'zip' || name.endsWith('.zip')) {
         importZipDocumentFile(file).catch(function (e) {
             showToast('Failed to import ZIP: ' + (e && e.message ? e.message : e));
         });
@@ -2115,25 +2176,58 @@ async function readFile(file, options) {
     const reader = new FileReader();
     reader.onload = (e) => {
         const raw = e.target.result;
-        if (name.endsWith('.mpv') || name.endsWith('.json')) {
+        const parsed = (formatApi && typeof formatApi.parseFileText === 'function')
+            ? formatApi.parseFileText(name, raw)
+            : null;
+        const kind = parsed && parsed.kind ? parsed.kind : kindByName;
+
+        if (kind === 'mdd') {
+            importMddDocumentFile(file, { rawText: raw, payload: parsed && parsed.payload ? parsed.payload : null }).catch(function (err) {
+                showToast('Failed to import MDD: ' + (err && err.message ? err.message : err));
+            });
+            return;
+        }
+        if (kind === 'mpv' || name.endsWith('.mpv') || name.endsWith('.json')) {
             currentFilePath = null;
             try {
-                const data = JSON.parse(raw);
-                if (data && data.format === MPV_FORMAT && Array.isArray(data.folders) && Array.isArray(data.documents)) {
+                const parser = window.MdViewerFileFormat;
+                const data = parsed && parsed.payload
+                    ? parsed.payload
+                    : (parser && typeof parser.parseJsonText === 'function'
+                    ? parser.parseJsonText(raw)
+                    : JSON.parse(raw));
+                const kind = parser && typeof parser.detectPayloadKind === 'function'
+                    ? parser.detectPayloadKind(data)
+                    : '';
+                if (kind === 'mpv' || (data && data.format === MPV_FORMAT && Array.isArray(data.folders) && Array.isArray(data.documents))) {
                     restoreFromMpv(data);
+                    return;
+                }
+                if (kind === 'mpp') {
+                    showToast('MPP file detected. Open it in GenSlide editor.');
                     return;
                 }
             } catch (_) {}
         }
+        if (kind === 'mpp') {
+            showToast('MPP file detected. Open it in GenSlide editor.');
+            return;
+        }
+        if (kind === 'csv') {
+            showToast('CSV loaded as text.');
+        }
+        if (kind === 'html') {
+            showToast('HTML loaded as text.');
+        }
         setCurrentDocumentInfo(file.name, file.path || null);
-        updateContent(raw);
+        updateContent(parsed && typeof parsed.text === 'string' ? parsed.text : raw);
         markPersistedState();
         showToast("File loaded successfully.");
     };
     reader.readAsText(file, 'UTF-8');
 }
 
-async function importMddDocumentFile(file) {
+async function importMddDocumentFile(file, options) {
     if (!db) {
         showToast('Database is not ready yet. Please try again.');
         return;
@@ -2142,8 +2236,9 @@ async function importMddDocumentFile(file) {
         showToast('MDD import is not available.');
         return;
     }
-    const text = await file.text();
-    const imported = await window.ExtendFiles.importMddToIndexedDb(db, text);
+    const opts = options || {};
+    const inputPayload = opts.payload || opts.rawText || await file.text();
+    const imported = await window.ExtendFiles.importMddToIndexedDb(db, inputPayload);
     const md = imported && typeof imported.markdown === 'string' ? imported.markdown : '';
     const title = imported && imported.fileName ? imported.fileName : ((file.name || 'document').replace(/\.mdd$/i, '.md'));
     setCurrentDocumentInfo(title, null);
