@@ -324,9 +324,12 @@ async function updatePreviewPopupContent() {
         if (typeof marked === 'undefined' || !marked.parse) {
             html = '<p>' + escapeHtmlForPreview(resolvedRaw).replace(/\n/g, '<br>') + '</p>';
         } else {
-            const out = marked.parse(preprocessed);
+            const mathProtected = (typeof _protectMathSegments === 'function')
+                ? _protectMathSegments(preprocessed)
+                : { text: preprocessed, restoreHtml: function (v) { return String(v || ''); } };
+            const out = marked.parse(mathProtected.text);
             html = (out != null && typeof out.then === 'function') ? await out : out;
-            html = html || '';
+            html = mathProtected.restoreHtml(html || '');
         }
     } catch (e) {
         html = '<p>' + escapeHtmlForPreview(raw).replace(/\n/g, '<br>') + '</p>';

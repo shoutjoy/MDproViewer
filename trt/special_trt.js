@@ -9,13 +9,15 @@
         render: {
             unescapeMarkdownSyntax: true,
             emphasizeNumericReferences: false,
-            forceHardBreakEachLine: false
+            forceHardBreakEachLine: false,
+            canonicalizeMathDelimiters: false
         },
         // Tidy 시: 문서 원본에 반영되는 정리
         tidy: {
             unescapeMarkdownSyntax: true,
             emphasizeNumericReferences: false,
-            forceHardBreakEachLine: false
+            forceHardBreakEachLine: false,
+            canonicalizeMathDelimiters: true
         }
     };
 
@@ -87,9 +89,33 @@
         return out.join('\n');
     }
 
+    function canonicalizeMathDelimiters(text) {
+        const chunks = String(text ?? '').split(/(```[\s\S]*?```)/g);
+        return chunks.map(function (chunk) {
+            if (/^```[\s\S]*```$/.test(chunk)) return chunk;
+            let out = String(chunk || '')
+                .replace(/\\\s*\[([\s\S]*?)\\\s*\]/g, function (_, inner) {
+                    return '$$\n' + String(inner || '').trim() + '\n$$';
+                })
+                .replace(/\\\s*\(([\s\S]*?)\\\s*\)/g, function (_, inner) {
+                    return '$' + String(inner || '').trim() + '$';
+                });
+            out = out.replace(/(^|\n)\[\s*\n([\s\S]*?)\n\s*\](?=\n|$)/g, function (_, prefix, inner) {
+                const body = String(inner || '').trim();
+                return String(prefix || '') + '$$\n' + body + '\n$$';
+            });
+            out = out.replace(/(^|\n)\[\s{2,}\n([\s\S]*?)\n\s*\](?=\n|$)/g, function (_, prefix, inner) {
+                const body = String(inner || '').trim();
+                return String(prefix || '') + '$$\n' + body + '\n$$';
+            });
+            return out;
+        }).join('');
+    }
+
     function prepareWithPolicy(text, policy) {
         let result = String(text ?? '');
         if (!result) return '';
+        if (policy.canonicalizeMathDelimiters) result = canonicalizeMathDelimiters(result);
         if (policy.unescapeMarkdownSyntax) result = unescapeMarkdownSyntax(result);
         if (policy.emphasizeNumericReferences) result = emphasizeNumericReferences(result);
         if (policy.forceHardBreakEachLine) result = forceHardBreakEachLine(result);
@@ -111,6 +137,7 @@
         unescapeMarkdownSyntax: unescapeMarkdownSyntax,
         emphasizeNumericReferences: emphasizeNumericReferences,
         forceHardBreakEachLine: forceHardBreakEachLine,
+        canonicalizeMathDelimiters: canonicalizeMathDelimiters,
         prepareForRender: prepareForRender,
         prepareForTidy: prepareForTidy
     };

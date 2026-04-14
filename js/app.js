@@ -1432,158 +1432,6 @@ function preprocessStandaloneHrAfterHardBreak(raw) {
     return out.join('\n');
 }
 
-function normalizeMatrixRowBreaksInMath(inner) {
-    const text = String(inner ?? '');
-    const hasMatrixEnv = /\\begin\{(?:[pbvBV]?matrix|matrix|array|aligned|cases)\}/.test(text);
-    if (!hasMatrixEnv) return text;
-    return text.replace(/(^|[^\\])\\\\([ \t]*\n)/g, function (_, prefix, tail) {
-        return String(prefix || '') + '\\\\\\\\' + String(tail || '\n');
-    });
-}
-
-function preprocessMultilineInlineMathToDisplay(raw) {
-    const src = String(raw ?? '');
-    if (!src.includes('$')) return src;
-    let out = '';
-    let i = 0;
-    while (i < src.length) {
-        const ch = src[i];
-        if (ch !== '$') {
-            out += ch;
-            i += 1;
-            continue;
-        }
-        const prev = i > 0 ? src[i - 1] : '';
-        const next = i + 1 < src.length ? src[i + 1] : '';
-        if (prev === '\\' || next === '$') {
-            out += ch;
-            i += 1;
-            continue;
-        }
-        let j = i + 1;
-        let close = -1;
-        while (j < src.length) {
-            if (src[j] === '$' && src[j - 1] !== '\\' && src[j + 1] !== '$') {
-                close = j;
-                break;
-            }
-            j += 1;
-        }
-        if (close === -1) {
-            out += ch;
-            i += 1;
-            continue;
-        }
-        const inner = normalizeMatrixRowBreaksInMath(src.slice(i + 1, close));
-        const shouldDisplay = inner.includes('\n');
-        if (shouldDisplay) out += '$$' + inner + '$$';
-        else out += '$' + inner + '$';
-        i = close + 1;
-    }
-    return out;
-}
-
-function preprocessDisplayMathMatrixRowBreaks(raw) {
-    let src = String(raw ?? '');
-    src = src.replace(/\$\$([\s\S]*?)\$\$/g, function (_, inner) {
-        return '$$' + normalizeMatrixRowBreaksInMath(inner) + '$$';
-    });
-    src = src.replace(/\\\[([\s\S]*?)\\\]/g, function (_, inner) {
-        return '\\[' + normalizeMatrixRowBreaksInMath(inner) + '\\]';
-    });
-    return src;
-}
-
-function _escapeHtmlForMathSegment(s) {
-    return String(s || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-function _protectMathSegments(md) {
-    const src = String(md || '');
-    const chunks = src.split(/(```[\s\S]*?```)/g);
-    const slots = [];
-
-    function protectChunk(text) {
-        const s = String(text || '');
-        const out = [];
-        let i = 0;
-
-        function pushSlot(seg) {
-            const token = '@@MATHSEG_' + slots.length + '@@';
-            slots.push(seg);
-            out.push(token);
-        }
-
-        while (i < s.length) {
-            if (s[i] === '$' && s[i + 1] === '$' && (i === 0 || s[i - 1] !== '\\')) {
-                let k = i + 2;
-                let end = -1;
-                while (k < s.length - 1) {
-                    if (s[k] === '$' && s[k + 1] === '$' && s[k - 1] !== '\\') { end = k; break; }
-                    k += 1;
-                }
-                if (end >= 0) {
-                    pushSlot(s.slice(i, end + 2));
-                    i = end + 2;
-                    continue;
-                }
-            }
-            if (s[i] === '$' && (i === 0 || s[i - 1] !== '\\')) {
-                let k = i + 1;
-                let end = -1;
-                while (k < s.length) {
-                    if (s[k] === '$' && s[k - 1] !== '\\') { end = k; break; }
-                    k += 1;
-                }
-                if (end >= 0) {
-                    pushSlot(s.slice(i, end + 1));
-                    i = end + 1;
-                    continue;
-                }
-            }
-            if (s.slice(i, i + 2) === '\\[') {
-                const end = s.indexOf('\\]', i + 2);
-                if (end >= 0) {
-                    pushSlot(s.slice(i, end + 2));
-                    i = end + 2;
-                    continue;
-                }
-            }
-            if (s.slice(i, i + 2) === '\\(') {
-                const end = s.indexOf('\\)', i + 2);
-                if (end >= 0) {
-                    pushSlot(s.slice(i, end + 2));
-                    i = end + 2;
-                    continue;
-                }
-            }
-            out.push(s[i]);
-            i += 1;
-        }
-
-        return out.join('');
-    }
-
-    const protectedText = chunks.map(function (c) {
-        return /^```[\s\S]*```$/.test(c) ? c : protectChunk(c);
-    }).join('');
-
-    return {
-        text: protectedText,
-        restoreHtml: function (html) {
-            let out = String(html || '');
-            for (let i = 0; i < slots.length; i += 1) {
-                const token = '@@MATHSEG_' + i + '@@';
-                out = out.split(token).join(_escapeHtmlForMathSegment(slots[i]));
-            }
-            return out;
-        }
-    };
-}
-
 function normalizeFootnoteId(label) {
     const base = String(label ?? '')
         .trim()
@@ -1655,6 +1503,9 @@ function preprocessFootnotesForView(raw) {
 }
 function preprocessMarkdownForView(raw) {
     let s = String(raw ?? '');
+    if (typeof normalizeLooseMathDelimiters === 'function') {
+        s = normalizeLooseMathDelimiters(s);
+    }
     s = preprocessMultilineInlineMathToDisplay(s);
     s = preprocessDisplayMathMatrixRowBreaks(s);
     s = preprocessFootnotesForView(s);
