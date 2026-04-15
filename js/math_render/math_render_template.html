@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Math Render Template</title>
+  <script src="./math_render.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: system-ui, sans-serif;
+      background: #f5f7fb;
+      color: #172033;
+    }
+
+    .wrap {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #d8dfeb;
+      border-radius: 14px;
+      padding: 24px;
+      box-shadow: 0 12px 30px rgba(16, 24, 40, 0.08);
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      box-sizing: border-box;
+      padding: 12px;
+      border: 1px solid #c7d2e3;
+      border-radius: 10px;
+      font: 14px/1.6 Consolas, monospace;
+      margin-bottom: 16px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      background: #2563eb;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    #preview {
+      min-height: 120px;
+      border-top: 1px solid #e5eaf2;
+      padding-top: 16px;
+      line-height: 1.8;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <button id="render-btn" type="button">Render Math</button>
+    </div>
+
+    <textarea id="source">Inline math: $E = mc^2$
+
+Block math:
+
+$$
+\phi = \frac{\lambda_2}{c^2}
+$$
+</textarea>
+
+    <div id="preview"></div>
+  </div>
+
+  <script>
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function renderPreview() {
+      var source = document.getElementById('source');
+      var preview = document.getElementById('preview');
+      preview.innerHTML = escapeHtml(source.value).replace(/\n/g, '<br>');
+      MathRender.typeset(preview, { silent: true });
+    }
+
+    document.getElementById('render-btn').addEventListener('click', renderPreview);
+    MathRender.typesetWhenReady(document.getElementById('preview'), { silent: true });
+    renderPreview();
+  </script>
+</body>
+</html>

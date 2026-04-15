@@ -17,7 +17,7 @@
             unescapeMarkdownSyntax: true,
             emphasizeNumericReferences: false,
             forceHardBreakEachLine: false,
-            canonicalizeMathDelimiters: true
+            canonicalizeMathDelimiters: false
         }
     };
 
@@ -95,19 +95,34 @@
             if (/^```[\s\S]*```$/.test(chunk)) return chunk;
             let out = String(chunk || '')
                 .replace(/\\\s*\[([\s\S]*?)\\\s*\]/g, function (_, inner) {
-                    return '$$\n' + String(inner || '').trim() + '\n$$';
+                    return '\\[ ' + String(inner || '').replace(/\s+/g, ' ').trim() + ' \\]';
                 })
                 .replace(/\\\s*\(([\s\S]*?)\\\s*\)/g, function (_, inner) {
-                    return '$' + String(inner || '').trim() + '$';
+                    return '\\(' + String(inner || '').replace(/\s+/g, ' ').trim() + '\\)';
                 });
             out = out.replace(/(^|\n)\[\s*\n([\s\S]*?)\n\s*\](?=\n|$)/g, function (_, prefix, inner) {
-                const body = String(inner || '').trim();
-                return String(prefix || '') + '$$\n' + body + '\n$$';
+                const body = String(inner || '').replace(/\s+/g, ' ').trim();
+                return String(prefix || '') + '\\[ ' + body + ' \\]';
             });
             out = out.replace(/(^|\n)\[\s{2,}\n([\s\S]*?)\n\s*\](?=\n|$)/g, function (_, prefix, inner) {
-                const body = String(inner || '').trim();
-                return String(prefix || '') + '$$\n' + body + '\n$$';
+                const body = String(inner || '').replace(/\s+/g, ' ').trim();
+                return String(prefix || '') + '\\[ ' + body + ' \\]';
             });
+            return out;
+        }).join('');
+    }
+
+    function replaceMathDelimiters(text) {
+        const chunks = String(text ?? '').split(/(```[\s\S]*?```)/g);
+        return chunks.map(function (chunk) {
+            if (/^```[\s\S]*```$/.test(chunk)) return chunk;
+            let out = String(chunk ?? '');
+            out = out
+                .replace(/\\\s*\[/g, '$$')
+                .replace(/\\\s*\]/g, '$$');
+            out = out
+                .replace(/\\\s*\(/g, '$')
+                .replace(/\\\s*\)/g, '$');
             return out;
         }).join('');
     }
@@ -115,11 +130,50 @@
     function prepareWithPolicy(text, policy) {
         let result = String(text ?? '');
         if (!result) return '';
-        if (policy.canonicalizeMathDelimiters) result = canonicalizeMathDelimiters(result);
         if (policy.unescapeMarkdownSyntax) result = unescapeMarkdownSyntax(result);
+        if (policy.canonicalizeMathDelimiters) result = canonicalizeMathDelimiters(result);
         if (policy.emphasizeNumericReferences) result = emphasizeNumericReferences(result);
         if (policy.forceHardBreakEachLine) result = forceHardBreakEachLine(result);
         return result.trimEnd();
+    }
+
+    function analyzeTidyChanges(text, overridePolicy) {
+        const policy = Object.assign({}, POLICY.tidy, overridePolicy || {});
+        let value = String(text ?? '');
+        const changes = [];
+        if (!value) return { value: '', changes: changes };
+
+        if (policy.unescapeMarkdownSyntax) {
+            const next = unescapeMarkdownSyntax(value);
+            if (next !== value) changes.push('escape 해제');
+            value = next;
+        }
+        if (policy.canonicalizeMathDelimiters) {
+            const next = canonicalizeMathDelimiters(value);
+            if (next !== value) changes.push('수식 구분자 정리');
+            value = next;
+        }
+        if (policy.emphasizeNumericReferences) {
+            const next = emphasizeNumericReferences(value);
+            if (next !== value) changes.push('숫자 참고문헌 강조');
+            value = next;
+        }
+        if (policy.forceHardBreakEachLine) {
+            const next = forceHardBreakEachLine(value);
+            if (next !== value) changes.push('줄 끝 하드브레이크 추가');
+            value = next;
+        }
+
+        return { value: value.trimEnd(), changes: changes };
+    }
+
+    function analyzeMathTidyChanges(text) {
+        const value = String(text ?? '');
+        const next = replaceMathDelimiters(value);
+        return {
+            value: next.trimEnd(),
+            changes: next !== value ? ['수식정리'] : []
+        };
     }
 
     function prepareForRender(text, overridePolicy) {
@@ -138,6 +192,9 @@
         emphasizeNumericReferences: emphasizeNumericReferences,
         forceHardBreakEachLine: forceHardBreakEachLine,
         canonicalizeMathDelimiters: canonicalizeMathDelimiters,
+        replaceMathDelimiters: replaceMathDelimiters,
+        analyzeTidyChanges: analyzeTidyChanges,
+        analyzeMathTidyChanges: analyzeMathTidyChanges,
         prepareForRender: prepareForRender,
         prepareForTidy: prepareForTidy
     };

@@ -56,6 +56,20 @@
                 class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
             <span class="text-sm font-medium text-slate-700 dark:text-slate-300">pdf to pptx</span>
         </label>
+        <label class="flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="share-site-naverblog" onclick="setTimeout(toggleShareSiteSelection,0)"
+                class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+            <span class="text-sm font-medium text-slate-700 dark:text-slate-300">NaverBlog</span>
+        </label>
+        <div class="pl-6 space-y-2">
+            <div class="flex items-center gap-2">
+                <input type="text" id="share-naverblog-id" placeholder="네이버 블로그 ID"
+                    class="flex-1 min-w-[140px] px-2.5 py-1.5 border rounded-md text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
+                <button type="button" onclick="saveNaverBlogIdFromSettings()"
+                    class="px-2.5 py-1.5 rounded-md text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700">저장</button>
+            </div>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">Share에서 NaverBlog를 누를 때 사용할 ID입니다. 비어 있으면 실행 시 입력받습니다.</p>
+        </div>
         <div class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
             <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">+Add</p>
             <div class="flex items-center gap-2">

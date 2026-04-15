@@ -10,7 +10,8 @@
         { key: 'slides', label: 'slides.new', url: 'https://slides.new/', checkboxId: 'share-site-slides' },
         { key: 'gist', label: 'gist.new', url: 'https://gist.new/', checkboxId: 'share-site-gist' },
         { key: 'board', label: 'board.new', url: 'https://board.new', checkboxId: 'share-site-board' },
-        { key: 'pdf2ppt', label: 'pdf to pptx', url: 'https://pdf2pptmake.onrender.com/', checkboxId: 'share-site-pdf2ppt' }
+        { key: 'pdf2ppt', label: 'pdf to pptx', url: 'https://pdf2pptmake.onrender.com/', checkboxId: 'share-site-pdf2ppt' },
+        { key: 'naverblog', label: 'NaverBlog', url: '', checkboxId: 'share-site-naverblog' }
     ];
     const DEFAULT_SHARE_SITES = ['docs'];
 
@@ -19,6 +20,86 @@
     let shareSites = DEFAULT_SHARE_SITES.slice();
     let customShareDestinations = [];
     let shareModalDragBound = false;
+
+    function getNaverBlogIdFromSettings(settings) {
+        return String(settings && settings.naverBlogId ? settings.naverBlogId : '').trim();
+    }
+
+    function getNaverBlogIdInput() {
+        return document.getElementById('share-naverblog-id');
+    }
+
+    function buildNaverBlogWriteUrl(blogId) {
+        const id = String(blogId || '').trim();
+        if (!id) return '';
+        return 'https://blog.naver.com/' + encodeURIComponent(id) + '?Redirect=Write';
+    }
+
+    function createPlainTextFromHtml(html) {
+        try {
+            const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+            return String(doc.body && (doc.body.innerText || doc.body.textContent) || '').trim();
+        } catch (_) {
+            return String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        }
+    }
+
+    function transformHtmlForNaverBlog(html) {
+        try {
+            const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
+            const blocks = doc.querySelectorAll('pre');
+            blocks.forEach(function (pre) {
+                const codeText = String(pre.innerText || pre.textContent || '').replace(/\r\n/g, '\n').trim();
+                const table = doc.createElement('table');
+                table.setAttribute('border', '1');
+                table.style.borderCollapse = 'collapse';
+                table.style.width = '100%';
+                const tr = doc.createElement('tr');
+                const td = doc.createElement('td');
+                td.style.padding = '10px';
+                td.style.verticalAlign = 'top';
+                const code = doc.createElement('code');
+                code.style.whiteSpace = 'pre-wrap';
+                code.style.fontFamily = 'Consolas, Monaco, monospace';
+                code.textContent = codeText;
+                td.appendChild(code);
+                tr.appendChild(td);
+                table.appendChild(tr);
+                pre.replaceWith(table);
+            });
+            return String(doc.body.innerHTML || html || '');
+        } catch (_) {
+            return String(html || '');
+        }
+    }
+
+    async function saveNaverBlogId(value) {
+        const next = String(value || '').trim();
+        if (typeof setAiSettings === 'function') {
+            await setAiSettings({ naverBlogId: next });
+        }
+        const input = getNaverBlogIdInput();
+        if (input) input.value = next;
+        return next;
+    }
+
+    async function ensureNaverBlogId() {
+        let current = '';
+        if (typeof getAiSettings === 'function') {
+            try { current = getNaverBlogIdFromSettings(await getAiSettings()); } catch (_) {}
+        }
+        if (!current) {
+            const input = getNaverBlogIdInput();
+            current = String(input && input.value ? input.value : '').trim();
+        }
+        if (current) return current;
+        const asked = window.prompt('네이버 블로그 ID를 입력하세요.', '');
+        if (asked == null) return '';
+        current = String(asked || '').trim();
+        if (!current) return '';
+        await saveNaverBlogId(current);
+        return current;
+    }
 
     async function loadHtmlFragment(path) {
         try {
@@ -311,9 +392,9 @@
             btn.type = 'button';
             btn.className = 'share-link-btn inline-flex items-center px-3 py-1.5 rounded border border-indigo-300 dark:border-indigo-600 bg-white dark:bg-slate-900 text-indigo-700 dark:text-indigo-300 text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-slate-700 whitespace-nowrap';
             btn.textContent = dest.label;
-            btn.title = dest.url;
+            btn.title = dest.key === 'naverblog' ? 'https://blog.naver.com/{id}?Redirect=Write' : dest.url;
             btn.addEventListener('click', function () {
-                openShareDestination(dest.key);
+                openShareDestinationWithOptions(dest.key);
             });
             list.appendChild(btn);
         });
@@ -338,6 +419,8 @@
         renderCustomShareDestinationSettings();
         shareSites = normalizeShareSites(s);
         syncShareSiteCheckboxes(shareSites);
+        const naverBlogIdInput = getNaverBlogIdInput();
+        if (naverBlogIdInput) naverBlogIdInput.value = getNaverBlogIdFromSettings(s);
 
         const toDocsBtn = document.getElementById('btn-export-gdocs');
         const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
@@ -409,6 +492,49 @@
         }
     }
 
+    async function openShareDestinationWithOptions(destKey) {
+        await ensureShareUiReady();
+        const destination = findShareDestination(destKey);
+        if (!destination) {
+            if (typeof showToast === 'function') showToast('Share 대상이 올바르지 않습니다.');
+            return;
+        }
+        if (destination.key !== 'naverblog') {
+            return openShareDestination(destKey);
+        }
+
+        setToDocsButtonBusy(true);
+        try {
+            const blogId = await ensureNaverBlogId();
+            if (!blogId) {
+                if (typeof showToast === 'function') showToast('네이버 블로그 ID가 필요합니다.');
+                return;
+            }
+            const copied = typeof window.copyViewFormattedToClipboard === 'function'
+                ? await window.copyViewFormattedToClipboard({
+                    htmlTransform: transformHtmlForNaverBlog,
+                    textTransform: function (_, __, transformedHtml) {
+                        return createPlainTextFromHtml(transformedHtml);
+                    },
+                    successMessage: 'NaverBlog용 서식을 클립보드에 복사했습니다.'
+                })
+                : true;
+            if (!copied && typeof showToast === 'function') {
+                showToast('클립보드 복사에 실패했습니다. 그래도 글쓰기는 엽니다.');
+            }
+            const win = window.open(buildNaverBlogWriteUrl(blogId), '_blank', 'noopener,noreferrer');
+            if (!win && typeof showToast === 'function') {
+                showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
+            }
+            if (win) closeShareLinksModal();
+        } catch (err) {
+            const msg = err && err.message ? err.message : 'NaverBlog Share 실행 중 오류';
+            if (typeof showToast === 'function') showToast(msg);
+        } finally {
+            setToDocsButtonBusy(false);
+        }
+    }
+
     async function toggleShareSiteSelection() {
         await ensureShareUiReady();
         const selectedKeys = getAllShareDestinations()
@@ -421,11 +547,16 @@
         if (typeof setAiSettings === 'function') {
             await setAiSettings({
                 shareSites: selectedKeys,
-                customShareDestinations: getCustomShareDestinationsForSave()
+                customShareDestinations: getCustomShareDestinationsForSave(),
+                naverBlogId: getNaverBlogIdInput() ? String(getNaverBlogIdInput().value || '').trim() : ''
             });
         }
         const settings = (typeof getAiSettings === 'function') ? await getAiSettings() : null;
-        applyToDocsVisibility(settings || { shareSites: selectedKeys, customShareDestinations: getCustomShareDestinationsForSave() });
+        applyToDocsVisibility(settings || {
+            shareSites: selectedKeys,
+            customShareDestinations: getCustomShareDestinationsForSave(),
+            naverBlogId: getNaverBlogIdInput() ? String(getNaverBlogIdInput().value || '').trim() : ''
+        });
     }
 
     async function addShareDestinationFromSettings() {
@@ -528,12 +659,14 @@
     function resetShareSettingsUI() {
         const toDocsCheck = document.getElementById('todocs-visible');
         if (toDocsCheck) toDocsCheck.checked = false;
+        const naverBlogIdInput = getNaverBlogIdInput();
+        if (naverBlogIdInput) naverBlogIdInput.value = '';
         shareSites = DEFAULT_SHARE_SITES.slice();
         customShareDestinations = [];
         renderCustomShareDestinationSettings();
         syncShareSiteCheckboxes(shareSites);
         shareMenuExpanded = false;
-        applyToDocsVisibility({ toDocsVisible: false, shareSites: shareSites, customShareDestinations: [] });
+        applyToDocsVisibility({ toDocsVisible: false, shareSites: shareSites, customShareDestinations: [], naverBlogId: '' });
     }
 
     function loadShareSettingsUI(settings) {
@@ -543,7 +676,19 @@
         renderCustomShareDestinationSettings();
         shareSites = normalizeShareSites(settings || {});
         syncShareSiteCheckboxes(shareSites);
+        const naverBlogIdInput = getNaverBlogIdInput();
+        if (naverBlogIdInput) naverBlogIdInput.value = getNaverBlogIdFromSettings(settings || {});
         applyToDocsVisibility(settings || { toDocsVisible: false, shareSites: shareSites, customShareDestinations: customShareDestinations });
+    }
+
+    async function saveNaverBlogIdFromSettings() {
+        await ensureShareUiReady();
+        const input = getNaverBlogIdInput();
+        const value = String(input && input.value ? input.value : '').trim();
+        await saveNaverBlogId(value);
+        if (typeof showToast === 'function') {
+            showToast(value ? 'NaverBlog ID를 저장했습니다.' : 'NaverBlog ID를 비웠습니다.');
+        }
     }
 
     window.ShareModule = {
@@ -557,13 +702,14 @@
         toggleShareSiteSelection,
         addShareDestinationFromSettings,
         removeCustomShareDestination,
-        openShareDestination,
+        openShareDestination: openShareDestinationWithOptions,
+        saveNaverBlogIdFromSettings,
         shouldShowInViewMode,
         resetShareSettingsUI,
         loadShareSettingsUI
     };
 
-    window.openShareDestination = openShareDestination;
+    window.openShareDestination = openShareDestinationWithOptions;
     window.toggleShareLinksMenu = toggleShareLinksMenu;
     window.closeShareLinksModal = closeShareLinksModal;
     window.moveShareLinksModalToRightSide = moveShareLinksModalToRightSide;
@@ -572,6 +718,7 @@
     window.removeCustomShareDestination = removeCustomShareDestination;
     window.applyToDocsVisibility = applyToDocsVisibility;
     window.toggleToDocsSection = toggleToDocsSection;
+    window.saveNaverBlogIdFromSettings = saveNaverBlogIdFromSettings;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function () {

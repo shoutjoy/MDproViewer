@@ -29,8 +29,13 @@ function escapeHtmlForPreview(text) {
 }
 
 function getPreviewPopupDocumentHtml() {
+    const mathHead = (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.getHeadTags === 'function')
+        ? MathRender.getHeadTags({
+            scriptUrl: new URL('./js/math_render/math_render.js?v=20260415-3', window.location.href).href
+        })
+        : '';
     return '<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MDproViewer Preview</title>'
-        + '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">'
+        + mathHead
         + '<style>'
         + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;}'
         + '#pv-root{height:100%;}'
@@ -56,7 +61,6 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-content .md-footnotes ol{margin:.5rem 0 0;padding-left:1.25rem;}'
         + '#pv-content .md-footnote-ref a,#pv-content .md-footnote-backref{color:#2563eb;text-decoration:none;font-weight:700;}'
         + '#pv-content .md-footnote-ref a:hover,#pv-content .md-footnote-backref:hover{text-decoration:underline;}'
-        + '#pv-content .katex .katex-mathml{position:absolute;clip:rect(1px,1px,1px,1px);clip-path:inset(50%);height:1px;width:1px;overflow:hidden;white-space:nowrap;}'
         + '</style></head><body><div id=\"pv-root\"><div id=\"pv-toolbar\">'
         + '<strong style=\"margin-right:6px\">Preview</strong>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">Zoom Out</button>'
@@ -321,15 +325,16 @@ async function updatePreviewPopupContent() {
         revokeObjectUrls(previewInternalImageObjectUrls);
         const resolvedRaw = await resolveInternalMarkdownImagesForPreview(raw);
         const preprocessed = preprocessMarkdownForView(resolvedRaw);
-        if (typeof marked === 'undefined' || !marked.parse) {
+        if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
+            html = await MathRender.renderMarkdownSafe(
+                (typeof marked !== 'undefined' && marked.parse) ? marked : null,
+                preprocessed,
+                { fallbackText: resolvedRaw }
+            );
+        } else if (typeof marked === 'undefined' || !marked.parse) {
             html = '<p>' + escapeHtmlForPreview(resolvedRaw).replace(/\n/g, '<br>') + '</p>';
         } else {
-            const mathProtected = (typeof _protectMathSegments === 'function')
-                ? _protectMathSegments(preprocessed)
-                : { text: preprocessed, restoreHtml: function (v) { return String(v || ''); } };
-            const out = marked.parse(mathProtected.text);
-            html = (out != null && typeof out.then === 'function') ? await out : out;
-            html = mathProtected.restoreHtml(html || '');
+            html = marked.parse(preprocessed);
         }
     } catch (e) {
         html = '<p>' + escapeHtmlForPreview(raw).replace(/\n/g, '<br>') + '</p>';
@@ -340,7 +345,9 @@ async function updatePreviewPopupContent() {
     if (!target) return;
     target.innerHTML = html;
     try { await hydrateInternalImagesInElement(target, registerPreviewInternalObjectUrl); } catch (e) {}
-    if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(target);
+    if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
+        try { await MathRender.typesetElement(target); } catch (e) {}
+    }
     try { await renderMermaidInPreviewPopup(target); } catch (e) {}
     applyPreviewPopupViewport();
 }

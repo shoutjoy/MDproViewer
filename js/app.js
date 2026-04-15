@@ -62,6 +62,7 @@ let highlightPopupDockTop = 80;
 let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
+let tidyQuickMenuBound = false;
 let selectionWrapEnabled = true;
 let viewModeEditEnabled = false;
 let templatePanelOpen = false;
@@ -707,7 +708,6 @@ function renderMiniPreviewContent() {
             if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
             miniPreviewContent.innerHTML = String(html || '');
             try { hydrateInternalImagesInElement(miniPreviewContent, registerPreviewInternalObjectUrl); } catch (_) {}
-            try { if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(miniPreviewContent); } catch (_) {}
             try {
                 if (window.MermaidTRT && typeof window.MermaidTRT.renderIn === 'function') {
                     window.MermaidTRT.renderIn(miniPreviewContent).catch(function () {});
@@ -717,21 +717,22 @@ function renderMiniPreviewContent() {
 
         try {
             const preprocessed = preprocessMarkdownForView(resolvedRaw);
+            if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
+                MathRender.renderMarkdownSafe(
+                    (typeof marked !== 'undefined' && marked.parse) ? marked : null,
+                    preprocessed,
+                    { fallbackText: resolvedRaw }
+                ).then(function (html) {
+                    finalizeMini(html || '');
+                    try { if (MathRender && typeof MathRender.typesetElement === 'function') MathRender.typesetElement(miniPreviewContent); } catch (_) {}
+                });
+                return;
+            }
             if (typeof marked === 'undefined' || !marked.parse) {
                 finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
                 return;
             }
-            const mathProtected = _protectMathSegments(preprocessed);
-            const out = marked.parse(mathProtected.text);
-            if (out != null && typeof out.then === 'function') {
-                out.then(function (h) {
-                    finalizeMini(mathProtected.restoreHtml(h || ''));
-                }).catch(function () {
-                    finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
-                });
-                return;
-            }
-            finalizeMini(mathProtected.restoreHtml(out || ''));
+            finalizeMini(String(marked.parse(preprocessed) || ''));
         } catch (_) {
             finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
         }
@@ -1503,11 +1504,6 @@ function preprocessFootnotesForView(raw) {
 }
 function preprocessMarkdownForView(raw) {
     let s = String(raw ?? '');
-    if (typeof normalizeLooseMathDelimiters === 'function') {
-        s = normalizeLooseMathDelimiters(s);
-    }
-    s = preprocessMultilineInlineMathToDisplay(s);
-    s = preprocessDisplayMathMatrixRowBreaks(s);
     s = preprocessFootnotesForView(s);
     if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForRender === 'function') {
         s = specialTRT.prepareForRender(s);
@@ -1563,7 +1559,6 @@ function renderMarkdown(options) {
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
         try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
         try { hydrateInternalImagesInElement(viewer, registerViewerInternalObjectUrl); } catch (e) {}
-        try { if (typeof renderMathInMarkdownViewer === 'function') renderMathInMarkdownViewer(viewer); } catch (e) {}
         try {
             if (window.MermaidTRT && typeof window.MermaidTRT.renderIn === 'function') {
                 window.MermaidTRT.renderIn(viewer).catch(function () {});
@@ -1576,50 +1571,35 @@ function renderMarkdown(options) {
     resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
     try {
         preprocessed = preprocessMarkdownForView(resolvedRaw);
+        if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
+            MathRender.renderMarkdownSafe(
+                (typeof marked !== 'undefined' && marked.parse) ? marked : null,
+                preprocessed,
+                { fallbackText: resolvedRaw }
+            ).then(function (html) {
+                viewer.innerHTML = html || '';
+                try { if (MathRender && typeof MathRender.typesetElement === 'function') MathRender.typesetElement(viewer); } catch (e) {}
+                runPostRenderHooks();
+            }).catch(function () {
+                viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+                runPostRenderHooks();
+            });
+            return;
+        }
         if (typeof marked === 'undefined' || !marked.parse) {
             viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
             return;
         }
-        const mathProtected = _protectMathSegments(preprocessed);
-        const out = marked.parse(mathProtected.text);
-        if (out != null && typeof out.then === 'function') {
-            out.then(function (h) {
-                viewer.innerHTML = mathProtected.restoreHtml(h || '');
-                runPostRenderHooks();
-            }).catch(function () {
-                try {
-                    const fallbackProtected = _protectMathSegments(preprocessMarkdownForView(resolvedRaw));
-                    const fallback = marked.parse(fallbackProtected.text);
-                    viewer.innerHTML = (fallback && typeof fallback.then === 'function') ? '' : (fallback || '');
-                    if (fallback && typeof fallback.then === 'function') {
-                        fallback.then(function (html) {
-                            viewer.innerHTML = fallbackProtected.restoreHtml(html || '');
-                            runPostRenderHooks();
-                        }).catch(function () {
-                            viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-                            runPostRenderHooks();
-                        });
-                        return;
-                    }
-                    viewer.innerHTML = fallbackProtected.restoreHtml(viewer.innerHTML || '');
-                    runPostRenderHooks();
-                } catch (e) {
-                    viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-                    runPostRenderHooks();
-                }
-            });
-            return;
-        }
-        viewer.innerHTML = mathProtected.restoreHtml(out || '');
+        viewer.innerHTML = String(marked.parse(preprocessed) || '');
         runPostRenderHooks();
     } catch (e) {
         try {
             if (typeof marked !== 'undefined' && marked.parse) {
-                const fallbackProtected = _protectMathSegments(preprocessMarkdownForView(resolvedRaw));
-                const fallback = marked.parse(fallbackProtected.text);
-                if (fallback != null && typeof fallback.then === 'function') {
-                    fallback.then(function (h) {
-                        viewer.innerHTML = fallbackProtected.restoreHtml(h || '');
+                const fallbackSource = preprocessMarkdownForView(resolvedRaw);
+                if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
+                    MathRender.renderMarkdownSafe(marked, fallbackSource, { fallbackText: resolvedRaw }).then(function (html) {
+                        viewer.innerHTML = html || '';
+                        try { if (MathRender && typeof MathRender.typesetElement === 'function') MathRender.typesetElement(viewer); } catch (err) {}
                         runPostRenderHooks();
                     }).catch(function () {
                         viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
@@ -1627,7 +1607,7 @@ function renderMarkdown(options) {
                     });
                     return;
                 }
-                viewer.innerHTML = fallbackProtected.restoreHtml(fallback || '');
+                viewer.innerHTML = String(marked.parse(fallbackSource) || '');
                 runPostRenderHooks();
                 return;
             }
@@ -2503,18 +2483,28 @@ function fallbackCopyHtmlFromViewer(html) {
 }
 
 async function copyViewFormattedToClipboard() {
+    const options = arguments[0] || {};
     if (isEditMode) toggleMode('view');
     if (!viewer) {
         showToast('Viewer is not ready.');
         return;
     }
 
-    const html = String(viewer.innerHTML || '').trim();
-    const text = String(viewer.innerText || viewer.textContent || '').trim();
+    let html = String(viewer.innerHTML || '').trim();
+    let text = String(viewer.innerText || viewer.textContent || '').trim();
+    if (options && typeof options.htmlTransform === 'function') {
+        try { html = String(options.htmlTransform(html, viewer) || html).trim(); } catch (_) {}
+    }
+    if (options && typeof options.textTransform === 'function') {
+        try { text = String(options.textTransform(text, viewer, html) || text).trim(); } catch (_) {}
+    }
     if (!html && !text) {
         showToast('Nothing to copy.');
         return;
     }
+
+    const successMessage = String(options && options.successMessage ? options.successMessage : 'Copied formatted content.');
+    const failureMessage = String(options && options.failureMessage ? options.failureMessage : 'Copy failed. Please allow clipboard access.');
 
     try {
         if (navigator.clipboard && window.ClipboardItem && typeof navigator.clipboard.write === 'function') {
@@ -2523,14 +2513,14 @@ async function copyViewFormattedToClipboard() {
                 'text/plain': new Blob([text || ''], { type: 'text/plain' })
             });
             await navigator.clipboard.write([item]);
-            showToast('Copied formatted content.');
+            showToast(successMessage);
             return true;
         }
     } catch (e) {}
 
     const fallbackOk = fallbackCopyHtmlFromViewer(html || text);
-    if (fallbackOk) showToast('Copied formatted content.');
-    else showToast('Copy failed. Please allow clipboard access.');
+    if (fallbackOk) showToast(successMessage);
+    else showToast(failureMessage);
     return fallbackOk;
 }
 
@@ -3895,6 +3885,7 @@ function tidySeparatorSpacing(source) {
 
     const lines = expandedLines;
     let changed = false;
+    const changeLabels = [];
     inFencedCodeBlock = false;
 
     for (let i = 0; i < lines.length; i++) {
@@ -3946,22 +3937,40 @@ function tidySeparatorSpacing(source) {
 
     let value = lines.join('\n');
     if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForTidy === 'function') {
-        const trtValue = specialTRT.prepareForTidy(value);
-        if (trtValue !== value) changed = true;
-        value = trtValue;
+        if (typeof specialTRT.analyzeTidyChanges === 'function') {
+            const trtResult = specialTRT.analyzeTidyChanges(value);
+            if (trtResult && trtResult.value !== value) changed = true;
+            if (trtResult && Array.isArray(trtResult.changes)) {
+                for (let i = 0; i < trtResult.changes.length; i += 1) {
+                    if (!changeLabels.includes(trtResult.changes[i])) changeLabels.push(trtResult.changes[i]);
+                }
+            }
+            value = trtResult && typeof trtResult.value === 'string' ? trtResult.value : value;
+        } else {
+            const trtValue = specialTRT.prepareForTidy(value);
+            if (trtValue !== value) changed = true;
+            if (trtValue !== value) changeLabels.push('TRT 정리');
+            value = trtValue;
+        }
     }
 
     return {
         value,
-        changed
+        changed,
+        changes: changeLabels
     };
 }
 
 function tidySeparatorSpacingInEditor() {
+    toggleTidyQuickMenu(true);
+}
+
+function applyEnterTidyInEditor() {
     if (!isEditMode || !editorTextarea) {
         showToast('Use this in edit mode.');
         return;
     }
+    closeTidyQuickMenu();
 
     const start = editorTextarea.selectionStart;
     const end = editorTextarea.selectionEnd;
@@ -4003,7 +4012,88 @@ function tidySeparatorSpacingInEditor() {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
-    showToast('Normalized separator spacing and hard-break formatting.');
+    const tidyChanges = Array.isArray(result.changes) ? result.changes.filter(Boolean) : [];
+    showToast(tidyChanges.length ? ('엔터정리 적용: ' + tidyChanges.join(', ')) : '엔터정리 적용');
+}
+
+function applyMathTidyInEditor() {
+    if (!isEditMode || !editorTextarea) {
+        showToast('Use this in edit mode.');
+        return;
+    }
+    closeTidyQuickMenu();
+
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const scrollTop = editorTextarea.scrollTop;
+    const scrollLeft = editorTextarea.scrollLeft;
+    const selectionDirection = editorTextarea.selectionDirection || 'none';
+    const hasSelection = start !== end;
+    const sourceText = hasSelection
+        ? editorTextarea.value.substring(start, end)
+        : editorTextarea.value;
+
+    const result = (typeof specialTRT !== 'undefined' && typeof specialTRT.analyzeMathTidyChanges === 'function')
+        ? specialTRT.analyzeMathTidyChanges(sourceText)
+        : { value: sourceText, changes: [] };
+
+    if (!result || result.value === sourceText) {
+        showToast('수식정리에서 바뀐 내용이 없습니다.');
+        return;
+    }
+
+    if (hasSelection) {
+        const fullText = editorTextarea.value;
+        editorTextarea.value = fullText.substring(0, start) + result.value + fullText.substring(end);
+        currentMarkdown = editorTextarea.value;
+    } else {
+        editorTextarea.value = result.value;
+        currentMarkdown = result.value;
+    }
+    editorTextarea.focus();
+    if (hasSelection) {
+        editorTextarea.setSelectionRange(start, start + result.value.length, selectionDirection);
+    } else {
+        editorTextarea.setSelectionRange(start, end, selectionDirection);
+    }
+    editorTextarea.scrollTop = scrollTop;
+    editorTextarea.scrollLeft = scrollLeft;
+    requestAnimationFrame(function () {
+        if (!editorTextarea) return;
+        editorTextarea.scrollTop = scrollTop;
+        editorTextarea.scrollLeft = scrollLeft;
+    });
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    showToast('수식정리 적용: \\[→$$, \\]→$$, \\(→$, \\)→$');
+}
+
+function closeTidyQuickMenu() {
+    const panel = document.getElementById('tidy-quick-panel');
+    if (panel) panel.classList.add('hidden');
+}
+
+function toggleTidyQuickMenu(forceOpen) {
+    const panel = document.getElementById('tidy-quick-panel');
+    const btn = document.getElementById('btn-tidy-quick');
+    if (!panel || !btn) return;
+    bindTidyQuickMenuDismiss();
+    const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
+}
+
+function bindTidyQuickMenuDismiss() {
+    if (tidyQuickMenuBound || !document.body) return;
+    tidyQuickMenuBound = true;
+    document.body.addEventListener('click', function (event) {
+        const panel = document.getElementById('tidy-quick-panel');
+        const btn = document.getElementById('btn-tidy-quick');
+        if (!panel || !btn) return;
+        const target = event.target;
+        if (panel.contains(target) || btn.contains(target)) return;
+        panel.classList.add('hidden');
+    });
 }
 
 // --- Helper Insertion (Modal) ---
@@ -7884,12 +7974,20 @@ function ensureSidebarAILoaded() {
             setViewerContent: function (text) { if (typeof updateContent === 'function') updateContent(text || ''); },
             getViewerRenderedContent: function (text) {
                 var t = text || '';
-                if (typeof marked !== 'undefined' && marked.parse) {
-                    try {
-                        return marked.parse(preprocessMarkdownForView(t));
-                    } catch (e) {
-                        return t.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                try {
+                    var prepared = preprocessMarkdownForView(t);
+                    if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafeSync === 'function') {
+                        return MathRender.renderMarkdownSafeSync(
+                            (typeof marked !== 'undefined' && marked.parse) ? marked : null,
+                            prepared,
+                            { fallbackText: t }
+                        );
                     }
+                    if (typeof marked !== 'undefined' && marked.parse) {
+                        return marked.parse(prepared);
+                    }
+                } catch (e) {
+                    return t.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
                 }
                 return t.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
             }

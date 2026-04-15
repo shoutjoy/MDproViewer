@@ -25,7 +25,7 @@
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./googleDocs/Share/share.css?v=20260408-2" charset="utf-8">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
 </head>
 
 <body class="h-screen flex flex-col overflow-hidden transition-colors duration-200">
@@ -556,9 +556,20 @@
                             </div>
                         </div>
                     </div>
-                    <button type="button" onclick="tidySeparatorSpacingInEditor()"
-                        class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
-                        title="Tidy separator spacing">Tidy</button>
+                    <div class="relative inline-flex items-center gap-1">
+                        <button type="button" id="btn-tidy-quick" onclick="toggleTidyQuickMenu()"
+                            class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
+                            title="Tidy options">Tidy</button>
+                        <div id="tidy-quick-panel"
+                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[180px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            <div class="grid grid-cols-1 gap-2">
+                                <button type="button" onclick="applyEnterTidyInEditor()"
+                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">엔터정리</button>
+                                <button type="button" onclick="applyMathTidyInEditor()"
+                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">수식정리</button>
+                            </div>
+                        </div>
+                    </div>
                     <button type="button" onclick="openFindReplace()"
                         class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
                         title="Find and replace">FIND</button>
@@ -1664,11 +1675,11 @@
             style="background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);"></div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js" crossorigin="anonymous" defer></script>
-    <script src="./js/math/math_preprocess.js?v=20260414-2" charset="utf-8" defer></script>
-    <script src="./js/math/math_render.js?v=20260414-2" charset="utf-8" defer></script>
-    <script src="./trt/special_trt.js?v=20260408-1" charset="utf-8" defer></script>
+    <script src="./js/math_render/math_render.js?v=20260415-5" charset="utf-8" defer></script>
+    <script src="./js/math_render/latex_render.js?v=20260415-1" charset="utf-8" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js" defer></script>
+    <script src="./trt/special_trt.js?v=20260415-3" charset="utf-8" defer></script>
     <script src="./js/mermaid/mermaid_render.js" charset="utf-8" defer></script>
     <script src="./Setting/user.js" charset="utf-8" defer></script>
     <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
@@ -1682,12 +1693,12 @@
     <script src="./sidebarAI/insert.js?v=20260407-1" charset="utf-8" defer></script>
     <script src="./trt/editorRule.js" charset="utf-8" defer></script>
     <script src="./trt/macro.js?v=20260408-1" charset="utf-8" defer></script>
-    <script src="./googleDocs/Share/share.js?v=20260408-2" charset="utf-8" defer></script>
+    <script src="./googleDocs/Share/share.js?v=20260415-1" charset="utf-8" defer></script>
     <script src="./googleDocs/googleDocs.js?v=20260330-1" charset="utf-8" defer></script>
     <script src="./googleDocs/sitesshow/sitesshow.js?v=20260408-3" charset="utf-8" defer></script>
     <script src="./js/export/html-export.js" charset="utf-8" defer></script>
     <script src="./js/app.js?v=20260408-9" charset="utf-8" defer></script>
-    <script src="./js/editmode/editpv.js?v=20260401-2" charset="utf-8" defer></script>
+    <script src="./js/editmode/editpv.js?v=20260415-1" charset="utf-8" defer></script>
     <script src="./sidebar_left/merge/merge.js" charset="utf-8" defer></script>
     <script src="https://apis.google.com/js/api.js" defer onload="onGoogleApiJsLoaded()"></script>
     <script src="https://accounts.google.com/gsi/client" defer onload="onGoogleGisLoaded()"></script>
