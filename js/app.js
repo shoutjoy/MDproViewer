@@ -46,12 +46,6 @@ let imageInsertDragOffsetY = 0;
 let imageInsertGalleryOpen = false;
 let imageInsertGalleryObjectUrls = [];
 let imageInsertGalleryDataUrlCache = new Map();
-let scholarSearchDockRight = true;
-let scholarSearchShrink = false;
-let scholarSearchDragBound = false;
-let scholarSearchDragging = false;
-let scholarSearchDragOffsetX = 0;
-let scholarSearchDragOffsetY = 0;
 let highlightPopupDockRight = true;
 let highlightPopupShrink = false;
 let highlightPopupDragBound = false;
@@ -91,8 +85,6 @@ let html2pptSavedHeight = '';
 let html2pptFullscreen = false;
 let html2pptRestoreState = null;
 let templateCustomList = [];
-let scholarRefBootPromise = null;
-let scholarRefInitDone = false;
 let aiSidebarBootPromise = null;
 let aiSidebarLoadAttempts = 0;
 let viewClickMappedCaretPos = null;
@@ -918,7 +910,9 @@ window.onload = async () => {
 
         if (sidebar) sidebar.style.display = 'none';
 
-        await ensureScholarRefReady();
+        if (window.ScholarSearchShell && typeof window.ScholarSearchShell.ensureScholarRefReady === 'function') {
+            await window.ScholarSearchShell.ensureScholarRefReady();
+        }
 
         initAiVisibility();
 
@@ -1149,7 +1143,7 @@ window.onload = async () => {
         }
         if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'KeyS' || e.key === 's' || e.key === 'S')) {
             e.preventDefault();
-            openScholarSearchModal();
+            if (typeof window.openScholarSearchModal === 'function') window.openScholarSearchModal();
             return;
         }
         if (e.altKey && !e.ctrlKey && !e.shiftKey && !isAltGraph && (e.code === 'Digit5' || e.key === '5')) {
@@ -6365,388 +6359,16 @@ window.addEventListener('message', function (event) {
     toggleHtml2pptPanelFullscreen();
 });
 
-function openScholarSearchWindow(query) {
-    const q = String(query || '').trim();
-    if (!q) {
-        showToast('Enter a search query first.');
-        return;
-    }
-    const options = (arguments.length > 1 && arguments[1]) ? arguments[1] : {};
-    const lang = String(options.lang || 'ko');
-    const period = String(options.period || '');
-    const reviewOnly = options.reviewOnly === true;
-    const finalQuery = reviewOnly ? (q + ' (review OR survey)') : q;
-    const params = new URLSearchParams();
-    params.set('q', finalQuery);
-    params.set('hl', lang === 'en' ? 'en' : 'ko');
-    if (lang === 'ko') params.set('lr', 'lang_ko');
-    if (lang === 'en') params.set('lr', 'lang_en');
-    if (period) {
-        const years = parseInt(period, 10);
-        if (Number.isFinite(years) && years > 0) {
-            const now = new Date().getFullYear();
-            params.set('as_ylo', String(now - years + 1));
-        }
-    }
-    params.set('as_vis', '1');
-    const url = 'https://scholar.google.com/scholar?' + params.toString();
-    const win = window.open(url, '_blank', 'noopener,noreferrer,width=1200,height=900');
-    if (!win) showToast('Popup blocked. Please allow popups for this site.');
-}
-
-function getScholarSearchSeedText() {
-    const active = document.activeElement;
-    if (active === editorTextarea) {
-        const selected = getEditorSelectedText();
-        if (selected && selected.trim()) return selected.trim();
-    }
-    const sel = window.getSelection ? window.getSelection() : null;
-    const t = sel && sel.toString ? String(sel.toString()) : '';
-    if (t.trim()) return t.trim();
-    return '';
-}
-
-function openScholarSearchModal() {
-    const modal = document.getElementById('scholar-search-modal');
-    const input = document.getElementById('scholar-search-query');
-    if (!modal || !input) return;
-    bindScholarSearchModalDrag();
-    applyScholarSearchPanelLayout();
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    const seed = getScholarSearchSeedText();
-    if (seed) input.value = seed;
-    requestAnimationFrame(function () {
-        input.focus();
-        input.select();
-    });
-}
-
-function closeScholarSearchModal() {
-    const modal = document.getElementById('scholar-search-modal');
-    if (!modal) return;
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-}
-
-function runScholarSearchFromModal() {
-    const input = document.getElementById('scholar-search-query');
-    const langEl = document.getElementById('scholar-search-lang');
-    const periodEl = document.getElementById('scholar-search-period');
-    const reviewEl = document.getElementById('scholar-search-review');
-    const q = input ? input.value : '';
-    const lang = langEl ? langEl.value : 'ko';
-    const period = periodEl ? periodEl.value : '';
-    const reviewOnly = !!(reviewEl && reviewEl.checked);
-    openScholarSearchWindow(q, { lang: lang, period: period, reviewOnly: reviewOnly });
-}
-
-function quickScholarSearchFromSelection() {
-    const seed = getScholarSearchSeedText();
-    if (!seed) {
-        openScholarSearchModal();
-        return;
-    }
-    openScholarSearchWindow(seed);
-}
-
-function applyScholarSearchPanelLayout() {
-    const modal = document.getElementById('scholar-search-modal');
-    const panel = document.getElementById('scholar-search-panel');
-    const body = document.getElementById('scholar-search-body');
-    const title = document.getElementById('scholar-search-title');
-    const queryLabel = document.getElementById('scholar-search-query-label');
-    const inputRow = document.getElementById('scholar-search-input-row');
-    const options = document.getElementById('scholar-search-options');
-    const help = document.getElementById('scholar-search-help');
-    const runBtn = document.getElementById('scholar-search-run-btn');
-    const queryInput = document.getElementById('scholar-search-query');
-    const dockBtn = document.getElementById('scholar-search-dock-btn');
-    const shrinkBtn = document.getElementById('scholar-search-shrink-btn');
-    if (!modal || !panel) return;
-
-    if (scholarSearchDockRight) {
-        modal.classList.remove('items-center', 'justify-center');
-        modal.classList.add('items-start', 'justify-end');
-        panel.style.position = 'fixed';
-        panel.style.top = '80px';
-        panel.style.right = '12px';
-        panel.style.left = 'auto';
-        panel.style.margin = '0';
-        panel.style.marginTop = '0';
-        panel.style.marginRight = '0';
-        panel.style.maxWidth = scholarSearchShrink ? '320px' : '760px';
-    } else {
-        modal.classList.remove('items-start', 'justify-end');
-        modal.classList.add('items-center', 'justify-center');
-        panel.style.position = '';
-        panel.style.top = '';
-        panel.style.right = '';
-        panel.style.left = '';
-        panel.style.margin = '';
-        panel.style.marginTop = '0';
-        panel.style.marginRight = '0';
-        panel.style.maxWidth = '760px';
-    }
-
-    if (title) title.classList.toggle('text-sm', scholarSearchShrink);
-    if (title) title.classList.toggle('text-base', !scholarSearchShrink);
-    if (title) title.style.whiteSpace = 'nowrap';
-    if (title) title.style.wordBreak = 'keep-all';
-
-    if (body) body.classList.remove('hidden');
-    const canShrink = scholarSearchDockRight;
-    const isShrinked = canShrink && scholarSearchShrink;
-    if (queryLabel) queryLabel.classList.toggle('hidden', isShrinked);
-    if (options) options.classList.toggle('hidden', isShrinked);
-    if (help) help.classList.toggle('hidden', isShrinked);
-
-    if (inputRow) {
-        inputRow.style.display = 'flex';
-        inputRow.style.gap = '8px';
-        inputRow.style.flexDirection = isShrinked ? 'column' : 'row';
-        inputRow.style.alignItems = isShrinked ? 'stretch' : 'center';
-    }
-    if (queryInput) queryInput.style.width = '100%';
-    if (runBtn) {
-        runBtn.style.width = isShrinked ? '100%' : '';
-        runBtn.textContent = 'Search';
-    }
-
-    if (shrinkBtn) {
-        shrinkBtn.textContent = isShrinked ? '[<<]' : '[>>]';
-        shrinkBtn.disabled = !canShrink;
-        shrinkBtn.classList.toggle('opacity-40', !canShrink);
-        shrinkBtn.classList.toggle('cursor-not-allowed', !canShrink);
-    }
-    if (dockBtn) dockBtn.textContent = scholarSearchDockRight ? 'Undock' : 'Dock Right';
-}
-
-function bindScholarSearchModalDrag() {
-    if (scholarSearchDragBound) return;
-    scholarSearchDragBound = true;
-    const header = document.getElementById('scholar-search-header');
-    const panel = document.getElementById('scholar-search-panel');
-    if (!header || !panel) return;
-
-    header.addEventListener('mousedown', function (e) {
-        const target = e.target;
-        if (!target) return;
-        if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('textarea')) return;
-        scholarSearchDragging = true;
-        const rect = panel.getBoundingClientRect();
-        scholarSearchDragOffsetX = e.clientX - rect.left;
-        scholarSearchDragOffsetY = e.clientY - rect.top;
-        panel.style.position = 'fixed';
-        panel.style.margin = '0';
-        panel.style.left = rect.left + 'px';
-        panel.style.top = rect.top + 'px';
-        e.preventDefault();
-    });
-
-    document.addEventListener('mousemove', function (e) {
-        if (!scholarSearchDragging) return;
-        const panelEl = document.getElementById('scholar-search-panel');
-        if (!panelEl) return;
-        const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - scholarSearchDragOffsetX));
-        const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - scholarSearchDragOffsetY));
-        panelEl.style.left = nextLeft + 'px';
-        panelEl.style.top = nextTop + 'px';
-    });
-
-    document.addEventListener('mouseup', function () {
-        scholarSearchDragging = false;
-    });
-}
-
-function initScholarRefIfAvailable() {
-    if (!window.ScholarRef || typeof window.ScholarRef.init !== 'function') return Promise.resolve(false);
-    if (scholarRefInitDone) return Promise.resolve(true);
-    return Promise.resolve(window.ScholarRef.init({
+function configureScholarSearchShellBridge() {
+    const shell = window.ScholarSearchShell;
+    if (!shell || typeof shell.init !== 'function') return;
+    shell.init({
         dbGetter: function () { return db; },
         getEditor: function () { return editorTextarea; },
-        showToast: showToast
-    })).then(function () {
-        scholarRefInitDone = true;
-        return true;
-    }).catch(function () {
-        return false;
+        showToast: function (msg) { showToast(msg); },
+        getEditorSelectedText: getEditorSelectedText,
+        getDocumentBaseUrl: getDocumentBaseUrl
     });
-}
-
-function ensureScholarRefReady() {
-    if (window.ScholarRef && typeof window.ScholarRef.init === 'function') {
-        return initScholarRefIfAvailable();
-    }
-    if (scholarRefBootPromise) return scholarRefBootPromise;
-
-    const base = getDocumentBaseUrl();
-    const version = '20260402-1';
-    const candidates = [];
-    try {
-        const u1 = new URL('./js/Scholarref/scholarref.js', base);
-        u1.searchParams.set('v', version);
-        candidates.push(u1.href);
-    } catch (_) {}
-    candidates.push('./js/Scholarref/scholarref.js?v=' + version);
-    try {
-        const u2 = new URL('./Scholarref/scholarref.js', base);
-        u2.searchParams.set('v', version);
-        candidates.push(u2.href);
-    } catch (_) {}
-    candidates.push('./Scholarref/scholarref.js?v=' + version);
-
-    scholarRefBootPromise = new Promise(function (resolve) {
-        let idx = 0;
-        function tryNext() {
-            if (window.ScholarRef && typeof window.ScholarRef.init === 'function') {
-                initScholarRefIfAvailable().then(function () { resolve(true); });
-                return;
-            }
-            if (idx >= candidates.length) {
-                resolve(false);
-                return;
-            }
-            const src = candidates[idx++];
-            const script = document.createElement('script');
-            script.charset = 'utf-8';
-            script.async = false;
-            script.src = src;
-            script.onload = function () {
-                initScholarRefIfAvailable().then(function (ok) {
-                    if (ok) resolve(true);
-                    else tryNext();
-                });
-            };
-            script.onerror = function () {
-                tryNext();
-            };
-            document.body.appendChild(script);
-        }
-        tryNext();
-    }).finally(function () {
-        scholarRefBootPromise = null;
-    });
-
-    return scholarRefBootPromise;
-}
-
-function toggleScholarRefPanel() {
-    if (window.ScholarRef && typeof window.ScholarRef.togglePanel === 'function') {
-        window.ScholarRef.togglePanel();
-        return;
-    }
-    ensureScholarRefReady().then(function (ok) {
-        if (!ok) {
-            showToast('Reference management module failed to load.');
-            return;
-        }
-        if (window.ScholarRef && typeof window.ScholarRef.togglePanel === 'function') {
-            window.ScholarRef.togglePanel();
-        }
-    });
-}
-
-function invokeScholarRef(methodName) {
-    const args = Array.prototype.slice.call(arguments, 1);
-    const run = function () {
-        const mod = window.ScholarRef;
-        if (!mod || typeof mod[methodName] !== 'function') return false;
-        mod[methodName].apply(mod, args);
-        return true;
-    };
-    if (run()) return;
-    ensureScholarRefReady().then(function (ok) {
-        if (!ok || !run()) showToast('Reference management module failed to load.');
-    });
-}
-
-function switchScholarRefTab(index) {
-    invokeScholarRef('switchTab', index);
-}
-
-function setScholarRefInputMode(mode) {
-    invokeScholarRef('setInputMode', mode);
-}
-
-function scholarRefApplyInput() {
-    invokeScholarRef('applyInput');
-}
-
-function scholarRefClearInput() {
-    invokeScholarRef('clearInput');
-}
-
-function openScholarRefTxtImport() {
-    invokeScholarRef('openTxtImport');
-}
-
-function openScholarRefMdImport() {
-    invokeScholarRef('openMdImport');
-}
-
-function importScholarRefTxt(event) {
-    invokeScholarRef('importTxt', event);
-}
-
-function importScholarRefMd(event) {
-    invokeScholarRef('importMd', event);
-}
-
-function renderScholarRefSelectionList() {
-    invokeScholarRef('renderSelectionList');
-}
-
-function toggleScholarRefPick(id, checked) {
-    invokeScholarRef('togglePick', id, checked);
-}
-
-function selectAllScholarRefs() {
-    invokeScholarRef('selectAllFiltered');
-}
-
-function clearScholarRefSelection() {
-    invokeScholarRef('clearSelection');
-}
-
-function insertSelectedScholarRefs() {
-    invokeScholarRef('insertSelected');
-}
-
-function insertAllScholarRefSection() {
-    invokeScholarRef('insertAllSection');
-}
-
-function downloadScholarRefTxt() {
-    invokeScholarRef('downloadTxt');
-}
-
-function downloadScholarRefMd() {
-    invokeScholarRef('downloadMd');
-}
-
-function openScholarRefListWindow() {
-    invokeScholarRef('openListWindow');
-}
-
-function deleteScholarRefItem(id) {
-    invokeScholarRef('deleteOne', id);
-}
-
-function clearAllScholarRefs() {
-    invokeScholarRef('clearAll');
-}
-
-function toggleScholarSearchDockRight() {
-    scholarSearchDockRight = !scholarSearchDockRight;
-    if (!scholarSearchDockRight) scholarSearchShrink = false;
-    applyScholarSearchPanelLayout();
-}
-
-function toggleScholarSearchShrink() {
-    if (!scholarSearchDockRight) return;
-    scholarSearchShrink = !scholarSearchShrink;
-    applyScholarSearchPanelLayout();
 }
 
 function openHighlightPopup() {
@@ -7363,8 +6985,17 @@ async function renderInDbStatusModal() {
 async function openInDbStatusModal() {
     const modal = document.getElementById('indb-status-modal');
     if (!modal) return;
+    // Keep inDB modal above settings modal when opened from Settings.
+    modal.style.zIndex = '2147483646';
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    try {
+        const panel = modal.firstElementChild;
+        if (panel && typeof panel.focus === 'function') {
+            panel.setAttribute('tabindex', '-1');
+            panel.focus();
+        }
+    } catch (_) {}
     await renderInDbStatusModal();
 }
 
@@ -8438,7 +8069,7 @@ function ensureInDbStatusUi() {
     if (!document.getElementById('indb-status-modal')) {
         const modal = document.createElement('div');
         modal.id = 'indb-status-modal';
-        modal.className = 'fixed inset-0 bg-black/30 hidden items-center justify-center z-[70] no-print';
+        modal.className = 'fixed inset-0 bg-black/30 hidden items-center justify-center z-[2147483646] no-print';
         modal.setAttribute('onclick', "if(event.target===this) closeInDbStatusModal()");
         modal.innerHTML = ''
             + '<div class="w-[min(680px,92vw)] h-[min(680px,86vh)] bg-white dark:bg-slate-900 border-2 border-slate-800 shadow-2xl flex flex-col">'
@@ -8626,32 +8257,7 @@ window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
 window.adjustPageScale = adjustPageScale;
 window.adjustFontSize = adjustFontSize;
-window.openScholarSearchModal = openScholarSearchModal;
-window.closeScholarSearchModal = closeScholarSearchModal;
-window.runScholarSearchFromModal = runScholarSearchFromModal;
-window.quickScholarSearchFromSelection = quickScholarSearchFromSelection;
-window.toggleScholarRefPanel = toggleScholarRefPanel;
-window.switchScholarRefTab = switchScholarRefTab;
-window.setScholarRefInputMode = setScholarRefInputMode;
-window.scholarRefApplyInput = scholarRefApplyInput;
-window.scholarRefClearInput = scholarRefClearInput;
-window.openScholarRefTxtImport = openScholarRefTxtImport;
-window.openScholarRefMdImport = openScholarRefMdImport;
-window.importScholarRefTxt = importScholarRefTxt;
-window.importScholarRefMd = importScholarRefMd;
-window.renderScholarRefSelectionList = renderScholarRefSelectionList;
-window.toggleScholarRefPick = toggleScholarRefPick;
-window.selectAllScholarRefs = selectAllScholarRefs;
-window.clearScholarRefSelection = clearScholarRefSelection;
-window.insertSelectedScholarRefs = insertSelectedScholarRefs;
-window.insertAllScholarRefSection = insertAllScholarRefSection;
-window.downloadScholarRefTxt = downloadScholarRefTxt;
-window.downloadScholarRefMd = downloadScholarRefMd;
-window.openScholarRefListWindow = openScholarRefListWindow;
-window.deleteScholarRefItem = deleteScholarRefItem;
-window.clearAllScholarRefs = clearAllScholarRefs;
-window.toggleScholarSearchDockRight = toggleScholarSearchDockRight;
-window.toggleScholarSearchShrink = toggleScholarSearchShrink;
+configureScholarSearchShellBridge();
 window.toggleTemplatePanel = toggleTemplatePanel;
 window.closeTemplatePanel = closeTemplatePanel;
 window.toggleTemplateCompactMode = toggleTemplateCompactMode;

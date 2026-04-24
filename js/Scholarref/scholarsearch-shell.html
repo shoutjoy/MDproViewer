@@ -1,0 +1,104 @@
+<div id="scholar-search-modal" class="fixed inset-0 bg-transparent hidden items-start justify-end z-50 no-print pointer-events-none">
+  <div id="scholar-search-panel" class="pointer-events-auto mt-20 mr-5 bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-2xl p-4 w-full max-w-xl border border-slate-200 dark:border-slate-700 backdrop-blur-[1px]">
+    <div id="scholar-search-header" class="flex items-center justify-between mb-3 gap-2 cursor-move select-none">
+      <h3 id="scholar-search-title" class="text-base sm:text-lg font-bold text-slate-800 dark:text-slate-100 whitespace-nowrap">Scholar Search</h3>
+      <div class="flex items-center gap-2 shrink-0">
+        <button type="button" id="scholar-search-shrink-btn" onclick="toggleScholarSearchShrink()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">[>>]</button>
+        <button type="button" id="scholar-search-dock-btn" onclick="toggleScholarSearchDockRight()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Undock</button>
+        <button type="button" onclick="closeScholarSearchModal()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button>
+      </div>
+    </div>
+    <div id="scholar-search-body" class="space-y-3">
+      <label id="scholar-search-query-label" for="scholar-search-query" class="block text-xs font-semibold text-slate-500 dark:text-slate-400">Search query (paper title, author, keyword)</label>
+      <div id="scholar-search-input-row" class="flex items-center gap-2">
+        <input type="text" id="scholar-search-query" placeholder="e.g.) structural equation modeling education Korea" onkeydown="if(event.key==='Enter'){event.preventDefault();runScholarSearchFromModal();}" class="flex-1 px-3 py-2 border border-indigo-400 dark:border-indigo-500 rounded-md bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+        <button type="button" id="scholar-search-run-btn" onclick="runScholarSearchFromModal()" class="px-4 py-2 bg-indigo-600 rounded-md text-sm font-semibold text-white hover:bg-indigo-700">Search</button>
+      </div>
+      <div id="scholar-search-options" class="pt-1">
+        <div class="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">Options</div>
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="text-xs text-slate-700 dark:text-slate-300">Language:</label>
+          <select id="scholar-search-lang" class="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100">
+            <option value="ko">Korean first</option>
+            <option value="en">English first</option>
+            <option value="all">All languages</option>
+          </select>
+          <label class="text-xs text-slate-700 dark:text-slate-300 ml-1">Period:</label>
+          <select id="scholar-search-period" class="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-100">
+            <option value="">Any time</option>
+            <option value="1">Last 1 year</option>
+            <option value="5">Last 5 years</option>
+            <option value="10">Last 10 years</option>
+          </select>
+          <label class="inline-flex items-center gap-1 text-xs text-slate-700 dark:text-slate-300 ml-1">
+            <input type="checkbox" id="scholar-search-review" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+            Review/Survey only
+          </label>
+        </div>
+      </div>
+      <p id="scholar-search-help" class="text-[11px] text-amber-600 dark:text-amber-400">Results open in a new browser tab.</p>
+      <div class="pt-1 flex justify-end">
+        <button type="button" id="scholarref-toggle-btn" class="scholarref-toggle-btn" onclick="toggleScholarRefPanel()">Reference management</button>
+      </div>
+      <div id="scholarref-panel" class="scholarref-panel hidden">
+        <div class="scholarref-tab-menu">
+          <button type="button" class="scholarref-tab active" data-tab="0" onclick="switchScholarRefTab(0)">① 참고문헌 추가</button>
+          <button type="button" class="scholarref-tab" data-tab="1" onclick="switchScholarRefTab(1)">② 인용 삽입</button>
+          <button type="button" class="scholarref-tab" data-tab="2" onclick="switchScholarRefTab(2)">④ 저장된 목록</button>
+        </div>
+        <div id="scholarref-tab-0" class="scholarref-tab-content active">
+          <div class="scholarref-row">
+            <button type="button" id="scholarref-method-blank" class="scholarref-method-btn active" onclick="setScholarRefInputMode('blank')">빈 줄 구분</button>
+            <button type="button" id="scholarref-method-line" class="scholarref-method-btn" onclick="setScholarRefInputMode('line')">엔터 구분</button>
+          </div>
+          <label class="scholarref-label" for="scholarref-input">APA 형식 참고문헌 붙여넣기</label>
+          <textarea id="scholarref-input" class="scholarref-textarea" placeholder="여기에 참고문헌을 붙여넣으세요..."></textarea>
+          <div class="scholarref-row">
+            <button type="button" class="scholarref-primary" onclick="scholarRefApplyInput()">앱에서 사용하기</button>
+            <button type="button" class="scholarref-secondary" onclick="scholarRefClearInput()">지우기</button>
+            <button type="button" class="scholarref-secondary" onclick="openScholarRefTxtImport()">TXT 불러오기</button>
+            <input type="file" id="scholarref-txt-file" accept=".txt,.md" class="hidden" onchange="importScholarRefTxt(event)">
+          </div>
+          <p id="scholarref-status" class="scholarref-help">현재: 빈 줄 구분</p>
+        </div>
+        <div id="scholarref-tab-1" class="scholarref-tab-content">
+          <div class="scholarref-row">
+            <input type="text" id="scholarref-search" class="scholarref-search" placeholder="저자, 연도, 키워드로 검색..." oninput="renderScholarRefSelectionList()">
+            <button type="button" class="scholarref-secondary" onclick="selectAllScholarRefs()">전체 선택</button>
+            <button type="button" class="scholarref-secondary" onclick="clearScholarRefSelection()">선택 해제</button>
+          </div>
+          <div id="scholarref-select-list" class="scholarref-list"></div>
+          <div class="scholarref-row scholarref-wrap">
+            <label class="scholarref-inline">삽입 형식
+              <select id="scholarref-insert-format" class="scholarref-select">
+                <option value="inline">인라인: (저자, 연도)</option>
+                <option value="narrative">서술형: 저자(연도)</option>
+              </select>
+            </label>
+            <label class="scholarref-inline"><input type="checkbox" id="scholarref-append-section"> 문서 끝 References(APA) 추가</label>
+            <label class="scholarref-inline"><input type="checkbox" id="scholarref-number-link"> 번호(링크)로 삽입</label>
+            <span id="scholarref-selected-count" class="scholarref-count">0개 선택됨</span>
+          </div>
+          <div class="scholarref-row scholarref-center">
+            <button type="button" class="scholarref-primary" onclick="insertSelectedScholarRefs()">선택한 인용 삽입</button>
+          </div>
+        </div>
+        <div id="scholarref-tab-2" class="scholarref-tab-content">
+          <div class="scholarref-row scholarref-between">
+            <div class="scholarref-count">저장 <span id="scholarref-total-count">0건</span></div>
+            <div class="scholarref-row">
+              <button type="button" class="scholarref-secondary" onclick="insertAllScholarRefSection()">참고문헌 섹션 삽입</button>
+              <button type="button" class="scholarref-secondary" onclick="downloadScholarRefTxt()">TXT 다운로드</button>
+              <button type="button" class="scholarref-secondary" onclick="downloadScholarRefMd()">MD 다운로드</button>
+              <button type="button" class="scholarref-secondary" onclick="openScholarRefMdImport()">MD 불러오기</button>
+              <button type="button" class="scholarref-secondary" onclick="openScholarRefListWindow()">새창목록</button>
+              <button type="button" class="scholarref-danger" onclick="clearAllScholarRefs()">전체 삭제</button>
+              <input type="file" id="scholarref-md-file" accept=".md,.txt" class="hidden" onchange="importScholarRefMd(event)">
+            </div>
+          </div>
+          <div id="scholarref-saved-list" class="scholarref-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

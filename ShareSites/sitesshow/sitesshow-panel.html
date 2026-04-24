@@ -17,12 +17,14 @@
                 class="w-[120px] px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
             <input type="url" id="sites-add-url-input" placeholder="주소 (https://example.com)"
                 class="flex-1 min-w-[180px] px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
-            <button type="button" onclick="addSiteFromInput()"
+            <button type="button" id="sites-add-submit-btn" onclick="addSiteFromInput()"
                 class="px-2.5 py-1.5 rounded bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">+URL</button>
+            <button type="button" id="sites-edit-cancel-btn" onclick="cancelEditSite()"
+                class="hidden px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">Cancel</button>
         </div>
         <div id="sites-list" class="space-y-1.5 max-h-52 overflow-auto pr-1"></div>
         <div id="sites-settings-wrap" class="hidden border-t border-slate-200 dark:border-slate-700 pt-2">
-            <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Delete sites in settings</div>
+            <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Manage sites in settings</div>
             <div id="sites-list-settings" class="space-y-1.5 max-h-40 overflow-auto pr-1"></div>
         </div>
     </div>

@@ -50,7 +50,7 @@
         let injected = false;
         const toolbarSlot = document.getElementById('google-docs-toolbar-slot');
         if (toolbarSlot && !document.getElementById('btn-docsync')) {
-            const toolbarHtml = await loadHtmlFragment('./googleDocs/googleDocs-toolbar.html');
+            const toolbarHtml = await loadHtmlFragment('./ShareSites/googleDocs-toolbar.html');
             if (toolbarHtml) {
                 toolbarSlot.innerHTML = toolbarHtml;
                 injected = true;
@@ -59,7 +59,7 @@
 
         const settingsSlot = document.getElementById('google-docs-settings-slot');
         if (settingsSlot && !document.getElementById('gdocs-settings')) {
-            const settingsHtml = await loadHtmlFragment('./googleDocs/googleDocs-settings.html');
+            const settingsHtml = await loadHtmlFragment('./ShareSites/googleDocs-settings.html');
             if (settingsHtml) {
                 settingsSlot.innerHTML = settingsHtml;
                 injected = true;

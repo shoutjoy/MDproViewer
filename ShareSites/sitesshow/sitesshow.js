@@ -14,6 +14,7 @@
     let sitesPanelResizing = false;
     let sitesPanelSavedWidth = '';
     let sitesPanelSavedHeight = '';
+    let editingSiteIndex = -1;
 
     const DEFAULT_SITES_LIST = [
         { name: 'data visualization', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
@@ -21,7 +22,7 @@
         { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' },
         { name: 'GeoGebra Calculator', url: 'https://www.geogebra.org/calculator' },
         { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
-        { name: 'Mermaid AI', url: 'https://posit.cloud/' },
+        { name: 'posit R', url: 'https://posit.cloud/' },
         { name: 'colab.new', url: 'http://colab.new' }
     ];
 
@@ -40,7 +41,7 @@
 
         const settingsSlot = document.getElementById('sites-settings-slot');
         if (settingsSlot && !document.getElementById('sites-visible')) {
-            const settingsHtml = await loadHtmlFragment('./googleDocs/sitesshow/sitesshow-settings.html');
+            const settingsHtml = await loadHtmlFragment('./ShareSites/sitesshow/sitesshow-settings.html');
             if (settingsHtml) {
                 settingsSlot.innerHTML = settingsHtml;
                 injected = true;
@@ -49,7 +50,7 @@
 
         const panelSlot = document.getElementById('sites-panel-slot');
         if (panelSlot && !document.getElementById('sites-panel')) {
-            const panelHtml = await loadHtmlFragment('./googleDocs/sitesshow/sitesshow-panel.html');
+            const panelHtml = await loadHtmlFragment('./ShareSites/sitesshow/sitesshow-panel.html');
             if (panelHtml) {
                 panelSlot.innerHTML = panelHtml;
                 injected = true;
@@ -144,6 +145,13 @@
             name.title = site.url;
             name.textContent = site.name || site.url;
             row.appendChild(name);
+
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-[11px]';
+            edit.textContent = 'Edit';
+            edit.onclick = function () { startEditSiteAt(idx); };
+            row.appendChild(edit);
 
             const del = document.createElement('button');
             del.type = 'button';
@@ -341,6 +349,44 @@
         await setAiSettings({ sitesList: sitesList.slice() });
     }
 
+    function normalizeUrlForCompare(url) {
+        return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
+    }
+
+    function setSiteEditorMode(mode) {
+        const addBtn = document.getElementById('sites-add-submit-btn');
+        const cancelBtn = document.getElementById('sites-edit-cancel-btn');
+        if (addBtn) addBtn.textContent = mode === 'edit' ? 'Save' : '+URL';
+        if (cancelBtn) cancelBtn.classList.toggle('hidden', mode !== 'edit');
+    }
+
+    function clearSiteEditor() {
+        const nameInput = document.getElementById('sites-add-name-input');
+        const urlInput = document.getElementById('sites-add-url-input');
+        if (nameInput) nameInput.value = '';
+        if (urlInput) urlInput.value = '';
+        editingSiteIndex = -1;
+        setSiteEditorMode('add');
+    }
+
+    function startEditSiteAt(index) {
+        if (index < 0 || index >= sitesList.length) return;
+        const site = sitesList[index] || {};
+        const nameInput = document.getElementById('sites-add-name-input');
+        const urlInput = document.getElementById('sites-add-url-input');
+        if (!urlInput) return;
+        if (nameInput) nameInput.value = String(site.name || '');
+        urlInput.value = String(site.url || '');
+        editingSiteIndex = index;
+        setSiteEditorMode('edit');
+        urlInput.focus();
+        urlInput.select();
+    }
+
+    function cancelEditSite() {
+        clearSiteEditor();
+    }
+
     async function addSiteFromInput() {
         const nameInput = document.getElementById('sites-add-name-input');
         const urlInput = document.getElementById('sites-add-url-input');
@@ -359,27 +405,34 @@
             if (typeof showToast === 'function') showToast('Invalid URL.');
             return;
         }
-        function normalizeForCompare(url) {
-            return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
-        }
-        const exists = sitesList.some(function (s) {
-            return normalizeForCompare(s && s.url) === normalizeForCompare(normalized);
+        const editing = editingSiteIndex >= 0 && editingSiteIndex < sitesList.length;
+        const exists = sitesList.some(function (s, i) {
+            if (editing && i === editingSiteIndex) return false;
+            return normalizeUrlForCompare(s && s.url) === normalizeUrlForCompare(normalized);
         });
         if (exists) {
             if (typeof showToast === 'function') showToast('Site already exists.');
             return;
         }
         const displayName = String(nameInput && nameInput.value ? nameInput.value : '').trim() || buildSiteNameFromUrl(normalized);
-        sitesList.push({ name: displayName, url: normalized });
+        if (editing) {
+            sitesList[editingSiteIndex] = { name: displayName, url: normalized };
+        } else {
+            sitesList.push({ name: displayName, url: normalized });
+        }
         await saveSitesListToSettings();
         renderSitesPanel();
-        if (nameInput) nameInput.value = '';
-        urlInput.value = '';
-        if (typeof showToast === 'function') showToast('Site added.');
+        clearSiteEditor();
+        if (typeof showToast === 'function') showToast(editing ? 'Site updated.' : 'Site added.');
     }
 
     async function removeSiteAt(index) {
         if (index < 0 || index >= sitesList.length) return;
+        if (editingSiteIndex === index) {
+            clearSiteEditor();
+        } else if (editingSiteIndex > index) {
+            editingSiteIndex -= 1;
+        }
         sitesList.splice(index, 1);
         if (!sitesList.length) sitesList = DEFAULT_SITES_LIST.slice();
         await saveSitesListToSettings();
@@ -406,6 +459,7 @@
 
     function setSitesList(nextList) {
         sitesList = normalizeSitesList(nextList);
+        clearSiteEditor();
         renderSitesPanel();
     }
 
@@ -416,6 +470,7 @@ window.applySitesVisibility = applySitesVisibility;
 window.toggleSitesPanel = toggleSitesPanel;
 window.closeSitesPanel = closeSitesPanel;
 window.addSiteFromInput = addSiteFromInput;
+window.cancelEditSite = cancelEditSite;
 window.toggleSitesSection = toggleSitesSection;
 window.toggleSitesCompactMode = toggleSitesCompactMode;
 window.toggleSitesSettingsPanel = toggleSitesSettingsPanel;

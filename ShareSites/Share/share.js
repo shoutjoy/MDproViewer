@@ -116,7 +116,7 @@
 
         const toolbarSlot = document.getElementById('google-share-toolbar-slot');
         if (toolbarSlot && !document.getElementById('btn-export-gdocs')) {
-            const toolbarHtml = await loadHtmlFragment('./googleDocs/Share/share-toolbar.html');
+            const toolbarHtml = await loadHtmlFragment('./ShareSites/Share/share-toolbar.html');
             if (toolbarHtml) {
                 toolbarSlot.innerHTML = toolbarHtml;
                 injected = true;
@@ -125,7 +125,7 @@
 
         const settingsSlot = document.getElementById('google-share-settings-slot');
         if (settingsSlot && !document.getElementById('todocs-visible')) {
-            const settingsHtml = await loadHtmlFragment('./googleDocs/Share/share-settings.html');
+            const settingsHtml = await loadHtmlFragment('./ShareSites/Share/share-settings.html');
             if (settingsHtml) {
                 settingsSlot.innerHTML = settingsHtml;
                 injected = true;
