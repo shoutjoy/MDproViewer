@@ -13,7 +13,7 @@
         { key: 'pdf2ppt', label: 'pdf to pptx', url: 'https://pdf2pptmake.onrender.com/', checkboxId: 'share-site-pdf2ppt' },
         { key: 'naverblog', label: 'NaverBlog', url: '', checkboxId: 'share-site-naverblog' }
     ];
-    const DEFAULT_SHARE_SITES = ['docs'];
+    const DEFAULT_SHARE_SITES = ['docs', 'story', 'gist', 'board', 'naverblog'];
 
     let toDocsVisible = false;
     let shareMenuExpanded = false;

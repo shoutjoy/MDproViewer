@@ -12,6 +12,7 @@ const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
 const GITHUB_SETTINGS_FOLD_KEY = 'md_viewer_github_settings_folded';
+const EDITOR_HORIZONTAL_SHIFT_KEY = 'md_viewer_editor_horizontal_shift_px';
 
 // State
 let currentMarkdown = "";
@@ -57,6 +58,7 @@ let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
 let tidyQuickMenuBound = false;
+let footnoteQuickMenuBound = false;
 let selectionWrapEnabled = true;
 let viewModeEditEnabled = false;
 let templatePanelOpen = false;
@@ -148,15 +150,20 @@ const GITHUB_DOC_EXT_RE = /\.(md|markdown|txt)$/i;
 let folderCollapseState = {};
 let currentStorageSourceTab = 'indb';
 let miniPreviewEnabled = false;
+let editorHorizontalShiftPx = 0;
+let editorShiftResizeBound = false;
 let miniPreviewDragBound = false;
 let miniPreviewDragging = false;
 let miniPreviewResizing = false;
+let miniPreviewFullscreen = false;
+let miniPreviewZoom = 1;
 let miniPreviewDragOffsetX = 0;
 let miniPreviewDragOffsetY = 0;
 let miniPreviewStartX = 0;
 let miniPreviewStartY = 0;
 let miniPreviewStartW = 0;
 let miniPreviewStartH = 0;
+let miniPreviewLayoutBeforeFullscreen = null;
 let miniPreviewRenderToken = 0;
 let tableInsertPickerBuilt = false;
 let math99PopupBound = false;
@@ -278,21 +285,21 @@ function getGithubLinkPathFromConfig(cfg) {
 }
 
 function setGithubFeedback(message, kind) {
-    const el = document.getElementById('github-settings-feedback');
-    if (!el) return;
-    el.textContent = String(message || '');
-    const t = String(kind || '').toLowerCase();
-    if (t === 'error') el.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
-    else if (t === 'ok') el.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
-    else el.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
+    const api = window.GithubDataSettings;
+    if (api && typeof api.setGithubFeedback === 'function') {
+        return api.setGithubFeedback(message, kind);
+    }
 }
 
 function toggleGithubSettingsSection() {
     const checked = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
     const folded = getGithubSettingsFoldedFromLocal();
+    const api = window.GithubDataSettings;
+    if (api && typeof api.toggleGithubSettingsSection === 'function') {
+        return api.toggleGithubSettingsSection({ checked: checked, folded: folded });
+    }
     const body = document.getElementById('github-settings-body');
-    if (!body) return;
-    body.classList.toggle('hidden', !checked || folded);
+    if (body) body.classList.toggle('hidden', !checked || folded);
 }
 
 function updateStorageSourceTabsUI() {
@@ -308,18 +315,19 @@ function updateStorageSourceTabsUI() {
 async function applyGithubUiState(settingsInput) {
     const settings = settingsInput || await getAiSettings() || {};
     const cfg = getGithubConfigFromSettings(settings);
+    const githubConfigured = !!(cfg.enabled && cfg.token);
     const tabsWrap = document.getElementById('storage-source-tabs');
     const repoLink = document.getElementById('tab-storage-github-link');
     const syncBtn = document.getElementById('btn-github-sync');
     const syncLabel = document.getElementById('github-sync-label');
 
     if (tabsWrap) {
-        const showTabs = !!cfg.enabled;
+        const showTabs = githubConfigured;
         tabsWrap.classList.toggle('hidden', !showTabs);
         tabsWrap.classList.toggle('flex', showTabs);
     }
     if (syncBtn) {
-        const showSync = !!cfg.enabled;
+        const showSync = githubConfigured;
         syncBtn.classList.toggle('hidden', !showSync);
         syncBtn.classList.toggle('flex', showSync);
     }
@@ -330,8 +338,8 @@ async function applyGithubUiState(settingsInput) {
     if (repoLink) {
         const linkPath = getGithubLinkPathFromConfig(cfg);
         const hasRepo = !!linkPath;
-        repoLink.classList.toggle('hidden', !(cfg.enabled && hasRepo));
-        if (cfg.enabled && hasRepo) {
+        repoLink.classList.toggle('hidden', !(githubConfigured && hasRepo));
+        if (githubConfigured && hasRepo) {
             const url = 'https://github.com/' + linkPath;
             repoLink.href = url;
             repoLink.title = 'GitHub 저장소 열기: ' + linkPath;
@@ -341,7 +349,7 @@ async function applyGithubUiState(settingsInput) {
         }
     }
 
-    if (!cfg.enabled && currentStorageSourceTab === 'github') {
+    if (!githubConfigured && currentStorageSourceTab === 'github') {
         currentStorageSourceTab = 'indb';
         setStorageSourceTabToLocal('indb');
     }
@@ -352,7 +360,15 @@ async function applyGithubUiState(settingsInput) {
 function switchStorageSourceTab(tab) {
     const next = String(tab || '').toLowerCase() === 'github' ? 'github' : 'indb';
     const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
-    if (next === 'github' && !githubEnabled) return;
+    const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
+    const githubConfigured = !!(githubEnabled && githubToken);
+    if (next === 'github' && !githubConfigured) {
+        currentStorageSourceTab = 'indb';
+        setStorageSourceTabToLocal('indb');
+        updateStorageSourceTabsUI();
+        renderDBList();
+        return;
+    }
     currentStorageSourceTab = next;
     setStorageSourceTabToLocal(next);
     updateStorageSourceTabsUI();
@@ -664,12 +680,34 @@ function clampMiniPreviewLayout(layoutInput) {
 
 function applyMiniPreviewLayout(layoutInput) {
     if (!miniPreviewPanel) return;
+    if (miniPreviewFullscreen) {
+        const rect = getMiniPreviewContainerRect();
+        if (rect) {
+            const width = Math.max(320, Math.min(Math.floor(rect.width * 0.9), Math.floor(rect.width - 16)));
+            const height = Math.max(220, Math.min(Math.floor(rect.height * 0.94), Math.floor(rect.height - 16)));
+            const left = Math.max(8, Math.floor((rect.width - width) / 2));
+            const top = Math.max(8, Math.floor((rect.height - height) / 2));
+            miniPreviewPanel.style.left = left + 'px';
+            miniPreviewPanel.style.top = top + 'px';
+            miniPreviewPanel.style.width = width + 'px';
+            miniPreviewPanel.style.height = height + 'px';
+        } else {
+            miniPreviewPanel.style.left = '8px';
+            miniPreviewPanel.style.top = '8px';
+            miniPreviewPanel.style.width = 'calc(100% - 16px)';
+            miniPreviewPanel.style.height = 'calc(100% - 16px)';
+        }
+        miniPreviewPanel.style.right = 'auto';
+        miniPreviewPanel.style.maxWidth = 'none';
+        return;
+    }
     const layout = clampMiniPreviewLayout(layoutInput || getMiniPreviewLayoutFromLocal() || {});
     miniPreviewPanel.style.left = layout.left + 'px';
     miniPreviewPanel.style.top = layout.top + 'px';
     miniPreviewPanel.style.width = layout.width + 'px';
     miniPreviewPanel.style.height = layout.height + 'px';
     miniPreviewPanel.style.right = 'auto';
+    miniPreviewPanel.style.maxWidth = '';
     setMiniPreviewLayoutToLocal(layout);
 }
 
@@ -680,6 +718,44 @@ function updateMiniPreviewButton() {
     btn.classList.toggle('border-indigo-500', on);
     btn.classList.toggle('text-indigo-600', on);
     btn.classList.toggle('dark:text-indigo-300', on);
+}
+
+function applyMiniPreviewZoom() {
+    if (!miniPreviewContent) return;
+    const z = Math.max(0.5, Math.min(2.5, Number(miniPreviewZoom) || 1));
+    miniPreviewZoom = z;
+    miniPreviewContent.style.zoom = String(z);
+    const zoomLabel = document.getElementById('mini-preview-zoom-label');
+    if (zoomLabel) zoomLabel.textContent = Math.round(z * 100) + '%';
+}
+
+function miniPreviewAdjustZoom(delta) {
+    miniPreviewZoom = (Number(miniPreviewZoom) || 1) + Number(delta || 0);
+    applyMiniPreviewZoom();
+}
+
+function updateMiniPreviewFullscreenUi() {
+    const btn = document.getElementById('btn-mini-preview-fullscreen');
+    if (btn) btn.textContent = miniPreviewFullscreen ? '복귀' : '전체';
+    if (miniPreviewResizeHandle) miniPreviewResizeHandle.style.display = miniPreviewFullscreen ? 'none' : '';
+    if (miniPreviewHeader) miniPreviewHeader.classList.toggle('cursor-move', !miniPreviewFullscreen);
+}
+
+function toggleMiniPreviewFullscreen(force) {
+    if (!miniPreviewPanel || !miniPreviewEnabled) return;
+    const next = (typeof force === 'boolean') ? !!force : !miniPreviewFullscreen;
+    if (next === miniPreviewFullscreen) return;
+    if (next) {
+        miniPreviewLayoutBeforeFullscreen = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+        miniPreviewFullscreen = true;
+        applyMiniPreviewLayout(null);
+        updateMiniPreviewFullscreenUi();
+        return;
+    }
+    miniPreviewFullscreen = false;
+    applyMiniPreviewLayout(miniPreviewLayoutBeforeFullscreen || getMiniPreviewLayoutFromLocal() || {});
+    miniPreviewLayoutBeforeFullscreen = null;
+    updateMiniPreviewFullscreenUi();
 }
 
 function renderMiniPreviewContent() {
@@ -699,6 +775,7 @@ function renderMiniPreviewContent() {
         function finalizeMini(html) {
             if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
             miniPreviewContent.innerHTML = String(html || '');
+            applyMiniPreviewZoom();
             try { hydrateInternalImagesInElement(miniPreviewContent, registerPreviewInternalObjectUrl); } catch (_) {}
             try {
                 if (window.MermaidTRT && typeof window.MermaidTRT.renderIn === 'function') {
@@ -741,6 +818,7 @@ function bindMiniPreviewInteractions() {
 
     if (miniPreviewHeader) {
         miniPreviewHeader.addEventListener('mousedown', function (e) {
+            if (miniPreviewFullscreen) return;
             const target = e.target;
             if (target && (target.closest('button') || target.closest('a') || target.closest('input'))) return;
             const panelRect = miniPreviewPanel.getBoundingClientRect();
@@ -755,6 +833,7 @@ function bindMiniPreviewInteractions() {
 
     if (miniPreviewResizeHandle) {
         miniPreviewResizeHandle.addEventListener('mousedown', function (e) {
+            if (miniPreviewFullscreen) return;
             const layout = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
             miniPreviewResizing = true;
             miniPreviewStartX = e.clientX;
@@ -801,7 +880,7 @@ function bindMiniPreviewInteractions() {
     });
 
     window.addEventListener('resize', function () {
-        if (miniPreviewEnabled) applyMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+        if (miniPreviewEnabled) applyMiniPreviewLayout(miniPreviewLayoutBeforeFullscreen || getMiniPreviewLayoutFromLocal() || {});
     });
 }
 
@@ -811,8 +890,13 @@ function applyMiniPreviewVisibility() {
     miniPreviewPanel.classList.toggle('hidden', !show);
     if (show) {
         bindMiniPreviewInteractions();
-        applyMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
+        applyMiniPreviewLayout(miniPreviewLayoutBeforeFullscreen || getMiniPreviewLayoutFromLocal() || {});
+        updateMiniPreviewFullscreenUi();
+        applyMiniPreviewZoom();
         renderMiniPreviewContent();
+    } else {
+        updateMiniPreviewFullscreenUi();
+        applyMiniPreviewZoom();
     }
     updateMiniPreviewButton();
 }
@@ -3039,137 +3123,68 @@ function getGithubDocTitleFromPath(path) {
 }
 
 async function pullGithubRepo() {
-    const settings = await getAiSettings() || {};
-    const cfg = getGithubConfigFromSettings(settings);
-    if (!cfg.enabled) {
-        showToast('Enable github first in Settings.');
-        return;
-    }
-    if (!cfg.token || !cfg.repo || !cfg.branch) {
-        showToast('Enter PAT, repository, and branch first.');
-        setGithubFeedback('PAT / 저장소 / 브랜치를 입력하세요.', 'error');
-        return;
-    }
-    setGithubFeedback('Pulling from GitHub...', 'info');
-    try {
-        const treeUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/git/trees/' + encodeURIComponent(cfg.branch) + '?recursive=1';
-        const treeData = await githubApiRequest(treeUrl, {}, cfg.token);
-        const treeItems = Array.isArray(treeData && treeData.tree) ? treeData.tree : [];
-        const basePrefix = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/') : '';
-        const files = treeItems.filter(function (it) {
-            if (!(it && it.type === 'blob' && GITHUB_DOC_EXT_RE.test(String(it.path || '')))) return false;
-            if (!basePrefix) return true;
-            const p = String(it.path || '');
-            return p.startsWith(basePrefix);
+    const api = window.GithubDataSettings;
+    if (api && typeof api.pullGithubRepo === 'function') {
+        return await api.pullGithubRepo({
+            getAiSettings: getAiSettings,
+            setAiSettings: setAiSettings,
+            getGithubConfigFromSettings: getGithubConfigFromSettings,
+            showToast: showToast,
+            renderDBList: renderDBList
         });
-        const maxFiles = Math.max(1, Math.min(10000, Number(cfg.pullMaxFiles) || 10000));
-        const limitedFiles = files.slice(0, maxFiles);
-        const docs = [];
-        for (let i = 0; i < limitedFiles.length; i++) {
-            const f = limitedFiles[i];
-            const remotePath = String(f.path || '').trim();
-            if (!remotePath) continue;
-            const relPath = basePrefix && remotePath.startsWith(basePrefix)
-                ? remotePath.slice(basePrefix.length)
-                : remotePath;
-            if (!relPath) continue;
-            const contentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
-            const contentData = await githubApiRequest(contentUrl, {}, cfg.token);
-            const text = decodeGithubBase64ToText(contentData && contentData.content ? contentData.content : '');
-            const folderPath = relPath.includes('/') ? relPath.slice(0, relPath.lastIndexOf('/')) : 'root';
-            docs.push({
-                id: 'gh:' + relPath,
-                path: relPath,
-                remotePath: remotePath,
-                title: getGithubDocTitleFromPath(relPath),
-                folderPath: folderPath || 'root',
-                content: text,
-                sha: String(contentData && contentData.sha ? contentData.sha : ''),
-                updatedAt: new Date().toISOString()
-            });
-        }
-        await setAiSettings({
-            githubEnabled: true,
-            githubToken: cfg.token,
-            githubRepo: cfg.repo,
-            githubBranch: cfg.branch,
-            githubPullMaxFiles: maxFiles,
-            githubCacheDocs: docs,
-            githubLastPulledAt: new Date().toISOString()
-        });
-        const limitedNote = files.length > maxFiles
-            ? ' (limited to ' + maxFiles + ' of ' + files.length + ')'
-            : '';
-        setGithubFeedback('Pulled ' + docs.length + ' files from GitHub' + limitedNote + '.', 'ok');
-        showToast('GitHub pull complete: ' + docs.length + ' files' + limitedNote);
-        if (currentStorageSourceTab === 'github' || activeSidebarTab === 'files') renderDBList();
-    } catch (e) {
-        setGithubFeedback(String(e && e.message ? e.message : e), 'error');
-        showToast('GitHub pull failed.');
+    }
+    showToast('GitHub module is not loaded.');
+}
+
+function openGithubRepoCreateModal() {
+    const api = window.GithubDataSettings;
+    if (api && typeof api.openGithubRepoCreateModal === 'function') {
+        return api.openGithubRepoCreateModal();
     }
 }
 
-async function createGithubRepository() {
-    const tokenInput = document.getElementById('github-token-input');
-    const branchInput = document.getElementById('github-branch-input');
-    const newRepoInput = document.getElementById('github-new-repo-name-input');
-    const token = String(tokenInput && tokenInput.value ? tokenInput.value : '').trim();
-    const branch = String(branchInput && branchInput.value ? branchInput.value : 'main').trim() || 'main';
-    const newRepo = String(newRepoInput && newRepoInput.value ? newRepoInput.value : '').trim();
-    if (!token || !newRepo) {
-        setGithubFeedback('PAT와 새 저장소명을 입력하세요.', 'error');
-        showToast('PAT and new repository name are required.');
-        return;
+function closeGithubRepoCreateModal() {
+    const api = window.GithubDataSettings;
+    if (api && typeof api.closeGithubRepoCreateModal === 'function') {
+        return api.closeGithubRepoCreateModal();
     }
-    setGithubFeedback('Creating repository...', 'info');
-    try {
-        const created = await githubApiRequest('https://api.github.com/user/repos', {
-            method: 'POST',
-            body: JSON.stringify({ name: newRepo, private: false, auto_init: true })
-        }, token);
-        const fullName = String(created && created.full_name ? created.full_name : '');
-        const repoInput = document.getElementById('github-repo-input');
-        if (repoInput && fullName) repoInput.value = fullName;
-        await setAiSettings({
-            githubEnabled: true,
-            githubToken: token,
-            githubRepo: fullName || (repoInput && repoInput.value ? repoInput.value.trim() : ''),
-            githubBranch: branch
+}
+
+async function confirmGithubRepoCreateModal() {
+    const api = window.GithubDataSettings;
+    if (api && typeof api.confirmGithubRepoCreateModal === 'function') {
+        return await api.confirmGithubRepoCreateModal({
+            setAiSettings: setAiSettings,
+            applyGithubUiState: applyGithubUiState,
+            showToast: showToast
         });
-        await applyGithubUiState();
-        setGithubFeedback('Repository created: ' + fullName, 'ok');
-        showToast('GitHub repository created.');
-    } catch (e) {
-        setGithubFeedback(String(e && e.message ? e.message : e), 'error');
-        showToast('GitHub repository creation failed.');
     }
+    showToast('GitHub module is not loaded.');
+}
+
+async function createGithubRepository(options) {
+    const api = window.GithubDataSettings;
+    if (api && typeof api.createGithubRepository === 'function') {
+        return await api.createGithubRepository(options, {
+            setAiSettings: setAiSettings,
+            applyGithubUiState: applyGithubUiState,
+            showToast: showToast
+        });
+    }
+    showToast('GitHub module is not loaded.');
 }
 
 async function saveGithubSettingsFromModal() {
-    const enabledEl = document.getElementById('ai-github-enabled');
-    const tokenEl = document.getElementById('github-token-input');
-    const repoEl = document.getElementById('github-repo-input');
-    const branchEl = document.getElementById('github-branch-input');
-    const pullMaxEl = document.getElementById('github-pull-max-files-input');
-    const enabled = !!(enabledEl && enabledEl.checked);
-    const token = String(tokenEl && tokenEl.value ? tokenEl.value : '').trim();
-    const repo = String(repoEl && repoEl.value ? repoEl.value : '').trim();
-    const branch = String(branchEl && branchEl.value ? branchEl.value : 'main').trim() || 'main';
-    const rawPullMax = Number(pullMaxEl && pullMaxEl.value ? pullMaxEl.value : 10000);
-    const pullMaxFiles = Number.isFinite(rawPullMax) ? Math.max(1, Math.min(10000, Math.floor(rawPullMax))) : 10000;
-    if (pullMaxEl) pullMaxEl.value = String(pullMaxFiles);
-    await setAiSettings({
-        githubEnabled: enabled,
-        githubToken: token,
-        githubRepo: repo,
-        githubBranch: branch,
-        githubPullMaxFiles: pullMaxFiles
-    });
-    await applyGithubUiState();
-    setGithubFeedback('GitHub settings saved.', 'ok');
-    showToast('GitHub settings saved.');
+    const api = window.GithubDataSettings;
+    if (api && typeof api.saveGithubSettingsFromModal === 'function') {
+        return await api.saveGithubSettingsFromModal({
+            setAiSettings: setAiSettings,
+            applyGithubUiState: applyGithubUiState,
+            showToast: showToast
+        });
+    }
+    showToast('GitHub module is not loaded.');
 }
-
 async function loadFromGithubCache(path) {
     const target = String(path || '').trim();
     if (!target) return;
@@ -3516,9 +3531,9 @@ async function renderDBList() {
 
     const settings = await getAiSettings() || {};
     const cfg = getGithubConfigFromSettings(settings);
-    const githubReady = !!cfg.enabled;
+    const githubReady = !!(cfg.enabled && cfg.token);
 
-    if (currentStorageSourceTab === 'github' && cfg.enabled) {
+    if (currentStorageSourceTab === 'github' && githubReady) {
         await renderGithubCachedList(listEl, searchTerm);
     } else {
         await renderInDbList(listEl, searchTerm, githubReady);
@@ -4414,6 +4429,7 @@ function insertFootnoteTemplate() {
         showToast('Edit mode only.');
         return;
     }
+    closeFootnoteQuickMenu();
 
     const start = editorTextarea.selectionStart;
     const end = editorTextarea.selectionEnd;
@@ -4452,6 +4468,103 @@ function insertFootnoteTemplate() {
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
     showToast('Footnote inserted.');
+}
+
+function renumberAllFootnotes() {
+    if (!isEditMode || !editorTextarea) {
+        showToast('Edit mode only.');
+        return;
+    }
+    closeFootnoteQuickMenu();
+
+    const text = String(editorTextarea.value || '');
+    if (!text.includes('[^')) {
+        showToast('No footnotes found.');
+        return;
+    }
+
+    const definitionOrder = [];
+    const seenDefs = new Set();
+    const defRegex = /^\[\^([^\]]+)\]:/gm;
+    let m;
+    while ((m = defRegex.exec(text)) !== null) {
+        const label = String(m[1] || '').trim();
+        if (!label || seenDefs.has(label)) continue;
+        seenDefs.add(label);
+        definitionOrder.push(label);
+    }
+
+    const referenceOrder = [];
+    const seenRefs = new Set();
+    const refRegex = /\[\^([^\]]+)\]/g;
+    while ((m = refRegex.exec(text)) !== null) {
+        const label = String(m[1] || '').trim();
+        if (!label) continue;
+        const tokenStart = m.index;
+        const tokenLength = m[0].length;
+        const isLineStart = tokenStart === 0 || text[tokenStart - 1] === '\n';
+        const isDefinitionMarker = isLineStart && text[tokenStart + tokenLength] === ':';
+        if (isDefinitionMarker) continue;
+        if (seenRefs.has(label)) continue;
+        seenRefs.add(label);
+        referenceOrder.push(label);
+    }
+
+    const orderedLabels = referenceOrder.slice();
+    for (let i = 0; i < definitionOrder.length; i++) {
+        const label = definitionOrder[i];
+        if (!seenRefs.has(label)) orderedLabels.push(label);
+    }
+
+    if (!orderedLabels.length) {
+        showToast('No footnotes found.');
+        return;
+    }
+
+    const labelToNumber = new Map();
+    for (let i = 0; i < orderedLabels.length; i++) {
+        labelToNumber.set(orderedLabels[i], String(i + 1));
+    }
+
+    const nextLines = text.split('\n').map(function (line) {
+        const defMatch = line.match(/^\[\^([^\]]+)\]:(.*)$/);
+        if (defMatch) {
+            const oldLabel = String(defMatch[1] || '').trim();
+            const newLabel = labelToNumber.get(oldLabel);
+            if (!newLabel) return line;
+            return '[^' + newLabel + ']:' + String(defMatch[2] || '');
+        }
+        return line.replace(/\[\^([^\]]+)\]/g, function (full, rawLabel) {
+            const oldLabel = String(rawLabel || '').trim();
+            const newLabel = labelToNumber.get(oldLabel);
+            return newLabel ? ('[^' + newLabel + ']') : full;
+        });
+    });
+
+    const nextText = nextLines.join('\n');
+    if (nextText === text) {
+        showToast('Footnote numbers are already in order.');
+        return;
+    }
+
+    const scrollTop = editorTextarea.scrollTop;
+    const scrollLeft = editorTextarea.scrollLeft;
+    const selectionStart = Number(editorTextarea.selectionStart) || 0;
+    const selectionEnd = Number(editorTextarea.selectionEnd) || 0;
+
+    editorTextarea.value = nextText;
+    currentMarkdown = nextText;
+    editorTextarea.focus();
+    editorTextarea.scrollTop = scrollTop;
+    editorTextarea.scrollLeft = scrollLeft;
+    editorTextarea.setSelectionRange(
+        Math.min(selectionStart, nextText.length),
+        Math.min(selectionEnd, nextText.length)
+    );
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    showToast('Footnotes renumbered: ' + orderedLabels.length);
 }
 function convertSelectionPatternToTable() {
     const start = editorTextarea.selectionStart;
@@ -4923,6 +5036,7 @@ function applyDocumentWidthScale() {
     const editorDocWrap = document.getElementById('editor-doc-wrap');
     if (editorDocWrap) editorDocWrap.style.maxWidth = widthValue;
     if (editorTextarea) editorTextarea.style.maxWidth = widthValue;
+    applyEditorHorizontalShift();
 }
 
 function adjustFontSize(delta) {
@@ -4931,6 +5045,39 @@ function adjustFontSize(delta) {
     editorTextarea.style.fontSize = `${fontSize}px`;
     document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
     document.getElementById('font-size-display').textContent = `${fontSize}px`;
+}
+
+function applyEditorHorizontalShift() {
+    const editorDocWrap = document.getElementById('editor-doc-wrap');
+    const display = document.getElementById('editor-shift-display');
+    const viewport = document.getElementById('content-viewport');
+    if (!editorDocWrap || !viewport) {
+        if (display) display.textContent = '0px';
+        return;
+    }
+
+    const viewportWidth = Number(viewport.clientWidth) || 0;
+    const wrapWidth = Number(editorDocWrap.offsetWidth) || 0;
+    const maxShift = Math.max(0, Math.floor((viewportWidth - wrapWidth) / 2) - 8);
+    const clamped = Math.max(-maxShift, Math.min(maxShift, Number(editorHorizontalShiftPx) || 0));
+    editorHorizontalShiftPx = clamped;
+
+    editorDocWrap.style.transform = `translateX(${editorHorizontalShiftPx}px)`;
+    editorDocWrap.style.transition = 'transform 120ms ease';
+    if (display) display.textContent = `${editorHorizontalShiftPx}px`;
+}
+
+function adjustEditorHorizontalShift(delta) {
+    const step = Number(delta || 0);
+    editorHorizontalShiftPx = (Number(editorHorizontalShiftPx) || 0) + step;
+    applyEditorHorizontalShift();
+    localStorage.setItem(EDITOR_HORIZONTAL_SHIFT_KEY, String(editorHorizontalShiftPx));
+}
+
+function resetEditorHorizontalShift() {
+    editorHorizontalShiftPx = 0;
+    applyEditorHorizontalShift();
+    localStorage.setItem(EDITOR_HORIZONTAL_SHIFT_KEY, '0');
 }
 
 function sanitizeUiMessage(msg) {
@@ -4980,7 +5127,14 @@ function initSettings() {
         document.documentElement.style.setProperty('--code-text-color', savedText);
         if (textEl) textEl.value = savedText;
     }
+    const savedShift = Number(localStorage.getItem(EDITOR_HORIZONTAL_SHIFT_KEY));
+    editorHorizontalShiftPx = Number.isFinite(savedShift) ? Math.round(savedShift) : 0;
     applyDocumentWidthScale();
+    applyEditorHorizontalShift();
+    if (!editorShiftResizeBound) {
+        editorShiftResizeBound = true;
+        window.addEventListener('resize', applyEditorHorizontalShift);
+    }
 }
 
 async function getAiSettings() {
@@ -5223,6 +5377,36 @@ function toggleMathQuickMenu() {
     if (!panel) return;
     bindMathQuickMenuDismiss();
     panel.classList.toggle('hidden');
+}
+
+function closeFootnoteQuickMenu() {
+    const panel = document.getElementById('footnote-quick-panel');
+    if (panel) panel.classList.add('hidden');
+}
+
+function bindFootnoteQuickMenuDismiss() {
+    if (footnoteQuickMenuBound || !document.body) return;
+    footnoteQuickMenuBound = true;
+    document.body.addEventListener('click', function (event) {
+        const panel = document.getElementById('footnote-quick-panel');
+        const btn = document.getElementById('btn-footnote-quick');
+        if (!panel || !btn) return;
+        const target = event.target;
+        if (panel.contains(target) || btn.contains(target)) return;
+        closeFootnoteQuickMenu();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeFootnoteQuickMenu();
+    });
+}
+
+function toggleFootnoteQuickMenu(forceOpen) {
+    const panel = document.getElementById('footnote-quick-panel');
+    const btn = document.getElementById('btn-footnote-quick');
+    if (!panel || !btn) return;
+    bindFootnoteQuickMenuDismiss();
+    const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
 }
 
 function wrapSelectionWithDelimiters(left, right, placeholder) {
@@ -7815,6 +7999,9 @@ function injectSidebarAIHtml() {
 }
 
 async function loadAiSettingsToUI() {
+    if (window.GithubDataSettings && typeof window.GithubDataSettings.ensureUiReady === 'function') {
+        await window.GithubDataSettings.ensureUiReady();
+    }
     const settings = await getAiSettings();
     if (!settings) {
         const imageCheckEmpty = document.getElementById('image-upload-enabled');
@@ -7991,6 +8178,9 @@ async function loadAiSettingsToUI() {
 }
 
 async function initAiVisibility() {
+    if (window.GithubDataSettings && typeof window.GithubDataSettings.ensureUiReady === 'function') {
+        await window.GithubDataSettings.ensureUiReady();
+    }
     const settings = await getAiSettings();
     const useCheck = document.getElementById('ai-use-checkbox');
     const scholarEl = document.getElementById('ai-scholar-enabled');
@@ -8199,6 +8389,8 @@ function saveToDB() {
 window.toggleTheme = toggleTheme;
 window.toggleEditorLightMode = toggleEditorLightMode;
 window.toggleMiniPreview = toggleMiniPreview;
+window.toggleMiniPreviewFullscreen = toggleMiniPreviewFullscreen;
+window.miniPreviewAdjustZoom = miniPreviewAdjustZoom;
 window.updateContent = updateContent;
 window.renderMarkdown = renderMarkdown;
 window.toggleMode = toggleMode;
@@ -8257,6 +8449,8 @@ window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
 window.adjustPageScale = adjustPageScale;
 window.adjustFontSize = adjustFontSize;
+window.adjustEditorHorizontalShift = adjustEditorHorizontalShift;
+window.resetEditorHorizontalShift = resetEditorHorizontalShift;
 configureScholarSearchShellBridge();
 window.toggleTemplatePanel = toggleTemplatePanel;
 window.closeTemplatePanel = closeTemplatePanel;
@@ -8343,6 +8537,9 @@ window.clearUnusedCache = clearUnusedCache;
 window.switchSidebarTab = switchSidebarTab;
 window.switchStorageSourceTab = switchStorageSourceTab;
 window.toggleGithubSettingsSection = toggleGithubSettingsSection;
+window.openGithubRepoCreateModal = openGithubRepoCreateModal;
+window.closeGithubRepoCreateModal = closeGithubRepoCreateModal;
+window.confirmGithubRepoCreateModal = confirmGithubRepoCreateModal;
 window.saveGithubSettingsFromModal = saveGithubSettingsFromModal;
 window.createGithubRepository = createGithubRepository;
 window.pullGithubRepo = pullGithubRepo;
@@ -8359,7 +8556,9 @@ window.toggleTableInsertPicker = toggleTableInsertPicker;
 window.convertSelectionPatternToTable = convertSelectionPatternToTable;
 window.convertSelectionMarkdownToHtml = convertSelectionMarkdownToHtml;
 window.insertLiteralAtCursor = insertLiteralAtCursor;
+window.toggleFootnoteQuickMenu = toggleFootnoteQuickMenu;
 window.insertFootnoteTemplate = insertFootnoteTemplate;
+window.renumberAllFootnotes = renumberAllFootnotes;
 window.openTextStyleModal = openTextStyleModal;
 window.closeTextStyleModal = closeTextStyleModal;
 window.openMermaidEditorModal = openMermaidEditorModal;

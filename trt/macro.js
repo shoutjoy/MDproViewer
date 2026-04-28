@@ -323,7 +323,7 @@
         const btn = document.getElementById('btn-macro-record');
         if (status) {
             if (macroHotkeyCaptureEntryId) {
-                status.textContent = '??ν뀧????낆젾: ' + macroHotkeyCaptureEntryId + ' (Esc ?띯뫁??';
+                status.textContent = 'Shortcut input: ' + macroHotkeyCaptureEntryId + ' (Esc to cancel)';
                 status.className = 'ml-1 text-[11px] text-amber-600 dark:text-amber-400';
             } else if (macroRecording) {
                 status.textContent = 'recording...';
@@ -346,8 +346,8 @@
         const mode = normalizeTargetMode(macroRecordTargetMode);
         btn.textContent = mode === 'absolute' ? 'ABS' : 'REL';
         btn.title = mode === 'absolute'
-            ? '기록 기준: 절대 위치(저장된 커서 인덱스 기준)'
-            : '기록 기준: 상대 위치(실행 시 현재 커서 기준)';
+            ? 'Record mode: absolute position (saved cursor index)'
+            : 'Record mode: relative position (current cursor on run)';
         btn.classList.toggle('border-indigo-500', mode === 'absolute');
         btn.classList.toggle('text-indigo-700', mode === 'absolute');
         btn.classList.toggle('dark:text-indigo-300', mode === 'absolute');
@@ -844,10 +844,13 @@
         if (!target) return;
         macroHotkeyCaptureEntryId = target.entryId;
         updateMacroRecordStatusUi();
-        if (typeof showToast === 'function') showToast(target.entryId + ' ??ν뀧????낆젾 (Esc ?띯뫁??');
+        if (typeof showToast === 'function') showToast(target.entryId + ' waiting for shortcut (Esc to cancel)');
     }
 
     function clearMacroEntryShortcut(entryId) {
+        const target = findEntryById(entryId);
+        if (!target) return;
+        const hadHotkey = !!normalizeShortcutText(target.hotkey || '');
         updateMacroEntry(entryId, function (entry) {
             return Object.assign({}, entry, { hotkey: '' });
         });
@@ -855,8 +858,11 @@
             macroHotkeyCaptureEntryId = '';
             updateMacroRecordStatusUi();
         }
+        if (typeof showToast === 'function') {
+            if (hadHotkey) showToast(target.entryId + ' shortcut cleared');
+            else showToast(target.entryId + ' has no shortcut');
+        }
     }
-
     function replaceEditorRange(start, end, insertText) {
         const ta = getEditorElement();
         if (!ta) return false;
@@ -1160,7 +1166,7 @@
             if (out && typeof out.then === 'function') await out;
             return true;
         } catch (_) {
-            if (typeof showToast === 'function') showToast('Macro ??쎈뻬 ??쎈솭: ' + meta.label);
+            if (typeof showToast === 'function') showToast('Macro ?????덊떀 ?????곌숯: ' + meta.label);
             return false;
         }
     }
@@ -1196,7 +1202,7 @@
         const runBtn = document.getElementById('btn-macro-run');
         const targets = macroEntries.filter(function (entry) { return entry.enabled; });
         if (!targets.length) {
-            if (typeof showToast === 'function') showToast('筌ｋ똾寃??筌띲끋寃뺞에?? ??곷뮸??덈뼄.');
+            if (typeof showToast === 'function') showToast('?꿔꺂?????용Ъ???꿔꺂????關臾쇘춯癒?돵??? ????ㅿ폍??????딅젩.');
             closeMacroMenuPanel();
             return;
         }

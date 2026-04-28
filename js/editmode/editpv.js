@@ -315,10 +315,26 @@ function previewPopupAdjustFontSize(delta) {
     applyPreviewPopupViewport();
 }
 
+function getPreviewPopupSourceMarkdown() {
+    try {
+        if (typeof editorTextarea !== 'undefined' && editorTextarea && typeof editorTextarea.value === 'string') {
+            return String(editorTextarea.value || '');
+        }
+    } catch (_) {}
+    try {
+        const ta = document.getElementById('viewer-edit-ta');
+        if (ta && typeof ta.value === 'string') return String(ta.value || '');
+    } catch (_) {}
+    try {
+        if (typeof currentMarkdown !== 'undefined') return String(currentMarkdown || '');
+    } catch (_) {}
+    return '';
+}
+
 async function updatePreviewPopupContent() {
     if (!isPreviewPopupAlive()) return;
     const token = ++previewPopupRenderToken;
-    const raw = String(editorTextarea ? editorTextarea.value : currentMarkdown);
+    const raw = getPreviewPopupSourceMarkdown();
     let html = '';
 
     try {
@@ -342,7 +358,12 @@ async function updatePreviewPopupContent() {
 
     if (token !== previewPopupRenderToken || !isPreviewPopupAlive()) return;
     const target = previewPopupWindow.document.getElementById('pv-content');
-    if (!target) return;
+    if (!target) {
+        setTimeout(function () {
+            if (isPreviewPopupAlive()) updatePreviewPopupContent();
+        }, 60);
+        return;
+    }
     target.innerHTML = html;
     try { await hydrateInternalImagesInElement(target, registerPreviewInternalObjectUrl); } catch (e) {}
     if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
@@ -376,5 +397,14 @@ function openPreviewPopupWindow() {
     }
 
     if (previewPopupWindow) previewPopupWindow.focus();
-    updatePreviewPopupContent();
+    const renderNow = function () {
+        if (!isPreviewPopupAlive()) return;
+        updatePreviewPopupContent();
+    };
+    renderNow();
+    setTimeout(renderNow, 40);
+    setTimeout(renderNow, 140);
+    try {
+        previewPopupWindow.addEventListener('load', renderNow, { once: true });
+    } catch (_) {}
 }

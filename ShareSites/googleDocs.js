@@ -13,7 +13,7 @@
         { key: 'board', label: 'board.new', url: 'https://board.new', checkboxId: 'share-site-board' },
         { key: 'pdf2ppt', label: 'pdf to pptx', url: 'https://pdf2pptmake.onrender.com/', checkboxId: 'share-site-pdf2ppt' }
     ];
-    const DEFAULT_SHARE_SITES = ['docs'];
+    const DEFAULT_SHARE_SITES = ['docs', 'story', 'gist', 'board'];
     const DOCSYNC_DEBOUNCE_MS = 2000;
 
     let gdocsGisInited = false;

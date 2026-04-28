@@ -53,6 +53,15 @@
         return /\\[A-Za-z]+|[_^=]|[+\-*/]|[{}]|[<>]|(?:^|[^A-Za-z])(?:Q|I|Y|v|w|k|n|p|x|y|z|mu|tau|sigma)(?:[^A-Za-z]|$)|\d/.test(s);
     }
 
+    function looksLikeCitationText(text) {
+        var s = String(text || '').trim();
+        if (!s) return false;
+        if (!/[A-Za-z]/.test(s)) return false;
+        if (!/\d{3,4}/.test(s)) return false;
+        if (!/[,&;]/.test(s)) return false;
+        return true;
+    }
+
     function normalizeLegacyMathDelimiters(raw) {
         var src = String(raw || '');
         var chunks = src.split(/(```[\s\S]*?```)/g);
@@ -101,6 +110,8 @@
             return lines.join('\n').replace(/(^|[^\]\\\w])\(([^()\n]{1,120})\)(?=\s*[:.,;]|$)/g, function (match, prefix, inner) {
                 var body = String(inner || '').trim();
                 if (!looksLikeMathText(body)) return match;
+                if (looksLikeCitationText(body)) return match;
+                if (/[&;,]/.test(body) && /[A-Za-z]/.test(body)) return match;
                 return String(prefix || '') + '\\(' + body + '\\)';
             });
         }).join('');

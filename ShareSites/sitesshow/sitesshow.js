@@ -20,9 +20,11 @@
         { name: 'data visualization', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
         { name: 'Serial Mediation effect', url: 'https://parkjoonghee.shinyapps.io/sobel/' },
         { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' },
+        { name: 'WebR', url: 'https://webr.r-wasm.org/latest/' },
+        { name: 'Posit R', url: 'https://posit.cloud/content/' },
         { name: 'GeoGebra Calculator', url: 'https://www.geogebra.org/calculator' },
+        { name: 'Napkin', url: 'https://app.napkin.ai/' },
         { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
-        { name: 'posit R', url: 'https://posit.cloud/' },
         { name: 'colab.new', url: 'http://colab.new' }
     ];
 
@@ -109,6 +111,21 @@
             return u === 'https://www.geogebra.org/calculator' || u === 'https://geogebra.org/calculator';
         });
         if (!hasGeoGebraCalculator) base.push({ name: 'GeoGebra Calculator', url: 'https://www.geogebra.org/calculator' });
+        const hasWebR = base.some(function (item) {
+            const u = normalizeUrl(item && item.url ? item.url : '');
+            return u === 'https://webr.r-wasm.org/latest' || u === 'http://webr.r-wasm.org/latest';
+        });
+        if (!hasWebR) base.push({ name: 'WebR', url: 'https://webr.r-wasm.org/latest/' });
+        const hasPositR = base.some(function (item) {
+            const u = normalizeUrl(item && item.url ? item.url : '');
+            return u === 'https://posit.cloud/content' || u === 'https://posit.cloud';
+        });
+        if (!hasPositR) base.push({ name: 'Posit R', url: 'https://posit.cloud/content/' });
+        const hasNapkin = base.some(function (item) {
+            const u = normalizeUrl(item && item.url ? item.url : '');
+            return u === 'https://app.napkin.ai' || u === 'http://app.napkin.ai';
+        });
+        if (!hasNapkin) base.push({ name: 'Napkin', url: 'https://app.napkin.ai/' });
         return base;
     }
 
