@@ -377,9 +377,8 @@
         const list = document.getElementById('share-links-modal-list');
         if (!list) return;
 
-        const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
         const selectedDestinations = getSelectedShareDestinations();
-        const canShow = !!toDocsVisible && !inEditMode && selectedDestinations.length > 0 && shareMenuExpanded;
+        const canShow = !!toDocsVisible && selectedDestinations.length > 0 && shareMenuExpanded;
 
         list.innerHTML = '';
         if (!canShow) {
@@ -423,16 +422,15 @@
         if (naverBlogIdInput) naverBlogIdInput.value = getNaverBlogIdFromSettings(s);
 
         const toDocsBtn = document.getElementById('btn-export-gdocs');
-        const inEditMode = (typeof isEditMode !== 'undefined' && isEditMode);
         if (toDocsBtn) {
-            if (!toDocsVisible || inEditMode) toDocsBtn.classList.add('hidden');
+            if (!toDocsVisible) toDocsBtn.classList.add('hidden');
             else toDocsBtn.classList.remove('hidden');
             toDocsBtn.textContent = 'Share';
         }
         const shareSettingsBox = document.getElementById('share-destinations-settings');
         if (shareSettingsBox) shareSettingsBox.classList.toggle('hidden', !toDocsVisible);
 
-        if (!toDocsVisible || inEditMode) shareMenuExpanded = false;
+        if (!toDocsVisible) shareMenuExpanded = false;
         renderShareLinksMenu();
 
         if (typeof window.applyShareSettingsFold === 'function' && typeof window.getShareSettingsFoldedFromLocal === 'function') {
@@ -447,9 +445,14 @@
         await ensureShareUiReady();
         const check = document.getElementById('todocs-visible');
         const enabled = !!(check && check.checked);
-        if (typeof setAiSettings === 'function') await setAiSettings({ toDocsVisible: enabled });
-        const s = (typeof getAiSettings === 'function') ? await getAiSettings() : null;
-        applyToDocsVisibility(s || { toDocsVisible: enabled });
+        applyToDocsVisibility({ toDocsVisible: enabled });
+        try {
+            if (typeof setAiSettings === 'function') await setAiSettings({ toDocsVisible: enabled });
+            const s = (typeof getAiSettings === 'function') ? await getAiSettings() : null;
+            applyToDocsVisibility(s || { toDocsVisible: enabled });
+        } catch (_) {
+            applyToDocsVisibility({ toDocsVisible: enabled });
+        }
         if (!enabled) shareMenuExpanded = false;
         renderShareLinksMenu();
     }

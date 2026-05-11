@@ -457,15 +457,21 @@
     }
 
     async function toggleSitesSection() {
+        await ensureSitesShowUiReady();
         const check = document.getElementById('sites-visible');
         const enabled = !!(check && check.checked);
-        if (typeof setAiSettings === 'function') {
-            await setAiSettings({ sitesVisible: enabled });
-        }
-        if (typeof getAiSettings === 'function') {
-            const s = await getAiSettings();
-            applySitesVisibility(s || { sitesVisible: enabled });
-        } else {
+        applySitesVisibility({ sitesVisible: enabled });
+        try {
+            if (typeof setAiSettings === 'function') {
+                await setAiSettings({ sitesVisible: enabled });
+            }
+            if (typeof getAiSettings === 'function') {
+                const s = await getAiSettings();
+                applySitesVisibility(s || { sitesVisible: enabled });
+            } else {
+                applySitesVisibility({ sitesVisible: enabled });
+            }
+        } catch (_) {
             applySitesVisibility({ sitesVisible: enabled });
         }
     }

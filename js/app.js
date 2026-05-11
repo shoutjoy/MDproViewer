@@ -4,6 +4,7 @@ const DB_VERSION = 4;
 let db;
 
 const AI_SETTINGS_KEY = 'ai_settings';
+const AI_SETTINGS_FALLBACK_KEY = 'md_viewer_ai_settings_fallback';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
 const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
@@ -87,6 +88,11 @@ let html2pptSavedHeight = '';
 let html2pptFullscreen = false;
 let html2pptRestoreState = null;
 let templateCustomList = [];
+let settingsModalDragBound = false;
+let settingsModalDragging = false;
+let settingsModalDragOffsetX = 0;
+let settingsModalDragOffsetY = 0;
+let settingsModalCompact = false;
 let aiSidebarBootPromise = null;
 let aiSidebarLoadAttempts = 0;
 let viewClickMappedCaretPos = null;
@@ -5138,25 +5144,61 @@ function initSettings() {
 }
 
 async function getAiSettings() {
-    if (!db) return null;
-    return new Promise((res) => {
-        const tx = db.transaction('ai_settings', 'readonly');
-        const req = tx.objectStore('ai_settings').get(AI_SETTINGS_KEY);
-        req.onsuccess = () => res(req.result || null);
-        req.onerror = () => res(null);
-    });
+    function readFallback() {
+        try {
+            const raw = localStorage.getItem(AI_SETTINGS_FALLBACK_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return (parsed && typeof parsed === 'object') ? parsed : null;
+        } catch (_) {
+            return null;
+        }
+    }
+    if (!db) return readFallback();
+    try {
+        return await new Promise((res) => {
+            const tx = db.transaction('ai_settings', 'readonly');
+            const req = tx.objectStore('ai_settings').get(AI_SETTINGS_KEY);
+            req.onsuccess = () => res(req.result || null);
+            req.onerror = () => res(readFallback());
+            tx.onabort = () => res(readFallback());
+        });
+    } catch (_) {
+        return readFallback();
+    }
 }
 
 async function setAiSettings(data) {
-    if (!db) return;
+    function readFallback() {
+        try {
+            const raw = localStorage.getItem(AI_SETTINGS_FALLBACK_KEY);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw);
+            return (parsed && typeof parsed === 'object') ? parsed : null;
+        } catch (_) {
+            return null;
+        }
+    }
+    function writeFallback(payload) {
+        try { localStorage.setItem(AI_SETTINGS_FALLBACK_KEY, JSON.stringify(payload || {})); } catch (_) {}
+    }
     const existing = await getAiSettings();
     const payload = { id: AI_SETTINGS_KEY, ...(existing || {}), ...data };
-    return new Promise((res, rej) => {
-        const tx = db.transaction('ai_settings', 'readwrite');
-        const req = tx.objectStore('ai_settings').put(payload);
-        req.onsuccess = () => res();
-        req.onerror = () => rej(req.error);
-    });
+    writeFallback(payload);
+    if (!db) return;
+    try {
+        return await new Promise((res, rej) => {
+            const tx = db.transaction('ai_settings', 'readwrite');
+            const req = tx.objectStore('ai_settings').put(payload);
+            req.onsuccess = () => res();
+            req.onerror = () => rej(req.error);
+            tx.onabort = () => rej(tx.error || new Error('ai_settings transaction aborted'));
+        });
+    } catch (e) {
+        const fb = readFallback() || {};
+        writeFallback({ ...fb, ...payload, id: AI_SETTINGS_KEY });
+        return;
+    }
 }
 
 function hashPassword(plain) {
@@ -5284,7 +5326,7 @@ function toggleSettingsShortcutsFold() {
 
 function getAiUseFoldedFromLocal() {
     const v = localStorage.getItem(AI_USE_FOLD_KEY);
-    return v == null ? true : v === '1';
+    return v == null ? false : v === '1';
 }
 
 function setAiUseFoldedToLocal(folded) {
@@ -5294,9 +5336,8 @@ function setAiUseFoldedToLocal(folded) {
 function applyAiUseFold(folded) {
     const btn = document.getElementById('ai-use-fold-btn');
     if (btn) btn.textContent = folded ? '펼치기' : '접기';
-    const check = document.getElementById('ai-use-checkbox');
     const section = document.getElementById('ai-password-section');
-    if (section) section.classList.toggle('hidden', !!folded || !(check && check.checked));
+    if (section) section.classList.toggle('hidden', !!folded);
 }
 
 function toggleAiUseFold() {
@@ -5770,9 +5811,8 @@ function applyMacroVisibility(settings) {
 async function toggleMacroVisibilitySection() {
     const check = document.getElementById('macro-visible');
     const enabled = !!(check && check.checked);
-    await setAiSettings({ macroVisible: enabled });
-    const s = await getAiSettings();
-    applyMacroVisibility(s || { macroVisible: enabled });
+    applyMacroVisibility({ macroVisible: enabled });
+    try { await setAiSettings({ macroVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 function syncHeaderScholarSearchWrapVisibility() {
@@ -5817,17 +5857,15 @@ function applyHighlightVisibility(settings) {
 async function toggleScholarSearchSection() {
     const check = document.getElementById('scholar-search-visible');
     const enabled = !!(check && check.checked);
-    await setAiSettings({ scholarSearchVisible: enabled });
-    const s = await getAiSettings();
-    applyScholarSearchVisibility(s || { scholarSearchVisible: enabled });
+    applyScholarSearchVisibility({ scholarSearchVisible: enabled });
+    try { await setAiSettings({ scholarSearchVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 async function toggleHighlightSection() {
     const check = document.getElementById('highlight-visible');
     const enabled = !!(check && check.checked);
-    await setAiSettings({ highlightVisible: enabled });
-    const s = await getAiSettings();
-    applyHighlightVisibility(s || { highlightVisible: enabled });
+    applyHighlightVisibility({ highlightVisible: enabled });
+    try { await setAiSettings({ highlightVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 function getTemplateLibrary() {
@@ -6331,9 +6369,8 @@ function insertSelectedTemplateAsNewFile() {
 async function toggleTemplateSection() {
     const check = document.getElementById('template-visible');
     const enabled = !!(check && check.checked);
-    await setAiSettings({ templateVisible: enabled });
-    const s = await getAiSettings();
-    applyTemplateVisibility(s || { templateVisible: enabled });
+    applyTemplateVisibility({ templateVisible: enabled });
+    try { await setAiSettings({ templateVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 function applyHtml2pptPanelLayout() {
@@ -6528,9 +6565,8 @@ function applyHtml2pptVisibility(settings) {
 async function toggleHtml2pptSection() {
     const check = document.getElementById('html2ppt-visible');
     const enabled = !!(check && check.checked);
-    await setAiSettings({ html2pptVisible: enabled });
-    const s = await getAiSettings();
-    applyHtml2pptVisibility(s || { html2pptVisible: enabled });
+    applyHtml2pptVisibility({ html2pptVisible: enabled });
+    try { await setAiSettings({ html2pptVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 window.addEventListener('message', function (event) {
@@ -6845,9 +6881,8 @@ function applyImageUploadFeatureVisibility(settings) {
 async function toggleImageUploadSection() {
     const check = document.getElementById('image-upload-enabled');
     const enabled = !!(check && check.checked);
-    await setAiSettings({ imageUploadEnabled: enabled });
-    const s = await getAiSettings();
-    applyImageUploadFeatureVisibility(s || { imageUploadEnabled: enabled });
+    applyImageUploadFeatureVisibility({ imageUploadEnabled: enabled });
+    try { await setAiSettings({ imageUploadEnabled: enabled }); } catch (e) { console.error(e); }
 }
 
 async function saveImgbbApiKeyFromModal() {
@@ -6916,20 +6951,32 @@ let _lastVerifiedSaveAt = 0;
 
 async function saveAiPassword() {
     const input = document.getElementById('ai-password-input');
-    const pwd = (input && input.value) ? input.value : '';
+    const raw = (input && input.value) ? String(input.value) : '';
+    const pwd = raw.trim();
     if (!pwd) {
         showToast("Enter verification code.");
         const cur = await getAiSettings();
         if (!(cur && cur.verified)) setAiPasswordVerifiedUI('neutral');
         return;
     }
-    const hash = await hashPassword(pwd);
+    if (!db) {
+        showToast("Database is not ready yet. Please try again.");
+        return;
+    }
+    // Support both plain verification code and already-hashed input.
+    const hash = (pwd === AI_PASSWORD_HASH) ? AI_PASSWORD_HASH : await hashPassword(pwd);
     if (hash !== AI_PASSWORD_HASH) {
         setAiPasswordVerifiedUI('bad');
         showToast("Verification code does not match.");
         return;
     }
-    await setAiSettings({ passwordHash: hash, verified: true, aiMasterEnabled: true });
+    try {
+        await setAiSettings({ passwordHash: hash, verified: true, aiMasterEnabled: true });
+    } catch (e) {
+        console.error('Failed to save verification settings:', e);
+        showToast("Failed to save verification. Please try again.");
+        return;
+    }
     _lastVerifiedSaveAt = Date.now();
     if (input) input.value = '';
     setAiPasswordVerifiedUI('ok');
@@ -7017,6 +7064,8 @@ async function persistAiSettingsFromModal() {
     const githubBranch = String(githubBranchEl && githubBranchEl.value ? githubBranchEl.value : 'main').trim() || 'main';
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
+    const sqliteEnabledEl = document.getElementById('sqlite-enabled');
+    const sqliteEnabled = !!(sqliteEnabledEl && sqliteEnabledEl.checked);
     await setAiSettings({
         scholarAI: !!scholarOn,
         sspimgAI: !!sspimgOn,
@@ -7034,7 +7083,8 @@ async function persistAiSettingsFromModal() {
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
         viewModeEditEnabled: viewModeEditEnabledValue,
-        imgbbApiKey: imgbbKey
+        imgbbApiKey: imgbbKey,
+        sqliteEnabled: sqliteEnabled
     });
     if (imgbbKey) localStorage.setItem('ss_imgbb_api_key', imgbbKey);
     else localStorage.removeItem('ss_imgbb_api_key');
@@ -7042,10 +7092,17 @@ async function persistAiSettingsFromModal() {
 }
 
 async function closeSettingsModal() {
-    await persistAiSettingsFromModal();
-    document.getElementById('settings-modal').classList.add('hidden');
-    document.getElementById('settings-modal').classList.remove('flex');
-    await applyAiFeatureVisibility();
+    try {
+        await persistAiSettingsFromModal();
+    } catch (e) {
+        console.error('Failed to persist settings before close:', e);
+    } finally {
+        const modal = document.getElementById('settings-modal');
+        if (modal) {
+            modal.classList.add('hidden');
+        }
+        try { await applyAiFeatureVisibility(); } catch (_) {}
+    }
 }
 
 const INDB_STATUS_STORE_ORDER = ['documents', 'folders', 'images', 'autosave', 'ai_settings', 'scholar_refs'];
@@ -7281,8 +7338,10 @@ async function deleteAllInDbStatusItems() {
 }
 
 function isAiMasterEnabled(settings) {
+    const modal = document.getElementById('settings-modal');
+    const modalVisible = !!(modal && !modal.classList.contains('hidden'));
     const check = document.getElementById('ai-use-checkbox');
-    if (check) return !!check.checked;
+    if (modalVisible && check) return !!check.checked;
     if (settings && settings.aiMasterEnabled === false) return false;
     return true;
 }
@@ -8032,6 +8091,8 @@ async function loadAiSettingsToUI() {
         viewModeEditEnabled = localViewModeEditEnabled;
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
+        const sqliteEnabledEmpty = document.getElementById('sqlite-enabled');
+        if (sqliteEnabledEmpty) sqliteEnabledEmpty.checked = false;
         const githubEnabledEmpty = document.getElementById('ai-github-enabled');
         if (githubEnabledEmpty) githubEnabledEmpty.checked = false;
         const githubTokenEmpty = document.getElementById('github-token-input');
@@ -8110,6 +8171,8 @@ async function loadAiSettingsToUI() {
     setViewModeEditEnabledToLocal(viewModeEditValue);
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
+    const sqliteEnabledCheck = document.getElementById('sqlite-enabled');
+    if (sqliteEnabledCheck) sqliteEnabledCheck.checked = settings.sqliteEnabled === true;
     if (window.GoogleDocs && typeof window.GoogleDocs.loadGoogleDocsSettingsUI === 'function') {
         window.GoogleDocs.loadGoogleDocsSettingsUI(settings);
     }
@@ -8230,12 +8293,90 @@ async function initAiVisibility() {
 function openSettingsModal() {
     ensureInDbStatusUi();
     document.getElementById('settings-modal').classList.remove('hidden');
-    document.getElementById('settings-modal').classList.add('flex');
+    bindSettingsModalDrag();
+    applySettingsModalCompactUI();
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
     loadAiSettingsToUI();
+    if (typeof window.ensureShareUiReady === 'function') {
+        Promise.resolve(window.ensureShareUiReady()).then(function () {
+            return loadAiSettingsToUI();
+        }).catch(function () {});
+    }
+    if (typeof window.ensureSitesShowUiReady === 'function') {
+        Promise.resolve(window.ensureSitesShowUiReady()).then(function () {
+            return loadAiSettingsToUI();
+        }).catch(function () {});
+    }
+}
+
+function applySettingsModalCompactUI() {
+    const panel = document.getElementById('settings-modal-panel');
+    const btn = document.getElementById('settings-modal-drag-handle');
+    if (!panel) return;
+    if (settingsModalCompact) {
+        panel.style.position = 'fixed';
+        panel.style.left = 'auto';
+        panel.style.top = '56px';
+        panel.style.right = '12px';
+        panel.style.margin = '0';
+        panel.style.width = '360px';
+        panel.style.maxWidth = '92vw';
+        panel.style.maxHeight = '68vh';
+        if (btn) btn.textContent = '복원';
+    } else {
+        panel.style.right = '';
+        panel.style.width = '';
+        panel.style.maxWidth = '';
+        panel.style.maxHeight = '90vh';
+        if (btn) btn.textContent = '축소';
+    }
+}
+
+function toggleSettingsModalCompact() {
+    settingsModalCompact = !settingsModalCompact;
+    applySettingsModalCompactUI();
+}
+
+function bindSettingsModalDrag() {
+    if (settingsModalDragBound) return;
+    settingsModalDragBound = true;
+    const header = document.getElementById('settings-modal-header');
+    const panel = document.getElementById('settings-modal-panel');
+    if (!header || !panel) return;
+
+    header.addEventListener('mousedown', function (e) {
+        const target = e.target;
+        if (e.button !== 0) return;
+        if (target && target.closest && target.closest('button,input,textarea,select,a,label')) return;
+        const rect = panel.getBoundingClientRect();
+        settingsModalDragging = true;
+        settingsModalDragOffsetX = e.clientX - rect.left;
+        settingsModalDragOffsetY = e.clientY - rect.top;
+        panel.style.position = 'fixed';
+        panel.style.left = rect.left + 'px';
+        panel.style.top = rect.top + 'px';
+        panel.style.right = 'auto';
+        panel.style.margin = '0';
+        panel.style.maxHeight = '90vh';
+        e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!settingsModalDragging) return;
+        const panelEl = document.getElementById('settings-modal-panel');
+        if (!panelEl) return;
+        const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - settingsModalDragOffsetX));
+        const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - settingsModalDragOffsetY));
+        panelEl.style.left = nextLeft + 'px';
+        panelEl.style.top = nextTop + 'px';
+    });
+
+    document.addEventListener('mouseup', function () {
+        settingsModalDragging = false;
+    });
 }
 
 function ensureInDbStatusUi() {
@@ -8523,6 +8664,7 @@ window.saveAiPassword = saveAiPassword;
 window.applyAiFeatureVisibility = applyAiFeatureVisibility;
 window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
 window.toggleSettingsShortcutsFold = toggleSettingsShortcutsFold;
+window.toggleSettingsModalCompact = toggleSettingsModalCompact;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;

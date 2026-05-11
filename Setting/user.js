@@ -16,7 +16,9 @@
         const major = ((document.getElementById('ai-user-major') && document.getElementById('ai-user-major').value) || '').trim();
         const contact = ((document.getElementById('ai-user-contact') && document.getElementById('ai-user-contact').value) || '').trim();
         const email = ((document.getElementById('ai-user-email') && document.getElementById('ai-user-email').value) || '').trim();
-        return { name, id, major, contact, email };
+        const prefixSetEl = document.getElementById('ai-user-prefix-set');
+        const prefixSet = !(prefixSetEl && prefixSetEl.checked === false);
+        return { name, id, major, contact, email, prefixSet };
     }
 
     function applyUserInfoToModalFields(userInfo) {
@@ -25,12 +27,14 @@
         const majorEl = document.getElementById('ai-user-major');
         const contactEl = document.getElementById('ai-user-contact');
         const emailEl = document.getElementById('ai-user-email');
+        const prefixSetEl = document.getElementById('ai-user-prefix-set');
         const info = userInfo || {};
         if (nameEl) nameEl.value = info.name || '';
         if (idEl) idEl.value = info.id || '';
         if (majorEl) majorEl.value = info.major || '';
         if (contactEl) contactEl.value = info.contact || '';
         if (emailEl) emailEl.value = info.email || '';
+        if (prefixSetEl) prefixSetEl.checked = info.prefixSet !== false;
     }
 
     async function saveAiUserInfo() {
@@ -85,17 +89,25 @@
             return;
         }
         const lines = [];
+        const usePrefix = u.prefixSet !== false;
         if (String(u.name || '').trim()) lines.push(String(u.name).trim());
-        if (String(u.id || '').trim()) lines.push('Student ID: ' + String(u.id).trim());
-        if (String(u.major || '').trim()) lines.push('Major: ' + String(u.major).trim());
-        if (String(u.contact || '').trim()) lines.push('Contact: ' + String(u.contact).trim());
-        if (String(u.email || '').trim()) lines.push('Email: ' + String(u.email).trim());
+        if (String(u.id || '').trim()) lines.push(usePrefix ? ('Student ID: ' + String(u.id).trim()) : String(u.id).trim());
+        if (String(u.major || '').trim()) lines.push(usePrefix ? ('Major: ' + String(u.major).trim()) : String(u.major).trim());
+        if (String(u.contact || '').trim()) lines.push(usePrefix ? ('Contact: ' + String(u.contact).trim()) : String(u.contact).trim());
+        if (String(u.email || '').trim()) lines.push(usePrefix ? ('Email: ' + String(u.email).trim()) : String(u.email).trim());
         const block = lines.map(function (line) { return line + '  '; }).join('\n');
         const ta = state.getEditorTextarea();
         if (!ta) return;
+        const start = Number(ta.selectionStart || 0);
+        const end = Number(ta.selectionEnd || 0);
+        const before = String(ta.value || '').slice(0, start);
+        const after = String(ta.value || '').slice(end);
+        const next = before + block + after;
+        const nextPos = before.length + block.length;
         const scrollTop = ta.scrollTop;
+        ta.value = next;
         ta.focus();
-        document.execCommand('insertText', false, block);
+        try { ta.setSelectionRange(nextPos, nextPos); } catch (_) {}
         ta.scrollTop = scrollTop;
         state.onEditorChanged();
         state.showToast('User info inserted.');

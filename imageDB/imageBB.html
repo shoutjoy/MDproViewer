@@ -1,0 +1,361 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>imageDB Upload Console</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #11203a;
+      --muted: #5b6b84;
+      --line: #d6e0f0;
+      --brand: #0f62fe;
+      --brand-2: #2e7bff;
+      --ok: #167a4b;
+      --warn: #a63a2f;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top right, #e8f0ff 0%, var(--bg) 52%);
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 1100px;
+      margin: 24px auto;
+      padding: 0 16px 30px;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 8px 18px rgba(20, 40, 90, 0.06);
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .btn.primary:hover { background: var(--brand-2); }
+    .btn.warn { color: var(--warn); border-color: #f0c0b9; background: #fff6f4; }
+    .drop {
+      margin-top: 12px;
+      border: 2px dashed #9fb5df;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      color: #345184;
+      background: #f6f9ff;
+    }
+    .drop.active { background: #e9f1ff; border-color: var(--brand); }
+    .status { margin-top: 8px; font-size: 13px; }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--warn); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px;
+      background: #fcfdff;
+    }
+    .thumb {
+      width: 100%;
+      height: 120px;
+      object-fit: contain;
+      background: #eef3fc;
+      border-radius: 8px;
+      display: block;
+    }
+    .name { margin-top: 6px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .tools { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .tools .btn { padding: 6px 8px; font-size: 12px; }
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    code { background: #eef2fb; border-radius: 4px; padding: 0 4px; }
+  </style>
+  <script src="./imageDB.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <h1>imageDB 업로드 콘솔</h1>
+      <div class="muted">DB: <code>MarkdownProDB</code> / Store: <code>images</code> | 업로드/붙여넣기/드래그앤드롭/목록/복사/삭제</div>
+    </div>
+
+    <div class="panel">
+      <div class="row">
+        <input id="fileInput" type="file" accept="image/*" multiple />
+        <button class="btn primary" id="btnRefresh" type="button">목록 새로고침</button>
+        <button class="btn warn" id="btnClearAll" type="button">전체 삭제</button>
+      </div>
+      <div id="dropZone" class="drop">여기에 이미지 파일을 드래그하세요. 또는 Ctrl+V로 이미지 붙여넣기.</div>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between;align-items:center;">
+        <strong>저장된 이미지</strong>
+        <span class="muted" id="countLabel">0건</span>
+      </div>
+      <div id="gallery" class="grid"></div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      'use strict';
+      var DB_NAME = 'MarkdownProDB';
+      var DB_VERSION = 4;
+      var db = null;
+      var objectUrls = [];
+
+      var elFile = document.getElementById('fileInput');
+      var elDrop = document.getElementById('dropZone');
+      var elStatus = document.getElementById('status');
+      var elGallery = document.getElementById('gallery');
+      var elCount = document.getElementById('countLabel');
+
+      function setStatus(text, isErr) {
+        elStatus.textContent = String(text || '');
+        elStatus.className = 'status ' + (isErr ? 'err' : 'ok');
+      }
+
+      function revokeThumbs() {
+        objectUrls.forEach(function (u) { try { URL.revokeObjectURL(u); } catch (e) {} });
+        objectUrls = [];
+      }
+
+      function openDb() {
+        return new Promise(function (resolve, reject) {
+          var req = indexedDB.open(DB_NAME, DB_VERSION);
+          req.onupgradeneeded = function (e) {
+            var d = e.target.result;
+            if (!d.objectStoreNames.contains('images')) d.createObjectStore('images', { keyPath: 'id' });
+          };
+          req.onsuccess = function (e) { resolve(e.target.result); };
+          req.onerror = function () { reject(req.error || new Error('DB open failed')); };
+        });
+      }
+
+      function listImages() {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction('images', 'readonly');
+          var req = tx.objectStore('images').getAll();
+          req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+          req.onerror = function () { reject(req.error || new Error('list failed')); };
+        });
+      }
+
+      function deleteImage(id) {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction('images', 'readwrite');
+          tx.objectStore('images').delete(String(id));
+          tx.oncomplete = function () { resolve(); };
+          tx.onerror = function () { reject(tx.error || new Error('delete failed')); };
+        });
+      }
+
+      function clearAll() {
+        return new Promise(function (resolve, reject) {
+          var tx = db.transaction('images', 'readwrite');
+          tx.objectStore('images').clear();
+          tx.oncomplete = function () { resolve(); };
+          tx.onerror = function () { reject(tx.error || new Error('clear failed')); };
+        });
+      }
+
+      function bytesToText(n) {
+        var v = Number(n) || 0;
+        if (v < 1024) return v + ' B';
+        if (v < 1048576) return (v / 1024).toFixed(1) + ' KB';
+        return (v / 1048576).toFixed(2) + ' MB';
+      }
+
+      async function saveFile(file) {
+        if (!file || !file.type || file.type.indexOf('image/') !== 0) return null;
+        var out = await window.ImageDB.saveBlob(db, file, { name: file.name, mime: file.type });
+        return out;
+      }
+
+      async function handleFiles(fileList) {
+        var files = Array.from(fileList || []);
+        if (!files.length) return;
+        var ok = 0;
+        for (var i = 0; i < files.length; i++) {
+          try {
+            var r = await saveFile(files[i]);
+            if (r) ok += 1;
+          } catch (e) {}
+        }
+        await renderGallery();
+        setStatus(ok + '개 이미지 저장 완료', false);
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      async function copyText(text) {
+        await navigator.clipboard.writeText(String(text || ''));
+      }
+
+      async function renderGallery() {
+        revokeThumbs();
+        var rows = await listImages();
+        rows.sort(function (a, b) { return Number((b && b.createdAt) || 0) - Number((a && a.createdAt) || 0); });
+        elCount.textContent = rows.length + '건';
+
+        if (!rows.length) {
+          elGallery.innerHTML = '<div class="empty">저장된 이미지가 없습니다.</div>';
+          return;
+        }
+
+        var html = [];
+        for (var i = 0; i < rows.length; i++) {
+          var rec = rows[i];
+          if (!rec || !rec.id || !rec.blob) continue;
+          var u = URL.createObjectURL(rec.blob);
+          objectUrls.push(u);
+          var id = String(rec.id);
+          var name = escapeHtml(rec.name || id);
+          var mime = escapeHtml(rec.mime || rec.blob.type || 'image/*');
+          var created = rec.createdAt ? new Date(rec.createdAt).toLocaleString() : '-';
+          var internalUrl = window.ImageDB.internalUrlFromId(id);
+          html.push(
+            '<div class="card" data-id="' + encodeURIComponent(id) + '">' +
+              '<img class="thumb" src="' + u + '" alt="' + name + '">' +
+              '<div class="name" title="' + name + '">' + name + '</div>' +
+              '<div class="meta">' + mime + ' | ' + bytesToText(rec.blob.size) + '</div>' +
+              '<div class="meta">' + escapeHtml(created) + '</div>' +
+              '<div class="tools">' +
+                '<button class="btn" data-act="copy-internal" data-id="' + encodeURIComponent(id) + '">internal:// 복사</button>' +
+                '<button class="btn" data-act="copy-md" data-id="' + encodeURIComponent(id) + '">MD 복사</button>' +
+                '<button class="btn" data-act="open" data-id="' + encodeURIComponent(id) + '">원본 열기</button>' +
+                '<button class="btn warn" data-act="delete" data-id="' + encodeURIComponent(id) + '">삭제</button>' +
+              '</div>' +
+            '</div>'
+          );
+        }
+        elGallery.innerHTML = html.join('');
+
+        elGallery.querySelectorAll('button[data-act]').forEach(function (btn) {
+          btn.addEventListener('click', async function () {
+            var act = btn.getAttribute('data-act');
+            var id = decodeURIComponent(String(btn.getAttribute('data-id') || ''));
+            if (!id) return;
+            var rec = rows.find(function (x) { return String(x.id) === id; });
+            if (!rec) return;
+            var internalUrl = window.ImageDB.internalUrlFromId(id);
+
+            try {
+              if (act === 'copy-internal') {
+                await copyText(internalUrl);
+                setStatus('internal URL 복사 완료: ' + internalUrl, false);
+              } else if (act === 'copy-md') {
+                var md = '![' + (rec.name || 'image') + '](' + internalUrl + ')';
+                await copyText(md);
+                setStatus('Markdown 이미지 문법 복사 완료', false);
+              } else if (act === 'open') {
+                var openUrl = URL.createObjectURL(rec.blob);
+                objectUrls.push(openUrl);
+                window.open(openUrl, '_blank', 'noopener,noreferrer');
+              } else if (act === 'delete') {
+                await deleteImage(id);
+                await renderGallery();
+                setStatus('삭제 완료: ' + id, false);
+              }
+            } catch (e) {
+              setStatus(String((e && e.message) || e || '작업 실패'), true);
+            }
+          });
+        });
+      }
+
+      elFile.addEventListener('change', async function () {
+        await handleFiles(elFile.files);
+        elFile.value = '';
+      });
+
+      ['dragenter', 'dragover'].forEach(function (evName) {
+        elDrop.addEventListener(evName, function (e) {
+          e.preventDefault();
+          elDrop.classList.add('active');
+        });
+      });
+      ['dragleave', 'drop'].forEach(function (evName) {
+        elDrop.addEventListener(evName, function (e) {
+          e.preventDefault();
+          elDrop.classList.remove('active');
+        });
+      });
+      elDrop.addEventListener('drop', async function (e) {
+        var files = e.dataTransfer ? e.dataTransfer.files : null;
+        await handleFiles(files);
+      });
+
+      document.addEventListener('paste', async function (e) {
+        var items = (e.clipboardData && e.clipboardData.items) ? Array.from(e.clipboardData.items) : [];
+        var files = items.map(function (it) { return it.kind === 'file' ? it.getAsFile() : null; }).filter(Boolean);
+        if (!files.length) return;
+        e.preventDefault();
+        await handleFiles(files);
+      });
+
+      document.getElementById('btnRefresh').addEventListener('click', function () {
+        renderGallery().then(function () { setStatus('목록을 갱신했습니다.', false); }).catch(function (e) { setStatus(String(e), true); });
+      });
+
+      document.getElementById('btnClearAll').addEventListener('click', async function () {
+        if (!confirm('images 스토어의 모든 이미지를 삭제할까요?')) return;
+        try {
+          await clearAll();
+          await renderGallery();
+          setStatus('전체 삭제 완료', false);
+        } catch (e) {
+          setStatus(String((e && e.message) || e), true);
+        }
+      });
+
+      window.addEventListener('beforeunload', revokeThumbs);
+
+      (async function init() {
+        try {
+          if (!window.ImageDB) throw new Error('imageDB.js를 불러오지 못했습니다.');
+          db = await openDb();
+          await renderGallery();
+          setStatus('DB 연결 완료', false);
+        } catch (e) {
+          setStatus('초기화 실패: ' + String((e && e.message) || e), true);
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

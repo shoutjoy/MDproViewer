@@ -1,0 +1,33 @@
+﻿<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image Upload Component Demo</title>
+  <link rel="stylesheet" href="./image-upload-component.css" />
+  <style>body{margin:0;padding:16px;background:#dbe4f2}#slot{max-width:900px;margin:0 auto}</style>
+  <script src="../imageDB.js"></script>
+  <script src="./image-upload-component.js"></script>
+</head>
+<body>
+  <div id="slot"></div>
+  <script>
+    ImageUploadComponent.mount('#slot', {
+      getImgbbApiKey: function () {
+        try {
+          var raw = localStorage.getItem('ai_settings');
+          if (!raw) return '';
+          var j = JSON.parse(raw);
+          return String(j && j.imgbbApiKey ? j.imgbbApiKey : '');
+        } catch (e) { return ''; }
+      },
+      onInsertMarkdown: function (url, alt) {
+        alert('Markdown: ![' + alt + '](' + url + ')');
+      },
+      onInsertHtml: function (url, alt) {
+        alert('HTML: <img src="' + url + '" alt="' + alt + '" border="0" />');
+      }
+    });
+  </script>
+</body>
+</html>
