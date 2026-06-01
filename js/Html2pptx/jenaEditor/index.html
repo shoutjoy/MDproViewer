@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JenaEditor - Fast WYSIWYG</title>
-<link rel="stylesheet" href="./styles.css">
+<link rel="stylesheet" href="./styles.css?v=20260527-restore-1">
 </head>
 <body>
 <div id="appRoot"></div>
@@ -43,6 +43,13 @@
           <input id="insertImgUrl" class="find-input image-input" type="text" placeholder="https://">
           <div class="modal-hint" style="margin-top:8px;">Image Link (optional)</div>
           <input id="insertImgLinkUrl" class="find-input image-input" type="text" placeholder="https://">
+          <div class="insert-img-preview-wrap">
+            <div class="insert-img-preview-head">Preview</div>
+            <div id="insertImgPreviewBox" class="insert-img-preview-box">
+              <img id="insertImgPreview" alt="Image preview" class="hidden">
+              <div id="insertImgPreviewEmpty" class="insert-img-preview-empty">이미지 URL 입력 또는 업로드/붙여넣기 후 선택하세요.</div>
+            </div>
+          </div>
         </div>
         <div class="img-side">
           <div class="img-drop-wrap">
@@ -56,10 +63,20 @@
               <span>Ctrl+V 로 이미지 삽입</span>
             </div>
           </div>
+          <div class="imgbb-settings-row">
+            <input id="insertImgbbApiKey" class="find-input image-input" type="password" placeholder="imgBB API key">
+            <button class="btn tiny" id="btnSaveImgbbApiKey" type="button">Save Key</button>
+            <button class="btn tiny" id="btnUploadImgbbFromInsert" type="button">imageBB 업로드</button>
+          </div>
+          <div class="imgbb-api-link-row">
+            <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer">api키얻기(https://api.imgbb.com/)</a>
+          </div>
+          <div id="insertImgbbStatus" class="insert-imgbb-status">imgBB API key를 입력하면 magBB 업로드를 사용할 수 있습니다.</div>
           <div class="modal-hint">Source</div>
           <div class="tools image-source-tools" style="padding:0;border:none;">
             <button class="btn tiny" id="btnImgSrcUrl">URL</button>
             <button class="btn tiny" id="btnImgSrcDb">Image Storage</button>
+            <button class="btn tiny" id="btnDeleteInsertImage" type="button">선택 이미지 삭제</button>
           </div>
           <select id="insertImgDbSelect" class="find-input hidden" style="width:100%;"></select>
           <div id="insertImgGallery" class="insert-img-gallery hidden"></div>
@@ -72,6 +89,18 @@
       <button class="btn primary" id="btnInsertApply">Insert</button>
     </div>
     <div class="image-resize-handle" id="insertResizeHandle" aria-hidden="true"></div>
+  </div>
+</div>
+
+<div class="overlay insert-preview-overlay" id="insertImgZoomOverlay">
+  <div class="insert-preview-modal">
+    <div class="insert-preview-head">
+      <div class="insert-preview-title">Image Preview</div>
+      <button class="btn tiny" id="btnInsertImgZoomClose">Close</button>
+    </div>
+    <div class="insert-preview-body">
+      <img id="insertImgZoomImage" alt="Zoom preview">
+    </div>
   </div>
 </div>
 
@@ -198,14 +227,29 @@
         <input id="slideSizeHeight" class="find-input" type="number" min="240" max="4000" step="1" value="720">
       </div>
       <div class="style-row">
+        <label class="style-label" for="slideSizeAspectLock">Aspect Lock</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+          <input id="slideSizeAspectLock" type="checkbox" checked>
+          <span style="font-size:12px;color:#607092;">Width/Height 비율 유지</span>
+        </label>
+      </div>
+      <div class="style-row">
         <label class="style-label" for="chkShowAbsCoordBtn">Absolute Coord</label>
         <label style="display:inline-flex;align-items:center;gap:6px;">
           <input id="chkShowAbsCoordBtn" type="checkbox">
           <span style="font-size:12px;color:#607092;">Show coordinate button</span>
         </label>
       </div>
+      <div class="style-row">
+        <label class="style-label" for="chkAutoListConvert">Auto List Convert</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+          <input id="chkAutoListConvert" type="checkbox" checked>
+          <span style="font-size:12px;color:#607092;">"- " / "1. " 입력 시 자동 목록 변환</span>
+        </label>
+      </div>
     </div>
     <div class="modal-foot">
+      <button class="btn" id="btnSlideSettingsResetDefault">기본크기로 복귀</button>
       <button class="btn" id="btnSlideSettingsCancel">Cancel</button>
       <button class="btn primary" id="btnSlideSettingsApply">Apply</button>
     </div>
@@ -264,6 +308,6 @@
     </div>
   </div>
 </div>
-<script src="./js/controller.js" defer></script>
+<script src="./js/controller.js?v=20260527-restore-1" defer></script>
 </body>
 </html>

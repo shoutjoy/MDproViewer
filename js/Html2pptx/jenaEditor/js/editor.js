@@ -1468,6 +1468,39 @@ function loadWys(html) {
     d.addEventListener("keydown", (e) => {
       const mod = e.ctrlKey || e.metaKey;
       const key = String(e.key || "").toLowerCase();
+      if (!mod && !e.altKey && (e.key === " " || e.code === "Space")) {
+        const converted = maybeAutoConvertTypedListPrefix(d);
+        if (converted) {
+          e.preventDefault();
+          e.stopPropagation();
+          clearTimeout(syncTimer);
+          syncTimer = setTimeout(() => {
+            const html = getWysHtml();
+            els.code.value = html;
+            renderCodeLineNumbers();
+            scheduleAutoSave(html);
+          }, 30);
+          return;
+        }
+      }
+      if (mod && (e.key === "ArrowRight" || e.key === "ArrowDown")) {
+        if (typeof cur !== "undefined" && Array.isArray(slides) && typeof loadCurrent === "function" && cur < slides.length - 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          cur++;
+          loadCurrent();
+        }
+        return;
+      }
+      if (mod && (e.key === "ArrowLeft" || e.key === "ArrowUp")) {
+        if (typeof cur !== "undefined" && Array.isArray(slides) && typeof loadCurrent === "function" && cur > 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          cur--;
+          loadCurrent();
+        }
+        return;
+      }
       if (mod && key === "z") {
         if (undoHistory()) {
           e.preventDefault();
@@ -1475,11 +1508,44 @@ function loadWys(html) {
         }
         return;
       }
+      if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        let inListContext = false;
+        try {
+          const sel = d.getSelection ? d.getSelection() : null;
+          let node = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).startContainer : null;
+          if (node && node.nodeType === 3) node = node.parentElement;
+          const host = node && node.closest ? node.closest("li,ul,ol") : null;
+          inListContext = !!host;
+        } catch (_) {}
+        if (inListContext) {
+          e.preventDefault();
+          e.stopPropagation();
+          try { d.execCommand(e.shiftKey ? "outdent" : "indent", false, null); } catch (_) {}
+          clearTimeout(syncTimer);
+          syncTimer = setTimeout(() => {
+            const html = getWysHtml();
+            els.code.value = html;
+            renderCodeLineNumbers();
+            scheduleAutoSave(html);
+          }, 30);
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const active = d.activeElement;
         const tag = String((active && active.tagName) || "").toLowerCase();
         const isInputLike = tag === "input" || tag === "textarea" || tag === "select" || tag === "button";
         const editable = !!(active && active.isContentEditable);
+        let inListContext = false;
+        try {
+          const sel = d.getSelection ? d.getSelection() : null;
+          let node = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).startContainer : null;
+          if (node && node.nodeType === 3) node = node.parentElement;
+          const host = node && node.closest ? node.closest("li,ul,ol") : null;
+          inListContext = !!host;
+        } catch (_) {}
+        // Keep native Enter behavior inside list context so next bullet/number is auto-created.
+        if (inListContext) return;
         if (!isInputLike && editable) {
           e.preventDefault();
           e.stopPropagation();
@@ -1690,6 +1756,8 @@ function closeInDbModal() {
 }
 
 const ABS_COORD_SETTING_KEY = "jena.absCoordButtonVisible";
+const AUTO_LIST_CONVERT_SETTING_KEY = "jena.autoListConvertEnabled";
+let autoListConvertEnabled = true;
 
 function setAbsCoordButtonVisible(next, savePref) {
   showAbsCoordButton = !!next;
@@ -1704,6 +1772,54 @@ function initAbsCoordButtonSetting() {
   let next = false;
   try { next = localStorage.getItem(ABS_COORD_SETTING_KEY) === "1"; } catch (_) {}
   setAbsCoordButtonVisible(next, false);
+}
+
+function setAutoListConvertEnabled(next, savePref) {
+  autoListConvertEnabled = !!next;
+  if (els.chkAutoListConvert) els.chkAutoListConvert.checked = autoListConvertEnabled;
+  if (savePref) {
+    try { localStorage.setItem(AUTO_LIST_CONVERT_SETTING_KEY, autoListConvertEnabled ? "1" : "0"); } catch (_) {}
+  }
+}
+
+function initAutoListConvertSetting() {
+  let next = true;
+  try {
+    const raw = localStorage.getItem(AUTO_LIST_CONVERT_SETTING_KEY);
+    next = raw == null ? true : raw === "1";
+  } catch (_) {}
+  setAutoListConvertEnabled(next, false);
+}
+
+function maybeAutoConvertTypedListPrefix(doc) {
+  if (!autoListConvertEnabled || !doc || !doc.getSelection) return false;
+  const sel = doc.getSelection();
+  if (!sel || sel.rangeCount < 1 || !sel.isCollapsed) return false;
+  let node = sel.getRangeAt(0).startContainer;
+  if (!node) return false;
+  const el = node.nodeType === 1 ? node : node.parentElement;
+  if (!el || !el.closest) return false;
+  if (el.closest("li,ul,ol")) return false;
+  const block = el.closest("p,div,h1,h2,h3,h4,h5,h6");
+  if (!block) return false;
+
+  const txt = String(block.textContent || "").replace(/\u00a0/g, " ");
+  const isBullet = /^\s*-\s$/.test(txt);
+  const isNumber = /^\s*1\.\s$/.test(txt);
+  if (!isBullet && !isNumber) return false;
+
+  try {
+    block.innerHTML = "<br>";
+    const r = doc.createRange();
+    r.selectNodeContents(block);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    doc.execCommand(isNumber ? "insertOrderedList" : "insertUnorderedList", false, null);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
 
 function buildAbsCoordinateReport() {
@@ -1741,16 +1857,58 @@ function closeAbsCoordInfoModal() {
 }
 
 function refreshSlideSizeUi() {
+  const sizeText = `Slide Size: ${slideWidth} x ${slideHeight}`;
   if (els.slideSizeCurrent) {
     els.slideSizeCurrent.textContent = `Current: ${slideWidth} x ${slideHeight}`;
   }
+  if (els.slideSizeBottomInfo) els.slideSizeBottomInfo.textContent = sizeText;
   if (els.slideSizeWidth) els.slideSizeWidth.value = String(slideWidth);
   if (els.slideSizeHeight) els.slideSizeHeight.value = String(slideHeight);
+  if (els.slideSizeAspectLock) els.slideSizeAspectLock.checked = isSlideAspectLockEnabled();
   if (els.slideSizePreset) els.slideSizePreset.value = "current";
   if (els.chkShowAbsCoordBtn) els.chkShowAbsCoordBtn.checked = !!showAbsCoordButton;
+  if (els.chkAutoListConvert) els.chkAutoListConvert.checked = !!autoListConvertEnabled;
+}
+
+let slideAspectLock = true;
+let slideAspectRatio = slideWidth / Math.max(1, slideHeight);
+let slideAspectSyncing = false;
+
+function isSlideAspectLockEnabled() {
+  return !!slideAspectLock;
+}
+
+function setSlideAspectLockEnabled(next) {
+  slideAspectLock = !!next;
+  if (slideAspectLock) {
+    const w = clamp(parseInt(String(els.slideSizeWidth ? els.slideSizeWidth.value : slideWidth), 10) || slideWidth, 320, 4000);
+    const h = clamp(parseInt(String(els.slideSizeHeight ? els.slideSizeHeight.value : slideHeight), 10) || slideHeight, 240, 4000);
+    slideAspectRatio = w / Math.max(1, h);
+  }
+}
+
+function syncSlideAspectByWidthInput() {
+  if (slideAspectSyncing || !slideAspectLock || !els.slideSizeWidth || !els.slideSizeHeight) return;
+  const w = clamp(parseInt(String(els.slideSizeWidth.value || slideWidth), 10) || slideWidth, 320, 4000);
+  const ratio = Number.isFinite(slideAspectRatio) && slideAspectRatio > 0 ? slideAspectRatio : (slideWidth / Math.max(1, slideHeight));
+  const h = clamp(Math.round(w / ratio), 240, 4000);
+  slideAspectSyncing = true;
+  els.slideSizeHeight.value = String(h);
+  slideAspectSyncing = false;
+}
+
+function syncSlideAspectByHeightInput() {
+  if (slideAspectSyncing || !slideAspectLock || !els.slideSizeWidth || !els.slideSizeHeight) return;
+  const h = clamp(parseInt(String(els.slideSizeHeight.value || slideHeight), 10) || slideHeight, 240, 4000);
+  const ratio = Number.isFinite(slideAspectRatio) && slideAspectRatio > 0 ? slideAspectRatio : (slideWidth / Math.max(1, slideHeight));
+  const w = clamp(Math.round(h * ratio), 320, 4000);
+  slideAspectSyncing = true;
+  els.slideSizeWidth.value = String(w);
+  slideAspectSyncing = false;
 }
 
 function openSlideSettingsModal() {
+  slideAspectRatio = slideWidth / Math.max(1, slideHeight);
   refreshSlideSizeUi();
   if (els.slideSettingsOverlay) els.slideSettingsOverlay.classList.add("open");
 }
@@ -1772,14 +1930,174 @@ function applySlideSizePreset() {
   if (!p) return;
   if (els.slideSizeWidth) els.slideSizeWidth.value = String(p.w);
   if (els.slideSizeHeight) els.slideSizeHeight.value = String(p.h);
+  slideAspectRatio = p.w / Math.max(1, p.h);
+}
+
+function scalePxString(v, k) {
+  const s = String(v || "").trim();
+  if (!s) return s;
+  const m = /^(-?\d+(?:\.\d+)?)px$/i.exec(s);
+  if (!m) return s;
+  const n = parseFloat(m[1]);
+  if (!Number.isFinite(n)) return s;
+  return `${Math.round(n * k * 1000) / 1000}px`;
+}
+
+function scaleNumericAttr(el, attr, k) {
+  if (!el || !el.getAttribute || !el.setAttribute) return;
+  const raw = String(el.getAttribute(attr) || "").trim();
+  if (!raw) return;
+  const n = parseFloat(raw);
+  if (!Number.isFinite(n)) return;
+  el.setAttribute(attr, String(Math.max(0, Math.round(n * k))));
+}
+
+function scaleStyleProps(el, kx, ky) {
+  if (!el || !el.style) return;
+  const sxProps = ["left", "right", "width", "minWidth", "maxWidth", "marginLeft", "marginRight", "paddingLeft", "paddingRight"];
+  const syProps = ["top", "bottom", "height", "minHeight", "maxHeight", "marginTop", "marginBottom", "paddingTop", "paddingBottom"];
+  for (let i = 0; i < sxProps.length; i++) {
+    const p = sxProps[i];
+    if (!el.style[p]) continue;
+    el.style[p] = scalePxString(el.style[p], kx);
+  }
+  for (let i = 0; i < syProps.length; i++) {
+    const p = syProps[i];
+    if (!el.style[p]) continue;
+    el.style[p] = scalePxString(el.style[p], ky);
+  }
+  const uniProps = ["fontSize", "borderWidth", "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth", "borderRadius", "letterSpacing"];
+  const ku = (kx + ky) / 2;
+  for (let i = 0; i < uniProps.length; i++) {
+    const p = uniProps[i];
+    if (!el.style[p]) continue;
+    el.style[p] = scalePxString(el.style[p], ku);
+  }
+  if (el.style.lineHeight) {
+    const lh = String(el.style.lineHeight || "").trim();
+    if (/px$/i.test(lh)) el.style.lineHeight = scalePxString(lh, ku);
+  }
+}
+
+function resizeSlideHtmlPhysical(html, fromW, fromH, toW, toH) {
+  const src = String(html || "");
+  if (!src) return src;
+  const fx = Math.max(1, Number(fromW) || 1);
+  const fy = Math.max(1, Number(fromH) || 1);
+  const tx = Math.max(1, Number(toW) || 1);
+  const ty = Math.max(1, Number(toH) || 1);
+  const kx = tx / fx;
+  const ky = ty / fy;
+  if (Math.abs(kx - 1) < 0.0001 && Math.abs(ky - 1) < 0.0001) return src;
+
+  const wrap = document.createElement("div");
+  wrap.innerHTML = src;
+  const roots = Array.from(wrap.children || []).filter((n) => n && n.nodeType === 1);
+  let base = wrap.querySelector('[data-jena-base-layer="1"]') || wrap.querySelector(".slide") || null;
+  if (!base && roots.length === 1) base = roots[0];
+  if (!base) base = wrap;
+
+  const all = [base].concat(Array.from(base.querySelectorAll("*")));
+  for (let i = 0; i < all.length; i++) {
+    const el = all[i];
+    if (!el || !el.tagName) continue;
+    if (el.getAttribute && String(el.getAttribute("data-jena-ui") || "") === "1") continue;
+    scaleStyleProps(el, kx, ky);
+    scaleNumericAttr(el, "width", kx);
+    scaleNumericAttr(el, "height", ky);
+
+    const gx = parseFloat(String(el.getAttribute && el.getAttribute("data-jena-geom-left") || ""));
+    const gy = parseFloat(String(el.getAttribute && el.getAttribute("data-jena-geom-top") || ""));
+    const gw = parseFloat(String(el.getAttribute && el.getAttribute("data-jena-geom-width") || ""));
+    const gh = parseFloat(String(el.getAttribute && el.getAttribute("data-jena-geom-height") || ""));
+    if (Number.isFinite(gx)) el.setAttribute("data-jena-geom-left", String(Math.round(gx * kx)));
+    if (Number.isFinite(gy)) el.setAttribute("data-jena-geom-top", String(Math.round(gy * ky)));
+    if (Number.isFinite(gw)) el.setAttribute("data-jena-geom-width", String(Math.max(1, Math.round(gw * kx))));
+    if (Number.isFinite(gh)) el.setAttribute("data-jena-geom-height", String(Math.max(1, Math.round(gh * ky))));
+  }
+
+  // Ensure actual content root(s) follow new canvas size so layout reflows and hidden text can become visible.
+  const sizeTargets = (base !== wrap) ? [base] : roots;
+  for (let i = 0; i < sizeTargets.length; i++) {
+    const t = sizeTargets[i];
+    if (!t || !t.style) continue;
+    t.style.width = `${Math.round(tx)}px`;
+    t.style.height = `${Math.round(ty)}px`;
+    t.style.maxWidth = "none";
+    t.style.minWidth = `${Math.round(tx)}px`;
+    t.style.minHeight = `${Math.round(ty)}px`;
+    if (!t.style.position) t.style.position = "relative";
+  }
+
+  // If absolute-positioned objects drift away from canvas origin, pull them back into slide space.
+  const absNodes = Array.from(base.querySelectorAll("*")).filter((el) => {
+    if (!el || !el.style) return false;
+    const pos = String(el.style.position || "").toLowerCase();
+    return pos === "absolute" || pos === "relative";
+  });
+  let minLeft = Infinity;
+  let minTop = Infinity;
+  for (let i = 0; i < absNodes.length; i++) {
+    const el = absNodes[i];
+    const l = parseFloat(String(el.style.left || ""));
+    const t = parseFloat(String(el.style.top || ""));
+    if (Number.isFinite(l)) minLeft = Math.min(minLeft, l);
+    if (Number.isFinite(t)) minTop = Math.min(minTop, t);
+  }
+  const pad = 8;
+  const needShiftX = Number.isFinite(minLeft) && (minLeft < 0 || minLeft > pad);
+  const needShiftY = Number.isFinite(minTop) && (minTop < 0 || minTop > pad);
+  if (needShiftX || needShiftY) {
+    const dx = needShiftX ? (pad - minLeft) : 0;
+    const dy = needShiftY ? (pad - minTop) : 0;
+    for (let i = 0; i < absNodes.length; i++) {
+      const el = absNodes[i];
+      const l = parseFloat(String(el.style.left || ""));
+      const t = parseFloat(String(el.style.top || ""));
+      if (Number.isFinite(l)) el.style.left = `${Math.round((l + dx) * 1000) / 1000}px`;
+      if (Number.isFinite(t)) el.style.top = `${Math.round((t + dy) * 1000) / 1000}px`;
+      const gl = parseFloat(String(el.getAttribute("data-jena-geom-left") || ""));
+      const gt = parseFloat(String(el.getAttribute("data-jena-geom-top") || ""));
+      if (Number.isFinite(gl)) el.setAttribute("data-jena-geom-left", String(Math.round(gl + dx)));
+      if (Number.isFinite(gt)) el.setAttribute("data-jena-geom-top", String(Math.round(gt + dy)));
+    }
+  }
+  return wrap.innerHTML;
+}
+
+function resizeAllSlidesPhysical(fromW, fromH, toW, toH) {
+  if (!Array.isArray(slides) || !slides.length) return;
+  for (let i = 0; i < slides.length; i++) {
+    const s = slides[i] || {};
+    slides[i] = {
+      ...s,
+      html: resizeSlideHtmlPhysical(String(s.html || START_HTML), fromW, fromH, toW, toH)
+    };
+  }
 }
 
 function applySlideSizeSettings() {
   const w = clamp(parseInt(String(els.slideSizeWidth ? els.slideSizeWidth.value : "1280"), 10) || 1280, 320, 4000);
   const h = clamp(parseInt(String(els.slideSizeHeight ? els.slideSizeHeight.value : "720"), 10) || 720, 240, 4000);
+  const prevW = slideWidth;
+  const prevH = slideHeight;
+  try { saveCurrent(); } catch (_) {}
+  resizeAllSlidesPhysical(prevW, prevH, w, h);
   slideWidth = w;
   slideHeight = h;
   if (els.chkShowAbsCoordBtn) setAbsCoordButtonVisible(!!els.chkShowAbsCoordBtn.checked, true);
+  try { loadCurrent(); } catch (_) {}
+  try {
+    if (els.stage) {
+      els.stage.scrollLeft = 0;
+      els.stage.scrollTop = 0;
+    }
+    const d = getWysDoc();
+    if (d && d.scrollingElement) {
+      d.scrollingElement.scrollLeft = 0;
+      d.scrollingElement.scrollTop = 0;
+    }
+  } catch (_) {}
   applyZoom();
   refreshSlideSizeUi();
   closeSlideSettingsModal();
@@ -2010,6 +2328,57 @@ function initLinkModalWindowControls() {
 
 let insertImgGalleryObjectUrls = [];
 let tbDetailBound = false;
+let insertPreviewSrc = "";
+
+function setInsertImagePreview(src) {
+  const img = document.getElementById("insertImgPreview");
+  const empty = document.getElementById("insertImgPreviewEmpty");
+  const next = String(src || "").trim();
+  insertPreviewSrc = next;
+  if (!img || !empty) return;
+  if (!next) {
+    img.classList.add("hidden");
+    img.removeAttribute("src");
+    empty.classList.remove("hidden");
+    return;
+  }
+  img.src = next;
+  img.classList.remove("hidden");
+  empty.classList.add("hidden");
+}
+
+function openInsertImageZoom(src) {
+  const u = String(src || "").trim();
+  if (!u) return;
+  const overlay = document.getElementById("insertImgZoomOverlay");
+  const img = document.getElementById("insertImgZoomImage");
+  if (!overlay || !img) return;
+  img.src = u;
+  overlay.classList.add("open");
+}
+
+function closeInsertImageZoom() {
+  const overlay = document.getElementById("insertImgZoomOverlay");
+  const img = document.getElementById("insertImgZoomImage");
+  if (!overlay) return;
+  overlay.classList.remove("open");
+  if (img) img.removeAttribute("src");
+}
+
+function syncInsertPreviewBySource() {
+  if (currentImgSource === "url") {
+    setInsertImagePreview(els.insertImgUrl ? els.insertImgUrl.value : "");
+    return;
+  }
+  if (!els.insertImgDbSelect || !els.insertImgGallery) {
+    setInsertImagePreview("");
+    return;
+  }
+  const val = String(els.insertImgDbSelect.value || "");
+  const card = els.insertImgGallery.querySelector(`.insert-img-card[data-value="${val.replace(/"/g, '\\"')}"]`);
+  const thumb = card ? card.querySelector("img") : null;
+  setInsertImagePreview(thumb && thumb.src ? thumb.src : "");
+}
 
 function clearInsertImgGallery() {
   if (els.insertImgGallery) els.insertImgGallery.innerHTML = "";
@@ -2027,6 +2396,7 @@ function syncInsertImgGallerySelection() {
     const on = String(cards[i].getAttribute("data-value") || "") === val;
     cards[i].classList.toggle("active", on);
   }
+  syncInsertPreviewBySource();
 }
 
 function renderInsertImgGallery(records) {
@@ -2063,6 +2433,7 @@ function renderInsertImgGallery(records) {
     btn.addEventListener("click", () => {
       if (els.insertImgDbSelect) els.insertImgDbSelect.value = value;
       syncInsertImgGallerySelection();
+      if (img && img.src) openInsertImageZoom(img.src);
     });
     frag.appendChild(btn);
   }
@@ -2179,6 +2550,25 @@ async function refreshImageDbOptions() {
   renderInsertImgGallery(records);
 }
 
+async function deleteSelectedInsertImageFromDb() {
+  const raw = String(els.insertImgDbSelect && els.insertImgDbSelect.value ? els.insertImgDbSelect.value : "").trim();
+  if (!raw || !raw.startsWith("internal://")) return false;
+  const id = decodeInternalId(raw.slice("internal://".length));
+  if (!id) return false;
+  const db = await openAppDb();
+  let ok = false;
+  try {
+    ok = await deleteImageRecordById(db, id);
+  } finally {
+    try { db.close(); } catch (_) {}
+  }
+  await refreshImageDbOptions();
+  if (typeof setInsertImgbbStatus === "function") {
+    setInsertImgbbStatus(ok ? "선택 이미지가 삭제되었습니다." : "삭제할 이미지를 먼저 선택하세요.", !ok);
+  }
+  return ok;
+}
+
 function setInsertMode(mode) {
   currentInsertMode = mode === "img" ? "img" : "link";
   if (els.insertModalTitle) {
@@ -2194,6 +2584,69 @@ function setImgSource(mode) {
   if (els.insertImgDbSelect) els.insertImgDbSelect.classList.toggle("hidden", currentImgSource !== "db");
   if (els.insertImgGallery) els.insertImgGallery.classList.toggle("hidden", currentImgSource !== "db");
   if (currentImgSource === "db") syncInsertImgGallerySelection();
+  else syncInsertPreviewBySource();
+}
+
+function getInsertImgbbApiKeyValue() {
+  const fromInput = String(els.insertImgbbApiKey && els.insertImgbbApiKey.value ? els.insertImgbbApiKey.value : "").trim();
+  if (fromInput) return fromInput;
+  try { return String(localStorage.getItem("ss_imgbb_api_key") || "").trim(); } catch (_) { return ""; }
+}
+
+function setInsertImgbbStatus(msg, isError) {
+  if (!els.insertImgbbStatus) return;
+  els.insertImgbbStatus.textContent = String(msg || "");
+  els.insertImgbbStatus.classList.toggle("error", !!isError);
+}
+
+function syncInsertImgbbKeyUi() {
+  const key = getInsertImgbbApiKeyValue();
+  if (els.insertImgbbApiKey && !String(els.insertImgbbApiKey.value || "").trim()) {
+    els.insertImgbbApiKey.value = key;
+  }
+  if (key) setInsertImgbbStatus("imgBB API key가 로드되었습니다. magBB 업로드를 사용할 수 있습니다.", false);
+  else setInsertImgbbStatus("imgBB API key를 입력하면 magBB 업로드를 사용할 수 있습니다.", false);
+}
+
+async function uploadImageFileToImgbb(file) {
+  const f = file || null;
+  if (!f || !String(f.type || "").startsWith("image/")) throw new Error("이미지 파일을 선택하세요.");
+  const apiKey = getInsertImgbbApiKeyValue();
+  if (!apiKey) throw new Error("imgBB API key가 필요합니다.");
+  const dataUrl = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ""));
+    fr.onerror = () => reject(new Error("이미지 읽기 실패"));
+    fr.readAsDataURL(f);
+  });
+  const comma = dataUrl.indexOf(",");
+  const base64Data = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  const form = new FormData();
+  form.append("image", base64Data);
+  form.append("name", `jena_${Date.now()}`);
+  const response = await fetch(`https://api.imgbb.com/1/upload?key=${encodeURIComponent(apiKey)}`, {
+    method: "POST",
+    body: form
+  });
+  let payload = null;
+  try { payload = await response.json(); } catch (_) { payload = null; }
+  if (!response.ok || !payload || payload.success === false) {
+    const msg = payload && payload.error && payload.error.message ? payload.error.message : `imgBB upload failed (${response.status})`;
+    throw new Error(msg);
+  }
+  const data = payload.data || {};
+  const directUrl = String(data.url || (data.image && data.image.url) || data.display_url || "").trim();
+  const viewerUrl = String(data.url_viewer || directUrl || "").trim();
+  return { directUrl, viewerUrl };
+}
+
+async function uploadInsertImageToImgbbByFile(file) {
+  setInsertImgbbStatus("imgBB 업로드 중...", false);
+  const res = await uploadImageFileToImgbb(file);
+  const src = String(res.directUrl || res.viewerUrl || "").trim();
+  if (!src) throw new Error("업로드 URL을 확인할 수 없습니다.");
+  setInsertImagePreview(src);
+  setInsertImgbbStatus("업로드 완료: URL은 입력칸에 넣지 않고 미리보기에서만 표시됩니다.", false);
 }
 
 async function openInsertModal(mode) {
@@ -2202,9 +2655,12 @@ async function openInsertModal(mode) {
   if (els.insertLinkText) els.insertLinkText.value = "";
   if (els.insertLinkUrl) els.insertLinkUrl.value = "https://";
   if (els.insertImgAlt) els.insertImgAlt.value = "";
-  if (els.insertImgUrl) els.insertImgUrl.value = "https://";
+  if (els.insertImgUrl) els.insertImgUrl.value = "";
   if (els.insertImgLinkUrl) els.insertImgLinkUrl.value = "";
   if (els.insertImgFile) els.insertImgFile.value = "";
+  setInsertImagePreview("");
+  closeInsertImageZoom();
+  syncInsertImgbbKeyUi();
   const modal = document.getElementById("insertModalWindow");
   if (modal && modal.dataset.initPos !== "1") {
     modal.style.left = "50%";
@@ -2292,6 +2748,7 @@ function initImageModalWindowControls() {
 }
 
 function closeInsertModal() {
+  closeInsertImageZoom();
   clearInsertImgGallery();
   if (els.insertOverlay) els.insertOverlay.classList.remove("open");
 }

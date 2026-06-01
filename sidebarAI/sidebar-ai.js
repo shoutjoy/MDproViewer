@@ -31,9 +31,9 @@
     <div class="scholar-ai-header">
       <h3>ScholarAI</h3>
       <span>
-        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
+        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="닫기">닫기</button>
         <button type="button" class="sa-btn sa-popup-toggle-btn" onclick="scholarAIPopupToggle()" title="Popup window">Popup</button>
-        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">Fullscreen</button>
+        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="전체화면">전체화면</button>
       </span>
     </div>
     <div class="scholar-ai-body">
@@ -251,9 +251,9 @@
     <div class="scholar-ai-header">
       <h3>ScholarAI</h3>
       <span>
-        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
+        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="닫기">닫기</button>
         <button type="button" class="sa-btn sa-popup-toggle-btn" onclick="scholarAIPopupToggle()" title="Popup window">Popup</button>
-        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">Fullscreen</button>
+        <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="전체화면">전체화면</button>
       </span>
     </div>
     <div class="scholar-ai-body">
@@ -537,6 +537,22 @@
     var spBtns = document.querySelectorAll('.ssp-popup-toggle-btn');
     for (var i = 0; i < saBtns.length; i++) saBtns[i].textContent = saPopup ? 'Dock' : 'Popup';
     for (var j = 0; j < spBtns.length; j++) spBtns[j].textContent = spPopup ? 'Dock' : 'Popup';
+  }
+
+  function updateScholarHeaderActionButtons() {
+    var panel = document.getElementById('scholar-ai-sidebar');
+    if (!panel) return;
+    var closeBtn = panel.querySelector('.scholar-ai-header button[onclick*="scholarAIShrink"]');
+    var fullBtn = panel.querySelector('.scholar-ai-header button[onclick*="scholarAIFullscreen"]');
+    if (closeBtn) {
+      closeBtn.textContent = '닫기';
+      closeBtn.title = '닫기';
+    }
+    if (fullBtn) {
+      var isFullscreen = panel.classList.contains('fullscreen');
+      fullBtn.textContent = isFullscreen ? '축소' : '전체화면';
+      fullBtn.title = isFullscreen ? '축소' : '전체화면';
+    }
   }
 
   function savePanelPopupRect(panelId, panel) {
@@ -1205,6 +1221,7 @@
         inner.insertBefore(el, inner.firstChild);
       }
     }
+    updateScholarHeaderActionButtons();
     try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
   }
   function toggleScholarAIPrePrompt() {
@@ -1316,6 +1333,7 @@
       el.classList.add('fullscreen');
       document.body.appendChild(el);
     }
+    updateScholarHeaderActionButtons();
   }
   function scholarAISyncSelection() {
     syncAiPanelsFromDocumentSelection();
@@ -2874,6 +2892,7 @@ function viewerSSPFsUploadImgbb() {
     setPanelPopupMode('scholar-ai-sidebar', isPanelPopupMode('scholar-ai-sidebar'));
     setPanelPopupMode('ssp-ai-sidebar', isPanelPopupMode('ssp-ai-sidebar'));
     updatePopupToggleLabels();
+    updateScholarHeaderActionButtons();
     ensurePanelPopupDraggable('scholar-ai-sidebar', '#scholar-ai-sidebar .scholar-ai-header');
     ensurePanelPopupDraggable('ssp-ai-sidebar', '#ssp-ai-sidebar .ssp-header');
     if (!window.__aiPopupResizeSaveBound) {

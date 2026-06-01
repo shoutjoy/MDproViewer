@@ -1,0 +1,85 @@
+<section class="panel" id="editorPanel">
+  <div class="panel-head">Editor</div>
+  <div class="tools">
+    <button class="btn tiny" id="btnObjectEditMode" title="Object/Container Select Mode">Edit Mode: OFF</button>
+    <button class="btn tiny" id="btnZoomOut" title="Zoom Out">-</button>
+    <div class="zoom" id="zoomView">75%</div>
+    <button class="btn tiny" id="btnZoomIn" title="Zoom In">+</button>
+    <button class="btn tiny" id="btnSyncToCode" data-action="sync-editor-to-code" title="Apply editor to code">Editor -> Code</button>
+    <button class="btn tiny" data-cmd="bold"><b>B</b></button>
+    <button class="btn tiny" data-cmd="italic"><i>I</i></button>
+    <button class="btn tiny" data-cmd="underline"><u>U</u></button>
+    <button class="btn tiny" data-cmd="justifyLeft">L</button>
+    <button class="btn tiny" data-cmd="justifyCenter">C</button>
+    <button class="btn tiny" data-cmd="justifyRight">R</button>
+    <button class="btn tiny" data-cmd="insertUnorderedList">ul</button>
+    <button class="btn tiny" data-cmd="insertOrderedList">ol</button>
+    <button class="btn tiny" id="btnLink">link</button>
+    <button class="btn tiny" id="btnImg">img</button>
+    <button class="btn tiny" id="btnFontDec">A-</button>
+    <select id="quickFontSize" class="find-input quick-select" title="Font Size">
+      <option value="6">6px</option>
+      <option value="8">8px</option>
+      <option value="10">10px</option>
+      <option value="12">12px</option>
+      <option value="14">14px</option>
+      <option value="16" selected>16px</option>
+      <option value="18">18px</option>
+      <option value="20">20px</option>
+      <option value="24">24px</option>
+      <option value="26">26px</option>
+      <option value="28">28px</option>
+      <option value="30">30px</option>
+      <option value="32">32px</option>
+      <option value="36">36px</option>
+      <option value="40">40px</option>
+      <option value="48">48px</option>
+      <option value="60">60px</option>
+      <option value="72">72px</option>
+      <option value="100">100px</option>
+    </select>
+    
+    <!-- Edit Text obj -->
+    <button class="btn tiny" id="btnFontInc">A+</button>
+    <label class="quick-color-wrap" title="Text Color">T <input id="quickTextColor" type="color" value="#1a2233" class="quick-color"></label>
+    <label class="quick-color-wrap" title="Highlight">H <input id="quickHiliteColor" type="color" value="#fff59d" class="quick-color"></label>
+    <button class="btn tiny hidden" id="btnColorApplyPopup" title="Apply selected color">Apply</button>
+    <button class="btn tiny" id="btnLayerPanelToggle" title="Toggle object layer panel">layer</button>
+    <button class="btn tiny hidden" id="btnAbsCoordInfo" title="Show absolute coordinates">abs</button>
+    
+    <button class="btn tiny hidden" id="btnSetBaseLayer" title="Set selected container as base layer">base</button>
+    
+    <!-- Add Text Box  -->
+    <button class="btn tiny" id="btnTextBox">text</button>
+    <select id="textPreset" class="find-input quick-select" title="Text Box Preset">
+      <option value="basic" selected>txt-basic</option>
+      <option value="note">txt-note</option>
+      <option value="accent">txt-accent</option>
+      <option value="dark">txt-dark</option>
+    </select>
+    <span id="textBoxSelectionTools" class="hidden"></span>
+    <span id="objectLayerTools" class="hidden">
+      <button class="btn tiny" id="btnObjectDel" title="Delete selected object">ObjectDel</button>
+      <button class="btn tiny" id="btnLayerTop" title="Bring selected object to front">front</button>
+      <button class="btn tiny" id="btnLayerBottom" title="Send selected object to back (above base)">back</button>
+      <!-- Move one step between overlapping layers -->
+      <button class="btn tiny" id="btnLayerUp" title="Bring forward by one step">up1</button>
+      <button class="btn tiny" id="btnLayerDown" title="Send backward by one step">down1</button>
+    </span>
+  </div>
+  <div class="wys-wrap">
+    <div class="editor-canvas-area">
+      <div class="stage" id="stage">
+        <iframe id="wys" sandbox="allow-same-origin allow-scripts"></iframe>
+      </div>
+    </div>
+    <aside id="objLayerPanelHost" class="obj-layer-host"></aside>
+  </div>
+  <div class="editor-foot-info">
+    <div id="slideSizeBottomInfo">Slide Size: 1280 x 720</div>
+    <div class="editor-foot-actions">
+      <button class="btn tiny" id="btnSaveChangesBottom" type="button">변경사항 저장</button>
+      <button class="btn tiny" id="btnSlideSettingsBottom" type="button">슬라이드 세팅으로 복귀</button>
+    </div>
+  </div>
+</section>

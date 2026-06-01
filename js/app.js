@@ -1,4 +1,4 @@
-// IndexedDB Logic
+﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
 const DB_VERSION = 4;
 let db;
@@ -93,6 +93,14 @@ let settingsModalDragging = false;
 let settingsModalDragOffsetX = 0;
 let settingsModalDragOffsetY = 0;
 let settingsModalCompact = false;
+let settingsModalFullscreen = false;
+let settingsModalResizeBound = false;
+let settingsModalResizing = false;
+let settingsModalResizeStartX = 0;
+let settingsModalResizeStartY = 0;
+let settingsModalResizeStartW = 0;
+let settingsModalResizeStartH = 0;
+let settingsModalRestoreRect = null;
 let aiSidebarBootPromise = null;
 let aiSidebarLoadAttempts = 0;
 let viewClickMappedCaretPos = null;
@@ -110,8 +118,8 @@ let pauseMainRenderWhileEditing = true;
 let mainRenderDirty = true;
 
 // Sidebar states
-let isSidebarHidden = true;
-let isSidebarCollapsed = false;
+let isSidebarHidden = false;
+let isSidebarCollapsed = true;
 
 // Theme
 const THEME_KEY = 'md_viewer_theme';
@@ -318,20 +326,23 @@ function updateStorageSourceTabsUI() {
     ghBtn.className = currentStorageSourceTab === 'github' ? active : inactive;
 }
 
+function syncStorageSourceTabsVisibility(githubConfigured) {
+    const tabsWrap = document.getElementById('storage-source-tabs');
+    if (!tabsWrap) return;
+    const shouldShow = !!githubConfigured && !isSidebarCollapsed;
+    tabsWrap.classList.toggle('hidden', !shouldShow);
+    tabsWrap.classList.toggle('flex', shouldShow);
+}
+
 async function applyGithubUiState(settingsInput) {
     const settings = settingsInput || await getAiSettings() || {};
     const cfg = getGithubConfigFromSettings(settings);
     const githubConfigured = !!(cfg.enabled && cfg.token);
-    const tabsWrap = document.getElementById('storage-source-tabs');
     const repoLink = document.getElementById('tab-storage-github-link');
     const syncBtn = document.getElementById('btn-github-sync');
     const syncLabel = document.getElementById('github-sync-label');
 
-    if (tabsWrap) {
-        const showTabs = githubConfigured;
-        tabsWrap.classList.toggle('hidden', !showTabs);
-        tabsWrap.classList.toggle('flex', showTabs);
-    }
+    syncStorageSourceTabsVisibility(githubConfigured);
     if (syncBtn) {
         const showSync = githubConfigured;
         syncBtn.classList.toggle('hidden', !showSync);
@@ -348,10 +359,10 @@ async function applyGithubUiState(settingsInput) {
         if (githubConfigured && hasRepo) {
             const url = 'https://github.com/' + linkPath;
             repoLink.href = url;
-            repoLink.title = 'GitHub 저장소 열기: ' + linkPath;
+            repoLink.title = 'GitHub ??μ냼 ?닿린: ' + linkPath;
         } else {
             repoLink.href = '#';
-            repoLink.title = 'GitHub 저장소 열기';
+            repoLink.title = 'GitHub ??μ냼 ?닿린';
         }
     }
 
@@ -742,7 +753,7 @@ function miniPreviewAdjustZoom(delta) {
 
 function updateMiniPreviewFullscreenUi() {
     const btn = document.getElementById('btn-mini-preview-fullscreen');
-    if (btn) btn.textContent = miniPreviewFullscreen ? '복귀' : '전체';
+    if (btn) btn.textContent = miniPreviewFullscreen ? '蹂듦?' : '?꾩껜';
     if (miniPreviewResizeHandle) miniPreviewResizeHandle.style.display = miniPreviewFullscreen ? 'none' : '';
     if (miniPreviewHeader) miniPreviewHeader.classList.toggle('cursor-move', !miniPreviewFullscreen);
 }
@@ -998,7 +1009,18 @@ window.onload = async () => {
 
         if (isEditMode && editorTextarea) editorTextarea.focus();
 
-        if (sidebar) sidebar.style.display = 'none';
+        if (sidebar) {
+            sidebar.style.display = isSidebarHidden ? 'none' : 'flex';
+            const collapseIcon = document.getElementById('collapse-icon');
+            if (isSidebarCollapsed) {
+                sidebar.classList.add('sidebar-collapsed');
+                if (collapseIcon) collapseIcon.setAttribute('data-lucide', 'chevron-right');
+            } else {
+                sidebar.classList.remove('sidebar-collapsed');
+                if (collapseIcon) collapseIcon.setAttribute('data-lucide', 'chevron-left');
+            }
+            lucide.createIcons();
+        }
 
         if (window.ScholarSearchShell && typeof window.ScholarSearchShell.ensureScholarRefReady === 'function') {
             await window.ScholarSearchShell.ensureScholarRefReady();
@@ -1068,7 +1090,9 @@ window.onload = async () => {
         editorTextarea.addEventListener('select', syncFindInputFromEditorSelectionIfNeeded);
         editorTextarea.addEventListener('keyup', syncFindInputFromEditorSelectionIfNeeded);
         editorTextarea.addEventListener('mouseup', syncFindInputFromEditorSelectionIfNeeded);
+        bindEditorListKeyBehavior();
     }
+    bindWheelZoomShortcuts();
     document.addEventListener('paste', function (e) {
         const modal = document.getElementById('image-insert-modal');
         if (!modal || modal.classList.contains('hidden')) return;
@@ -2625,6 +2649,11 @@ function toggleSidebarCollapse() {
         sidebar.classList.remove('sidebar-collapsed');
         collapseIcon.setAttribute('data-lucide', 'chevron-left');
     }
+    try {
+        const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
+        const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
+        syncStorageSourceTabsVisibility(githubEnabled && !!githubToken);
+    } catch (_) {}
     lucide.createIcons();
     renderDBList();
     if (activeSidebarTab === 'toc') renderTOC();
@@ -3405,7 +3434,7 @@ function renderInDbList(listEl, searchTerm, githubReady) {
                 folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
                 const folderDeleteBtn = folder.id === 'root'
                     ? ''
-                    : '<button onclick="event.stopPropagation(); deleteFolderFromDB(\'' + escapeHtmlText(folder.id) + '\')" class="ml-auto text-[10px] px-1 py-0.5 rounded border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-600 hover:text-white" title="폴더 삭제">x</button>';
+                    : '<button onclick="event.stopPropagation(); deleteFolderFromDB(\'' + escapeHtmlText(folder.id) + '\')" class="ml-auto text-[10px] px-1 py-0.5 rounded border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-600 hover:text-white" title="?대뜑 ??젣">x</button>';
                 folderHeader.innerHTML = ''
                     + '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i>'
                     + '<i data-lucide="folder" class="w-3 h-3"></i>'
@@ -3438,8 +3467,8 @@ function renderInDbList(listEl, searchTerm, githubReady) {
                         + '</span>'
                         + '</div>'
                         + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
-                        + '<button onclick="event.stopPropagation(); loadFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>'
-                        + '<button onclick="event.stopPropagation(); openMoveModal(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">이동</button>'
+                        + '<button onclick="event.stopPropagation(); loadFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">?닿린</button>'
+                        + '<button onclick="event.stopPropagation(); openMoveModal(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">?대룞</button>'
                         + pushBtn
                         + '<button onclick="event.stopPropagation(); deleteFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 font-bold hover:bg-red-600 hover:text-white ml-auto">X</button>'
                         + '</div>'
@@ -3510,7 +3539,7 @@ async function renderGithubCachedList(listEl, searchTerm) {
                 + '</span>'
                 + '</div>'
                 + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
-                + '<button onclick="event.stopPropagation(); loadFromGithubCache(\'' + escapeHtmlText(path) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>'
+                + '<button onclick="event.stopPropagation(); loadFromGithubCache(\'' + escapeHtmlText(path) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">?닿린</button>'
                 + '</div>'
                 + '</div>';
             docContainer.appendChild(docItem);
@@ -3523,7 +3552,7 @@ async function renderGithubCachedList(listEl, searchTerm) {
     if (!keys.length) {
         const empty = document.createElement('div');
         empty.className = 'px-2 py-4 text-xs text-slate-500 dark:text-slate-400';
-        empty.textContent = 'GitHub 목록이 비어 있습니다. sync 버튼으로 pull 하세요.';
+        empty.textContent = 'GitHub 紐⑸줉??鍮꾩뼱 ?덉뒿?덈떎. sync 踰꾪듉?쇰줈 pull ?섏꽭??';
         listEl.appendChild(empty);
     }
 }
@@ -3964,7 +3993,7 @@ function tidySeparatorSpacing(source) {
         } else {
             const trtValue = specialTRT.prepareForTidy(value);
             if (trtValue !== value) changed = true;
-            if (trtValue !== value) changeLabels.push('TRT 정리');
+            if (trtValue !== value) changeLabels.push('TRT ?뺣━');
             value = trtValue;
         }
     }
@@ -4028,7 +4057,7 @@ function applyEnterTidyInEditor() {
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
     const tidyChanges = Array.isArray(result.changes) ? result.changes.filter(Boolean) : [];
-    showToast(tidyChanges.length ? ('엔터정리 적용: ' + tidyChanges.join(', ')) : '엔터정리 적용');
+    showToast(tidyChanges.length ? ('?뷀꽣?뺣━ ?곸슜: ' + tidyChanges.join(', ')) : '?뷀꽣?뺣━ ?곸슜');
 }
 
 function applyMathTidyInEditor() {
@@ -4053,7 +4082,7 @@ function applyMathTidyInEditor() {
         : { value: sourceText, changes: [] };
 
     if (!result || result.value === sourceText) {
-        showToast('수식정리에서 바뀐 내용이 없습니다.');
+        showToast('?섏떇?뺣━?먯꽌 諛붾??댁슜???놁뒿?덈떎.');
         return;
     }
 
@@ -4081,7 +4110,7 @@ function applyMathTidyInEditor() {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
-    showToast('수식정리 적용: \\[→$$, \\]→$$, \\(→$, \\)→$');
+    showToast('?섏떇?뺣━ ?곸슜: \\[??$, \\]??$, \\(??, \\)??');
 }
 
 function closeTidyQuickMenu() {
@@ -4176,19 +4205,19 @@ function applyInlineFormatFromViewerSelection(type) {
     const selection = (typeof window.getSelection === 'function') ? window.getSelection() : null;
     const selectedText = String(selection && selection.toString ? selection.toString() : '');
     if (!selectedText || !selectedText.trim()) {
-        showToast('보기 모드에서 먼저 텍스트를 선택하세요.');
+        showToast('蹂닿린 紐⑤뱶?먯꽌 癒쇱? ?띿뒪?몃? ?좏깮?섏꽭??');
         return false;
     }
 
     const source = String(currentMarkdown || (editorTextarea ? editorTextarea.value : ''));
     if (!source) {
-        showToast('현재 문서 내용이 비어 있습니다.');
+        showToast('?꾩옱 臾몄꽌 ?댁슜??鍮꾩뼱 ?덉뒿?덈떎.');
         return false;
     }
 
     const idx = source.indexOf(selectedText);
     if (idx < 0) {
-        showToast('선택 텍스트를 원문에서 찾지 못했습니다.');
+        showToast('?좏깮 ?띿뒪?몃? ?먮Ц?먯꽌 李얠? 紐삵뻽?듬땲??');
         return false;
     }
 
@@ -4204,7 +4233,7 @@ function applyInlineFormatFromViewerSelection(type) {
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
     if (selection && typeof selection.removeAllRanges === 'function') selection.removeAllRanges();
-    showToast(isBold ? 'Bold 적용 완료' : 'Italic 적용 완료');
+    showToast(isBold ? 'Bold ?곸슜 ?꾨즺' : 'Italic ?곸슜 ?꾨즺');
     return true;
 }
 function insertFencedCodeBlock(language) {
@@ -4410,6 +4439,133 @@ function insertListAtSelection(kind) {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+}
+
+function getBulletMarkerByIndent(indentSpaces) {
+    const depth = Math.max(0, Math.floor((Number(indentSpaces) || 0) / 2));
+    const markers = ['-', '*', '+'];
+    return markers[depth % markers.length];
+}
+
+function handleEditorListEnterKey(event) {
+    if (!editorTextarea || !isEditMode) return false;
+    if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return false;
+    if (editorTextarea.selectionStart !== editorTextarea.selectionEnd) return false;
+
+    const cursor = editorTextarea.selectionStart;
+    const text = editorTextarea.value;
+    const lineStart = text.lastIndexOf('\n', cursor - 1) + 1;
+    let lineEnd = text.indexOf('\n', cursor);
+    if (lineEnd < 0) lineEnd = text.length;
+    const line = text.substring(lineStart, lineEnd);
+    const listMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
+    if (!listMatch) return false;
+
+    const indent = listMatch[1] || '';
+    const token = listMatch[2] || '-';
+    const content = listMatch[3] || '';
+    event.preventDefault();
+
+    if (!content.trim()) {
+        editorTextarea.setSelectionRange(lineStart, lineEnd);
+        document.execCommand('insertText', false, '');
+        currentMarkdown = editorTextarea.value;
+        renderMarkdown();
+        if (activeSidebarTab === 'toc') renderTOC();
+        performAutoSave();
+        return true;
+    }
+
+    let nextToken = token;
+    if (/^\d+\.$/.test(token)) {
+        nextToken = (parseInt(token, 10) + 1) + '.';
+    }
+    const insertion = '\n' + indent + nextToken + ' ';
+    editorTextarea.setSelectionRange(cursor, cursor);
+    document.execCommand('insertText', false, insertion);
+    currentMarkdown = editorTextarea.value;
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    return true;
+}
+
+function handleEditorListTabKey(event) {
+    if (!editorTextarea || !isEditMode) return false;
+    if (event.key !== 'Tab' || event.ctrlKey || event.altKey || event.metaKey) return false;
+    if (editorTextarea.selectionStart !== editorTextarea.selectionEnd) return false;
+
+    const cursor = editorTextarea.selectionStart;
+    const text = editorTextarea.value;
+    const lineStart = text.lastIndexOf('\n', cursor - 1) + 1;
+    let lineEnd = text.indexOf('\n', cursor);
+    if (lineEnd < 0) lineEnd = text.length;
+    const line = text.substring(lineStart, lineEnd);
+    const listMatch = line.match(/^(\s*)([-*+]|\d+\.)\s+(.*)$/);
+    if (!listMatch) return false;
+
+    event.preventDefault();
+    const oldIndent = listMatch[1] || '';
+    const oldIndentLen = oldIndent.length;
+    const token = listMatch[2] || '-';
+    const content = listMatch[3] || '';
+    const nextIndentLen = event.shiftKey
+        ? Math.max(0, oldIndentLen - 2)
+        : oldIndentLen + 2;
+    const nextIndent = ' '.repeat(nextIndentLen);
+    let nextToken = getBulletMarkerByIndent(nextIndentLen);
+    if (/^\d+\.$/.test(token)) {
+        // Numbered list: when indenting with Tab, start a nested list from 1.
+        if (!event.shiftKey && nextIndentLen > oldIndentLen) {
+            nextToken = '1.';
+        } else {
+            nextToken = token;
+        }
+    }
+    const nextLine = nextIndent + nextToken + ' ' + content;
+
+    editorTextarea.setSelectionRange(lineStart, lineEnd);
+    document.execCommand('insertText', false, nextLine);
+
+    const cursorOffset = Math.max(0, cursor - lineStart);
+    const safeOffset = Math.min(cursorOffset + (nextLine.length - line.length), nextLine.length);
+    const nextCursor = lineStart + safeOffset;
+    editorTextarea.setSelectionRange(nextCursor, nextCursor);
+    currentMarkdown = editorTextarea.value;
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    return true;
+}
+
+function bindEditorListKeyBehavior() {
+    if (!editorTextarea || editorTextarea.__listKeyBehaviorBound) return;
+    editorTextarea.__listKeyBehaviorBound = true;
+    editorTextarea.addEventListener('keydown', function (event) {
+        if (handleEditorListEnterKey(event)) return;
+        if (handleEditorListTabKey(event)) return;
+    });
+}
+
+function bindWheelZoomShortcuts() {
+    if (window.__mdWheelZoomShortcutsBound) return;
+    window.__mdWheelZoomShortcutsBound = true;
+    window.addEventListener('wheel', function (event) {
+        if (!event) return;
+        if (event.ctrlKey || event.metaKey) return;
+        const dy = Number(event.deltaY || 0);
+        if (dy === 0) return;
+
+        if (event.shiftKey) {
+            event.preventDefault();
+            adjustPageScale(dy < 0 ? 0.05 : -0.05);
+            return;
+        }
+        if (event.altKey) {
+            event.preventDefault();
+            adjustFontSize(dy < 0 ? 1 : -1);
+        }
+    }, { passive: false });
 }
 
 function insertLiteralAtCursor(literal) {
@@ -4854,7 +5010,7 @@ function toggleMermaidEditorFullscreen() {
 function insertMermaidBlockFromExternal(codeText) {
     const raw = String(codeText || '').trim();
     if (!raw) {
-        showToast('삽입할 Mermaid 코드가 비어 있습니다.');
+        showToast('?쎌엯??Mermaid 肄붾뱶媛 鍮꾩뼱 ?덉뒿?덈떎.');
         return;
     }
     if (!isEditMode) toggleMode('edit');
@@ -4870,7 +5026,7 @@ function insertMermaidBlockFromExternal(codeText) {
     currentMarkdown = editorTextarea.value;
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
-    showToast('Mermaid 코드가 문서에 삽입되었습니다.');
+    showToast('Mermaid 肄붾뱶媛 臾몄꽌???쎌엯?섏뿀?듬땲??');
 }
 
 window.addEventListener('message', function (event) {
@@ -5315,7 +5471,7 @@ function applySettingsShortcutsFold(folded) {
     const btn = document.getElementById('settings-shortcuts-toggle-btn');
     const isFolded = !!folded;
     if (body) body.classList.toggle('hidden', isFolded);
-    if (btn) btn.textContent = isFolded ? '펼치기' : '접기';
+    if (btn) btn.textContent = isFolded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
 }
 
 function toggleSettingsShortcutsFold() {
@@ -5335,7 +5491,7 @@ function setAiUseFoldedToLocal(folded) {
 
 function applyAiUseFold(folded) {
     const btn = document.getElementById('ai-use-fold-btn');
-    if (btn) btn.textContent = folded ? '펼치기' : '접기';
+    if (btn) btn.textContent = folded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
     const section = document.getElementById('ai-password-section');
     if (section) section.classList.toggle('hidden', !!folded);
 }
@@ -5358,7 +5514,7 @@ function setShareSettingsFoldedToLocal(folded) {
 function applyShareSettingsFold(folded) {
     const btn = document.getElementById('share-settings-fold-btn');
     const body = document.getElementById('share-destinations-settings-body');
-    if (btn) btn.textContent = folded ? '펼치기' : '접기';
+    if (btn) btn.textContent = folded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
     if (body) body.classList.toggle('hidden', !!folded);
 }
 
@@ -5379,7 +5535,7 @@ function setGithubSettingsFoldedToLocal(folded) {
 
 function applyGithubSettingsFold(folded) {
     const btn = document.getElementById('github-settings-fold-btn');
-    if (btn) btn.textContent = folded ? '펼치기' : '접기';
+    if (btn) btn.textContent = folded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
     toggleGithubSettingsSection();
 }
 
@@ -5593,7 +5749,9 @@ function ensureTableInsertPickerBuilt() {
 function previewTableInsertSize(rows, cols) {
     const label = document.getElementById('table-insert-size-label');
     if (label) {
-        label.textContent = (rows > 0 && cols > 0) ? (rows + 'x' + cols + ' 표') : '표 삽입';
+        label.textContent = (rows > 0 && cols > 0)
+            ? (rows + 'x' + cols + ' \uD14C\uC774\uBE14')
+            : '\uD06C\uAE30 \uC120\uD0DD';
     }
     const grid = document.getElementById('table-insert-grid');
     if (!grid) return;
@@ -5938,15 +6096,15 @@ function downloadTemplateMdFile(fileName, content) {
 }
 
 async function addTemplateFromCurrentContent() {
-    const defaultName = (currentFileName || '새 양식').replace(/\.md$/i, '').trim() || '새 양식';
-    const name = window.prompt('양식 이름을 입력하세요.', defaultName);
+    const defaultName = (currentFileName || '???묒떇').replace(/\.md$/i, '').trim() || '???묒떇';
+    const name = window.prompt('?묒떇 ?대쫫???낅젰?섏꽭??', defaultName);
     if (name == null) return;
     const title = String(name || '').trim();
     if (!title) {
-        showToast('양식 이름을 입력하세요.');
+        showToast('?묒떇 ?대쫫???낅젰?섏꽭??');
         return;
     }
-    const descInput = window.prompt('양식 설명(선택)', '사용자 양식');
+    const descInput = window.prompt('?묒떇 ?ㅻ챸(?좏깮)', '?ъ슜???묒떇');
     if (descInput == null) return;
     const desc = String(descInput || '').trim();
     const previewEl = document.getElementById('template-preview');
@@ -5954,13 +6112,13 @@ async function addTemplateFromCurrentContent() {
     const docContent = String(editorTextarea && editorTextarea.value ? editorTextarea.value : '').trim();
     const content = docContent || candidate;
     if (!content) {
-        showToast('저장할 양식 내용이 없습니다.');
+        showToast('??ν븷 ?묒떇 ?댁슜???놁뒿?덈떎.');
         return;
     }
     const entry = {
         id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
         name: title,
-        desc: desc || '사용자 양식',
+        desc: desc || '?ъ슜???묒떇',
         content: content,
         isCustom: true
     };
@@ -5974,18 +6132,18 @@ async function addTemplateFromCurrentContent() {
         select.value = String(idx);
         onTemplateSelectChange();
     }
-    showToast('양식을 추가했습니다.');
+    showToast('?묒떇??異붽??덉뒿?덈떎.');
 }
 
 async function saveEditedTemplate() {
     const draft = getTemplateEditorDraft();
     const targetName = String(draft.name || '').trim();
     if (!targetName) {
-        showToast('양식 이름을 입력하세요.');
+        showToast('?묒떇 ?대쫫???낅젰?섏꽭??');
         return;
     }
     if (!String(draft.content || '').trim()) {
-        showToast('양식 내용이 비어 있습니다.');
+        showToast('?묒떇 ?댁슜??鍮꾩뼱 ?덉뒿?덈떎.');
         return;
     }
 
@@ -5999,7 +6157,7 @@ async function saveEditedTemplate() {
         templateCustomList[existingIndex] = {
             id: String(prev.id || ('custom_' + Date.now() + '_r')),
             name: targetName,
-            desc: draft.desc || '사용자 양식',
+            desc: draft.desc || '?ъ슜???묒떇',
             content: draft.content,
             isCustom: true
         };
@@ -6014,14 +6172,14 @@ async function saveEditedTemplate() {
             select.value = String(idx);
             onTemplateSelectChange();
         }
-        showToast('같은 이름 양식을 덮어써서 저장했습니다.');
+        showToast('媛숈? ?대쫫 ?묒떇????뼱?⑥꽌 ??ν뻽?듬땲??');
         return;
     }
 
     const created = {
         id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
         name: targetName,
-        desc: draft.desc || '사용자 양식',
+        desc: draft.desc || '?ъ슜???묒떇',
         content: draft.content,
         isCustom: true
     };
@@ -6035,18 +6193,18 @@ async function saveEditedTemplate() {
         select.value = String(idx);
         onTemplateSelectChange();
     }
-    showToast('이름이 달라 새 양식으로 저장했습니다.');
+    showToast('?대쫫???щ씪 ???묒떇?쇰줈 ??ν뻽?듬땲??');
 }
 
 function exportSelectedTemplateMd() {
     const payload = getTemplateExportPayload();
     if (!payload || !payload.content.trim()) {
-        showToast('내보낼 양식이 없습니다.');
+        showToast('?대낫???묒떇???놁뒿?덈떎.');
         return;
     }
     const fileName = sanitizeTemplateFileName(payload.name) + '.md';
     downloadTemplateMdFile(fileName, payload.content);
-    showToast('양식을 .md 파일로 내보냈습니다.');
+    showToast('?묒떇??.md ?뚯씪濡??대낫?덉뒿?덈떎.');
 }
 
 function triggerTemplateImportMd() {
@@ -6065,23 +6223,23 @@ async function importTemplateMdFile(event) {
     try {
         text = await file.text();
     } catch (_) {
-        showToast('양식 파일을 읽지 못했습니다.');
+        showToast('?묒떇 ?뚯씪???쎌? 紐삵뻽?듬땲??');
         if (input) input.value = '';
         return;
     }
     const content = String(text || '').replace(/\r\n/g, '\n').trim();
     if (!content) {
-        showToast('비어 있는 md 파일입니다.');
+        showToast('鍮꾩뼱 ?덈뒗 md ?뚯씪?낅땲??');
         if (input) input.value = '';
         return;
     }
     const firstLine = content.split('\n').find(function (line) { return String(line || '').trim(); }) || '';
     const heading = firstLine.replace(/^#+\s*/, '').trim();
-    const guessedName = heading || fileName.replace(/\.md$/i, '').trim() || '가져온 양식';
+    const guessedName = heading || fileName.replace(/\.md$/i, '').trim() || '媛?몄삩 ?묒떇';
     const entry = {
         id: 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
         name: guessedName,
-        desc: '가져온 양식',
+        desc: '媛?몄삩 ?묒떇',
         content: content,
         isCustom: true
     };
@@ -6095,7 +6253,7 @@ async function importTemplateMdFile(event) {
         select.value = String(idx);
         onTemplateSelectChange();
     }
-    showToast('md 양식을 가져왔습니다.');
+    showToast('md ?묒떇??媛?몄솕?듬땲??');
     if (input) input.value = '';
 }
 
@@ -6319,7 +6477,7 @@ function toggleTemplatePanel() {
 function insertTemplateTextAtCursor(templateText) {
     const text = String(templateText || '');
     if (!text.trim()) {
-        showToast('양식 내용이 비어 있습니다.');
+        showToast('?묒떇 ?댁슜??鍮꾩뼱 ?덉뒿?덈떎.');
         return false;
     }
     if (!isEditMode) toggleMode('edit');
@@ -6345,17 +6503,17 @@ function insertTemplateTextAtCursor(templateText) {
 function insertSelectedTemplateToDocument() {
     const item = getSelectedTemplateItem();
     if (!item) {
-        showToast('사용 가능한 양식이 없습니다.');
+        showToast('?ъ슜 媛?ν븳 ?묒떇???놁뒿?덈떎.');
         return;
     }
     const ok = insertTemplateTextAtCursor(item.content);
-    if (ok) showToast('양식을 문서에 삽입했습니다.');
+    if (ok) showToast('?묒떇??臾몄꽌???쎌엯?덉뒿?덈떎.');
 }
 
 function insertSelectedTemplateAsNewFile() {
     const item = getSelectedTemplateItem();
     if (!item) {
-        showToast('사용 가능한 양식이 없습니다.');
+        showToast('?ъ슜 媛?ν븳 ?묒떇???놁뒿?덈떎.');
         return;
     }
     createNewFile();
@@ -6363,7 +6521,7 @@ function insertSelectedTemplateAsNewFile() {
     currentMarkdown = editorTextarea ? editorTextarea.value : item.content;
     performAutoSave();
     if (isEditMode && editorTextarea) editorTextarea.focus();
-    showToast('새 파일에 양식을 삽입했습니다.');
+    showToast('???뚯씪???묒떇???쎌엯?덉뒿?덈떎.');
 }
 
 async function toggleTemplateSection() {
@@ -6412,7 +6570,7 @@ function applyHtml2pptPanelLayout() {
     }
 
     if (dockBtn) dockBtn.textContent = html2pptDockRight ? '<<' : '>>';
-    if (fullBtn) fullBtn.textContent = html2pptFullscreen ? '복원' : '전체';
+    if (fullBtn) fullBtn.textContent = html2pptFullscreen ? '蹂듭썝' : '?꾩껜';
 }
 
 function toggleHtml2pptDockRight() {
@@ -6577,6 +6735,44 @@ window.addEventListener('message', function (event) {
     if (!frame || event.source !== frame.contentWindow) return;
     if (!html2pptPanelOpen) openHtml2pptPanel();
     toggleHtml2pptPanelFullscreen();
+});
+
+window.addEventListener('message', function (event) {
+    const data = event && event.data ? event.data : null;
+    if (!data || typeof data !== 'object') return;
+
+    if (data.type === 'mdv-genslide-open-scholar') {
+        try {
+            if (typeof window.openScholarAIFromHeader === 'function') {
+                window.openScholarAIFromHeader();
+                return;
+            }
+        } catch (_) {}
+        try {
+            if (typeof window.toggleScholarAI === 'function') {
+                window.toggleScholarAI();
+                return;
+            }
+        } catch (_) {}
+        return;
+    }
+
+    if (data.type === 'mdv-genslide-selection-changed') {
+        const selected = String(data.text || '');
+        const forceOpen = !!data.forceOpen;
+        try {
+            if (typeof window.LiveAISetSelectedText === 'function') {
+                window.LiveAISetSelectedText(selected, { source: 'genslide', forceOpen: forceOpen });
+                return;
+            }
+        } catch (_) {}
+        if (forceOpen) {
+            try {
+                if (typeof window.openScholarAIFromHeader === 'function') window.openScholarAIFromHeader();
+                else if (typeof window.toggleScholarAI === 'function') window.toggleScholarAI();
+            } catch (_) {}
+        }
+    }
 });
 
 function configureScholarSearchShellBridge() {
@@ -7101,7 +7297,121 @@ async function closeSettingsModal() {
         if (modal) {
             modal.classList.add('hidden');
         }
+        if (settingsModalFullscreen) {
+            settingsModalFullscreen = false;
+            settingsModalRestoreRect = null;
+            applySettingsModalFullscreenUI();
+        }
         try { await applyAiFeatureVisibility(); } catch (_) {}
+    }
+}
+
+const SETTINGS_EXPORT_LOCAL_KEYS = [
+    ENTER_BUTTON_BR_KEY,
+    SELECTION_WRAP_KEY,
+    VIEW_MODE_EDIT_KEY,
+    SETTINGS_SHORTCUTS_FOLD_KEY,
+    AI_USE_FOLD_KEY,
+    SHARE_SETTINGS_FOLD_KEY,
+    GITHUB_SETTINGS_FOLD_KEY,
+    EDITOR_HORIZONTAL_SHIFT_KEY,
+    THEME_KEY,
+    EDITOR_LIGHT_KEY,
+    MINI_PREVIEW_KEY,
+    MINI_PREVIEW_LAYOUT_KEY,
+    FOLDER_COLLAPSE_STATE_KEY,
+    STORAGE_SOURCE_TAB_KEY,
+    'md_viewer_code_bg',
+    'md_viewer_code_text',
+    'ss_imgbb_api_key'
+];
+
+function buildSettingsExportPayload(aiSettings) {
+    const local = {};
+    SETTINGS_EXPORT_LOCAL_KEYS.forEach(function (k) {
+        const v = localStorage.getItem(k);
+        if (v != null) local[k] = v;
+    });
+    return {
+        format: 'md_viewer_settings',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        aiSettings: aiSettings || {},
+        localStorage: local
+    };
+}
+
+function downloadTextFile(filename, text, mimeType) {
+    const blob = new Blob([text], { type: mimeType || 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+async function exportSettingsMset() {
+    try {
+        await persistAiSettingsFromModal();
+        const aiSettings = await getAiSettings();
+        const payload = buildSettingsExportPayload(aiSettings);
+        const text = JSON.stringify(payload, null, 2);
+        const date = new Date().toISOString().slice(0, 10);
+        downloadTextFile('mdviewer_settings_' + date + '.mset', text, 'application/json;charset=utf-8');
+        showToast('?섍꼍?ㅼ젙??.mset ?뚯씪濡??대낫?덉뒿?덈떎.');
+    } catch (e) {
+        console.error('Failed to export settings:', e);
+        showToast('?섍꼍?ㅼ젙 ?대낫?닿린???ㅽ뙣?덉뒿?덈떎.');
+    }
+}
+
+function triggerImportSettingsMset() {
+    const input = document.getElementById('settings-import-file');
+    if (!input) return;
+    input.value = '';
+    input.click();
+}
+
+async function applyImportedSettingsPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid settings payload');
+    }
+    const aiSettings = (payload.aiSettings && typeof payload.aiSettings === 'object') ? payload.aiSettings : {};
+    const local = (payload.localStorage && typeof payload.localStorage === 'object') ? payload.localStorage : {};
+
+    await setAiSettings(aiSettings);
+
+    SETTINGS_EXPORT_LOCAL_KEYS.forEach(function (k) {
+        if (Object.prototype.hasOwnProperty.call(local, k)) {
+            const v = local[k];
+            if (v == null) localStorage.removeItem(k);
+            else localStorage.setItem(k, String(v));
+        }
+    });
+
+    if (typeof loadAiSettingsToUI === 'function') await loadAiSettingsToUI();
+    if (typeof initAiVisibility === 'function') await initAiVisibility();
+    if (typeof applyCodeColorSettings === 'function') applyCodeColorSettings();
+    if (typeof applyTheme === 'function') applyTheme();
+}
+
+async function importSettingsMsetFile(event) {
+    const input = event && event.target ? event.target : null;
+    const file = input && input.files && input.files[0] ? input.files[0] : null;
+    if (!file) return;
+    try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        await applyImportedSettingsPayload(payload);
+        showToast('?섍꼍?ㅼ젙??遺덈윭?붿뒿?덈떎.');
+    } catch (e) {
+        console.error('Failed to import settings:', e);
+        showToast('?ㅼ젙 ?뚯씪 遺덈윭?ㅺ린???ㅽ뙣?덉뒿?덈떎.');
+    } finally {
+        if (input) input.value = '';
     }
 }
 
@@ -8294,7 +8604,10 @@ function openSettingsModal() {
     ensureInDbStatusUi();
     document.getElementById('settings-modal').classList.remove('hidden');
     bindSettingsModalDrag();
+    bindSettingsModalResize();
     applySettingsModalCompactUI();
+    applySettingsModalFullscreenUI();
+    updateSettingsModalResponsiveLayout();
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -8311,11 +8624,14 @@ function openSettingsModal() {
         }).catch(function () {});
     }
 }
-
 function applySettingsModalCompactUI() {
     const panel = document.getElementById('settings-modal-panel');
     const btn = document.getElementById('settings-modal-drag-handle');
     if (!panel) return;
+    if (settingsModalFullscreen) {
+        if (btn) btn.textContent = '\uCD95\uC18C';
+        return;
+    }
     if (settingsModalCompact) {
         panel.style.position = 'fixed';
         panel.style.left = 'auto';
@@ -8323,23 +8639,88 @@ function applySettingsModalCompactUI() {
         panel.style.right = '12px';
         panel.style.margin = '0';
         panel.style.width = '360px';
+        panel.style.height = '';
         panel.style.maxWidth = '92vw';
         panel.style.maxHeight = '68vh';
-        if (btn) btn.textContent = '복원';
+        if (btn) btn.textContent = '\uBCF5\uC6D0';
     } else {
+        panel.style.position = '';
+        panel.style.left = '';
+        panel.style.top = '';
         panel.style.right = '';
+        panel.style.margin = '';
         panel.style.width = '';
+        panel.style.height = '';
         panel.style.maxWidth = '';
         panel.style.maxHeight = '90vh';
-        if (btn) btn.textContent = '축소';
+        if (btn) btn.textContent = '\uCD95\uC18C';
     }
 }
-
 function toggleSettingsModalCompact() {
+    if (settingsModalFullscreen) return;
     settingsModalCompact = !settingsModalCompact;
     applySettingsModalCompactUI();
+    updateSettingsModalResponsiveLayout();
 }
-
+function applySettingsModalFullscreenUI() {
+    const panel = document.getElementById('settings-modal-panel');
+    const btn = document.getElementById('settings-modal-fullscreen-btn');
+    const compactBtn = document.getElementById('settings-modal-drag-handle');
+    if (!panel) return;
+    panel.classList.toggle('settings-modal-fullscreen', settingsModalFullscreen);
+    if (settingsModalFullscreen) {
+        if (compactBtn) compactBtn.disabled = true;
+        if (btn) {
+            btn.textContent = '\uCD95\uC18C';
+            btn.title = '\uC804\uCCB4\uD654\uBA74 \uC885\uB8CC';
+        }
+    } else {
+        if (compactBtn) compactBtn.disabled = false;
+        if (btn) {
+            btn.textContent = '\uC804\uCCB4\uD654\uBA74';
+            btn.title = '\uC804\uCCB4\uD654\uBA74 \uC804\uD658';
+        }
+    }
+}
+function toggleSettingsModalFullscreen() {
+    const panel = document.getElementById('settings-modal-panel');
+    if (!panel) return;
+    if (!settingsModalFullscreen) {
+        settingsModalRestoreRect = {
+            left: panel.style.left,
+            top: panel.style.top,
+            right: panel.style.right,
+            width: panel.style.width,
+            height: panel.style.height,
+            maxWidth: panel.style.maxWidth,
+            maxHeight: panel.style.maxHeight,
+            position: panel.style.position,
+            margin: panel.style.margin,
+            compact: settingsModalCompact
+        };
+        settingsModalCompact = false;
+        settingsModalFullscreen = true;
+    } else {
+        settingsModalFullscreen = false;
+        if (settingsModalRestoreRect) {
+            const prev = settingsModalRestoreRect;
+            panel.style.position = prev.position || '';
+            panel.style.left = prev.left || '';
+            panel.style.top = prev.top || '';
+            panel.style.right = prev.right || '';
+            panel.style.width = prev.width || '';
+            panel.style.height = prev.height || '';
+            panel.style.maxWidth = prev.maxWidth || '';
+            panel.style.maxHeight = prev.maxHeight || '90vh';
+            panel.style.margin = prev.margin || '';
+            settingsModalCompact = !!prev.compact;
+        }
+        settingsModalRestoreRect = null;
+    }
+    applySettingsModalCompactUI();
+    applySettingsModalFullscreenUI();
+    updateSettingsModalResponsiveLayout();
+}
 function bindSettingsModalDrag() {
     if (settingsModalDragBound) return;
     settingsModalDragBound = true;
@@ -8350,6 +8731,7 @@ function bindSettingsModalDrag() {
     header.addEventListener('mousedown', function (e) {
         const target = e.target;
         if (e.button !== 0) return;
+        if (settingsModalFullscreen) return;
         if (target && target.closest && target.closest('button,input,textarea,select,a,label')) return;
         const rect = panel.getBoundingClientRect();
         settingsModalDragging = true;
@@ -8379,6 +8761,57 @@ function bindSettingsModalDrag() {
     });
 }
 
+function updateSettingsModalResponsiveLayout() {
+    const panel = document.getElementById('settings-modal-panel');
+    if (!panel) return;
+    const isWide = settingsModalFullscreen || panel.clientWidth >= 840;
+    panel.classList.toggle('settings-modal-wide', isWide);
+}
+
+function bindSettingsModalResize() {
+    if (settingsModalResizeBound) return;
+    settingsModalResizeBound = true;
+    const panel = document.getElementById('settings-modal-panel');
+    const handle = document.getElementById('settings-modal-resize-handle');
+    if (!panel || !handle) return;
+
+    handle.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        if (settingsModalFullscreen) return;
+        const rect = panel.getBoundingClientRect();
+        settingsModalResizing = true;
+        settingsModalResizeStartX = e.clientX;
+        settingsModalResizeStartY = e.clientY;
+        settingsModalResizeStartW = rect.width;
+        settingsModalResizeStartH = rect.height;
+        panel.style.right = 'auto';
+        panel.style.maxWidth = '96vw';
+        panel.style.maxHeight = '92vh';
+        e.preventDefault();
+        e.stopPropagation();
+    });
+
+    document.addEventListener('mousemove', function (e) {
+        if (!settingsModalResizing) return;
+        const panelEl = document.getElementById('settings-modal-panel');
+        if (!panelEl) return;
+        const rect = panelEl.getBoundingClientRect();
+        const minW = 360;
+        const minH = 420;
+        const maxW = Math.max(minW, window.innerWidth - rect.left - 8);
+        const maxH = Math.max(minH, window.innerHeight - rect.top - 8);
+        const nextW = Math.max(minW, Math.min(maxW, settingsModalResizeStartW + (e.clientX - settingsModalResizeStartX)));
+        const nextH = Math.max(minH, Math.min(maxH, settingsModalResizeStartH + (e.clientY - settingsModalResizeStartY)));
+        panelEl.style.width = Math.round(nextW) + 'px';
+        panelEl.style.height = Math.round(nextH) + 'px';
+        updateSettingsModalResponsiveLayout();
+    });
+
+    document.addEventListener('mouseup', function () {
+        settingsModalResizing = false;
+    });
+}
+
 function ensureInDbStatusUi() {
     const settingsModal = document.getElementById('settings-modal');
     if (settingsModal) {
@@ -8390,7 +8823,7 @@ function ensureInDbStatusUi() {
                 row.className = 'flex items-center justify-start mb-2';
                 row.innerHTML = ''
                     + '<button type="button" id="btn-open-indb-status" onclick="openInDbStatusModal()"'
-                    + ' class="px-3 py-1.5 border-2 border-slate-700 rounded-lg text-sm font-medium text-slate-800 bg-white hover:bg-slate-50">inDB보기</button>';
+                    + ' class="px-3 py-1.5 border-2 border-slate-700 rounded-lg text-sm font-medium text-slate-800 bg-white hover:bg-slate-50">inDB蹂닿린</button>';
                 closeRow.parentElement.insertBefore(row, closeRow);
                 openBtn = row.querySelector('#btn-open-indb-status');
             }
@@ -8407,8 +8840,8 @@ function ensureInDbStatusUi() {
             + '<div class="px-4 py-2 bg-indigo-600 text-white text-2xl text-center tracking-wide">inDB Status</div>'
             + '<div id="indb-status-list" class="flex-1 overflow-auto p-4 space-y-3 bg-slate-100 dark:bg-slate-800"></div>'
             + '<div class="border-t-2 border-slate-700 p-2 flex items-center justify-center gap-2 bg-white dark:bg-slate-900">'
-            + '<button type="button" onclick="deleteAllInDbStatusItems()" class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">전체지우기</button>'
-            + '<button type="button" onclick="closeInDbStatusModal()" class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">닫기</button>'
+            + '<button type="button" onclick="deleteAllInDbStatusItems()" class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">?꾩껜吏?곌린</button>'
+            + '<button type="button" onclick="closeInDbStatusModal()" class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">?リ린</button>'
             + '</div>'
             + '</div>';
         document.body.appendChild(modal);
@@ -8665,10 +9098,14 @@ window.applyAiFeatureVisibility = applyAiFeatureVisibility;
 window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
 window.toggleSettingsShortcutsFold = toggleSettingsShortcutsFold;
 window.toggleSettingsModalCompact = toggleSettingsModalCompact;
+window.toggleSettingsModalFullscreen = toggleSettingsModalFullscreen;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;
 window.closeSettingsModal = closeSettingsModal;
+window.exportSettingsMset = exportSettingsMset;
+window.triggerImportSettingsMset = triggerImportSettingsMset;
+window.importSettingsMsetFile = importSettingsMsetFile;
 window.openInDbStatusModal = openInDbStatusModal;
 window.closeInDbStatusModal = closeInDbStatusModal;
 window.deleteInDbStatusItem = deleteInDbStatusItem;
@@ -9136,4 +9573,6 @@ window.findPrev = findPrev;
 window.replaceCurrent = replaceCurrent;
 window.replaceAll = replaceAll;
 window.swapFindReplaceValues = swapFindReplaceValues;
+
+
 

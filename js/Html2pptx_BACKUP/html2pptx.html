@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GenSlide Redirect</title>
+  <meta http-equiv="refresh" content="0; url=./jenaEditor/index.html">
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      font-family: "Segoe UI", sans-serif;
+      background: #f4f7ff;
+      color: #1f2a44;
+      display: grid;
+      place-items: center;
+    }
+    .card {
+      border: 1px solid #d7deef;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(13, 32, 73, 0.1);
+      padding: 16px 18px;
+      font-size: 13px;
+    }
+    a { color: #2f66d2; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    Redirecting to jenaEditor...<br>
+    If not redirected, open <a href="./jenaEditor/index.html">jenaEditor</a>.
+  </div>
+  <script>
+    try {
+      window.location.replace("./jenaEditor/index.html");
+    } catch (_) {
+      // no-op
+    }
+  </script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-
+﻿
 function pickControl(id, action) {
   if (id) {
     const byId = document.getElementById(id);
@@ -15,11 +15,53 @@ function bindClick(id, action, handler) {
   if (el) el.onclick = handler;
 }
 
+function setWorkViewMode(mode) {
+  const root = document.getElementById("workSplitRoot");
+  if (!root) return;
+  const normalized = mode === "code-only" || mode === "editor-only" ? mode : "both";
+  root.classList.remove("view-code-only", "view-editor-only");
+  if (normalized === "code-only") root.classList.add("view-code-only");
+  if (normalized === "editor-only") root.classList.add("view-editor-only");
+
+  const btnBoth = document.getElementById("btnViewBoth");
+  const btnCode = document.getElementById("btnViewCodeOnly");
+  const btnEditor = document.getElementById("btnViewEditorOnly");
+  if (btnBoth) btnBoth.classList.toggle("active", normalized === "both");
+  if (btnCode) btnCode.classList.toggle("active", normalized === "code-only");
+  if (btnEditor) btnEditor.classList.toggle("active", normalized === "editor-only");
+
+  try { applyZoom(); } catch (_) {}
+}
+
 bindClick("btnAdd", null, openAddModal);
 bindClick("btnResetSlides", null, resetSlidesWorkspace);
 document.getElementById("btnGallery").onclick = openGalleryWindow;
+bindClick("btnViewBoth", null, () => setWorkViewMode("both"));
+bindClick("btnViewCodeOnly", null, () => setWorkViewMode("code-only"));
+bindClick("btnViewEditorOnly", null, () => setWorkViewMode("editor-only"));
 document.getElementById("btnSlideShow").onclick = () => { openSlideShowWindow().catch(() => {}); };
 document.getElementById("btnSlideSettings").onclick = openSlideSettingsModal;
+const btnSlideSettingsBottom = document.getElementById("btnSlideSettingsBottom");
+if (btnSlideSettingsBottom) btnSlideSettingsBottom.onclick = openSlideSettingsModal;
+const btnSaveChangesBottom = document.getElementById("btnSaveChangesBottom");
+if (btnSaveChangesBottom) btnSaveChangesBottom.onclick = () => {
+  let saved = false;
+  try {
+    if (typeof getWysHtml === "function" && typeof applyWysObjectChange === "function") {
+      const html = getWysHtml();
+      applyWysObjectChange(html, true);
+      saved = true;
+    }
+  } catch (_) {}
+  if (!saved) {
+    try { if (typeof saveCurrent === "function") saveCurrent(); } catch (_) {}
+  }
+  const prev = btnSaveChangesBottom.textContent;
+  btnSaveChangesBottom.textContent = "저장됨";
+  setTimeout(() => {
+    btnSaveChangesBottom.textContent = prev || "변경사항 저장";
+  }, 900);
+};
 document.getElementById("btnThemeMode").onclick = toggleAppThemeMode;
 document.getElementById("btnInDbSave").onclick = async () => {
   const suggested = makeInDbRecordName();
@@ -58,8 +100,35 @@ if (els.slides) {
 }
 document.getElementById("btnSave").onclick = saveCurrent;
 document.getElementById("btnRevert").onclick = revertCurrent;
-document.getElementById("btnZoomIn").onclick = () => { zoom = clamp(zoom + 0.1, 0.2, 2); applyZoom(); };
-document.getElementById("btnZoomOut").onclick = () => { zoom = clamp(zoom - 0.1, 0.2, 2); applyZoom(); };
+document.getElementById("btnZoomIn").onclick = () => { zoom = clamp(zoom + 0.1, 0.2, 3); applyZoom(); };
+document.getElementById("btnZoomOut").onclick = () => { zoom = clamp(zoom - 0.1, 0.2, 3); applyZoom(); };
+
+function bindCtrlWheelZoom() {
+  const onWheelZoom = (e) => {
+    if (!e || (!e.ctrlKey && !e.metaKey)) return;
+    e.preventDefault();
+    const dy = Number(e.deltaY) || 0;
+    if (dy === 0) return;
+    const step = dy < 0 ? 0.05 : -0.05;
+    zoom = clamp(zoom + step, 0.2, 3);
+    applyZoom();
+  };
+
+  const area = document.querySelector(".editor-canvas-area");
+  if (area && area.dataset.ctrlWheelZoomBound !== "1") {
+    area.dataset.ctrlWheelZoomBound = "1";
+    area.addEventListener("wheel", onWheelZoom, { passive: false });
+  }
+
+  window.addEventListener("jena-wys-loaded", (ev) => {
+    const d = ev && ev.detail ? ev.detail.doc : null;
+    if (!d || d.__jenaCtrlWheelZoomBound) return;
+    d.__jenaCtrlWheelZoomBound = true;
+    d.addEventListener("wheel", onWheelZoom, { passive: false });
+  });
+}
+bindCtrlWheelZoom();
+
 bindClick("btnWrap", "code-wrap", toggleCodeWrapMode);
 bindClick("btnCodeTheme", "code-theme", toggleCodeThemeMode);
 bindClick("btnCodeFontInc", "code-font-inc", () => setCodeFontSize(codeFontSize + 1));
@@ -75,6 +144,26 @@ document.getElementById("btnExport").onclick = exportMpp;
 document.getElementById("btnImport").onclick = () => els.fileInput.click();
 document.getElementById("btnImageExport").onclick = () => { exportImage().catch(() => {}); };
 document.getElementById("btnPptxExport").onclick = () => { exportPptx().catch(() => {}); };
+const btnScholarAI = document.getElementById("btnScholarAI");
+if (btnScholarAI) {
+  btnScholarAI.onclick = () => {
+    try {
+      if (window.parent && window.parent.LiveAI && typeof window.parent.LiveAI.openScholarAI === "function") {
+        window.parent.LiveAI.openScholarAI();
+        return;
+      }
+      if (window.parent && typeof window.parent.toggleScholarAI === "function") {
+        window.parent.toggleScholarAI();
+        return;
+      }
+    } catch (_) {}
+    try {
+      if (window.parent && window.parent.postMessage) {
+        window.parent.postMessage({ type: "mdv-genslide-open-scholar" }, "*");
+      }
+    } catch (_) {}
+  };
+}
 document.getElementById("btnCloseAdd").onclick = closeAddModal;
 document.getElementById("btnCancelAdd").onclick = closeAddModal;
 document.getElementById("btnConfirmAdd").onclick = confirmAddModal;
@@ -84,8 +173,38 @@ document.getElementById("btnInDbDelete").onclick = () => { deleteSelectedInDb().
 document.getElementById("btnSlideSettingsClose").onclick = closeSlideSettingsModal;
 document.getElementById("btnSlideSettingsCancel").onclick = closeSlideSettingsModal;
 document.getElementById("btnSlideSettingsApply").onclick = applySlideSizeSettings;
+const btnSlideSettingsResetDefault = document.getElementById("btnSlideSettingsResetDefault");
+if (btnSlideSettingsResetDefault) btnSlideSettingsResetDefault.onclick = () => {
+  if (els.slideSizeWidth) els.slideSizeWidth.value = "1280";
+  if (els.slideSizeHeight) els.slideSizeHeight.value = "720";
+  applySlideSizeSettings();
+};
 if (els.slideSizePreset) {
   els.slideSizePreset.addEventListener("change", applySlideSizePreset);
+}
+if (els.slideSizeAspectLock) {
+  els.slideSizeAspectLock.addEventListener("change", () => {
+    if (typeof setSlideAspectLockEnabled === "function") {
+      setSlideAspectLockEnabled(!!els.slideSizeAspectLock.checked);
+    }
+  });
+}
+if (els.slideSizeWidth) {
+  els.slideSizeWidth.addEventListener("input", () => {
+    if (typeof syncSlideAspectByWidthInput === "function") syncSlideAspectByWidthInput();
+  });
+}
+if (els.slideSizeHeight) {
+  els.slideSizeHeight.addEventListener("input", () => {
+    if (typeof syncSlideAspectByHeightInput === "function") syncSlideAspectByHeightInput();
+  });
+}
+if (els.chkAutoListConvert) {
+  els.chkAutoListConvert.addEventListener("change", () => {
+    if (typeof setAutoListConvertEnabled === "function") {
+      setAutoListConvertEnabled(!!els.chkAutoListConvert.checked, true);
+    }
+  });
 }
 const btnAbsCoordInfo = document.getElementById("btnAbsCoordInfo");
 if (btnAbsCoordInfo) btnAbsCoordInfo.onclick = () => openAbsCoordInfoModal();
@@ -149,11 +268,47 @@ function syncEditorByCodeCaret(shouldScroll) {
   syncWysSelectionFromCode(s, picked, !!shouldScroll);
 }
 
+let __lastPostedScholarSelection = null;
+function postScholarSelectionFromHtmlCode(forceOpen) {
+  try {
+    if (!els || !els.code) return;
+    const s = Number(els.code.selectionStart) || 0;
+    const e = Number(els.code.selectionEnd) || s;
+    const picked = e > s ? String(els.code.value || "").slice(s, e) : "";
+    if (!forceOpen && picked === __lastPostedScholarSelection) return;
+    __lastPostedScholarSelection = picked;
+
+    let handled = false;
+    try {
+      if (window.parent && window.parent.LiveAI && typeof window.parent.LiveAI.openScholarAI === "function") {
+        if (forceOpen) window.parent.LiveAI.openScholarAI();
+      }
+      if (window.parent && typeof window.parent.LiveAISetSelectedText === "function") {
+        window.parent.LiveAISetSelectedText(picked, { source: "genslide", forceOpen: !!forceOpen });
+        handled = true;
+      }
+    } catch (_) {}
+    if (!handled) {
+      if (window.parent && window.parent.postMessage) {
+        window.parent.postMessage({
+          type: "mdv-genslide-selection-changed",
+          text: picked,
+          forceOpen: !!forceOpen
+        }, "*");
+      }
+    }
+  } catch (_) {}
+}
+
 els.code.addEventListener("mouseup", () => syncEditorByCodeCaret(true));
+els.code.addEventListener("select", () => postScholarSelectionFromHtmlCode(false));
+els.code.addEventListener("mouseup", () => postScholarSelectionFromHtmlCode(false));
 els.code.addEventListener("keyup", (e) => {
   const nav = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
   if (nav.has(String(e.key || "")) || e.key === "Enter") syncEditorByCodeCaret(false);
+  postScholarSelectionFromHtmlCode(false);
 });
+els.code.addEventListener("focus", () => postScholarSelectionFromHtmlCode(false));
 
 els.code.addEventListener("keydown", (e) => {
   const mod = e.ctrlKey || e.metaKey;
@@ -362,14 +517,73 @@ const btnImgSrcUrl = document.getElementById("btnImgSrcUrl");
 if (btnImgSrcUrl) btnImgSrcUrl.onclick = () => setImgSource("url");
 const btnImgSrcDb = document.getElementById("btnImgSrcDb");
 if (btnImgSrcDb) btnImgSrcDb.onclick = () => setImgSource("db");
+const btnDeleteInsertImage = document.getElementById("btnDeleteInsertImage");
+if (btnDeleteInsertImage) btnDeleteInsertImage.onclick = async () => {
+  try {
+    await deleteSelectedInsertImageFromDb();
+  } catch (_) {}
+};
 if (els.insertImgDbSelect) {
   els.insertImgDbSelect.addEventListener("change", () => {
     if (typeof syncInsertImgGallerySelection === "function") syncInsertImgGallerySelection();
   });
 }
+if (els.insertImgUrl) {
+  els.insertImgUrl.addEventListener("input", () => {
+    if (typeof syncInsertPreviewBySource === "function") syncInsertPreviewBySource();
+  });
+}
+const insertPreviewImg = document.getElementById("insertImgPreview");
+if (insertPreviewImg) {
+  insertPreviewImg.addEventListener("click", () => {
+    if (typeof openInsertImageZoom === "function") openInsertImageZoom(insertPreviewImg.src || "");
+  });
+}
+const btnInsertImgZoomClose = document.getElementById("btnInsertImgZoomClose");
+if (btnInsertImgZoomClose) btnInsertImgZoomClose.onclick = () => {
+  if (typeof closeInsertImageZoom === "function") closeInsertImageZoom();
+};
+const insertImgZoomOverlay = document.getElementById("insertImgZoomOverlay");
+if (insertImgZoomOverlay) {
+  insertImgZoomOverlay.addEventListener("click", (e) => {
+    if (e.target === insertImgZoomOverlay && typeof closeInsertImageZoom === "function") closeInsertImageZoom();
+  });
+}
 const btnImgUpload = document.getElementById("btnImgUpload");
 if (btnImgUpload) btnImgUpload.onclick = () => {
   if (els.insertImgFile) els.insertImgFile.click();
+};
+const btnSaveImgbbApiKey = document.getElementById("btnSaveImgbbApiKey");
+if (btnSaveImgbbApiKey) btnSaveImgbbApiKey.onclick = () => {
+  const key = String(els.insertImgbbApiKey && els.insertImgbbApiKey.value ? els.insertImgbbApiKey.value : "").trim();
+  try {
+    if (key) localStorage.setItem("ss_imgbb_api_key", key);
+    else localStorage.removeItem("ss_imgbb_api_key");
+  } catch (_) {}
+  if (typeof syncInsertImgbbKeyUi === "function") syncInsertImgbbKeyUi();
+};
+const btnUploadImgbbFromInsert = document.getElementById("btnUploadImgbbFromInsert");
+let insertLatestImageFileForImgbb = null;
+if (btnUploadImgbbFromInsert) btnUploadImgbbFromInsert.onclick = async () => {
+  if (!insertLatestImageFileForImgbb) {
+    if (typeof setInsertImgbbStatus === "function") {
+      setInsertImgbbStatus("먼저 이미지 업로드 또는 붙여넣기로 이미지를 준비하세요.", true);
+    }
+    return;
+  }
+  btnUploadImgbbFromInsert.disabled = true;
+  const prevText = btnUploadImgbbFromInsert.textContent;
+  btnUploadImgbbFromInsert.textContent = "Uploading...";
+  try {
+    await uploadInsertImageToImgbbByFile(insertLatestImageFileForImgbb);
+  } catch (err) {
+    if (typeof setInsertImgbbStatus === "function") {
+      setInsertImgbbStatus(`업로드 실패: ${err && err.message ? err.message : String(err || "error")}`, true);
+    }
+  } finally {
+    btnUploadImgbbFromInsert.disabled = false;
+    btnUploadImgbbFromInsert.textContent = prevText || "imageBB 업로드";
+  }
 };
 const btnInsertApply = document.getElementById("btnInsertApply");
 if (btnInsertApply) btnInsertApply.onclick = applyInsertModal;
@@ -432,8 +646,13 @@ if (els.insertImgFile) {
   els.insertImgFile.addEventListener("change", async (e) => {
     const f = e.target.files && e.target.files[0];
     if (!f) return;
+    insertLatestImageFileForImgbb = f;
     try {
       await ingestImageFileToInsertDb(f);
+      if (typeof syncInsertPreviewBySource === "function") syncInsertPreviewBySource();
+      if (typeof setInsertImgbbStatus === "function") {
+        setInsertImgbbStatus("이미지 준비 완료. imageBB 업로드 버튼을 눌러 주소를 생성하세요.", false);
+      }
     } catch (_) {
     } finally {
       e.target.value = "";
@@ -455,7 +674,12 @@ if (els.insertImgPasteZone) {
     const dt = e.dataTransfer;
     const file = dt && dt.files && dt.files[0];
     if (!file || !String(file.type || "").startsWith("image/")) return;
+    insertLatestImageFileForImgbb = file;
     try { await ingestImageFileToInsertDb(file); } catch (_) {}
+    if (typeof syncInsertPreviewBySource === "function") syncInsertPreviewBySource();
+    if (typeof setInsertImgbbStatus === "function") {
+      setInsertImgbbStatus("이미지 준비 완료. imageBB 업로드 버튼을 눌러 주소를 생성하세요.", false);
+    }
   });
 }
 
@@ -468,7 +692,12 @@ document.addEventListener("paste", async (e) => {
     const file = it.getAsFile ? it.getAsFile() : null;
     if (!file) continue;
     e.preventDefault();
+    insertLatestImageFileForImgbb = file;
     try { await ingestImageFileToInsertDb(file); } catch (_) {}
+    if (typeof syncInsertPreviewBySource === "function") syncInsertPreviewBySource();
+    if (typeof setInsertImgbbStatus === "function") {
+      setInsertImgbbStatus("이미지 준비 완료. imageBB 업로드 버튼을 눌러 주소를 생성하세요.", false);
+    }
     break;
   }
 });
@@ -476,6 +705,16 @@ document.addEventListener("paste", async (e) => {
 document.addEventListener("keydown", (e) => {
   if (!e.altKey) return;
   const k = String(e.key || "").toLowerCase();
+  if (k === "5") {
+    e.preventDefault();
+    execCmd("insertUnorderedList");
+    return;
+  }
+  if (k === "6") {
+    e.preventDefault();
+    execCmd("insertOrderedList");
+    return;
+  }
   if (k === "4") {
     e.preventDefault();
     toggleAppThemeMode();
@@ -581,6 +820,13 @@ function bindPanelSplitter() {
       rafId = 0;
     }
     if (moved) stabilizeAfterPanelResize();
+  });
+}
+if (els.insertImgbbApiKey) {
+  els.insertImgbbApiKey.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (btnSaveImgbbApiKey) btnSaveImgbbApiKey.click();
   });
 }
 
@@ -707,12 +953,12 @@ document.addEventListener("keydown", (e) => {
   }
   const mod = e.ctrlKey || e.metaKey;
   if (!mod) return;
-  if (e.key === "ArrowRight") {
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") {
     e.preventDefault();
     if (cur < slides.length - 1) { cur++; loadCurrent(); }
     return;
   }
-  if (e.key === "ArrowLeft") {
+  if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
     e.preventDefault();
     if (cur > 0) { cur--; loadCurrent(); }
     return;
@@ -731,21 +977,159 @@ document.addEventListener("keydown", (e) => {
   if (k === "u") { e.preventDefault(); execCmd("underline"); }
 });
 
+function scholarSplitSlidesFromHtml(rawText) {
+  const src = String(rawText || "").trim();
+  if (!src) return [];
+  try {
+    let normalized = src;
+    if (/&lt;\/?(html|body|div|section)\b/i.test(normalized) && !/<\/?(html|body|div|section)\b/i.test(normalized)) {
+      const ta = document.createElement("textarea");
+      ta.innerHTML = normalized;
+      normalized = String(ta.value || normalized);
+    }
+    if (!/^\s*<!DOCTYPE/i.test(normalized) && !/^\s*<html[\s>]/i.test(normalized)) {
+      normalized = `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>${normalized}</body></html>`;
+    }
+    const doc = new DOMParser().parseFromString(normalized, "text/html");
+    if (!doc || !doc.body) return [normalized];
+    const nodes = doc.querySelectorAll(".slide-container, .slide");
+    if (!nodes || nodes.length < 2) {
+      // Fallback: split by repeated slide-container/slide open tags in raw html.
+      const bodyHtml = String(doc.body.innerHTML || "");
+      const re = /<div\b[^>]*class\s*=\s*["'][^"']*\b(?:slide-container|slide)\b[^"']*["'][^>]*>/ig;
+      const starts = [];
+      let m = null;
+      while ((m = re.exec(bodyHtml)) !== null) starts.push(m.index);
+      if (starts.length >= 2) {
+        const headHtml0 = doc.head && doc.head.innerHTML ? String(doc.head.innerHTML) : '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+        const lang0 = (doc.documentElement && doc.documentElement.getAttribute("lang")) || "ko";
+        const out0 = [];
+        for (let i = 0; i < starts.length; i++) {
+          const s = starts[i];
+          const e = (i + 1 < starts.length) ? starts[i + 1] : bodyHtml.length;
+          const chunk = String(bodyHtml.slice(s, e) || "").trim();
+          if (!chunk) continue;
+          out0.push(`<!DOCTYPE html><html lang="${lang0}"><head>${headHtml0}</head><body>${chunk}</body></html>`);
+        }
+        return out0.length ? out0 : [normalized];
+      }
+      return [normalized];
+    }
+    const headHtml = doc.head && doc.head.innerHTML ? String(doc.head.innerHTML) : '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">';
+    const lang = (doc.documentElement && doc.documentElement.getAttribute("lang")) || "ko";
+    const out = [];
+    nodes.forEach((node) => {
+      const outer = String(node.outerHTML || "").trim();
+      if (!outer) return;
+      out.push(`<!DOCTYPE html><html lang="${lang}"><head>${headHtml}</head><body>${outer}</body></html>`);
+    });
+    return out.length ? out : [normalized];
+  } catch (_) {
+    return [src];
+  }
+}
+
+function scholarInsertSingleIntoCode(text, strategy) {
+  const ta = (els && els.code) ? els.code : document.getElementById("code");
+  if (!ta) return false;
+  const raw = String(ta.value || "");
+  let s = Number.isFinite(Number(ta.selectionStart)) ? Number(ta.selectionStart) : 0;
+  let e = Number.isFinite(Number(ta.selectionEnd)) ? Number(ta.selectionEnd) : s;
+  s = clamp(s, 0, raw.length);
+  e = clamp(e, 0, raw.length);
+  const hasSelection = e > s;
+  const normalizedStrategy = String(strategy || "").toLowerCase();
+  const replaceAll = normalizedStrategy === "replace-all" || (normalizedStrategy === "selection-or-all" && !hasSelection);
+  const next = replaceAll ? String(text || "") : (raw.slice(0, s) + String(text || "") + raw.slice(e));
+  ta.value = next;
+  const caret = replaceAll ? String(next).length : (s + String(text || "").length);
+  try { ta.focus(); } catch (_) {}
+  try { ta.setSelectionRange(caret, caret); } catch (_) {}
+  try {
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.dispatchEvent(new Event("change", { bubbles: true }));
+  } catch (_) {}
+  try { if (typeof saveCurrent === "function") saveCurrent(); } catch (_) {}
+  return true;
+}
+
+function scholarInsertMultiSlides(text) {
+  const parts = scholarSplitSlidesFromHtml(text);
+  if (!parts.length) return false;
+  const first = String(parts[0] || "");
+  const ta = (els && els.code) ? els.code : document.getElementById("code");
+  if (!ta) return false;
+  ta.value = first;
+  try {
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.dispatchEvent(new Event("change", { bubbles: true }));
+  } catch (_) {}
+  try { if (typeof saveCurrent === "function") saveCurrent(); } catch (_) {}
+
+  for (let i = 1; i < parts.length; i++) {
+    const html = String(parts[i] || "");
+    let done = false;
+    try {
+      const btnAdd = document.getElementById("btnAdd");
+      const addPaste = document.getElementById("addPaste");
+      const btnConfirmAdd = document.getElementById("btnConfirmAdd");
+      if (btnAdd && addPaste && btnConfirmAdd) {
+        btnAdd.click();
+        addPaste.value = html;
+        addPaste.dispatchEvent(new Event("input", { bubbles: true }));
+        btnConfirmAdd.click();
+        done = true;
+      }
+    } catch (_) {}
+    if (!done) {
+      try { if (typeof addSlide === "function") addSlide(); } catch (_) {}
+      const code2 = (els && els.code) ? els.code : document.getElementById("code");
+      if (!code2) continue;
+      code2.value = html;
+      try {
+        code2.dispatchEvent(new Event("input", { bubbles: true }));
+        code2.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch (_) {}
+      try { if (typeof saveCurrent === "function") saveCurrent(); } catch (_) {}
+    }
+  }
+  return true;
+}
+
+window.addEventListener("message", (e) => {
+  const d = e && e.data ? e.data : null;
+  if (!d || d.type !== "mdv-scholar-genslide-insert") return;
+  const mode = String(d.mode || "single");
+  const text = String(d.text || "");
+  const strategy = String(d.strategy || "");
+  let ok = false;
+  if (mode === "multi") ok = scholarInsertMultiSlides(text);
+  else ok = scholarInsertSingleIntoCode(text, strategy);
+  try {
+    if (e.source && typeof e.source.postMessage === "function") {
+      e.source.postMessage({ type: "mdv-scholar-genslide-insert-result", ok, mode }, "*");
+    }
+  } catch (_) {}
+});
+
 async function initApp() {
   initLinkModalWindowControls();
   initImageModalWindowControls();
   setObjectEditMode(false);
   setCodeFontSize(codeFontSize);
-  setAppThemeMode(false);
+  setAppThemeMode(true);
   // initial: code theme follows app theme
   codeThemeFollowApp = true;
   setCodeThemeMode(appDarkMode, true);
   refreshSlideSizeUi();
   setCodeWrapMode(false);
   if (typeof initAbsCoordButtonSetting === "function") initAbsCoordButtonSetting();
+  if (typeof initAutoListConvertSetting === "function") initAutoListConvertSetting();
   bindPanelSplitter();
+  setWorkViewMode("both");
   initSlideResizeHandle();
   loadCurrent();
   if (typeof initObjLayerPanel === "function") initObjLayerPanel();
   refreshTextBoxSelectionTools();
 }
+

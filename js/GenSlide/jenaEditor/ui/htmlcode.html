@@ -1,0 +1,37 @@
+<section class="panel" id="codePanel">
+  <div class="panel-head">HTML Code</div>
+  <div class="tools">
+    <button class="btn tiny" data-tag="b">b</button>
+    <button class="btn tiny" data-tag="i">i</button>
+    <button class="btn tiny" data-tag="u">u</button>
+    <button class="btn tiny" data-tag="h1">h1</button>
+    <button class="btn tiny" data-tag="p">p</button>
+    <button class="btn tiny" data-tag="br" title="Insert &lt;br&gt; at cursor">Enter</button>
+    <button class="btn tiny" id="btnFindReplace">Find</button>
+    <button class="btn tiny" id="btnCodeFontDec">Zoom-</button>
+    <div class="code-font-view" id="codeFontView">12px</div>
+    <button class="btn tiny" id="btnCodeFontInc">Zoom+</button>
+    <button class="btn tiny" id="btnCodeTheme">Code: Light</button>
+    <button class="btn tiny" id="btnWrap">Wrap: Off</button>
+    <button class="btn tiny" id="btnFormat">TidyFormat</button>
+  </div>
+  <div class="findbar hidden" id="find-replace-bar">
+    <input id="find-input" class="find-input" type="text" placeholder="Find">
+    <input id="replace-input" class="find-input" type="text" placeholder="Replace">
+    <button class="btn tiny" id="btnFindPrev">Prev</button>
+    <button class="btn tiny" id="btnFindNext">Next</button>
+    <button class="btn tiny" id="btnReplaceOne">Replace</button>
+    <button class="btn tiny" id="btnReplaceAll">All</button>
+    <button class="btn tiny" id="btnFindClose">Close</button>
+  </div>
+  <div class="code-wrap" id="codeWrap">
+    <div id="codeMarker"></div>
+    <pre id="codeLines" aria-hidden="true">1</pre>
+    <pre id="codeView" aria-hidden="true"></pre>
+    <textarea id="code" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off" wrap="off"></textarea>
+  </div>
+  <div class="foot">
+    <button class="btn" id="btnRevert">Revert</button>
+    <button class="btn primary" id="btnSave">Save Apply</button>
+  </div>
+</section>

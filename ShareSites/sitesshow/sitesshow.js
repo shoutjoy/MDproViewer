@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
     let sitesPanelOpen = false;
     let sitesList = [];
@@ -22,6 +22,8 @@
         { name: 'LPA(Latent Profile Analysis)', url: 'https://parkjoonghee.shinyapps.io/LPA_plot/' },
         { name: 'WebR', url: 'https://webr.r-wasm.org/latest/' },
         { name: 'Posit R', url: 'https://posit.cloud/content/' },
+        { name: 'NotebookLM', url: 'https://notebooklm.google.com/' },
+        { name: 'rHWP', url: 'https://edwardkim.github.io/rhwp/' },
         { name: 'GeoGebra Calculator', url: 'https://www.geogebra.org/calculator' },
         { name: 'Napkin', url: 'https://app.napkin.ai/' },
         { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
@@ -47,6 +49,15 @@
             if (settingsHtml) {
                 settingsSlot.innerHTML = settingsHtml;
                 injected = true;
+            } else {
+                // Fallback for environments where fragment fetch can fail.
+                settingsSlot.innerHTML = [
+                    '<label class="flex items-center gap-2 cursor-pointer select-none">',
+                    '  <input type="checkbox" id="sites-visible" onclick="setTimeout(toggleSitesSection,0)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">',
+                    '  <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Sites 보이기</span>',
+                    '</label>'
+                ].join('');
+                injected = true;
             }
         }
 
@@ -55,6 +66,34 @@
             const panelHtml = await loadHtmlFragment('./ShareSites/sitesshow/sitesshow-panel.html');
             if (panelHtml) {
                 panelSlot.innerHTML = panelHtml;
+                injected = true;
+            } else {
+                panelSlot.innerHTML = [
+                    '<div id="sites-panel" class="fixed bottom-3 right-3 hidden flex-col z-50 no-print w-[min(520px,94vw)] rounded-lg border border-slate-300 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 shadow-2xl backdrop-blur-sm">',
+                    '  <div id="sites-panel-header" class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 cursor-move select-none">',
+                    '    <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">Sites</h3>',
+                    '    <div class="flex items-center gap-1">',
+                    '      <button type="button" onclick="toggleSitesSettingsPanel()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">설정</button>',
+                    '      <button type="button" id="sites-panel-compact-btn" onclick="toggleSitesCompactMode()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">>></button>',
+                    '      <button type="button" onclick="closeSitesPanel()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">닫기</button>',
+                    '    </div>',
+                    '  </div>',
+                    '  <div class="p-3">',
+                    '    <div id="sites-add-row" class="flex items-center gap-2 flex-wrap">',
+                    '      <input type="text" id="sites-add-name-input" placeholder="보이기" class="flex-1 min-w-[120px] px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-200">',
+                    '      <input type="url" id="sites-add-url-input" placeholder="주소 (https://example.com)" class="flex-[2] min-w-[180px] px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-xs text-slate-700 dark:text-slate-200">',
+                    '      <button type="button" id="sites-add-submit-btn" onclick="addSiteFromInput()" class="px-2.5 py-1.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-xs">+URL</button>',
+                    '      <button type="button" id="sites-edit-cancel-btn" onclick="cancelEditSite()" class="hidden px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs">취소</button>',
+                    '    </div>',
+                    '    <div id="sites-list" class="space-y-1.5 max-h-52 overflow-auto pr-1 mt-2"></div>',
+                    '    <div id="sites-settings-wrap" class="hidden border-t border-slate-200 dark:border-slate-700 pt-2 mt-2">',
+                    '      <div class="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mb-1">Manage sites in settings</div>',
+                    '      <div id="sites-list-settings" class="space-y-1.5 max-h-40 overflow-auto pr-1"></div>',
+                    '    </div>',
+                    '  </div>',
+                    '  <div id="sites-panel-resizer" title="Resize" class="absolute bottom-0 right-0 w-3 h-3 cursor-se-resize"></div>',
+                    '</div>'
+                ].join('');
                 injected = true;
             }
         }
@@ -126,6 +165,16 @@
             return u === 'https://app.napkin.ai' || u === 'http://app.napkin.ai';
         });
         if (!hasNapkin) base.push({ name: 'Napkin', url: 'https://app.napkin.ai/' });
+        const hasNotebookLm = base.some(function (item) {
+            const u = normalizeUrl(item && item.url ? item.url : '');
+            return u === 'https://notebooklm.google.com' || u === 'http://notebooklm.google.com';
+        });
+        if (!hasNotebookLm) base.push({ name: 'NotebookLM', url: 'https://notebooklm.google.com/' });
+        const hasRhwp = base.some(function (item) {
+            const u = normalizeUrl(item && item.url ? item.url : '');
+            return u === 'https://edwardkim.github.io/rhwp' || u === 'http://edwardkim.github.io/rhwp';
+        });
+        if (!hasRhwp) base.push({ name: 'rHWP', url: 'https://edwardkim.github.io/rhwp/' });
         return base;
     }
 
@@ -505,3 +554,4 @@ window.ensureSitesShowUiReady = ensureSitesShowUiReady;
 ensureSitesShowUiReady();
 document.addEventListener('DOMContentLoaded', ensureSitesShowUiReady);
 window.addEventListener('load', ensureSitesShowUiReady);
+

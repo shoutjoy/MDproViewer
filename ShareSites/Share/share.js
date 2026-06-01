@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
     'use strict';
 
     const SHARE_DESTINATIONS = [
@@ -111,6 +111,62 @@
         }
     }
 
+    function injectShareSettingsFallback(settingsSlot) {
+        if (!settingsSlot) return;
+        settingsSlot.innerHTML = ''
+            + '<div class="flex items-center justify-between gap-2">'
+            + '  <label class="flex items-center gap-2 cursor-pointer select-none">'
+            + '    <input type="checkbox" id="todocs-visible" onclick="setTimeout(toggleToDocsSection,0)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">'
+            + '    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Share 보이기</span>'
+            + '  </label>'
+            + '  <button type="button" id="share-settings-fold-btn" onclick="toggleShareSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" title="Share 설정 접기/펼치기">접기</button>'
+            + '</div>'
+            + '<div id="share-destinations-settings" class="pl-6 pt-1 space-y-2">'
+            + '  <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">Share Destinations</p>'
+            + '  <div id="share-destinations-settings-body" class="space-y-2"></div>'
+            + '</div>';
+
+        const body = settingsSlot.querySelector('#share-destinations-settings-body');
+        if (!body) return;
+        SHARE_DESTINATIONS.forEach(function (item) {
+            const label = document.createElement('label');
+            label.className = 'flex items-center gap-2 cursor-pointer select-none';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.id = item.checkboxId;
+            input.setAttribute('onclick', 'setTimeout(toggleShareSiteSelection,0)');
+            input.className = 'rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500';
+            const text = document.createElement('span');
+            text.className = 'text-sm font-medium text-slate-700 dark:text-slate-300';
+            text.textContent = item.label;
+            label.appendChild(input);
+            label.appendChild(text);
+            body.appendChild(label);
+        });
+
+        const naverWrap = document.createElement('div');
+        naverWrap.className = 'pl-6 space-y-2';
+        naverWrap.innerHTML = ''
+            + '<div class="flex items-center gap-2">'
+            + '  <input type="text" id="share-naverblog-id" placeholder="네이버 블로그 ID" class="flex-1 min-w-[140px] px-2.5 py-1.5 border rounded-md text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
+            + '  <button type="button" onclick="saveNaverBlogIdFromSettings()" class="px-2.5 py-1.5 rounded-md text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700">저장</button>'
+            + '</div>'
+            + '<p class="text-[11px] text-slate-500 dark:text-slate-400">Share에서 NaverBlog를 누를 때 사용할 ID입니다. 비어 있으면 실행 시 입력받습니다.</p>';
+        body.appendChild(naverWrap);
+
+        const addWrap = document.createElement('div');
+        addWrap.className = 'pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2';
+        addWrap.innerHTML = ''
+            + '<p class="text-xs font-semibold text-slate-600 dark:text-slate-400">+Add</p>'
+            + '<div class="flex items-center gap-2">'
+            + '  <input type="text" id="share-custom-name" placeholder="이름 (예: research)" class="flex-1 min-w-[100px] px-2.5 py-1.5 border rounded-md text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
+            + '  <input type="text" id="share-custom-url" placeholder="주소 (예: https://example.com)" class="flex-[1.4] min-w-[140px] px-2.5 py-1.5 border rounded-md text-xs bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
+            + '  <button type="button" onclick="addShareDestinationFromSettings()" class="px-2.5 py-1.5 rounded-md text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700">+Add</button>'
+            + '</div>'
+            + '<div id="share-custom-destinations-list" class="space-y-1"></div>';
+        body.appendChild(addWrap);
+    }
+
     async function injectShareUiFragments() {
         let injected = false;
 
@@ -128,6 +184,9 @@
             const settingsHtml = await loadHtmlFragment('./ShareSites/Share/share-settings.html');
             if (settingsHtml) {
                 settingsSlot.innerHTML = settingsHtml;
+                injected = true;
+            } else {
+                injectShareSettingsFallback(settingsSlot);
                 injected = true;
             }
         }
@@ -480,15 +539,15 @@
             if (typeof window.copyViewFormattedToClipboard === 'function') {
                 copied = await window.copyViewFormattedToClipboard();
             }
-            if (!copied && typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다. 사이트는 계속 엽니다.');
+            if (!copied && typeof showToast === 'function') showToast('서식 복사에 실패했습니다. 사이트 열기는 계속합니다.');
             const win = window.open(destination.url, '_blank', 'noopener,noreferrer');
-            if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
+            if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
             if (win) closeShareLinksModal();
         } catch (err) {
             const msg = err && err.message ? err.message : 'Share 실행 중 오류';
-            if (typeof showToast === 'function') showToast(msg + ' (사이트 열기는 계속 시도합니다.)');
+            if (typeof showToast === 'function') showToast(msg + ' (사이트 열기는 계속 시도합니다)');
             const win = window.open(destination.url, '_blank', 'noopener,noreferrer');
-            if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해주세요.');
+            if (!win && typeof showToast === 'function') showToast('팝업이 차단되었습니다. 팝업 허용 후 다시 시도해 주세요.');
             if (win) closeShareLinksModal();
         } finally {
             setToDocsButtonBusy(false);
@@ -519,11 +578,11 @@
                     textTransform: function (_, __, transformedHtml) {
                         return createPlainTextFromHtml(transformedHtml);
                     },
-                    successMessage: 'NaverBlog용 서식을 클립보드에 복사했습니다.'
+                    successMessage: 'NaverBlog용 서식이 클립보드에 복사되었습니다.'
                 })
                 : true;
             if (!copied && typeof showToast === 'function') {
-                showToast('클립보드 복사에 실패했습니다. 그래도 글쓰기는 엽니다.');
+                showToast('클립보드 복사에 실패했습니다. 글쓰기는 계속합니다.');
             }
             const win = window.open(buildNaverBlogWriteUrl(blogId), '_blank', 'noopener,noreferrer');
             if (!win && typeof showToast === 'function') {
@@ -569,13 +628,13 @@
         const rawName = String(nameInput && nameInput.value ? nameInput.value : '').trim();
         const rawUrl = String(urlInput && urlInput.value ? urlInput.value : '').trim();
         if (!rawUrl) {
-            if (typeof showToast === 'function') showToast('주소를 입력해주세요.');
+            if (typeof showToast === 'function') showToast('주소를 입력해 주세요.');
             return;
         }
         let normalizedUrl = rawUrl;
         if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = 'https://' + normalizedUrl;
         try { normalizedUrl = new URL(normalizedUrl).href; } catch (_) {
-            if (typeof showToast === 'function') showToast('유효한 주소를 입력해주세요.');
+            if (typeof showToast === 'function') showToast('유효한 주소를 입력해 주세요.');
             return;
         }
 
@@ -644,9 +703,9 @@
             if (typeof window.copyViewFormattedToClipboard === 'function') {
                 copied = await window.copyViewFormattedToClipboard();
             }
-            if (!copied && typeof showToast === 'function') showToast('Copy Styled 복사에 실패했습니다. Share 메뉴는 계속 엽니다.');
+            if (!copied && typeof showToast === 'function') showToast('서식 복사에 실패했습니다. Share 메뉴는 계속 엽니다.');
         } catch (err) {
-            if (typeof showToast === 'function') showToast((err && err.message ? err.message : 'Copy Styled 실행 중 오류') + ' (Share 메뉴는 계속 엽니다.)');
+            if (typeof showToast === 'function') showToast((err && err.message ? err.message : '서식 복사 실행 중 오류') + ' (Share 메뉴는 계속 엽니다)');
         } finally {
             setToDocsButtonBusy(false);
         }
@@ -731,3 +790,5 @@
         injectShareUiFragments();
     }
 })();
+
+

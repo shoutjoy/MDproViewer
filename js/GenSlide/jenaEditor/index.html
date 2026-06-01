@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JenaEditor - Fast WYSIWYG</title>
+<link rel="stylesheet" href="./styles.css?v=20260527-restore-1">
+</head>
+<body>
+<div id="appRoot"></div>
+
+<div class="overlay" id="addOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title">Add Slide</div>
+      <button class="btn tiny" id="btnCloseAdd">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Paste HTML here. Existing text will be replaced with the pasted HTML content.</div>
+      <textarea id="addPaste" placeholder="Paste HTML code here..."></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnCancelAdd">Cancel</button>
+      <button class="btn primary" id="btnConfirmAdd">Add Slide</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="insertOverlay">
+  <div class="modal image-modal" id="insertModalWindow">
+    <div class="modal-head image-modal-head" id="insertModalHead">
+      <div class="modal-title image-modal-title" id="insertModalTitle">Insert IMAGE</div>
+      <button class="btn tiny image-close-btn" id="btnInsertClose">Close</button>
+    </div>
+    <div class="modal-body image-modal-body">
+      <div id="insertLinkPane" class="hidden"></div>
+      <div class="image-grid">
+        <div id="insertImgPane">
+          <div class="img-subtitle">Insert Image</div>
+          <div class="modal-hint">IMAGE DESCRIPTION</div>
+          <input id="insertImgAlt" class="find-input image-input" type="text" placeholder="">
+          <div class="modal-hint" style="margin-top:8px;">URL 주소</div>
+          <input id="insertImgUrl" class="find-input image-input" type="text" placeholder="https://">
+          <div class="modal-hint" style="margin-top:8px;">Image Link (optional)</div>
+          <input id="insertImgLinkUrl" class="find-input image-input" type="text" placeholder="https://">
+          <div class="insert-img-preview-wrap">
+            <div class="insert-img-preview-head">Preview</div>
+            <div id="insertImgPreviewBox" class="insert-img-preview-box">
+              <img id="insertImgPreview" alt="Image preview" class="hidden">
+              <div id="insertImgPreviewEmpty" class="insert-img-preview-empty">이미지 URL 입력 또는 업로드/붙여넣기 후 선택하세요.</div>
+            </div>
+          </div>
+        </div>
+        <div class="img-side">
+          <div class="img-drop-wrap">
+            <button class="img-drop-card" id="btnImgUpload" type="button">
+              <strong>이미지 업로드</strong>
+              <span>JPG, PNG, GIF, WebP</span>
+              <span>드래그 앤 드롭</span>
+            </button>
+            <div class="img-drop-card paste" id="insertImgPasteZone">
+              <strong>붙여넣기</strong>
+              <span>Ctrl+V 로 이미지 삽입</span>
+            </div>
+          </div>
+          <div class="imgbb-settings-row">
+            <input id="insertImgbbApiKey" class="find-input image-input" type="password" placeholder="imgBB API key">
+            <button class="btn tiny" id="btnSaveImgbbApiKey" type="button">Save Key</button>
+            <button class="btn tiny" id="btnUploadImgbbFromInsert" type="button">imageBB 업로드</button>
+          </div>
+          <div class="imgbb-api-link-row">
+            <a href="https://api.imgbb.com/" target="_blank" rel="noopener noreferrer">api키얻기(https://api.imgbb.com/)</a>
+          </div>
+          <div id="insertImgbbStatus" class="insert-imgbb-status">imgBB API key를 입력하면 magBB 업로드를 사용할 수 있습니다.</div>
+          <div class="modal-hint">Source</div>
+          <div class="tools image-source-tools" style="padding:0;border:none;">
+            <button class="btn tiny" id="btnImgSrcUrl">URL</button>
+            <button class="btn tiny" id="btnImgSrcDb">Image Storage</button>
+            <button class="btn tiny" id="btnDeleteInsertImage" type="button">선택 이미지 삭제</button>
+          </div>
+          <select id="insertImgDbSelect" class="find-input hidden" style="width:100%;"></select>
+          <div id="insertImgGallery" class="insert-img-gallery hidden"></div>
+          <input id="insertImgFile" type="file" accept="image/*" class="hidden" style="display:none;">
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot image-foot">
+      <button class="btn" id="btnInsertCancel">Cancel</button>
+      <button class="btn primary" id="btnInsertApply">Insert</button>
+    </div>
+    <div class="image-resize-handle" id="insertResizeHandle" aria-hidden="true"></div>
+  </div>
+</div>
+
+<div class="overlay insert-preview-overlay" id="insertImgZoomOverlay">
+  <div class="insert-preview-modal">
+    <div class="insert-preview-head">
+      <div class="insert-preview-title">Image Preview</div>
+      <button class="btn tiny" id="btnInsertImgZoomClose">Close</button>
+    </div>
+    <div class="insert-preview-body">
+      <img id="insertImgZoomImage" alt="Zoom preview">
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="linkOverlay">
+  <div class="modal link-modal" id="linkModal">
+    <div class="modal-head" id="linkModalHead">
+      <div class="modal-title link-title">Insert Link</div>
+    </div>
+    <div class="modal-body">
+      <div class="link-label">DISPLAY TEXT</div>
+      <input id="linkDisplayText" class="link-input" type="text" placeholder="">
+      <div class="link-label">URL 주소</div>
+      <input id="linkUrlText" class="link-input" type="text" placeholder="https://">
+    </div>
+    <div class="modal-foot link-foot">
+      <button class="btn link-btn-cancel" id="btnLinkCancel">취소</button>
+      <button class="btn primary link-btn-insert" id="btnLinkInsert">삽입하기</button>
+    </div>
+    <div class="link-resize-handle" id="linkResizeHandle" aria-hidden="true"></div>
+  </div>
+</div>
+
+<div class="overlay" id="styleOverlay">
+  <div class="modal style-modal">
+    <div class="modal-head">
+      <div class="modal-title">Style Settings (Alt+L)</div>
+      <button class="btn tiny" id="btnStyleClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="style-row">
+        <label class="style-label" for="styleFontSize">Font Size</label>
+        <button class="btn tiny" id="btnStyleSizeDown">-</button>
+        <select id="styleFontSize" class="find-input">
+          <option value="12">12px</option>
+          <option value="14">14px</option>
+          <option value="16" selected>16px</option>
+          <option value="18">18px</option>
+          <option value="20">20px</option>
+          <option value="24">24px</option>
+          <option value="28">28px</option>
+          <option value="32">32px</option>
+          <option value="32">36px</option>
+          <option value="40">40px</option>
+          <option value="40">48px</option>
+        </select>
+        <button class="btn tiny" id="btnStyleSizeUp">+</button>
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleTextColor">Text Color</label>
+        <input id="styleTextColor" type="color" value="#1a2233" class="style-color">
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleBgColor">Highlight</label>
+        <input id="styleBgColor" type="color" value="#fff59d" class="style-color">
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleBoldMode">Bold</label>
+        <select id="styleBoldMode" class="find-input">
+          <option value="keep">No change</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="styleItalicMode">Italic</label>
+        <select id="styleItalicMode" class="find-input">
+          <option value="keep">No change</option>
+          <option value="on">On</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnStyleCancel">Cancel</button>
+      <button class="btn primary" id="btnStyleApply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="inDbOverlay">
+  <div class="modal" style="width:min(700px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">inDB Open</div>
+      <button class="btn tiny" id="btnInDbClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Select a saved set to load or delete.</div>
+      <div id="inDbList" class="indb-list"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnInDbDelete">Delete</button>
+      <button class="btn primary" id="btnInDbLoad">Load</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="slideSettingsOverlay">
+  <div class="modal" style="width:min(520px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">Slide Size Settings</div>
+      <button class="btn tiny" id="btnSlideSettingsClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="slideSizeCurrent">Current: 1280 x 720</div>
+      <div class="style-row">
+        <label class="style-label" for="slideSizePreset">Preset</label>
+        <select id="slideSizePreset" class="find-input" style="width:220px;">
+          <option value="current" selected>Current Size</option>
+          <option value="default">Default (1280 x 720)</option>
+          <option value="custom">Custom Input</option>
+          <option value="3:4">3:4</option>
+          <option value="4:3">4:3</option>
+          <option value="16:9">16:9</option>
+          <option value="9:16">9:16</option>
+          <option value="a4">A4</option>
+        </select>
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="slideSizeWidth">Width</label>
+        <input id="slideSizeWidth" class="find-input" type="number" min="320" max="4000" step="1" value="1280">
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="slideSizeHeight">Height</label>
+        <input id="slideSizeHeight" class="find-input" type="number" min="240" max="4000" step="1" value="720">
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="slideSizeAspectLock">Aspect Lock</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+          <input id="slideSizeAspectLock" type="checkbox" checked>
+          <span style="font-size:12px;color:#607092;">Width/Height 비율 유지</span>
+        </label>
+      </div>
+      <div class="style-row">
+        <label class="style-label" for="chkShowAbsCoordBtn">Absolute Coord</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;">
+          <input id="chkShowAbsCoordBtn" type="checkbox">
+          <span style="font-size:12px;color:#607092;">Show coordinate button</span>
+        </label>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnSlideSettingsResetDefault">기본크기로 복귀</button>
+      <button class="btn" id="btnSlideSettingsCancel">Cancel</button>
+      <button class="btn primary" id="btnSlideSettingsApply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="absCoordOverlay">
+  <div class="modal" style="width:min(860px,94vw);">
+    <div class="modal-head">
+      <div class="modal-title">Absolute Coordinates</div>
+      <button class="btn tiny" id="btnAbsCoordClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Current absolute position snapshot in slide space.</div>
+      <textarea id="absCoordText" style="width:100%;height:420px;resize:vertical;border:1px solid #d7deef;border-radius:8px;padding:10px;font-family:Consolas,monospace;font-size:12px;line-height:1.5;background:#fafbff;color:#1a2233;" readonly></textarea>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnAbsCoordCopy">Copy</button>
+      <button class="btn primary" id="btnAbsCoordOk">OK</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pptxModeOverlay">
+  <div class="modal" style="width:min(640px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">PPTX Export Mode</div>
+      <button class="btn tiny" id="btnPptxModeClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">PPTX export mode를 선택하세요.</div>
+      <div class="pptx-mode-list">
+        <button class="btn" id="btnPptxModeImage">1) image pptx (전체 페이지를 이미지로)</button>
+        <button class="btn" id="btnPptxModeImageText">2) imagepptx + 텍스트 (시각요소 이미지 + 텍스트 추출)</button>
+        <button class="btn" id="btnPptxModeFull">3) full 분리 (실험/보완 필요)</button>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnPptxModeCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pptxConfirmOverlay">
+  <div class="modal" style="width:min(520px,92vw);">
+    <div class="modal-head">
+      <div class="modal-title">PPTX Export</div>
+      <button class="btn tiny" id="btnPptxConfirmClose">Close</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="pptxConfirmText">pptx를 생성합니다. 진행할까요?</div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" id="btnPptxConfirmCancel">Cancel</button>
+      <button class="btn primary" id="btnPptxConfirmOk">확인</button>
+    </div>
+  </div>
+</div>
+<script src="./js/controller.js?v=20260527-restore-1" defer></script>
+</body>
+</html>

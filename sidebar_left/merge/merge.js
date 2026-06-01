@@ -13,6 +13,51 @@
   var mergePanelDragOffsetY = 0;
   var mergePanelResizeBound = false;
   var mergePanelResizing = false;
+  var mergePanelActive = null;
+
+  function getMergePanel() {
+    if (mergePanelActive && document.body.contains(mergePanelActive)) return mergePanelActive;
+    var panel = document.getElementById('merge-panel');
+    if (!panel) {
+      var modal = document.getElementById('merge-modal');
+      if (modal) panel = modal.querySelector('div');
+    }
+    if (panel) {
+      mergePanelActive = panel;
+      if (!panel.id) panel.id = 'merge-panel';
+    }
+    return panel;
+  }
+
+  function getMergeHeader(panel) {
+    if (!panel) return null;
+    var header = document.getElementById('merge-panel-header');
+    if (!header) {
+      header = panel.querySelector('h3');
+      if (header && !header.id) header.id = 'merge-panel-header';
+    }
+    return header;
+  }
+
+  function ensureMergeResizer(panel) {
+    if (!panel) return null;
+    var resizer = document.getElementById('merge-panel-resizer');
+    if (!resizer) {
+      resizer = document.createElement('div');
+      resizer.id = 'merge-panel-resizer';
+      resizer.style.position = 'absolute';
+      resizer.style.right = '0';
+      resizer.style.bottom = '0';
+      resizer.style.width = '14px';
+      resizer.style.height = '14px';
+      resizer.style.cursor = 'nwse-resize';
+      resizer.style.userSelect = 'none';
+      resizer.style.opacity = '0.8';
+      resizer.style.background = 'linear-gradient(135deg, transparent 45%, #94a3b8 46%, #94a3b8 54%, transparent 55%)';
+      panel.appendChild(resizer);
+    }
+    return resizer;
+  }
 
   function getDb() {
     try { return (typeof db !== 'undefined') ? db : null; } catch (e) { return null; }
@@ -33,8 +78,9 @@
 
   async function ensureMergeModalLoaded() {
     var existing = document.getElementById('merge-modal');
-    if (existing && existing.getAttribute('data-source') === 'sidebar-left-merge') return true;
-    if (existing) existing.remove();
+    // Prefer built-in modal already present in index.html.
+    // Do not remove it; this avoids no-op when external fragment fetch fails.
+    if (existing) return true;
     if (mergeModalReady) return mergeModalReady;
     mergeModalReady = (async function () {
       var slot = document.getElementById('merge-modal-slot');
@@ -49,6 +95,7 @@
         slot.innerHTML = await res.text();
       } catch (err) {
         console.error('Failed to load merge modal html:', err);
+        toast('Merge 창을 불러오지 못했습니다.');
         return false;
       }
       if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -110,9 +157,9 @@
 
   function bindMergePanelInteractions() {
     if (mergePanelDragBound && mergePanelResizeBound) return;
-    var panel = document.getElementById('merge-panel');
-    var header = document.getElementById('merge-panel-header');
-    var resizer = document.getElementById('merge-panel-resizer');
+    var panel = getMergePanel();
+    var header = getMergeHeader(panel);
+    var resizer = ensureMergeResizer(panel);
     if (!panel || !header || !resizer) return;
 
     if (!mergePanelDragBound) {
@@ -165,8 +212,14 @@
   }
 
   function resetMergePanelPositionIfNeeded() {
-    var panel = document.getElementById('merge-panel');
+    var panel = getMergePanel();
     if (!panel) return;
+    panel.style.position = 'fixed';
+    panel.style.maxWidth = '96vw';
+    panel.style.maxHeight = '92vh';
+    panel.style.overflow = 'hidden';
+    var header = getMergeHeader(panel);
+    if (header) header.style.cursor = 'move';
     if (!panel.style.left || !panel.style.top) {
       panel.style.left = Math.max(12, Math.round((window.innerWidth - panel.offsetWidth) / 2)) + 'px';
       panel.style.top = '80px';
