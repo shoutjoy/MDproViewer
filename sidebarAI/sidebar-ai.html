@@ -48,9 +48,15 @@
         <textarea id="scholar-ai-prompt" placeholder="Ask for a summary, explanation, comparison, outline, or question set."></textarea>
         <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="Resize prompt"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div class="scholar-ai-run-row">
         <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">Run</button>
         <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>Stop</button>
+        <div id="scholar-ai-progress-wrap" class="scholar-ai-progress-wrap" aria-live="polite">
+          <div class="scholar-ai-progress-bar">
+            <div id="scholar-ai-progress-fill" class="scholar-ai-progress-fill"></div>
+          </div>
+          <span id="scholar-ai-progress-pct" class="scholar-ai-progress-pct">0%</span>
+        </div>
       </div>
       <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
         <label>Result</label>

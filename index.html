@@ -21,8 +21,8 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css" charset="utf-8">
-    <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260603-4" charset="utf-8">
+    <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260603-2" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
@@ -147,22 +147,6 @@
                 <button type="button" id="btn-template-panel" onclick="toggleTemplatePanel()"
                     class="hidden px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600"
                     title="양식">양식</button>
-            </div>
-
-            <!-- 확대/축소·폰트 (좁은 화면에서 다음 줄로) -->
-            <div id="header-zoom-font" class="flex items-center gap-1 sm:gap-2 ml-0 sm:ml-1 md:ml-2 basis-full sm:basis-auto justify-center sm:justify-start flex-wrap sm:flex-nowrap py-1 sm:py-0 border-t border-slate-200/80 dark:border-slate-700/80 sm:border-t-0 w-full sm:w-auto">
-                <span class="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">화면</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="adjustPageScale(-0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="minus" class="w-4 h-4"></i></button>
-                    <span id="scale-display" class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">100%</span>
-                    <button onclick="adjustPageScale(0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="plus" class="w-4 h-4"></i></button>
-                </div>
-                <span class="text-[10px] sm:text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider ml-1 sm:ml-2">폰트</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="adjustFontSize(-2)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="type" class="w-4 h-4 scale-75"></i></button>
-                    <span id="font-size-display" class="text-xs font-mono w-10 text-center text-slate-600 dark:text-slate-300">16px</span>
-                    <button onclick="adjustFontSize(2)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300"><i data-lucide="type" class="w-4 h-4"></i></button>
-                </div>
             </div>
 
             <!-- AI 버튼 (인증 후 표시) -->
@@ -345,9 +329,15 @@
                     <textarea id="scholar-ai-prompt" placeholder="선택한 지문에 대한 질문이나 지시를 입력하세요."></textarea>
                     <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="드래그하여 프롬프트창 높이 조절"></div>
                   </div>
-                  <div style="display:flex;gap:8px;align-items:center">
+                  <div class="scholar-ai-run-row">
                     <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">실행</button>
                     <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>중지</button>
+                    <div id="scholar-ai-progress-wrap" class="scholar-ai-progress-wrap" aria-live="polite">
+                      <div class="scholar-ai-progress-bar">
+                        <div id="scholar-ai-progress-fill" class="scholar-ai-progress-fill"></div>
+                      </div>
+                      <span id="scholar-ai-progress-pct" class="scholar-ai-progress-pct">0%</span>
+                    </div>
                   </div>
                   <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
                     <label>결과창</label>
@@ -748,23 +738,7 @@
                         class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
                         placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
                     </div>
-                    <div id="mini-preview-panel" class="hidden absolute top-2 right-2 w-[340px] max-w-[42vw] h-[68%] min-h-[220px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md shadow-2xl overflow-hidden no-print z-20">
-                        <div id="mini-preview-header" class="flex items-center justify-between px-2 py-1 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-move">
-                            <span class="text-xs font-bold text-slate-700 dark:text-slate-200">miniPV</span>
-                            <div class="flex items-center gap-1">
-                                <button type="button" id="btn-mini-preview-zoom-out" onclick="miniPreviewAdjustZoom(-0.1)"
-                                    class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">-</button>
-                                <span id="mini-preview-zoom-label" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900">100%</span>
-                                <button type="button" id="btn-mini-preview-zoom-in" onclick="miniPreviewAdjustZoom(0.1)"
-                                    class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">+</button>
-                                <button type="button" id="btn-mini-preview-fullscreen" onclick="toggleMiniPreviewFullscreen()"
-                                    class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">전체</button>
-                                <button type="button" onclick="toggleMiniPreview()" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">닫기</button>
-                            </div>
-                        </div>
-                        <div id="mini-preview-content" class="markdown-body h-[calc(100%-34px)] overflow-auto p-3 text-[13px] leading-6 bg-white dark:bg-slate-900"></div>
-                        <div id="mini-preview-resize-handle" class="absolute right-0 bottom-0 w-3 h-3 cursor-se-resize bg-indigo-500/70 rounded-tl"></div>
-                    </div>
+                    <div id="mini-preview-host"></div>
                     <div id="editor-shift-float" class="no-print absolute left-2 bottom-2 z-30 flex items-center gap-1 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm shadow">
                         <button type="button" onclick="adjustEditorHorizontalShift(-20)"
                             class="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"
@@ -787,6 +761,20 @@
                     <span class="shrink-0 font-semibold">MDproViewer</span>
                     <span class="shrink-0 text-slate-300 dark:text-slate-600">|</span>
                     <p id="file-name-display" class="truncate min-w-0 flex-1">새 문서: 문서명이 표시됩니다.</p>
+                    <div id="footer-zoom-font" class="shrink-0 flex items-center gap-1 sm:gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
+                        <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">화면</span>
+                        <div class="flex items-center gap-0.5">
+                            <button type="button" onclick="adjustPageScale(-0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="화면 축소"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
+                            <span id="scale-display" class="text-[11px] font-mono w-9 text-center text-slate-600 dark:text-slate-300">100%</span>
+                            <button type="button" onclick="adjustPageScale(0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="화면 확대"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                        <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider ml-1">폰트</span>
+                        <div class="flex items-center gap-0.5">
+                            <button type="button" onclick="adjustFontSize(-2)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="폰트 축소"><i data-lucide="type" class="w-3.5 h-3.5 scale-75"></i></button>
+                            <span id="font-size-display" class="text-[11px] font-mono w-9 text-center text-slate-600 dark:text-slate-300">16px</span>
+                            <button type="button" onclick="adjustFontSize(2)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="폰트 확대"><i data-lucide="type" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -906,41 +894,6 @@
                     <i data-lucide="folder-open" class="w-4 h-4"></i> MVP 열기
                 </button>
                 <button onclick="closeBackupModal()" class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Merge Modal (문서 묶기) -->
-    <div id="merge-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-50 no-print">
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
-            <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0">
-                <i data-lucide="layers" class="w-5 h-5"></i> 문서 묶기
-            </h3>
-            <div class="flex gap-2 mb-3 shrink-0">
-                <input type="text" id="merge-bundle-name" placeholder="새로운 묶음 파일"
-                    class="flex-1 px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                <button type="button" onclick="bindMerge()"
-                    class="px-4 py-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-800 rounded-md text-sm font-bold border border-slate-700 dark:border-slate-300 hover:bg-slate-700 dark:hover:bg-slate-300">Bind</button>
-            </div>
-            <div class="mb-3 shrink-0 space-y-2">
-                <input type="text" id="merge-search-input" placeholder="문서 검색..."
-                    oninput="filterMergeList(this.value)"
-                    class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-                <div class="flex gap-2">
-                    <button type="button" onclick="selectAllMergeItems()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">&#xC804;&#xCCB4;&#xC120;&#xD0DD;</button>
-                    <button type="button" onclick="deselectAllMergeItems()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">&#xC804;&#xCCB4; &#xD574;&#xC81C;</button>
-                    <button type="button" id="merge-selected-only-btn" onclick="toggleSelectedOnlyMergeView()"
-                        class="flex-1 px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700">&#xC120;&#xD0DD; &#xBCF4;&#xAE30;</button>
-                </div>
-            </div>
-            <div id="merge-list" class="flex-1 overflow-y-auto space-y-2 min-h-0 custom-scrollbar">
-                <!-- 문서 목록 동적 생성 -->
-            </div>
-            <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600 shrink-0">
-                <button type="button" onclick="closeMergeModal()"
-                    class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
             </div>
         </div>
     </div>
@@ -1663,10 +1616,12 @@
     <script src="./ShareSites/sitesshow/sitesshow.js?v=20260408-3" charset="utf-8" defer></script>
     <script src="./js/export/html-export.js" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-settings.js?v=20260428-1" charset="utf-8" defer></script>
-    <script src="./js/app.js?v=20260408-9" charset="utf-8" defer></script>
+    <script src="./js/UI_PV/minipv.js?v=20260603-3" charset="utf-8" defer></script>
+    <script src="./js/app.js?v=20260603-4" charset="utf-8" defer></script>
+    <script src="./js/GithubData/github-app.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/viewmode/viewmode-edit-input.js?v=20260602-1" charset="utf-8" defer></script>
-    <script src="./js/editmode/editpv.js?v=20260415-1" charset="utf-8" defer></script>
-    <script src="./sidebar_left/merge/merge.js" charset="utf-8" defer></script>
+    <script src="./js/UI_PV/editpv.js?v=20260603-1" charset="utf-8" defer></script>
+    <script src="./js/MergeDoc/merge.js?v=20260603-3" charset="utf-8" defer></script>
     <script src="https://apis.google.com/js/api.js" defer onload="onGoogleApiJsLoaded()"></script>
     <script src="https://accounts.google.com/gsi/client" defer onload="onGoogleGisLoaded()"></script>
 </body>

@@ -75,9 +75,10 @@
         <textarea id="scholar-ai-prompt" placeholder="Ask for a summary, explanation, comparison, outline, or question set."></textarea>
         <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="Resize prompt"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div class="scholar-ai-run-row">
         <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">Run</button>
         <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>Stop</button>
+        <div id="scholar-ai-progress-wrap" class="scholar-ai-progress-wrap" aria-live="polite"><div class="scholar-ai-progress-bar"><div id="scholar-ai-progress-fill" class="scholar-ai-progress-fill"></div></div><span id="scholar-ai-progress-pct" class="scholar-ai-progress-pct">0%</span></div>
       </div>
       <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
         <label>Result</label>
@@ -295,9 +296,10 @@
         <textarea id="scholar-ai-prompt" placeholder="Ask for a summary, explanation, comparison, outline, or question set."></textarea>
         <div class="scholar-ai-prompt-resize-handle" id="scholar-ai-prompt-resize-handle" title="Resize prompt"></div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div class="scholar-ai-run-row">
         <button type="button" id="scholar-ai-run-btn" class="sa-btn" style="background:#4f8ef7;color:#fff;border:none;padding:6px 12px;border-radius:6px;cursor:pointer;font-size:12px" onclick="scholarAIRun()">Run</button>
         <button type="button" id="scholar-ai-stop-btn" class="sa-btn ghost" style="padding:6px 12px;font-size:12px" onclick="scholarAIStop()" disabled>Stop</button>
+        <div id="scholar-ai-progress-wrap" class="scholar-ai-progress-wrap" aria-live="polite"><div class="scholar-ai-progress-bar"><div id="scholar-ai-progress-fill" class="scholar-ai-progress-fill"></div></div><span id="scholar-ai-progress-pct" class="scholar-ai-progress-pct">0%</span></div>
       </div>
       <div class="scholar-ai-result-wrap" id="scholar-ai-result-wrap">
         <label>Result</label>
@@ -464,6 +466,8 @@
   var __scholarAIZoomPercent = 100, __scholarAIZoomMode = 'edit';
   window.__scholarAIZoomMode = __scholarAIZoomMode;
   var __scholarAIRunning = false;
+  var __scholarAIProgressTimer = null;
+  var __scholarAIProgressValue = 0;
   var __scholarAIHistory = [];
   var __viewerSSPSeedImage = null, __viewerSSPResultImage = null, __viewerSSPRatio = '1:1';
   var __viewerSSPImgbbUploading = false;
@@ -1413,6 +1417,43 @@
     alert('Saved ' + __scholarAIHistory.length + ' ScholarAI history item(s) as a Markdown file.');
   }
 
+  function scholarAISetProgress(value, visible) {
+    var wrap = document.getElementById('scholar-ai-progress-wrap');
+    var fill = document.getElementById('scholar-ai-progress-fill');
+    var pct = document.getElementById('scholar-ai-progress-pct');
+    var v = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    __scholarAIProgressValue = v;
+    if (wrap) {
+      wrap.classList.toggle('visible', !!visible);
+      wrap.style.display = visible ? 'flex' : 'none';
+    }
+    if (fill) fill.style.width = v + '%';
+    if (pct) pct.textContent = v + '%';
+  }
+
+  function scholarAIStartProgress() {
+    clearInterval(__scholarAIProgressTimer);
+    scholarAISetProgress(0, true);
+    __scholarAIProgressTimer = setInterval(function () {
+      var next = __scholarAIProgressValue < 55
+        ? __scholarAIProgressValue + 5
+        : (__scholarAIProgressValue < 82 ? __scholarAIProgressValue + 3 : __scholarAIProgressValue + 1);
+      scholarAISetProgress(Math.min(95, next), true);
+      if (__scholarAIProgressValue >= 95) clearInterval(__scholarAIProgressTimer);
+    }, 700);
+  }
+
+  function scholarAIStopProgress(done) {
+    clearInterval(__scholarAIProgressTimer);
+    __scholarAIProgressTimer = null;
+    if (done) {
+      scholarAISetProgress(100, true);
+      setTimeout(function () { scholarAISetProgress(0, false); }, 650);
+      return;
+    }
+    scholarAISetProgress(0, false);
+  }
+
   function scholarAISetRunningState(running) {
     __scholarAIRunning = !!running;
     var runBtn = document.getElementById('scholar-ai-run-btn');
@@ -1425,6 +1466,7 @@
       stopBtn.disabled = !__scholarAIRunning;
       stopBtn.style.opacity = __scholarAIRunning ? '1' : '0.6';
     }
+    if (__scholarAIRunning) scholarAIStartProgress();
   }
 
   function scholarAIStop() {
@@ -1439,6 +1481,7 @@
       resultEl.value = 'Stopped by user.';
     }
     if (insertEl && insertEl.value === 'Running ScholarAI...') insertEl.value = '';
+    scholarAIStopProgress(false);
     scholarAISetRunningState(false);
   }
 
@@ -1590,8 +1633,10 @@
       scholarAIApplyResultText(finalText);
       scholarAIHistoryAdd(userQ || passage.substring(0, 80), finalText);
       scholarAIHistoryRender();
+      scholarAIStopProgress(true);
     } catch (e) {
       var msg = (e && e.message) ? String(e.message) : String(e || '');
+      scholarAIStopProgress(false);
       if (resultEl) {
         if ((e && e.name === 'AbortError') || /aborted|abort/i.test(msg)) resultEl.value = 'Stopped by user.';
         else resultEl.value = 'Error: ' + msg;

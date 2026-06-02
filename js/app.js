@@ -124,18 +124,12 @@ let isSidebarCollapsed = true;
 // Theme
 const THEME_KEY = 'md_viewer_theme';
 const EDITOR_LIGHT_KEY = 'md_viewer_editor_light';
-const MINI_PREVIEW_KEY = 'md_viewer_minipv_enabled';
-const MINI_PREVIEW_LAYOUT_KEY = 'md_viewer_minipv_layout';
 
 const sidebar = document.getElementById('sidebar');
 const viewerContainer = document.getElementById('viewer-container');
 const viewer = document.getElementById('viewer');
 const editorContainer = document.getElementById('content-viewport');
 const editorTextarea = document.getElementById('viewer-edit-ta');
-const miniPreviewPanel = document.getElementById('mini-preview-panel');
-const miniPreviewContent = document.getElementById('mini-preview-content');
-const miniPreviewHeader = document.getElementById('mini-preview-header');
-const miniPreviewResizeHandle = document.getElementById('mini-preview-resize-handle');
 const fileNameDisplay = document.getElementById('file-name-display');
 const dropZone = document.getElementById('drop-zone');
 const inputModal = document.getElementById('input-modal');
@@ -163,22 +157,8 @@ const STORAGE_SOURCE_TAB_KEY = 'md_viewer_storage_source_tab';
 const GITHUB_DOC_EXT_RE = /\.(md|markdown|txt)$/i;
 let folderCollapseState = {};
 let currentStorageSourceTab = 'indb';
-let miniPreviewEnabled = false;
 let editorHorizontalShiftPx = 0;
 let editorShiftResizeBound = false;
-let miniPreviewDragBound = false;
-let miniPreviewDragging = false;
-let miniPreviewResizing = false;
-let miniPreviewFullscreen = false;
-let miniPreviewZoom = 1;
-let miniPreviewDragOffsetX = 0;
-let miniPreviewDragOffsetY = 0;
-let miniPreviewStartX = 0;
-let miniPreviewStartY = 0;
-let miniPreviewStartW = 0;
-let miniPreviewStartH = 0;
-let miniPreviewLayoutBeforeFullscreen = null;
-let miniPreviewRenderToken = 0;
 let tableInsertPickerBuilt = false;
 let math99PopupBound = false;
 let math99PopupDragging = false;
@@ -246,150 +226,6 @@ function escapeHtmlText(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
-}
-
-function parseGithubRepoInput(repoInput) {
-    const raw = String(repoInput || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
-    const parts = raw.split('/').filter(Boolean);
-    if (parts.length < 2) return null;
-    const owner = parts[0];
-    const repo = parts[1];
-    const basePath = parts.slice(2).join('/').replace(/^\/+|\/+$/g, '');
-    return {
-        owner: owner,
-        repo: repo,
-        full: owner + '/' + repo,
-        basePath: basePath,
-        fullWithPath: basePath ? (owner + '/' + repo + '/' + basePath) : (owner + '/' + repo)
-    };
-}
-
-function getGithubConfigFromSettings(settings) {
-    const s = settings || {};
-    const parsed = parseGithubRepoInput(s.githubRepo || '');
-    const rawPullMax = Number(s.githubPullMaxFiles);
-    const pullMaxFiles = Number.isFinite(rawPullMax)
-        ? Math.max(1, Math.min(10000, Math.floor(rawPullMax)))
-        : 10000;
-    return {
-        enabled: !!s.githubEnabled,
-        token: String(s.githubToken || '').trim(),
-        branch: String(s.githubBranch || 'main').trim() || 'main',
-        repoInput: String(s.githubRepo || '').trim(),
-        repo: parsed ? parsed.full : '',
-        owner: parsed ? parsed.owner : '',
-        name: parsed ? parsed.repo : '',
-        basePath: parsed ? parsed.basePath : '',
-        repoWithPath: parsed ? parsed.fullWithPath : '',
-        pullMaxFiles: pullMaxFiles,
-        cacheDocs: Array.isArray(s.githubCacheDocs) ? s.githubCacheDocs : [],
-        lastPulledAt: s.githubLastPulledAt || ''
-    };
-}
-
-function getGithubLinkPathFromConfig(cfg) {
-    const rawInput = String(cfg && cfg.repoInput ? cfg.repoInput : '').trim();
-    const normalized = rawInput
-        .replace(/^https?:\/\/github\.com\//i, '')
-        .replace(/\.git$/i, '')
-        .replace(/^\/+|\/+$/g, '');
-    if (normalized) return normalized;
-    const fallback = String(cfg && cfg.repo ? cfg.repo : '').trim().replace(/^\/+|\/+$/g, '');
-    return fallback;
-}
-
-function setGithubFeedback(message, kind) {
-    const api = window.GithubDataSettings;
-    if (api && typeof api.setGithubFeedback === 'function') {
-        return api.setGithubFeedback(message, kind);
-    }
-}
-
-function toggleGithubSettingsSection() {
-    const checked = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
-    const folded = getGithubSettingsFoldedFromLocal();
-    const api = window.GithubDataSettings;
-    if (api && typeof api.toggleGithubSettingsSection === 'function') {
-        return api.toggleGithubSettingsSection({ checked: checked, folded: folded });
-    }
-    const body = document.getElementById('github-settings-body');
-    if (body) body.classList.toggle('hidden', !checked || folded);
-}
-
-function updateStorageSourceTabsUI() {
-    const indbBtn = document.getElementById('tab-storage-indb');
-    const ghBtn = document.getElementById('tab-storage-github');
-    if (!indbBtn || !ghBtn) return;
-    const active = 'px-2 py-1 text-xs font-semibold border border-indigo-500 rounded bg-indigo-600 text-white';
-    const inactive = 'px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200';
-    indbBtn.className = currentStorageSourceTab === 'indb' ? active : inactive;
-    ghBtn.className = currentStorageSourceTab === 'github' ? active : inactive;
-}
-
-function syncStorageSourceTabsVisibility(githubConfigured) {
-    const tabsWrap = document.getElementById('storage-source-tabs');
-    if (!tabsWrap) return;
-    const shouldShow = !!githubConfigured && !isSidebarCollapsed;
-    tabsWrap.classList.toggle('hidden', !shouldShow);
-    tabsWrap.classList.toggle('flex', shouldShow);
-}
-
-async function applyGithubUiState(settingsInput) {
-    const settings = settingsInput || await getAiSettings() || {};
-    const cfg = getGithubConfigFromSettings(settings);
-    const githubConfigured = !!(cfg.enabled && cfg.token);
-    const repoLink = document.getElementById('tab-storage-github-link');
-    const syncBtn = document.getElementById('btn-github-sync');
-    const syncLabel = document.getElementById('github-sync-label');
-
-    syncStorageSourceTabsVisibility(githubConfigured);
-    if (syncBtn) {
-        const showSync = githubConfigured;
-        syncBtn.classList.toggle('hidden', !showSync);
-        syncBtn.classList.toggle('flex', showSync);
-    }
-    if (syncLabel) {
-        const labelTarget = cfg.repoWithPath || cfg.repo;
-        syncLabel.textContent = labelTarget ? ('sync ' + labelTarget) : 'sync';
-    }
-    if (repoLink) {
-        const linkPath = getGithubLinkPathFromConfig(cfg);
-        const hasRepo = !!linkPath;
-        repoLink.classList.toggle('hidden', !(githubConfigured && hasRepo));
-        if (githubConfigured && hasRepo) {
-            const url = 'https://github.com/' + linkPath;
-            repoLink.href = url;
-            repoLink.title = 'GitHub ??μ냼 ?닿린: ' + linkPath;
-        } else {
-            repoLink.href = '#';
-            repoLink.title = 'GitHub ??μ냼 ?닿린';
-        }
-    }
-
-    if (!githubConfigured && currentStorageSourceTab === 'github') {
-        currentStorageSourceTab = 'indb';
-        setStorageSourceTabToLocal('indb');
-    }
-    updateStorageSourceTabsUI();
-    if (activeSidebarTab === 'files') renderDBList();
-}
-
-function switchStorageSourceTab(tab) {
-    const next = String(tab || '').toLowerCase() === 'github' ? 'github' : 'indb';
-    const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
-    const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
-    const githubConfigured = !!(githubEnabled && githubToken);
-    if (next === 'github' && !githubConfigured) {
-        currentStorageSourceTab = 'indb';
-        setStorageSourceTabToLocal('indb');
-        updateStorageSourceTabsUI();
-        renderDBList();
-        return;
-    }
-    currentStorageSourceTab = next;
-    setStorageSourceTabToLocal(next);
-    updateStorageSourceTabsUI();
-    renderDBList();
 }
 
 function getNameFromPath(pathValue) {
@@ -632,302 +468,6 @@ function updateEditorLightButton() {
     if (btn) btn.title = isLight ? 'Switch editor to dark mode' : 'Switch editor to light mode';
 }
 
-function getMiniPreviewEnabledFromLocal() {
-    try {
-        return localStorage.getItem(MINI_PREVIEW_KEY) === '1';
-    } catch (_) {
-        return false;
-    }
-}
-
-function setMiniPreviewEnabledToLocal(enabled) {
-    try {
-        localStorage.setItem(MINI_PREVIEW_KEY, enabled ? '1' : '0');
-    } catch (_) {}
-}
-
-function getMiniPreviewLayoutFromLocal() {
-    try {
-        const raw = localStorage.getItem(MINI_PREVIEW_LAYOUT_KEY);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed !== 'object') return null;
-        return {
-            left: Number(parsed.left),
-            top: Number(parsed.top),
-            width: Number(parsed.width),
-            height: Number(parsed.height)
-        };
-    } catch (_) {
-        return null;
-    }
-}
-
-function setMiniPreviewLayoutToLocal(layout) {
-    try {
-        localStorage.setItem(MINI_PREVIEW_LAYOUT_KEY, JSON.stringify(layout || {}));
-    } catch (_) {}
-}
-
-function getMiniPreviewContainerRect() {
-    const container = editorContainer || document.getElementById('content-viewport');
-    if (!container) return null;
-    return container.getBoundingClientRect();
-}
-
-function clampMiniPreviewLayout(layoutInput) {
-    const layout = layoutInput || {};
-    const rect = getMiniPreviewContainerRect();
-    if (!rect) return { left: 8, top: 8, width: 340, height: 380 };
-    const minW = 240;
-    const minH = 180;
-    const maxW = Math.max(minW, Math.floor(rect.width - 16));
-    const maxH = Math.max(minH, Math.floor(rect.height - 16));
-    const width = Math.max(minW, Math.min(Number(layout.width) || 340, maxW));
-    const height = Math.max(minH, Math.min(Number(layout.height) || Math.floor(rect.height * 0.68), maxH));
-    const left = Math.max(8, Math.min(Number(layout.left), Math.max(8, Math.floor(rect.width - width - 8))));
-    const top = Math.max(8, Math.min(Number(layout.top), Math.max(8, Math.floor(rect.height - height - 8))));
-    return {
-        left: Number.isFinite(left) ? left : Math.max(8, Math.floor(rect.width - width - 8)),
-        top: Number.isFinite(top) ? top : 8,
-        width: width,
-        height: height
-    };
-}
-
-function applyMiniPreviewLayout(layoutInput) {
-    if (!miniPreviewPanel) return;
-    if (miniPreviewFullscreen) {
-        const rect = getMiniPreviewContainerRect();
-        if (rect) {
-            const width = Math.max(320, Math.min(Math.floor(rect.width * 0.9), Math.floor(rect.width - 16)));
-            const height = Math.max(220, Math.min(Math.floor(rect.height * 0.94), Math.floor(rect.height - 16)));
-            const left = Math.max(8, Math.floor((rect.width - width) / 2));
-            const top = Math.max(8, Math.floor((rect.height - height) / 2));
-            miniPreviewPanel.style.left = left + 'px';
-            miniPreviewPanel.style.top = top + 'px';
-            miniPreviewPanel.style.width = width + 'px';
-            miniPreviewPanel.style.height = height + 'px';
-        } else {
-            miniPreviewPanel.style.left = '8px';
-            miniPreviewPanel.style.top = '8px';
-            miniPreviewPanel.style.width = 'calc(100% - 16px)';
-            miniPreviewPanel.style.height = 'calc(100% - 16px)';
-        }
-        miniPreviewPanel.style.right = 'auto';
-        miniPreviewPanel.style.maxWidth = 'none';
-        return;
-    }
-    const layout = clampMiniPreviewLayout(layoutInput || getMiniPreviewLayoutFromLocal() || {});
-    miniPreviewPanel.style.left = layout.left + 'px';
-    miniPreviewPanel.style.top = layout.top + 'px';
-    miniPreviewPanel.style.width = layout.width + 'px';
-    miniPreviewPanel.style.height = layout.height + 'px';
-    miniPreviewPanel.style.right = 'auto';
-    miniPreviewPanel.style.maxWidth = '';
-    setMiniPreviewLayoutToLocal(layout);
-}
-
-function updateMiniPreviewButton() {
-    const btn = document.getElementById('btn-mini-pv');
-    if (!btn) return;
-    const on = !!miniPreviewEnabled;
-    btn.classList.toggle('border-indigo-500', on);
-    btn.classList.toggle('text-indigo-600', on);
-    btn.classList.toggle('dark:text-indigo-300', on);
-}
-
-function applyMiniPreviewZoom() {
-    if (!miniPreviewContent) return;
-    const z = Math.max(0.5, Math.min(2.5, Number(miniPreviewZoom) || 1));
-    miniPreviewZoom = z;
-    miniPreviewContent.style.zoom = String(z);
-    const zoomLabel = document.getElementById('mini-preview-zoom-label');
-    if (zoomLabel) zoomLabel.textContent = Math.round(z * 100) + '%';
-}
-
-function miniPreviewAdjustZoom(delta) {
-    miniPreviewZoom = (Number(miniPreviewZoom) || 1) + Number(delta || 0);
-    applyMiniPreviewZoom();
-}
-
-function updateMiniPreviewFullscreenUi() {
-    const btn = document.getElementById('btn-mini-preview-fullscreen');
-    if (btn) btn.textContent = miniPreviewFullscreen ? '蹂듦?' : '?꾩껜';
-    if (miniPreviewResizeHandle) miniPreviewResizeHandle.style.display = miniPreviewFullscreen ? 'none' : '';
-    if (miniPreviewHeader) miniPreviewHeader.classList.toggle('cursor-move', !miniPreviewFullscreen);
-}
-
-function toggleMiniPreviewFullscreen(force) {
-    if (!miniPreviewPanel || !miniPreviewEnabled) return;
-    const next = (typeof force === 'boolean') ? !!force : !miniPreviewFullscreen;
-    if (next === miniPreviewFullscreen) return;
-    if (next) {
-        miniPreviewLayoutBeforeFullscreen = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
-        miniPreviewFullscreen = true;
-        applyMiniPreviewLayout(null);
-        updateMiniPreviewFullscreenUi();
-        return;
-    }
-    miniPreviewFullscreen = false;
-    applyMiniPreviewLayout(miniPreviewLayoutBeforeFullscreen || getMiniPreviewLayoutFromLocal() || {});
-    miniPreviewLayoutBeforeFullscreen = null;
-    updateMiniPreviewFullscreenUi();
-}
-
-function renderMiniPreviewContent() {
-    if (!miniPreviewContent) return;
-    if (!miniPreviewEnabled || !isEditMode) {
-        miniPreviewRenderToken += 1;
-        revokeObjectUrls(previewInternalImageObjectUrls);
-        miniPreviewContent.innerHTML = '';
-        return;
-    }
-    const token = ++miniPreviewRenderToken;
-    const raw = String(currentMarkdown ?? '');
-    revokeObjectUrls(previewInternalImageObjectUrls);
-    resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
-        if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
-
-        function finalizeMini(html) {
-            if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
-            miniPreviewContent.innerHTML = String(html || '');
-            applyMiniPreviewZoom();
-            try { hydrateInternalImagesInElement(miniPreviewContent, registerPreviewInternalObjectUrl); } catch (_) {}
-            try {
-                if (window.MermaidTRT && typeof window.MermaidTRT.renderIn === 'function') {
-                    window.MermaidTRT.renderIn(miniPreviewContent).catch(function () {});
-                }
-            } catch (_) {}
-        }
-
-        try {
-            const preprocessed = preprocessMarkdownForView(resolvedRaw);
-            if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
-                MathRender.renderMarkdownSafe(
-                    (typeof marked !== 'undefined' && marked.parse) ? marked : null,
-                    preprocessed,
-                    { fallbackText: resolvedRaw }
-                ).then(function (html) {
-                    finalizeMini(html || '');
-                    try { if (MathRender && typeof MathRender.typesetElement === 'function') MathRender.typesetElement(miniPreviewContent); } catch (_) {}
-                });
-                return;
-            }
-            if (typeof marked === 'undefined' || !marked.parse) {
-                finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
-                return;
-            }
-            finalizeMini(String(marked.parse(preprocessed) || ''));
-        } catch (_) {
-            finalizeMini('<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>');
-        }
-    }).catch(function () {
-        if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
-        miniPreviewContent.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-    });
-}
-
-function bindMiniPreviewInteractions() {
-    if (miniPreviewDragBound) return;
-    miniPreviewDragBound = true;
-    if (!miniPreviewPanel) return;
-
-    if (miniPreviewHeader) {
-        miniPreviewHeader.addEventListener('mousedown', function (e) {
-            if (miniPreviewFullscreen) return;
-            const target = e.target;
-            if (target && (target.closest('button') || target.closest('a') || target.closest('input'))) return;
-            const panelRect = miniPreviewPanel.getBoundingClientRect();
-            const hostRect = getMiniPreviewContainerRect();
-            if (!hostRect) return;
-            miniPreviewDragging = true;
-            miniPreviewDragOffsetX = e.clientX - panelRect.left;
-            miniPreviewDragOffsetY = e.clientY - panelRect.top;
-            e.preventDefault();
-        });
-    }
-
-    if (miniPreviewResizeHandle) {
-        miniPreviewResizeHandle.addEventListener('mousedown', function (e) {
-            if (miniPreviewFullscreen) return;
-            const layout = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
-            miniPreviewResizing = true;
-            miniPreviewStartX = e.clientX;
-            miniPreviewStartY = e.clientY;
-            miniPreviewStartW = layout.width;
-            miniPreviewStartH = layout.height;
-            e.preventDefault();
-            e.stopPropagation();
-        });
-    }
-
-    document.addEventListener('mousemove', function (e) {
-        if (!miniPreviewEnabled || !miniPreviewPanel || miniPreviewPanel.classList.contains('hidden')) return;
-        const hostRect = getMiniPreviewContainerRect();
-        if (!hostRect) return;
-
-        if (miniPreviewDragging) {
-            const cur = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
-            const next = clampMiniPreviewLayout({
-                left: e.clientX - hostRect.left - miniPreviewDragOffsetX,
-                top: e.clientY - hostRect.top - miniPreviewDragOffsetY,
-                width: cur.width,
-                height: cur.height
-            });
-            applyMiniPreviewLayout(next);
-            return;
-        }
-
-        if (miniPreviewResizing) {
-            const cur = clampMiniPreviewLayout(getMiniPreviewLayoutFromLocal() || {});
-            const next = clampMiniPreviewLayout({
-                left: cur.left,
-                top: cur.top,
-                width: miniPreviewStartW + (e.clientX - miniPreviewStartX),
-                height: miniPreviewStartH + (e.clientY - miniPreviewStartY)
-            });
-            applyMiniPreviewLayout(next);
-        }
-    });
-
-    document.addEventListener('mouseup', function () {
-        miniPreviewDragging = false;
-        miniPreviewResizing = false;
-    });
-
-    window.addEventListener('resize', function () {
-        if (miniPreviewEnabled) applyMiniPreviewLayout(miniPreviewLayoutBeforeFullscreen || getMiniPreviewLayoutFromLocal() || {});
-    });
-}
-
-function applyMiniPreviewVisibility() {
-    if (!miniPreviewPanel) return;
-    const show = !!(miniPreviewEnabled && isEditMode);
-    miniPreviewPanel.classList.toggle('hidden', !show);
-    if (show) {
-        bindMiniPreviewInteractions();
-        applyMiniPreviewLayout(miniPreviewLayoutBeforeFullscreen || getMiniPreviewLayoutFromLocal() || {});
-        updateMiniPreviewFullscreenUi();
-        applyMiniPreviewZoom();
-        renderMiniPreviewContent();
-    } else {
-        updateMiniPreviewFullscreenUi();
-        applyMiniPreviewZoom();
-    }
-    updateMiniPreviewButton();
-}
-
-function toggleMiniPreview() {
-    miniPreviewEnabled = !miniPreviewEnabled;
-    setMiniPreviewEnabledToLocal(miniPreviewEnabled);
-    applyMiniPreviewVisibility();
-    if (miniPreviewEnabled) {
-        mainRenderDirty = true;
-        renderMiniPreviewContent();
-    }
-}
-
 function relocateAiIntegrationSettingsIntoAiUse() {
     const card = document.getElementById('ai-link-settings-block');
     const slot = document.getElementById('ai-integration-settings-slot');
@@ -955,6 +495,9 @@ function initUserSettingsModule() {
 
 window.onload = async () => {
     try {
+        if (window.MiniPreviewUI && window.MiniPreviewUI.ready && typeof window.MiniPreviewUI.ready.then === 'function') {
+            await window.MiniPreviewUI.ready;
+        }
         initTheme();
         initSettings();
         miniPreviewEnabled = getMiniPreviewEnabledFromLocal();
@@ -1610,9 +1153,74 @@ function preprocessFootnotesForView(raw) {
     const footnotes = '\n\n<div class="md-footnotes">\n<hr>\n<ol>\n' + items + '\n</ol>\n</div>\n';
     return bodyText + footnotes;
 }
+
+function escapeMarkdownNumberLineHtml(value) {
+    return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function renderExplicitNumberLine(indent, marker, body) {
+    const depth = Math.max(0, Math.floor(String(indent || '').replace(/\t/g, '    ').length / 2));
+    const margin = Math.min(48, depth * 18);
+    return '<div class="md-explicit-number-line" style="margin-left:' + margin + 'px">'
+        + '<span class="md-explicit-number-marker">' + escapeMarkdownNumberLineHtml(marker) + '</span>'
+        + '<span class="md-explicit-number-text">' + escapeMarkdownNumberLineHtml(body) + '</span>'
+        + '</div>';
+}
+
+function preprocessRestartedNumberedParagraphs(raw) {
+    const lines = String(raw ?? '').split('\n');
+    const out = [];
+
+    function flush(block) {
+        if (!block || !block.length) return;
+        const numbers = block.map(function (item) { return item.num; });
+        let restarted = false;
+        for (let i = 1; i < numbers.length; i++) {
+            if (numbers[i] <= numbers[i - 1]) {
+                restarted = true;
+                break;
+            }
+        }
+        if (!restarted) {
+            block.forEach(function (item) { out.push(item.raw); });
+            return;
+        }
+        block.forEach(function (item) {
+            out.push(renderExplicitNumberLine(item.indent, item.marker, item.body));
+        });
+    }
+
+    let block = [];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const m = line.match(/^(\s*)(\d+\.)\s+(.+)$/);
+        if (!m) {
+            flush(block);
+            block = [];
+            out.push(line);
+            continue;
+        }
+        block.push({
+            raw: line,
+            indent: m[1] || '',
+            marker: m[2] || '',
+            num: parseInt(m[2], 10) || 0,
+            body: m[3] || ''
+        });
+    }
+    flush(block);
+    return out.join('\n');
+}
+
 function preprocessMarkdownForView(raw) {
     let s = String(raw ?? '');
     s = preprocessFootnotesForView(s);
+    s = preprocessRestartedNumberedParagraphs(s);
     if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForRender === 'function') {
         s = specialTRT.prepareForRender(s);
     }
@@ -3104,308 +2712,6 @@ function confirmSaveModal() {
 }
 
 
-function githubApiHeaders(token) {
-    return {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': 'token ' + String(token || '').trim(),
-        'X-GitHub-Api-Version': '2022-11-28'
-    };
-}
-
-async function githubApiRequest(url, options, token) {
-    const opts = options || {};
-    const method = opts.method || 'GET';
-    const headers = { ...(opts.headers || {}), ...githubApiHeaders(token) };
-    if (opts.body !== undefined && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
-    const res = await fetch(url, { ...opts, method, headers });
-    if (!res.ok) {
-        let msg = 'GitHub API error: ' + res.status;
-        try {
-            const j = await res.json();
-            if (j && j.message) msg = j.message;
-        } catch (_) {}
-        const err = new Error(msg);
-        err.status = res.status;
-        err.url = url;
-        throw err;
-    }
-    if (res.status === 204) return null;
-    const ct = String(res.headers.get('content-type') || '').toLowerCase();
-    if (ct.includes('application/json')) return await res.json();
-    return await res.text();
-}
-
-function decodeGithubBase64ToText(encoded) {
-    const clean = String(encoded || '').replace(/\n/g, '');
-    const bin = atob(clean);
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder().decode(bytes);
-}
-
-function encodeTextToGithubBase64(text) {
-    const bytes = new TextEncoder().encode(String(text || ''));
-    let bin = '';
-    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-    return btoa(bin);
-}
-
-function getGithubDocTitleFromPath(path) {
-    const p = String(path || '');
-    const parts = p.split('/');
-    const file = parts[parts.length - 1] || 'untitled.md';
-    return file.replace(/\.(md|markdown|txt)$/i, '');
-}
-
-async function pullGithubRepo() {
-    const api = window.GithubDataSettings;
-    if (api && typeof api.pullGithubRepo === 'function') {
-        return await api.pullGithubRepo({
-            getAiSettings: getAiSettings,
-            setAiSettings: setAiSettings,
-            getGithubConfigFromSettings: getGithubConfigFromSettings,
-            showToast: showToast,
-            renderDBList: renderDBList
-        });
-    }
-    showToast('GitHub module is not loaded.');
-}
-
-function openGithubRepoCreateModal() {
-    const api = window.GithubDataSettings;
-    if (api && typeof api.openGithubRepoCreateModal === 'function') {
-        return api.openGithubRepoCreateModal();
-    }
-}
-
-function closeGithubRepoCreateModal() {
-    const api = window.GithubDataSettings;
-    if (api && typeof api.closeGithubRepoCreateModal === 'function') {
-        return api.closeGithubRepoCreateModal();
-    }
-}
-
-async function confirmGithubRepoCreateModal() {
-    const api = window.GithubDataSettings;
-    if (api && typeof api.confirmGithubRepoCreateModal === 'function') {
-        return await api.confirmGithubRepoCreateModal({
-            setAiSettings: setAiSettings,
-            applyGithubUiState: applyGithubUiState,
-            showToast: showToast
-        });
-    }
-    showToast('GitHub module is not loaded.');
-}
-
-async function createGithubRepository(options) {
-    const api = window.GithubDataSettings;
-    if (api && typeof api.createGithubRepository === 'function') {
-        return await api.createGithubRepository(options, {
-            setAiSettings: setAiSettings,
-            applyGithubUiState: applyGithubUiState,
-            showToast: showToast
-        });
-    }
-    showToast('GitHub module is not loaded.');
-}
-
-async function saveGithubSettingsFromModal() {
-    const api = window.GithubDataSettings;
-    if (api && typeof api.saveGithubSettingsFromModal === 'function') {
-        return await api.saveGithubSettingsFromModal({
-            setAiSettings: setAiSettings,
-            applyGithubUiState: applyGithubUiState,
-            showToast: showToast
-        });
-    }
-    showToast('GitHub module is not loaded.');
-}
-async function loadFromGithubCache(path) {
-    const target = String(path || '').trim();
-    if (!target) return;
-    const canProceed = await confirmSaveBeforeOpeningAnotherFile();
-    if (!canProceed) {
-        showToast('Open canceled.');
-        return;
-    }
-    const settings = await getAiSettings() || {};
-    const docs = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs : [];
-    const doc = docs.find(function (d) { return String(d.path || '') === target; });
-    if (!doc) {
-        showToast('File not found in local GitHub cache. Pull first.');
-        return;
-    }
-    currentDbDocId = null;
-    setCurrentDocumentInfo((doc.title || 'github-doc') + '.md', doc.path || null);
-    updateContent(doc.content || '');
-    markPersistedState();
-    showToast('Loaded from GitHub cache.');
-    if (window.innerWidth < 1024 && !isSidebarHidden) toggleSidebarVisibility();
-}
-
-async function pushDocToGithub(docId) {
-    const id = String(docId || '').trim();
-    if (!id) return;
-    const settings = await getAiSettings() || {};
-    const cfg = getGithubConfigFromSettings(settings);
-    if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
-        showToast('Set GitHub token/repo/branch first.');
-        return;
-    }
-
-    const tx = db.transaction(['documents', 'folders'], 'readonly');
-    const docsStore = tx.objectStore('documents');
-    const foldersStore = tx.objectStore('folders');
-    const doc = await new Promise(function (resolve) {
-        const req = docsStore.get(id);
-        req.onsuccess = function () { resolve(req.result || null); };
-        req.onerror = function () { resolve(null); };
-    });
-    if (!doc) {
-        showToast('Document not found.');
-        return;
-    }
-
-    const folder = await new Promise(function (resolve) {
-        const req = foldersStore.get(String(doc.folderId || 'root'));
-        req.onsuccess = function () { resolve(req.result || null); };
-        req.onerror = function () { resolve(null); };
-    });
-    const folderName = folder && String(folder.id || '') !== 'root'
-        ? String(folder.name || '').trim().replace(/[\\/:*?"<>|]+/g, '_')
-        : '';
-    const docName = String(doc.title || 'untitled').trim().replace(/[\\/:*?"<>|]+/g, '_') || 'untitled';
-    const path = folderName ? (folderName + '/' + docName + '.md') : (docName + '.md');
-    const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
-    const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
-
-    try {
-        let existingSha = '';
-        try {
-            const existing = await githubApiRequest(getContentUrl, {}, cfg.token);
-            existingSha = String(existing && existing.sha ? existing.sha : '');
-        } catch (e) {
-            const status = Number(e && e.status ? e.status : 0);
-            const msg = String(e && e.message ? e.message : '').toLowerCase();
-            const notFound = status === 404 || msg.includes('404') || msg.includes('not found');
-            if (!notFound) throw e;
-        }
-
-        const body = {
-            message: 'push: ' + docName + ' (' + new Date().toISOString() + ')',
-            content: encodeTextToGithubBase64(doc.content || ''),
-            branch: cfg.branch
-        };
-        if (existingSha) body.sha = existingSha;
-
-        const putUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/');
-        const pushed = await githubApiRequest(putUrl, {
-            method: 'PUT',
-            body: JSON.stringify(body)
-        }, cfg.token);
-
-        const nextCache = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs.slice() : [];
-        const idx = nextCache.findIndex(function (d) { return String(d.path || '') === path; });
-        const entry = {
-            id: 'gh:' + path,
-            path: path,
-            remotePath: remotePath,
-            title: getGithubDocTitleFromPath(path),
-            folderPath: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : 'root',
-            content: String(doc.content || ''),
-            sha: String(pushed && pushed.content && pushed.content.sha ? pushed.content.sha : ''),
-            updatedAt: new Date().toISOString()
-        };
-        if (idx >= 0) nextCache[idx] = entry;
-        else nextCache.push(entry);
-
-        await setAiSettings({ githubCacheDocs: nextCache });
-        showToast('Pushed to GitHub: ' + remotePath);
-        if (currentStorageSourceTab === 'github') renderDBList();
-    } catch (e) {
-        showToast('GitHub push failed: ' + String(e && e.message ? e.message : e));
-    }
-}
-
-function isGithubExportEnabled() {
-    const enabledEl = document.getElementById('ai-github-enabled');
-    const tokenEl = document.getElementById('github-token-input');
-    const repoEl = document.getElementById('github-repo-input');
-    const branchEl = document.getElementById('github-branch-input');
-    const enabled = !!(enabledEl && enabledEl.checked);
-    const token = String(tokenEl && tokenEl.value ? tokenEl.value : '').trim();
-    const repo = String(repoEl && repoEl.value ? repoEl.value : '').trim();
-    const branch = String(branchEl && branchEl.value ? branchEl.value : '').trim();
-    return !!(enabled && token && repo && branch);
-}
-
-async function pushCurrentContentToGithub() {
-    const settings = await getAiSettings() || {};
-    const cfg = getGithubConfigFromSettings(settings);
-    if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
-        showToast('Set GitHub token/repo/branch first.');
-        return false;
-    }
-    if (currentDbDocId) {
-        await pushDocToGithub(currentDbDocId);
-        return true;
-    }
-
-    let fileName = String(currentFileName || 'untitled.md').trim().replace(/[/\\:*?"<>|]+/g, '_');
-    if (!fileName) fileName = 'untitled.md';
-    if (!/\.[a-z0-9]+$/i.test(fileName)) fileName += '.md';
-    const path = fileName;
-    const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
-    const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
-
-    try {
-        let existingSha = '';
-        try {
-            const existing = await githubApiRequest(getContentUrl, {}, cfg.token);
-            existingSha = String(existing && existing.sha ? existing.sha : '');
-        } catch (e) {
-            const status = Number(e && e.status ? e.status : 0);
-            const msg = String(e && e.message ? e.message : '').toLowerCase();
-            const notFound = status === 404 || msg.includes('404') || msg.includes('not found');
-            if (!notFound) throw e;
-        }
-
-        const body = {
-            message: 'export push: ' + fileName + ' (' + new Date().toISOString() + ')',
-            content: encodeTextToGithubBase64(currentMarkdown || ''),
-            branch: cfg.branch
-        };
-        if (existingSha) body.sha = existingSha;
-
-        const putUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/');
-        const pushed = await githubApiRequest(putUrl, {
-            method: 'PUT',
-            body: JSON.stringify(body)
-        }, cfg.token);
-
-        const nextCache = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs.slice() : [];
-        const idx = nextCache.findIndex(function (d) { return String(d.path || '') === path; });
-        const entry = {
-            id: 'gh:' + path,
-            path: path,
-            remotePath: remotePath,
-            title: getGithubDocTitleFromPath(path),
-            folderPath: 'root',
-            content: String(currentMarkdown || ''),
-            sha: String(pushed && pushed.content && pushed.content.sha ? pushed.content.sha : ''),
-            updatedAt: new Date().toISOString()
-        };
-        if (idx >= 0) nextCache[idx] = entry;
-        else nextCache.push(entry);
-        await setAiSettings({ githubCacheDocs: nextCache });
-        showToast('Pushed to GitHub: ' + remotePath);
-        return true;
-    } catch (e) {
-        showToast('GitHub push failed: ' + String(e && e.message ? e.message : e));
-        return false;
-    }
-}
-
 function renderInDbList(listEl, searchTerm, githubReady) {
     const txFolders = db.transaction('folders', 'readonly');
     return new Promise(function (resolve) {
@@ -3467,7 +2773,7 @@ function renderInDbList(listEl, searchTerm, githubReady) {
                         + '</span>'
                         + '</div>'
                         + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
-                        + '<button onclick="event.stopPropagation(); loadFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">?닿린</button>'
+                        + '<button onclick="event.stopPropagation(); loadFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>'
                         + '<button onclick="event.stopPropagation(); openMoveModal(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">?대룞</button>'
                         + pushBtn
                         + '<button onclick="event.stopPropagation(); deleteFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 font-bold hover:bg-red-600 hover:text-white ml-auto">X</button>'
@@ -3485,76 +2791,6 @@ function renderInDbList(listEl, searchTerm, githubReady) {
         };
         folderReq.onerror = function () { resolve(); };
     });
-}
-
-async function renderGithubCachedList(listEl, searchTerm) {
-    const settings = await getAiSettings() || {};
-    const docs = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs.slice() : [];
-    const filtered = docs.filter(function (d) {
-        const title = String(d && d.title ? d.title : '').toLowerCase();
-        const path = String(d && d.path ? d.path : '').toLowerCase();
-        return !searchTerm || title.includes(searchTerm) || path.includes(searchTerm);
-    });
-    const groups = new Map();
-    filtered.forEach(function (doc) {
-        const key = String(doc && doc.folderPath ? doc.folderPath : 'root') || 'root';
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(doc);
-    });
-    const keys = Array.from(groups.keys()).sort(function (a, b) { return a.localeCompare(b); });
-    keys.forEach(function (folderPath) {
-        const items = groups.get(folderPath) || [];
-        const folderId = 'gh-folder:' + folderPath;
-        const isCollapsedFolder = !searchTerm && isFolderCollapsed(folderId);
-
-        const folderDiv = document.createElement('div');
-        folderDiv.className = 'mb-2';
-        const folderHeader = document.createElement('div');
-        folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
-        folderHeader.innerHTML = ''
-            + '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i>'
-            + '<i data-lucide="folder-git-2" class="w-3 h-3"></i>'
-            + '<span class="sidebar-text">' + escapeHtmlText(folderPath === 'root' ? 'ROOT' : folderPath) + '</span>';
-        folderHeader.addEventListener('click', function () { toggleFolderCollapse(folderId); });
-        folderDiv.appendChild(folderHeader);
-
-        const docContainer = document.createElement('div');
-        docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'pl-2 space-y-1') + (isCollapsedFolder ? ' hidden' : '');
-        items.forEach(function (doc) {
-            const path = String(doc && doc.path ? doc.path : '');
-            const title = String(doc && doc.title ? doc.title : getGithubDocTitleFromPath(path));
-            const shortTitle = Array.from(title).slice(0, 3).join('');
-            const docItem = document.createElement('div');
-            docItem.className = isSidebarCollapsed
-                ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
-                : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
-            docItem.title = path || title;
-            docItem.onclick = function () { loadFromGithubCache(path); };
-            docItem.innerHTML = ''
-                + '<div class="flex flex-col gap-1 doc-item-inner">'
-                + '<div class="flex items-center gap-2">'
-                + '<i data-lucide="file-code-2" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>'
-                + '<span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
-                + escapeHtmlText(isSidebarCollapsed ? shortTitle : title)
-                + '</span>'
-                + '</div>'
-                + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
-                + '<button onclick="event.stopPropagation(); loadFromGithubCache(\'' + escapeHtmlText(path) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">?닿린</button>'
-                + '</div>'
-                + '</div>';
-            docContainer.appendChild(docItem);
-        });
-
-        folderDiv.appendChild(docContainer);
-        listEl.appendChild(folderDiv);
-    });
-
-    if (!keys.length) {
-        const empty = document.createElement('div');
-        empty.className = 'px-2 py-4 text-xs text-slate-500 dark:text-slate-400';
-        empty.textContent = 'GitHub 紐⑸줉??鍮꾩뼱 ?덉뒿?덈떎. sync 踰꾪듉?쇰줈 pull ?섏꽭??';
-        listEl.appendChild(empty);
-    }
 }
 
 async function renderDBList() {
@@ -4550,7 +3786,8 @@ function bindEditorListKeyBehavior() {
 function bindWheelZoomShortcuts() {
     if (window.__mdWheelZoomShortcutsBound) return;
     window.__mdWheelZoomShortcutsBound = true;
-    window.addEventListener('wheel', function (event) {
+
+    function handleWheelZoomShortcut(event) {
         if (!event) return;
         if (event.ctrlKey || event.metaKey) return;
         const dy = Number(event.deltaY || 0);
@@ -4565,7 +3802,9 @@ function bindWheelZoomShortcuts() {
             event.preventDefault();
             adjustFontSize(dy < 0 ? 1 : -1);
         }
-    }, { passive: false });
+    }
+
+    document.addEventListener('wheel', handleWheelZoomShortcut, { passive: false, capture: true });
 }
 
 function insertLiteralAtCursor(literal) {
@@ -5522,27 +4761,6 @@ function toggleShareSettingsFold() {
     const next = !getShareSettingsFoldedFromLocal();
     setShareSettingsFoldedToLocal(next);
     applyShareSettingsFold(next);
-}
-
-function getGithubSettingsFoldedFromLocal() {
-    const v = localStorage.getItem(GITHUB_SETTINGS_FOLD_KEY);
-    return v == null ? false : v === '1';
-}
-
-function setGithubSettingsFoldedToLocal(folded) {
-    localStorage.setItem(GITHUB_SETTINGS_FOLD_KEY, folded ? '1' : '0');
-}
-
-function applyGithubSettingsFold(folded) {
-    const btn = document.getElementById('github-settings-fold-btn');
-    if (btn) btn.textContent = folded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
-    toggleGithubSettingsSection();
-}
-
-function toggleGithubSettingsFold() {
-    const next = !getGithubSettingsFoldedFromLocal();
-    setGithubSettingsFoldedToLocal(next);
-    applyGithubSettingsFold(next);
 }
 
 function applyEditToolsVisibilityByMode() {
@@ -6570,7 +5788,7 @@ function applyHtml2pptPanelLayout() {
     }
 
     if (dockBtn) dockBtn.textContent = html2pptDockRight ? '<<' : '>>';
-    if (fullBtn) fullBtn.textContent = html2pptFullscreen ? '蹂듭썝' : '?꾩껜';
+    if (fullBtn) fullBtn.textContent = html2pptFullscreen ? '복원' : '전체';
 }
 
 function toggleHtml2pptDockRight() {
@@ -8179,7 +7397,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260402-2';
+    const aiSidebarScriptVersion = '20260603-1';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -8840,8 +8058,8 @@ function ensureInDbStatusUi() {
             + '<div class="px-4 py-2 bg-indigo-600 text-white text-2xl text-center tracking-wide">inDB Status</div>'
             + '<div id="indb-status-list" class="flex-1 overflow-auto p-4 space-y-3 bg-slate-100 dark:bg-slate-800"></div>'
             + '<div class="border-t-2 border-slate-700 p-2 flex items-center justify-center gap-2 bg-white dark:bg-slate-900">'
-            + '<button type="button" onclick="deleteAllInDbStatusItems()" class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">?꾩껜吏?곌린</button>'
-            + '<button type="button" onclick="closeInDbStatusModal()" class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">?リ린</button>'
+            + '<button type="button" onclick="deleteAllInDbStatusItems()" class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">전체지우기</button>'
+            + '<button type="button" onclick="closeInDbStatusModal()" class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">닫기</button>'
             + '</div>'
             + '</div>';
         document.body.appendChild(modal);
@@ -9075,7 +8293,6 @@ window.saveApiKey = saveApiKey;
 window.toggleAiPasswordSection = toggleAiPasswordSection;
 window.toggleAiUseFold = toggleAiUseFold;
 window.toggleShareSettingsFold = toggleShareSettingsFold;
-window.toggleGithubSettingsFold = toggleGithubSettingsFold;
 window.toggleMacroMenu = toggleMacroMenu;
 window.toggleMacroRecord = toggleMacroRecord;
 window.runCheckedMacroActions = runCheckedMacroActions;
@@ -9114,18 +8331,6 @@ window.applyCodeColorSettings = applyCodeColorSettings;
 window.resetCodeColorSettings = resetCodeColorSettings;
 window.clearUnusedCache = clearUnusedCache;
 window.switchSidebarTab = switchSidebarTab;
-window.switchStorageSourceTab = switchStorageSourceTab;
-window.toggleGithubSettingsSection = toggleGithubSettingsSection;
-window.openGithubRepoCreateModal = openGithubRepoCreateModal;
-window.closeGithubRepoCreateModal = closeGithubRepoCreateModal;
-window.confirmGithubRepoCreateModal = confirmGithubRepoCreateModal;
-window.saveGithubSettingsFromModal = saveGithubSettingsFromModal;
-window.createGithubRepository = createGithubRepository;
-window.pullGithubRepo = pullGithubRepo;
-window.pushDocToGithub = pushDocToGithub;
-window.pushCurrentContentToGithub = pushCurrentContentToGithub;
-window.isGithubExportEnabled = isGithubExportEnabled;
-window.loadFromGithubCache = loadFromGithubCache;
 window.renderTOC = renderTOC;
 window.scrollToLine = scrollToLine;
 window.applyHeading = applyHeading;
