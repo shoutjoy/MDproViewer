@@ -294,6 +294,16 @@
         const panel = document.getElementById('sites-panel');
         const header = document.getElementById('sites-panel-header');
         if (!panel || !header) return;
+        if (window.enableTouchModalDrag) {
+            window.enableTouchModalDrag(panel, header, {
+                canStart: function () { return !sitesPanelCompact && !sitesPanelResizing; },
+                onStart: function () {
+                    panel.style.right = 'auto';
+                    panel.style.bottom = 'auto';
+                },
+                onMove: function () { sitesPanelMoved = true; }
+            });
+        }
 
         header.addEventListener('mousedown', function (e) {
             if (sitesPanelResizing) return;

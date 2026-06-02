@@ -167,6 +167,14 @@
         body.appendChild(addWrap);
     }
 
+    function injectShareToolbarFallback(toolbarSlot) {
+        if (!toolbarSlot || document.getElementById('btn-export-gdocs')) return;
+        toolbarSlot.innerHTML = ''
+            + '<button type="button" id="btn-export-gdocs" onclick="toggleShareLinksMenu()"'
+            + ' class="hidden px-2 py-1 sm:px-3 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 shrink-0 border border-emerald-300 dark:border-emerald-700"'
+            + ' title="Show share destinations">Share</button>';
+    }
+
     async function injectShareUiFragments() {
         let injected = false;
 
@@ -175,6 +183,9 @@
             const toolbarHtml = await loadHtmlFragment('./ShareSites/Share/share-toolbar.html');
             if (toolbarHtml) {
                 toolbarSlot.innerHTML = toolbarHtml;
+                injected = true;
+            } else {
+                injectShareToolbarFallback(toolbarSlot);
                 injected = true;
             }
         }
@@ -354,6 +365,9 @@
         const panel = document.getElementById('share-links-modal-panel');
         const header = document.getElementById('share-links-modal-header');
         if (!panel || !header) return;
+        if (window.enableTouchModalDrag) {
+            window.enableTouchModalDrag(panel, header);
+        }
 
         let dragging = false;
         let offsetX = 0;
@@ -482,8 +496,13 @@
 
         const toDocsBtn = document.getElementById('btn-export-gdocs');
         if (toDocsBtn) {
-            if (!toDocsVisible) toDocsBtn.classList.add('hidden');
-            else toDocsBtn.classList.remove('hidden');
+            if (!toDocsVisible) {
+                toDocsBtn.classList.add('hidden');
+                toDocsBtn.style.display = 'none';
+            } else {
+                toDocsBtn.classList.remove('hidden');
+                toDocsBtn.style.display = '';
+            }
             toDocsBtn.textContent = 'Share';
         }
         const shareSettingsBox = document.getElementById('share-destinations-settings');

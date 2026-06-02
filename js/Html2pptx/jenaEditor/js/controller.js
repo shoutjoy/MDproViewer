@@ -197,7 +197,7 @@
     "./js/Export/pptExport.js",
     "./js/main.js"
   ];
-  const ASSET_VERSION = "20260527-restore-1";
+  const ASSET_VERSION = "20260603-scholar-3";
 
   const loadedScripts = new Set();
   let booted = false;

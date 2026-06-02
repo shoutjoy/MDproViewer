@@ -114,8 +114,12 @@
 <div class="ssp-ai-sidebar" id="ssp-ai-sidebar">
   <div class="ssp-inner">
     <div class="ssp-header">
-      <h3>SSP Image Generator</h3>
-      <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">Close</button>
+      <h3>sspimgAI</h3>
+      <div class="ssp-header-actions">
+        <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
+        <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
+        <button type="button" class="sa-btn ghost ssp-fullscreen-btn" onclick="sspAIFullscreen()" title="전체화면">전체화면</button>
+      </div>
     </div>
     <div class="ssp-main">
       <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload an image">

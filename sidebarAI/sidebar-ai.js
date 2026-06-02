@@ -142,9 +142,12 @@
 <div class="ssp-ai-sidebar" id="ssp-ai-sidebar">
   <div class="ssp-inner">
     <div class="ssp-header">
-      <h3>SSP Image Generator</h3>
-      <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" style="font-size:10px">Popup</button>
-      <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">Close</button>
+      <h3>sspimgAI</h3>
+      <div class="ssp-header-actions">
+        <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
+        <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
+        <button type="button" class="sa-btn ghost ssp-fullscreen-btn" onclick="sspAIFullscreen()" title="전체화면">전체화면</button>
+      </div>
     </div>
     <div class="ssp-main">
       <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload an image">
@@ -363,9 +366,12 @@
 <div class="ssp-ai-sidebar" id="ssp-ai-sidebar">
   <div class="ssp-inner">
     <div class="ssp-header">
-      <h3>SSP Image Generator</h3>
-      <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" style="font-size:10px">Popup</button>
-      <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">Close</button>
+      <h3>sspimgAI</h3>
+      <div class="ssp-header-actions">
+        <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
+        <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
+        <button type="button" class="sa-btn ghost ssp-fullscreen-btn" onclick="sspAIFullscreen()" title="전체화면">전체화면</button>
+      </div>
     </div>
     <div class="ssp-main">
       <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload an image">
@@ -559,6 +565,22 @@
     }
   }
 
+  function updateSSPHeaderActionButtons() {
+    var panel = document.getElementById('ssp-ai-sidebar');
+    if (!panel) return;
+    var closeBtn = panel.querySelector('.ssp-header button[onclick*="sspAIShrink"]');
+    var fullBtn = panel.querySelector('.ssp-fullscreen-btn');
+    if (closeBtn) {
+      closeBtn.textContent = '닫기';
+      closeBtn.title = '닫기';
+    }
+    if (fullBtn) {
+      var isFullscreen = panel.classList.contains('fullscreen');
+      fullBtn.textContent = isFullscreen ? '복원' : '전체화면';
+      fullBtn.title = isFullscreen ? '복원' : '전체화면';
+    }
+  }
+
   function savePanelPopupRect(panelId, panel) {
     if (!panel || !panel.classList.contains('popup') || !panel.classList.contains('open')) return;
     var rect = panel.getBoundingClientRect();
@@ -630,7 +652,33 @@
       }
     }
     updatePopupToggleLabels();
+    updateSSPHeaderActionButtons();
     try { if (typeof window.refreshAiRightSidebarWrap === 'function') window.refreshAiRightSidebarWrap(); } catch (e) {}
+  }
+
+  function closeAiPanelHard(panelId) {
+    var panel = document.getElementById(panelId);
+    if (!panel) return;
+    savePanelPopupRect(panelId, panel);
+    panel.classList.remove('open');
+    panel.classList.remove('fullscreen');
+    panel.classList.remove('popup');
+    panel.style.left = '';
+    panel.style.top = '';
+    panel.style.right = '';
+    panel.style.bottom = '';
+    panel.style.width = '';
+    panel.style.height = '';
+    panel.style.minWidth = '';
+    panel.style.maxWidth = '';
+    panel.style.maxHeight = '';
+    panel.style.transform = '';
+    panel.style.resize = '';
+    var inner = document.getElementById('ai-right-sidebar-inner');
+    if (inner && panel.parentNode !== inner) {
+      if (panelId === 'scholar-ai-sidebar') inner.insertBefore(panel, inner.firstChild);
+      else inner.appendChild(panel);
+    }
   }
 
   function ensurePanelPopupDraggable(panelId, headerSelector) {
@@ -684,6 +732,28 @@
     var panel = document.getElementById('ssp-ai-sidebar');
     if (!panel) return;
     setPanelPopupMode('ssp-ai-sidebar', !panel.classList.contains('popup'));
+  }
+
+  function sspAIFullscreen() {
+    var el = document.getElementById('ssp-ai-sidebar');
+    if (!el) return;
+    var inner = document.getElementById('ai-right-sidebar-inner');
+    if (el.classList.contains('fullscreen')) {
+      el.classList.remove('fullscreen');
+      if (el.classList.contains('popup')) {
+        if (el.parentNode !== document.body) document.body.appendChild(el);
+        applyPanelPopupRect('ssp-ai-sidebar', el);
+      } else if (inner && el.parentNode !== inner) {
+        inner.appendChild(el);
+      }
+    } else {
+      el.classList.add('open');
+      el.classList.add('fullscreen');
+      document.body.appendChild(el);
+    }
+    updatePopupToggleLabels();
+    updateSSPHeaderActionButtons();
+    try { if (typeof window.refreshAiRightSidebarWrap === 'function') window.refreshAiRightSidebarWrap(); } catch (e) {}
   }
 
   function notifyUser(message, isError) {
@@ -1117,6 +1187,78 @@
     return null;
   }
 
+  function getFrameDocument(frame) {
+    if (!frame) return null;
+    try { return frame.contentDocument || (frame.contentWindow && frame.contentWindow.document) || null; } catch (e) { return null; }
+  }
+
+  function isFrameUsable(frame) {
+    if (!frame || !frame.isConnected) return false;
+    var rect = null;
+    try { rect = frame.getBoundingClientRect(); } catch (e) { rect = null; }
+    if (rect && (rect.width <= 0 || rect.height <= 0)) return false;
+    try {
+      var cs = window.getComputedStyle(frame);
+      if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+    } catch (e2) {}
+    return true;
+  }
+
+  function findGenSlideFrame() {
+    var selectors = [
+      '#html2ppt-frame',
+      'iframe[title="GenSlide"]',
+      'iframe[src*="GenSlide/jenaEditor"]',
+      'iframe[src*="Html2pptx/jenaEditor"]'
+    ];
+    for (var i = 0; i < selectors.length; i++) {
+      var frame = document.querySelector(selectors[i]);
+      if (isFrameUsable(frame) && getFrameDocument(frame)) return frame;
+    }
+    return null;
+  }
+
+  function captureSelectionFromGenSlide() {
+    var frame = findGenSlideFrame();
+    if (!frame) return null;
+    var docRef = getFrameDocument(frame);
+    if (!docRef) return null;
+
+    var fromControl = captureSelectionFromTextControl(docRef);
+    if (fromControl) {
+      fromControl.source = 'genslide-text-control';
+      return fromControl;
+    }
+
+    var code = docRef.getElementById('code');
+    if (isTextSelectionControl(code)) {
+      var raw = String(code.value || '').trim();
+      if (raw) {
+        return { text: raw, start: null, end: null, target: code, doc: docRef, source: 'genslide-code' };
+      }
+    }
+
+    try {
+      var win = frame.contentWindow;
+      if (win && typeof win.getWysHtml === 'function') {
+        var wysHtml = String(win.getWysHtml() || '').trim();
+        if (wysHtml) return { text: wysHtml, start: null, end: null, target: null, doc: docRef, source: 'genslide-wys-html' };
+      }
+      if (win && Array.isArray(win.slides)) {
+        var idx = Math.max(0, Math.min(win.slides.length - 1, Number(win.cur) || 0));
+        var slideHtml = String((win.slides[idx] && win.slides[idx].html) || '').trim();
+        if (slideHtml) return { text: slideHtml, start: null, end: null, target: null, doc: docRef, source: 'genslide-slide-html' };
+      }
+    } catch (e) {}
+
+    var fromDom = captureSelectionFromDom(docRef, null);
+    if (fromDom) {
+      fromDom.source = 'genslide-dom';
+      return fromDom;
+    }
+    return null;
+  }
+
   var __aiDocSelTimer = null;
  
   function syncAiPanelsFromDocumentSelection() {
@@ -1126,6 +1268,7 @@
     if (!taPassage && !sspPrompt) return;
 
     var pick = null;
+    if (!pick) pick = captureSelectionFromGenSlide();
     if (!pick) pick = captureSelectionFromTextControl(document);
     if (!pick && viewer) pick = captureSelectionFromDom(document, viewer);
     if (!pick) pick = captureSelectionFromDom(document, null);
@@ -1175,13 +1318,9 @@
       scholarAIInitModelSelect();
       scholarAIInitToneSelect();
     } else {
-      el.classList.remove('fullscreen');
-      if (!el.classList.contains('popup')) {
-        var inner = document.getElementById('ai-right-sidebar-inner');
-        if (inner && el.parentNode !== inner) {
-          inner.insertBefore(el, inner.firstChild);
-        }
-      }
+      closeAiPanelHard('scholar-ai-sidebar');
+      updatePopupToggleLabels();
+      updateScholarHeaderActionButtons();
       try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
     }
   }
@@ -1215,16 +1354,8 @@
     };
   }
   function scholarAIShrink() {
-    var el = document.getElementById('scholar-ai-sidebar');
-    var inner = document.getElementById('ai-right-sidebar-inner');
-    if (el) {
-      savePanelPopupRect('scholar-ai-sidebar', el);
-      el.classList.remove('open');
-      el.classList.remove('fullscreen');
-      if (!el.classList.contains('popup') && inner && el.parentNode !== inner) {
-        inner.insertBefore(el, inner.firstChild);
-      }
-    }
+    closeAiPanelHard('scholar-ai-sidebar');
+    updatePopupToggleLabels();
     updateScholarHeaderActionButtons();
     try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
   }
@@ -2087,15 +2218,16 @@
       syncAiPanelsFromDocumentSelection();
       viewerSSPInit();
     } else {
+      closeAiPanelHard('ssp-ai-sidebar');
+      updatePopupToggleLabels();
+      updateSSPHeaderActionButtons();
       try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
     }
   }
   function sspAIShrink() {
-    var el = document.getElementById('ssp-ai-sidebar');
-    if (el) {
-      savePanelPopupRect('ssp-ai-sidebar', el);
-      el.classList.remove('open');
-    }
+    closeAiPanelHard('ssp-ai-sidebar');
+    updatePopupToggleLabels();
+    updateSSPHeaderActionButtons();
     try { if (typeof window.__onAiSidebarPanelClosed === 'function') window.__onAiSidebarPanelClosed(); } catch (e) {}
   }
   function viewerSSPSyncSelection() {
@@ -2907,6 +3039,7 @@ function viewerSSPFsUploadImgbb() {
   window.toggleViewerSSP = toggleViewerSSP;
   window.sspAIShrink = sspAIShrink;
   window.sspAIPopupToggle = sspAIPopupToggle;
+  window.sspAIFullscreen = sspAIFullscreen;
   window.viewerSSPSyncSelection = viewerSSPSyncSelection;
   window.viewerSSPInit = viewerSSPInit;
   window.viewerSSPGenerate = viewerSSPGenerate;
@@ -2938,6 +3071,7 @@ function viewerSSPFsUploadImgbb() {
     setPanelPopupMode('ssp-ai-sidebar', isPanelPopupMode('ssp-ai-sidebar'));
     updatePopupToggleLabels();
     updateScholarHeaderActionButtons();
+    updateSSPHeaderActionButtons();
     ensurePanelPopupDraggable('scholar-ai-sidebar', '#scholar-ai-sidebar .scholar-ai-header');
     ensurePanelPopupDraggable('ssp-ai-sidebar', '#ssp-ai-sidebar .ssp-header');
     if (!window.__aiPopupResizeSaveBound) {
@@ -3018,6 +3152,16 @@ function viewerSSPFsUploadImgbb() {
           fd.addEventListener('selectionchange', onAiGlobalSelectionChange);
           fd.addEventListener('mouseup', onAiGlobalSelectionChange);
           fd.addEventListener('keyup', onAiGlobalSelectionChange);
+          fd.addEventListener('click', onAiGlobalSelectionChange);
+          fd.addEventListener('input', onAiGlobalSelectionChange);
+          var gsCode = fd.getElementById('code');
+          if (gsCode && !gsCode.__aiGenSlideCodeBound) {
+            gsCode.__aiGenSlideCodeBound = true;
+            gsCode.addEventListener('focus', function () { setTimeout(syncAiPanelsFromDocumentSelection, 30); });
+            gsCode.addEventListener('click', function () { setTimeout(syncAiPanelsFromDocumentSelection, 30); });
+            gsCode.addEventListener('keyup', function () { setTimeout(syncAiPanelsFromDocumentSelection, 30); });
+            gsCode.addEventListener('input', function () { setTimeout(syncAiPanelsFromDocumentSelection, 30); });
+          }
         }
       } catch (e) {}
     }

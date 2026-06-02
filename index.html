@@ -21,8 +21,8 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260603-4" charset="utf-8">
-    <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260603-2" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260603-5" charset="utf-8">
+    <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260603-6" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
@@ -401,9 +401,12 @@
             <div class="ssp-ai-sidebar" id="ssp-ai-sidebar">
               <div class="ssp-inner">
                 <div class="ssp-header">
-                  <h3>🖼 SSP 이미지 생성기</h3>
-                  <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" style="font-size:10px">Popup</button>
-                  <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" style="font-size:10px">× 닫기</button>
+                  <h3>sspimgAI</h3>
+                  <div class="ssp-header-actions">
+                    <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
+                    <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
+                    <button type="button" class="sa-btn ghost ssp-fullscreen-btn" onclick="sspAIFullscreen()" title="전체화면">전체화면</button>
+                  </div>
                 </div>
                 <div class="ssp-main">
                   <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="클릭 또는 드래그하여 업로드">
@@ -1584,7 +1587,7 @@
             </div>
         </div>
         <div id="html2ppt-panel-body" class="flex-1 p-2 min-h-0">
-            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html"
+            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html?v=20260603-3"
                 class="w-full h-full border-0 rounded bg-white dark:bg-slate-900" title="GenSlide"></iframe>
         </div>
         <div id="html2ppt-panel-resizer" title="Resize"
@@ -1611,13 +1614,13 @@
     <script src="./sidebarAI/insert.js?v=20260407-1" charset="utf-8" defer></script>
     <script src="./trt/editorRule.js" charset="utf-8" defer></script>
     <script src="./trt/macro.js?v=20260408-1" charset="utf-8" defer></script>
-    <script src="./ShareSites/Share/share.js?v=20260415-1" charset="utf-8" defer></script>
+    <script src="./ShareSites/Share/share.js?v=20260603-2" charset="utf-8" defer></script>
     <script src="./ShareSites/googleDocs.js?v=20260330-1" charset="utf-8" defer></script>
-    <script src="./ShareSites/sitesshow/sitesshow.js?v=20260408-3" charset="utf-8" defer></script>
+    <script src="./ShareSites/sitesshow/sitesshow.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/export/html-export.js" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-settings.js?v=20260428-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/minipv.js?v=20260603-3" charset="utf-8" defer></script>
-    <script src="./js/app.js?v=20260603-4" charset="utf-8" defer></script>
+    <script src="./js/app.js?v=20260603-9" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-app.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/viewmode/viewmode-edit-input.js?v=20260602-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/editpv.js?v=20260603-1" charset="utf-8" defer></script>

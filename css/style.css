@@ -439,3 +439,16 @@
             margin-bottom: 0.18em;
             column-gap: 0.35em;
         }
+
+        .cursor-move,
+        #settings-modal-header,
+        #share-links-modal-header,
+        #sites-panel-header,
+        #template-panel-header,
+        #html2ppt-panel-header,
+        #scholar-search-header,
+        #highlight-popup-header,
+        #mermaid-editor-modal-header,
+        #math99-popup-header {
+            touch-action: none;
+        }

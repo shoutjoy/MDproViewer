@@ -12,6 +12,62 @@ const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
 const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
+
+function enableTouchModalDrag(panel, handle, options) {
+    const opts = options || {};
+    if (!panel || !handle || handle.__touchModalDragBound) return false;
+    handle.__touchModalDragBound = true;
+    handle.style.touchAction = 'none';
+    handle.addEventListener('pointerdown', function (e) {
+        if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return;
+        const target = e.target;
+        if (target && target.closest && target.closest(opts.ignoreSelector || 'button,input,textarea,select,a,iframe,.no-drag')) return;
+        if (typeof opts.canStart === 'function' && !opts.canStart(e, panel, handle)) return;
+        const rect = panel.getBoundingClientRect();
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startLeft = rect.left;
+        const startTop = rect.top;
+        if (typeof opts.onStart === 'function') opts.onStart(e, panel, rect);
+        panel.style.position = opts.position || panel.style.position || 'fixed';
+        panel.style.transform = 'none';
+        panel.style.margin = '0';
+        panel.style.left = startLeft + 'px';
+        panel.style.top = startTop + 'px';
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+        try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+
+        const onMove = function (ev) {
+            const vw = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
+            const vh = Math.max(240, window.innerHeight || document.documentElement.clientHeight || 720);
+            const maxLeft = Math.max(8, vw - panel.offsetWidth - 8);
+            const maxTop = Math.max(8, vh - panel.offsetHeight - 8);
+            let nextLeft = startLeft + (ev.clientX - startX);
+            let nextTop = startTop + (ev.clientY - startY);
+            nextLeft = Math.max(8, Math.min(maxLeft, nextLeft));
+            nextTop = Math.max(8, Math.min(maxTop, nextTop));
+            panel.style.left = Math.round(nextLeft) + 'px';
+            panel.style.top = Math.round(nextTop) + 'px';
+            if (typeof opts.onMove === 'function') opts.onMove(ev, panel, nextLeft, nextTop);
+            ev.preventDefault();
+        };
+        const onUp = function (ev) {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            document.removeEventListener('pointercancel', onUp);
+            document.body.style.userSelect = '';
+            try { handle.releasePointerCapture(ev.pointerId); } catch (_) {}
+            if (typeof opts.onEnd === 'function') opts.onEnd(ev, panel);
+        };
+        document.addEventListener('pointermove', onMove, { passive: false });
+        document.addEventListener('pointerup', onUp, { passive: false });
+        document.addEventListener('pointercancel', onUp, { passive: false });
+    }, { passive: false });
+    return true;
+}
 const GITHUB_SETTINGS_FOLD_KEY = 'md_viewer_github_settings_folded';
 const EDITOR_HORIZONTAL_SHIFT_KEY = 'md_viewer_editor_horizontal_shift_px';
 
@@ -4182,6 +4238,10 @@ function bindMermaidEditorModalDrag() {
     const panel = document.getElementById('mermaid-editor-modal-panel');
     const header = document.getElementById('mermaid-editor-modal-header');
     if (!panel || !header) return;
+    enableTouchModalDrag(panel, header, {
+        canStart: function () { return !mermaidEditorModalFullscreen && !mermaidEditorModalDockRight; },
+        onStart: function () { panel.style.transform = 'none'; }
+    });
 
     let dragging = false;
     let startX = 0;
@@ -4862,6 +4922,9 @@ function bindMath99PopupInteractions() {
     const wrap = document.getElementById('math99-popup');
     if (!panel || !header || !resize || !wrap) return;
     math99PopupBound = true;
+    enableTouchModalDrag(panel, header, {
+        onStart: function () { panel.style.right = 'auto'; }
+    });
 
     wrap.addEventListener('mousedown', function (e) {
         if (e.target === wrap) closeMath99Popup();
@@ -5598,6 +5661,14 @@ function bindTemplatePanelDrag() {
     const panel = document.getElementById('template-panel');
     const header = document.getElementById('template-panel-header');
     if (!panel || !header) return;
+    enableTouchModalDrag(panel, header, {
+        canStart: function () { return !templatePanelCompact && !templatePanelResizing; },
+        onStart: function () {
+            panel.style.right = 'auto';
+            panel.style.bottom = 'auto';
+        },
+        onMove: function () { templatePanelMoved = true; }
+    });
 
     header.addEventListener('mousedown', function (e) {
         if (templatePanelResizing) return;
@@ -5835,6 +5906,16 @@ function bindHtml2pptPanelDrag() {
     const panel = document.getElementById('html2ppt-panel');
     const header = document.getElementById('html2ppt-panel-header');
     if (!panel || !header) return;
+    enableTouchModalDrag(panel, header, {
+        canStart: function () { return !html2pptResizing && !html2pptFullscreen; },
+        onStart: function () {
+            html2pptDockRight = false;
+            panel.style.right = 'auto';
+            panel.style.bottom = 'auto';
+            applyHtml2pptPanelLayout();
+        },
+        onMove: function () { html2pptMoved = true; }
+    });
 
     header.addEventListener('mousedown', function (e) {
         if (html2pptResizing || html2pptFullscreen) return;
@@ -5961,8 +6042,8 @@ window.addEventListener('message', function (event) {
 
     if (data.type === 'mdv-genslide-open-scholar') {
         try {
-            if (typeof window.openScholarAIFromHeader === 'function') {
-                window.openScholarAIFromHeader();
+            if (typeof window.openScholarAIForExternalContext === 'function') {
+                window.openScholarAIForExternalContext();
                 return;
             }
         } catch (_) {}
@@ -5986,7 +6067,7 @@ window.addEventListener('message', function (event) {
         } catch (_) {}
         if (forceOpen) {
             try {
-                if (typeof window.openScholarAIFromHeader === 'function') window.openScholarAIFromHeader();
+                if (typeof window.openScholarAIForExternalContext === 'function') window.openScholarAIForExternalContext();
                 else if (typeof window.toggleScholarAI === 'function') window.toggleScholarAI();
             } catch (_) {}
         }
@@ -6096,6 +6177,18 @@ function bindHighlightPopupDrag() {
     const header = document.getElementById('highlight-popup-header');
     const panel = document.getElementById('highlight-popup-panel');
     if (!header || !panel) return;
+    enableTouchModalDrag(panel, header, {
+        onStart: function (e, panelEl, rect) {
+            if (!highlightPopupDockRight) highlightPopupDragOffsetX = e.clientX - rect.left;
+            highlightPopupDragOffsetY = e.clientY - rect.top;
+        },
+        onMove: function (e, panelEl, nextLeft, nextTop) {
+            if (highlightPopupDockRight) {
+                highlightPopupDockTop = nextTop;
+                panelEl.style.left = '12px';
+            }
+        }
+    });
 
     header.addEventListener('mousedown', function (e) {
         const target = e.target;
@@ -6993,6 +7086,10 @@ function refreshAiRightSidebarWrap() {
     const schDockOpen = schOpen && !sch.classList.contains('popup') && !sch.classList.contains('fullscreen');
     const sspDockOpen = sspOpen && !ssp.classList.contains('popup');
     if (!schDockOpen && !sspDockOpen) {
+        if (inner) {
+            if (sch && !schOpen && sch.parentNode !== inner) inner.insertBefore(sch, inner.firstChild);
+            if (ssp && !sspOpen && ssp.parentNode !== inner) inner.appendChild(ssp);
+        }
         wrap.classList.add('hidden');
         wrap.style.cssText = 'width:0!important;min-width:0!important;max-width:0!important;display:none!important;flex:0!important;overflow:hidden!important;border:none!important;box-shadow:none!important;padding:0!important;margin:0!important;';
         updateHeaderAiButtonsActive();
@@ -7131,6 +7228,53 @@ function openScholarAIFromHeader() {
     });
 }
 
+function setScholarAISelectedTextFromExternal(text, options) {
+    const opts = options || {};
+    const value = String(text || '').trim();
+    const applyText = function () {
+        const selected = document.getElementById('scholar-ai-selected');
+        if (selected && value) selected.value = value;
+        try {
+            if (window.SidebarAIInsertDeps && typeof window.SidebarAIInsertDeps.setSelectionState === 'function') {
+                window.SidebarAIInsertDeps.setSelectionState({
+                    selStart: null,
+                    selEnd: null,
+                    cursorPos: null,
+                    lastSelectionTarget: null,
+                    lastSelectionDoc: null
+                });
+            }
+        } catch (_) {}
+    };
+    if (opts.forceOpen) {
+        openScholarAIForExternalContext(applyText);
+    } else if (document.getElementById('scholar-ai-selected')) {
+        applyText();
+    } else {
+        withAiSidebarReady(applyText);
+    }
+}
+
+function openScholarAIForExternalContext(afterOpen) {
+    getAiSettings().then(function (s) {
+        if (!s || !s.verified) {
+            showToast('Verification is required first. Open Settings and complete verification.');
+            return;
+        }
+        setAiSidebarWrapVisible(380, true);
+        withAiSidebarReady(function () {
+            var scholar = document.getElementById('scholar-ai-sidebar');
+            if (!scholar) throw new Error('ScholarAI panel not found');
+            if (!scholar.classList.contains('open') && typeof window.toggleScholarAI === 'function') window.toggleScholarAI();
+            refreshAiRightSidebarWrap();
+            if (typeof afterOpen === 'function') afterOpen();
+            requestAnimationFrame(function () {
+                requestAnimationFrame(refreshAiRightSidebarWrap);
+            });
+        });
+    });
+}
+
 function openSspimgAIFromHeader() {
     getAiSettings().then(function (s) {
         if (!s || !s.verified) {
@@ -7184,7 +7328,14 @@ function viewerSSPCropFromPanel() {
 }
 
 window.__onAiSidebarPanelClosed = refreshAiRightSidebarWrap;
+window.enableTouchModalDrag = enableTouchModalDrag;
 window.openScholarAIFromHeader = openScholarAIFromHeader;
+window.openScholarAIForExternalContext = openScholarAIForExternalContext;
+window.LiveAISetSelectedText = setScholarAISelectedTextFromExternal;
+window.LiveAI = Object.assign(window.LiveAI || {}, {
+    openScholarAI: function () { openScholarAIForExternalContext(); },
+    setSelectedText: setScholarAISelectedTextFromExternal
+});
 window.openSspimgAIFromHeader = openSspimgAIFromHeader;
 window.openImageUploadTool = openImageUploadTool;
 window.viewerSSPCropFromPanel = viewerSSPCropFromPanel;
@@ -7397,7 +7548,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260603-1';
+    const aiSidebarScriptVersion = '20260603-3';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -7945,6 +8096,13 @@ function bindSettingsModalDrag() {
     const header = document.getElementById('settings-modal-header');
     const panel = document.getElementById('settings-modal-panel');
     if (!header || !panel) return;
+    enableTouchModalDrag(panel, header, {
+        ignoreSelector: 'button,input,textarea,select,a,label',
+        canStart: function () { return !settingsModalFullscreen; },
+        onStart: function () {
+            panel.style.maxHeight = '90vh';
+        }
+    });
 
     header.addEventListener('mousedown', function (e) {
         const target = e.target;

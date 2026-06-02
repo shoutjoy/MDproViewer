@@ -125,6 +125,9 @@ function bindCtrlWheelZoom() {
     if (!d || d.__jenaCtrlWheelZoomBound) return;
     d.__jenaCtrlWheelZoomBound = true;
     d.addEventListener("wheel", onWheelZoom, { passive: false });
+    d.addEventListener("selectionchange", () => postScholarSelectionFromHtmlCode(false));
+    d.addEventListener("mouseup", () => postScholarSelectionFromHtmlCode(false));
+    d.addEventListener("keyup", () => postScholarSelectionFromHtmlCode(false));
   });
 }
 bindCtrlWheelZoom();
@@ -147,21 +150,7 @@ document.getElementById("btnPptxExport").onclick = () => { exportPptx().catch(()
 const btnScholarAI = document.getElementById("btnScholarAI");
 if (btnScholarAI) {
   btnScholarAI.onclick = () => {
-    try {
-      if (window.parent && window.parent.LiveAI && typeof window.parent.LiveAI.openScholarAI === "function") {
-        window.parent.LiveAI.openScholarAI();
-        return;
-      }
-      if (window.parent && typeof window.parent.toggleScholarAI === "function") {
-        window.parent.toggleScholarAI();
-        return;
-      }
-    } catch (_) {}
-    try {
-      if (window.parent && window.parent.postMessage) {
-        window.parent.postMessage({ type: "mdv-genslide-open-scholar" }, "*");
-      }
-    } catch (_) {}
+    try { postScholarSelectionFromHtmlCode(true); } catch (_) {}
   };
 }
 document.getElementById("btnCloseAdd").onclick = closeAddModal;
@@ -262,20 +251,38 @@ function syncEditorByCodeCaret(shouldScroll) {
 }
 
 let __lastPostedScholarSelection = null;
+function getScholarSelectionFromWys() {
+  try {
+    const d = (typeof getWysDoc === "function") ? getWysDoc() : (els && els.wys && els.wys.contentDocument);
+    if (!d || typeof d.getSelection !== "function") return "";
+    const sel = d.getSelection();
+    const text = sel && !sel.isCollapsed ? String(sel.toString() || "").trim() : "";
+    if (text) return text;
+    const active = d.activeElement;
+    if (active && (active.isContentEditable || active.getAttribute("contenteditable") === "true")) {
+      const activeText = String(active.innerText || active.textContent || "").trim();
+      if (activeText) return activeText;
+    }
+  } catch (_) {}
+  return "";
+}
+
 function postScholarSelectionFromHtmlCode(forceOpen) {
   try {
     if (!els || !els.code) return;
     const s = Number(els.code.selectionStart) || 0;
     const e = Number(els.code.selectionEnd) || s;
-    const picked = e > s ? String(els.code.value || "").slice(s, e) : "";
+    let picked = getScholarSelectionFromWys();
+    if (!picked) picked = e > s ? String(els.code.value || "").slice(s, e) : "";
+    if (forceOpen && !String(picked || "").trim()) {
+      picked = String(els.code.value || "").trim();
+      if (!picked && typeof getWysHtml === "function") picked = String(getWysHtml() || "").trim();
+    }
     if (!forceOpen && picked === __lastPostedScholarSelection) return;
     __lastPostedScholarSelection = picked;
 
     let handled = false;
     try {
-      if (window.parent && window.parent.LiveAI && typeof window.parent.LiveAI.openScholarAI === "function") {
-        if (forceOpen) window.parent.LiveAI.openScholarAI();
-      }
       if (window.parent && typeof window.parent.LiveAISetSelectedText === "function") {
         window.parent.LiveAISetSelectedText(picked, { source: "genslide", forceOpen: !!forceOpen });
         handled = true;

@@ -275,6 +275,9 @@
     var header = q('scholar-search-header');
     var panel = q('scholar-search-panel');
     if (!header || !panel) return;
+    if (window.enableTouchModalDrag) {
+      window.enableTouchModalDrag(panel, header);
+    }
 
     header.addEventListener('mousedown', function (e) {
       var target = e.target;
