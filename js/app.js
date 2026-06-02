@@ -80,6 +80,8 @@ let isEditMode = true;
 let pageScale = 1.0;
 let fontSize = 16;
 document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
+let headerScale = 1.0;
+document.documentElement.style.setProperty('--md-header-scale', `${headerScale}`);
 let modalMode = 'link';
 let movingDocId = null;
 let previewPopupWindow = null;
@@ -2328,253 +2330,37 @@ let activeSidebarTab = 'files';
 let lastRenderedTocItems = [];
 
 function switchSidebarTab(tab) {
-    activeSidebarTab = tab;
-    const btnFiles = document.getElementById('tab-files');
-    const btnToc = document.getElementById('tab-toc');
-    const dbList = document.getElementById('db-list');
-    const tocList = document.getElementById('toc-list');
-    const searchContainer = document.getElementById('search-container');
-    const btnNewFolder = document.getElementById('btn-new-folder');
-
-    if (tab === 'files') {
-        btnFiles.className = "flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors";
-        btnToc.className = "flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors";
-        dbList.classList.remove('hidden');
-        tocList.classList.add('hidden');
-        searchContainer.classList.remove('hidden');
-        if (btnNewFolder) btnNewFolder.classList.remove('hidden');
-        renderDBList();
-    } else {
-        btnToc.className = "flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors";
-        btnFiles.className = "flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors";
-        dbList.classList.add('hidden');
-        tocList.classList.remove('hidden');
-        searchContainer.classList.add('hidden');
-        if (btnNewFolder) btnNewFolder.classList.add('hidden');
-        renderTOC();
+    if (window.SidebarLeft && typeof window.SidebarLeft.switchSidebarTab === 'function') {
+        activeSidebarTab = window.SidebarLeft.switchSidebarTab(tab, { renderDBList, renderTOC });
+        return;
     }
+    activeSidebarTab = tab;
 }
 
 function parseTocItemsFromMarkdown(markdownText) {
-    const lines = String(markdownText || '').split('\n');
-    const items = [];
-    let inFence = false;
-    let fenceChar = '';
-
-    lines.forEach((line, index) => {
-        const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
-        if (fenceMatch) {
-            const currentFenceChar = fenceMatch[1].charAt(0);
-            if (!inFence) {
-                inFence = true;
-                fenceChar = currentFenceChar;
-            } else if (fenceChar === currentFenceChar) {
-                inFence = false;
-                fenceChar = '';
-            }
-            return;
-        }
-        if (inFence) return;
-
-        const match = line.match(/^(#{1,6})\s+(.*)$/);
-        if (!match) return;
-
-        const level = match[1].length;
-        const rawText = String(match[2] || '').trim();
-        if (!rawText) return;
-        const text = rawText.replace(/\s+#+\s*$/, '').trim();
-        if (!text) return;
-
-        items.push({
-            level,
-            text,
-            lineIndex: index
-        });
-    });
-
-    return items;
+    if (window.SidebarLeft && typeof window.SidebarLeft.parseTocItemsFromMarkdown === 'function') {
+        return window.SidebarLeft.parseTocItemsFromMarkdown(markdownText);
+    }
+    return [];
 }
 
 function renderTOC() {
-    const tocList = document.getElementById('toc-list');
-    if (!tocList) return;
-    tocList.innerHTML = '';
-    const esc = (v) => String(v || '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    const levelToneClass = (level) => {
-        if (level === 1) return 'border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 bg-indigo-50/80 dark:bg-indigo-900/25 hover:bg-indigo-100/90 dark:hover:bg-indigo-900/35';
-        if (level === 2) return 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 bg-emerald-50/80 dark:bg-emerald-900/25 hover:bg-emerald-100/90 dark:hover:bg-emerald-900/35';
-        if (level === 3) return 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50/80 dark:bg-amber-900/25 hover:bg-amber-100/90 dark:hover:bg-amber-900/35';
-        if (level === 4) return 'border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300 bg-sky-50/80 dark:bg-sky-900/25 hover:bg-sky-100/90 dark:hover:bg-sky-900/35';
-        if (level === 5) return 'border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 bg-fuchsia-50/80 dark:bg-fuchsia-900/25 hover:bg-fuchsia-100/90 dark:hover:bg-fuchsia-900/35';
-        return 'border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100/90 dark:hover:bg-slate-700/60';
-    };
-    const shortText = (text, n) => Array.from(String(text || '').trim()).slice(0, n).join('');
-
-    const tocItems = parseTocItemsFromMarkdown(currentMarkdown);
-    lastRenderedTocItems = tocItems.slice();
-
-    if (isSidebarCollapsed) {
-        if (!tocItems.length) {
-            tocList.innerHTML = `
-                <div class="p-2 flex justify-center">
-                    <button type="button"
-                        class="w-12 h-6 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600 text-[10px] font-bold cursor-not-allowed flex items-center justify-center"
-                        disabled
-                        aria-label="No headings found">-</button>
-                </div>`;
-            return;
-        }
-
-        let compactHtml = '<div class="space-y-1 p-1 flex flex-col items-center">';
-        tocItems.forEach((item) => {
-            const toneClass = levelToneClass(item.level);
-            const label = shortText(item.text, 3) || '#';
-            compactHtml += `
-                <button type="button"
-                    class="w-12 h-6 rounded-md border text-[10px] font-bold transition-colors flex items-center justify-center ${toneClass}"
-                    title="${esc(item.text)}"
-                    aria-label="${esc(item.text)}"
-                    onclick="scrollToLine(${item.lineIndex})"><span class="truncate" style="max-width:2.4rem;display:inline-block">${esc(label)}</span></button>`;
-        });
-        compactHtml += '</div>';
-        tocList.innerHTML = compactHtml;
-        return;
+    if (window.SidebarLeft && typeof window.SidebarLeft.renderTOC === 'function') {
+        lastRenderedTocItems = window.SidebarLeft.renderTOC({
+            getMarkdown: function () { return currentMarkdown; },
+            isCollapsed: function () { return isSidebarCollapsed; }
+        }) || [];
     }
-
-    let tocHtml = '<div class="space-y-1 p-2">';
-    tocItems.forEach((item) => {
-        const padding = (item.level - 1) * 12;
-        const sizeClasses = item.level === 1 ? 'font-bold text-slate-800 dark:text-slate-200' : 'text-slate-600 dark:text-slate-400';
-        tocHtml += `<div class="text-xs cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 py-1.5 px-2 rounded truncate transition-colors ${sizeClasses}" style="margin-left: ${padding}px" onclick="scrollToLine(${item.lineIndex})">${esc(item.text)}</div>`;
-    });
-
-    tocHtml += '</div>';
-
-    if (!tocItems.length) {
-        tocHtml = '<div class="p-4 text-xs text-slate-400 text-center">No headings found. Add Markdown headings like <code># Title</code> to build a TOC.</div>';
-    }
-    tocList.innerHTML = tocHtml;
-    try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
-}
-
-function getTextareaCaretTopOffset(textarea, position) {
-    if (!textarea) return 0;
-    const value = String(textarea.value || '');
-    const safePos = Math.max(0, Math.min(Number(position) || 0, value.length));
-    const before = value.slice(0, safePos) + (safePos > 0 && value.charAt(safePos - 1) === '\n' ? ' ' : '');
-    const mirror = document.createElement('div');
-    const marker = document.createElement('span');
-    const style = window.getComputedStyle(textarea);
-    const props = [
-        'boxSizing',
-        'width',
-        'height',
-        'overflowX',
-        'overflowY',
-        'borderTopWidth',
-        'borderRightWidth',
-        'borderBottomWidth',
-        'borderLeftWidth',
-        'paddingTop',
-        'paddingRight',
-        'paddingBottom',
-        'paddingLeft',
-        'fontStyle',
-        'fontVariant',
-        'fontWeight',
-        'fontStretch',
-        'fontSize',
-        'fontSizeAdjust',
-        'lineHeight',
-        'fontFamily',
-        'textAlign',
-        'textTransform',
-        'textIndent',
-        'textDecoration',
-        'letterSpacing',
-        'wordSpacing',
-        'tabSize',
-        'MozTabSize'
-    ];
-
-    mirror.style.position = 'absolute';
-    mirror.style.visibility = 'hidden';
-    mirror.style.whiteSpace = 'pre-wrap';
-    mirror.style.wordWrap = 'break-word';
-    mirror.style.left = '-9999px';
-    mirror.style.top = '0';
-    mirror.style.pointerEvents = 'none';
-
-    props.forEach((prop) => {
-        mirror.style[prop] = style[prop];
-    });
-
-    mirror.style.width = `${textarea.clientWidth}px`;
-    mirror.textContent = before;
-    marker.textContent = '\u200b';
-    mirror.appendChild(marker);
-    document.body.appendChild(mirror);
-
-    const paddingTop = parseFloat(style.paddingTop) || 0;
-    const top = Math.max(0, marker.offsetTop - paddingTop);
-    document.body.removeChild(mirror);
-    return top;
 }
 
 function scrollToLine(lineIndex) {
-    if (isEditMode) {
-        if (!editorTextarea) return;
-        const text = String(editorTextarea.value || '');
-        const lines = text.split('\n');
-        const safeLineIndex = Math.max(0, Math.min(Number(lineIndex) || 0, Math.max(0, lines.length - 1)));
-        let charPos = 0;
-        for (let i = 0; i < safeLineIndex; i++) {
-            charPos += lines[i].length + 1;
-        }
-        editorTextarea.focus();
-        editorTextarea.setSelectionRange(charPos, charPos);
-        const top = getTextareaCaretTopOffset(editorTextarea, charPos);
-        const lineHeight = parseFloat(getComputedStyle(editorTextarea).lineHeight) || 24;
-        // Show three lines above the heading when syncing from TOC.
-        const offsetTop = Math.max(0, top - (lineHeight * 3));
-        editorTextarea.scrollTo({ top: offsetTop, behavior: 'smooth' });
-    } else {
-        const tocItems = (Array.isArray(lastRenderedTocItems) && lastRenderedTocItems.length)
-            ? lastRenderedTocItems
-            : parseTocItemsFromMarkdown(currentMarkdown);
-
-        const targetIdx = tocItems.findIndex((item) => item.lineIndex === lineIndex);
-        const targetItem = targetIdx >= 0 ? tocItems[targetIdx] : null;
-
-        const headers = Array.from(viewer.querySelectorAll('h1, h2, h3, h4, h5, h6'));
-        if (!headers.length) return;
-
-        if (targetItem) {
-            const normalizedTargetText = String(targetItem.text || '').trim();
-            const sameKeyBefore = tocItems
-                .slice(0, targetIdx + 1)
-                .filter((item) => item.level === targetItem.level && String(item.text || '').trim() === normalizedTargetText)
-                .length - 1;
-
-            const matchingHeaders = headers.filter((h) => {
-                if (!h || !h.tagName) return false;
-                const level = Number(String(h.tagName).replace(/^H/i, ''));
-                return level === targetItem.level && String(h.textContent || '').trim() === normalizedTargetText;
-            });
-
-            if (matchingHeaders[sameKeyBefore]) {
-                matchingHeaders[sameKeyBefore].scrollIntoView({ behavior: 'smooth', block: 'start' });
-                return;
-            }
-        }
-
-        const fallbackIndex = Math.max(0, Math.min(Number(targetIdx >= 0 ? targetIdx : 0), headers.length - 1));
-        headers[fallbackIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (window.SidebarLeft && typeof window.SidebarLeft.scrollToLine === 'function') {
+        window.SidebarLeft.scrollToLine(lineIndex, {
+            getEditor: function () { return editorTextarea; },
+            getViewer: function () { return viewer; },
+            getMarkdown: function () { return currentMarkdown; },
+            isEditMode: function () { return isEditMode; }
+        });
     }
 }
 
@@ -2769,84 +2555,19 @@ function confirmSaveModal() {
 
 
 function renderInDbList(listEl, searchTerm, githubReady) {
-    const txFolders = db.transaction('folders', 'readonly');
-    return new Promise(function (resolve) {
-        const folderReq = txFolders.objectStore('folders').getAll();
-        folderReq.onsuccess = async function () {
-            const folders = Array.isArray(folderReq.result) ? folderReq.result : [];
-            const txDocs = db.transaction('documents', 'readonly');
-            const docs = await new Promise(function (r) {
-                const req = txDocs.objectStore('documents').getAll();
-                req.onsuccess = function () { r(Array.isArray(req.result) ? req.result : []); };
-                req.onerror = function () { r([]); };
-            });
-            const shortText = function (text, n) { return Array.from(String(text || '').trim()).slice(0, n).join(''); };
-
-            folders.forEach(function (folder) {
-                const folderDocs = docs.filter(function (d) {
-                    return d.folderId === folder.id && String(d.title || '').toLowerCase().includes(searchTerm);
-                });
-                const folderDisplayName = folder.id === 'root' ? ROOT_FOLDER_NAME : String(folder.name || 'Folder');
-                const collapsedByState = isFolderCollapsed(folder.id);
-                const isCollapsedFolder = !searchTerm && collapsedByState;
-
-                const folderDiv = document.createElement('div');
-                folderDiv.className = 'mb-2';
-                const folderHeader = document.createElement('div');
-                folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
-                const folderDeleteBtn = folder.id === 'root'
-                    ? ''
-                    : '<button onclick="event.stopPropagation(); deleteFolderFromDB(\'' + escapeHtmlText(folder.id) + '\')" class="ml-auto text-[10px] px-1 py-0.5 rounded border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-600 hover:text-white" title="?대뜑 ??젣">x</button>';
-                folderHeader.innerHTML = ''
-                    + '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i>'
-                    + '<i data-lucide="folder" class="w-3 h-3"></i>'
-                    + '<span class="sidebar-text">' + escapeHtmlText(folderDisplayName) + '</span>'
-                    + folderDeleteBtn;
-                folderHeader.addEventListener('click', function () { toggleFolderCollapse(folder.id); });
-                folderDiv.appendChild(folderHeader);
-
-                const docContainer = document.createElement('div');
-                docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'pl-2 space-y-1') + (isCollapsedFolder ? ' hidden' : '');
-
-                folderDocs.forEach(function (doc) {
-                    const docItem = document.createElement('div');
-                    docItem.className = isSidebarCollapsed
-                        ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
-                        : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
-                    docItem.title = String(doc.title || '');
-                    docItem.onclick = function () { loadFromDB(doc.id); };
-
-                    const pushBtn = githubReady
-                        ? '<button onclick="event.stopPropagation(); pushDocToGithub(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">github</button>'
-                        : '';
-
-                    docItem.innerHTML = ''
-                        + '<div class="flex flex-col gap-1 doc-item-inner">'
-                        + '<div class="flex items-center gap-2">'
-                        + '<i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>'
-                        + '<span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
-                        + escapeHtmlText(isSidebarCollapsed ? shortText(doc.title, 3) : doc.title)
-                        + '</span>'
-                        + '</div>'
-                        + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
-                        + '<button onclick="event.stopPropagation(); loadFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>'
-                        + '<button onclick="event.stopPropagation(); openMoveModal(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">?대룞</button>'
-                        + pushBtn
-                        + '<button onclick="event.stopPropagation(); deleteFromDB(\'' + escapeHtmlText(doc.id) + '\')" class="text-[10px] bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 font-bold hover:bg-red-600 hover:text-white ml-auto">X</button>'
-                        + '</div>'
-                        + '</div>';
-                    docContainer.appendChild(docItem);
-                });
-
-                if (folderDocs.length > 0 || searchTerm === '') {
-                    folderDiv.appendChild(docContainer);
-                    listEl.appendChild(folderDiv);
-                }
-            });
-            resolve();
-        };
-        folderReq.onerror = function () { resolve(); };
-    });
+    if (window.SidebarLeft && typeof window.SidebarLeft.renderInDbList === 'function') {
+        return window.SidebarLeft.renderInDbList({
+            listEl,
+            db,
+            searchTerm,
+            githubReady,
+            rootFolderName: ROOT_FOLDER_NAME,
+            isSidebarCollapsed,
+            isFolderCollapsed,
+            toggleFolderCollapse
+        });
+    }
+    return Promise.resolve();
 }
 
 async function renderDBList() {
@@ -3834,6 +3555,11 @@ function bindEditorListKeyBehavior() {
     if (!editorTextarea || editorTextarea.__listKeyBehaviorBound) return;
     editorTextarea.__listKeyBehaviorBound = true;
     editorTextarea.addEventListener('keydown', function (event) {
+        if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && (event.key === 'Enter' || event.code === 'Enter')) {
+            event.preventDefault();
+            insertLiteralAtCursor('\n\n<div class="page-break"></div>\n\n');
+            return;
+        }
         if (handleEditorListEnterKey(event)) return;
         if (handleEditorListTabKey(event)) return;
     });
@@ -4506,6 +4232,13 @@ function adjustFontSize(delta) {
     editorTextarea.style.fontSize = `${fontSize}px`;
     document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
     document.getElementById('font-size-display').textContent = `${fontSize}px`;
+}
+
+function adjustHeaderScale(delta) {
+    headerScale = Math.max(0.55, Math.min(1.5, Math.round((headerScale + Number(delta || 0)) * 100) / 100));
+    document.documentElement.style.setProperty('--md-header-scale', `${headerScale}`);
+    const display = document.getElementById('header-scale-display');
+    if (display) display.textContent = `${Math.round(headerScale * 100)}%`;
 }
 
 function applyEditorHorizontalShift() {
@@ -8399,6 +8132,7 @@ window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
 window.adjustPageScale = adjustPageScale;
 window.adjustFontSize = adjustFontSize;
+window.adjustHeaderScale = adjustHeaderScale;
 window.adjustEditorHorizontalShift = adjustEditorHorizontalShift;
 window.resetEditorHorizontalShift = resetEditorHorizontalShift;
 configureScholarSearchShellBridge();
