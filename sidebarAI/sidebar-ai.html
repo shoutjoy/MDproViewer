@@ -10,8 +10,8 @@
     <div class="scholar-ai-header">
       <h3>ScholarAI</h3>
       <span>
-        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
         <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="Fullscreen">Fullscreen</button>
+        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="Close">&gt;Close</button>
       </span>
     </div>
     <div class="scholar-ai-body">
@@ -116,14 +116,17 @@
     <div class="ssp-header">
       <h3>sspimgAI</h3>
       <div class="ssp-header-actions">
-        <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
-        <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
         <button type="button" class="sa-btn ghost ssp-fullscreen-btn" onclick="sspAIFullscreen()" title="전체화면">전체화면</button>
+        <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
+        <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
       </div>
     </div>
     <div class="ssp-main">
       <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload an image">
         Image upload (JPG, PNG, GIF, WebP)<br><small>or Ctrl+V paste</small>
+      </div>
+      <div class="ssp-sketch-row">
+        <button type="button" class="sa-btn ghost ssp-btn-sketch" onclick="viewerSSPOpenSketchpad()" title="스케치 그림판 열기">스케치 그림판</button>
       </div>
       <input type="file" id="ssp-file-input" accept="image/*" style="display:none">
       <label>Prompt 1 (used for variation when a seed image is provided)</label>
@@ -149,6 +152,7 @@
       <label><input type="checkbox" id="ssp-no-text"> Pure image (no text)</label>
       <div class="ssp-action-row">
         <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">Generate</button>
+        <button type="button" class="sa-btn ghost ssp-btn-internal-insert" onclick="viewerSSPSaveInternalAndInsert('markdown')" title="Save result internally and insert into document">문서삽입</button>
         <button type="button" class="sa-btn ghost ssp-btn-crop" onclick="viewerSSPCropFromPanel()" title="Crop current result">Crop</button>
         <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="Upload to imgBB">[imgBB] Upload</button>
         <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB settings">Settings</button>
@@ -180,7 +184,8 @@
         </div>
       </div>
       <div id="ssp-status" class="ssp-status"></div>
-      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="Open fullscreen">
+      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" title="Generated image preview">
+      <button type="button" class="sa-btn ghost ssp-btn-open-result" style="margin-top:8px" onclick="viewerSSPOpenCurrentResultFullscreen()" disabled>크게보기</button>
       <button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>Download</button>
     </div>
     <div class="ssp-history-resizer" title="Drag to resize history"></div>
@@ -199,6 +204,7 @@
     <button type="button" onclick="viewerSSPFsZoom(0.25)" title="Zoom in">+</button>
     <button type="button" onclick="viewerSSPFsDownload()" title="Download">Download</button>
     <button type="button" class="viewer-fs-imgbb-btn" onclick="viewerSSPFsUploadImgbb()" title="Upload to imgBB">imgBB Upload</button>
+    <button type="button" class="viewer-fs-internal-insert-btn" onclick="viewerSSPFsSaveInternalAndInsert()" title="Save internally and insert into document">문서삽입</button>
     <button type="button" class="viewer-fs-insert-btn" onclick="viewerSSPFsInsert()" title="Insert into document">Insert</button>
     <button type="button" onclick="viewerSSPFsCrop()" title="Crop">Crop</button>
     <button type="button" onclick="viewerSSPCloseFullscreen()" title="Close">Close</button>

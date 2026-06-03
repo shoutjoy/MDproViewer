@@ -132,6 +132,24 @@ function bindCtrlWheelZoom() {
 }
 bindCtrlWheelZoom();
 
+function bindAltWheelCodeFontZoom() {
+  const onCodeFontWheel = (e) => {
+    if (!e || !e.altKey || e.ctrlKey || e.metaKey) return;
+    const dy = Number(e.deltaY) || 0;
+    if (dy === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setCodeFontSize(codeFontSize + (dy < 0 ? 1 : -1));
+  };
+  const targets = [els.codeWrap, els.code, els.codeView, els.codeLines].filter(Boolean);
+  targets.forEach((target) => {
+    if (target.dataset.altWheelCodeFontBound === "1") return;
+    target.dataset.altWheelCodeFontBound = "1";
+    target.addEventListener("wheel", onCodeFontWheel, { passive: false });
+  });
+}
+bindAltWheelCodeFontZoom();
+
 bindClick("btnWrap", "code-wrap", toggleCodeWrapMode);
 bindClick("btnCodeTheme", "code-theme", toggleCodeThemeMode);
 bindClick("btnCodeFontInc", "code-font-inc", () => setCodeFontSize(codeFontSize + 1));

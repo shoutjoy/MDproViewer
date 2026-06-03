@@ -93,6 +93,25 @@ function setImageInsertPreview(dataUrl) {
     img.classList.remove('hidden');
 }
 
+function applyImageInsertDataUrl(dataUrl, fileName) {
+    const value = String(dataUrl || '');
+    if (value.indexOf('data:image') !== 0) return false;
+    imageInsertCurrentDataUrl = value;
+    imageInsertCurrentFileName = fileName || ('sketch_' + Date.now() + '.png');
+    clearImageInsertInternalSavedState();
+    imageInsertChangedByCrop = false;
+    setImageInsertPreview(value);
+    renderImageInsertInternalInfo();
+    const input = document.getElementById('img-insert-url');
+    if (input) {
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    setImageInsertStatus('Sketchpad image loaded. You can crop, upload, save internally, or insert it.', false);
+    return true;
+}
+
 function revokeImageInsertGalleryObjectUrls() {
     if (!Array.isArray(imageInsertGalleryObjectUrls) || imageInsertGalleryObjectUrls.length === 0) return;
     imageInsertGalleryObjectUrls.forEach(function (u) {
@@ -398,6 +417,7 @@ function openImageInsertModal() {
     setImageUploadProgress(0, false);
     renderImageInsertInternalInfo();
     setImageInsertStatus('Image pasted. Click [imgBB] Upload to continue.', false);
+    if (typeof window.setInputModalImagePanelToggleState === 'function') window.setInputModalImagePanelToggleState();
 }
 
 function closeImageInsertModal() {
@@ -423,6 +443,7 @@ function closeImageInsertModal() {
 
     imageInsertDragging = false;
     setImageUploadProgress(0, false);
+    if (typeof window.setInputModalImagePanelToggleState === 'function') window.setInputModalImagePanelToggleState();
 }
 
 function applyImageInsertPanelLayout() {
@@ -746,3 +767,4 @@ window.toggleImageInsertGallery = toggleImageInsertGallery;
 window.refreshImageInsertGallery = refreshImageInsertGallery;
 window.downloadImageInsertGalleryZip = downloadImageInsertGalleryZip;
 window.insertImageFromModal = insertImageFromModal;
+window.applyImageInsertDataUrl = applyImageInsertDataUrl;

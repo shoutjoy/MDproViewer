@@ -116,7 +116,7 @@ let highlightPopupDockTop = 80;
 let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
-let tidyQuickMenuBound = false;
+let mermaidQuickMenuBound = false;
 let footnoteQuickMenuBound = false;
 let selectionWrapEnabled = true;
 let viewModeEditEnabled = false;
@@ -3022,130 +3022,65 @@ function tidySeparatorSpacingInEditor() {
     toggleTidyQuickMenu(true);
 }
 
+function getTidyActionDeps() {
+    return {
+        isEditMode: isEditMode,
+        editorTextarea: editorTextarea,
+        activeSidebarTab: activeSidebarTab,
+        specialTRT: (typeof specialTRT !== 'undefined') ? specialTRT : null,
+        tidySeparatorSpacing: tidySeparatorSpacing,
+        setCurrentMarkdown: function (value) { currentMarkdown = value; },
+        renderMarkdown: renderMarkdown,
+        renderTOC: renderTOC,
+        performAutoSave: performAutoSave,
+        showToast: showToast
+    };
+}
+
 function applyEnterTidyInEditor() {
-    if (!isEditMode || !editorTextarea) {
-        showToast('Use this in edit mode.');
-        return;
+    if (window.TidyActions && typeof window.TidyActions.applyEnter === 'function') {
+        window.TidyActions.applyEnter(getTidyActionDeps());
     }
-    closeTidyQuickMenu();
-
-    const start = editorTextarea.selectionStart;
-    const end = editorTextarea.selectionEnd;
-    const scrollTop = editorTextarea.scrollTop;
-    const scrollLeft = editorTextarea.scrollLeft;
-    const selectionDirection = editorTextarea.selectionDirection || 'none';
-    const hasSelection = start !== end;
-    const sourceText = hasSelection
-        ? editorTextarea.value.substring(start, end)
-        : editorTextarea.value;
-    const result = tidySeparatorSpacing(sourceText);
-
-    if (!result.changed) {
-        showToast('No spacing changes were needed.');
-        return;
-    }
-
-    if (hasSelection) {
-        const fullText = editorTextarea.value;
-        editorTextarea.value = fullText.substring(0, start) + result.value + fullText.substring(end);
-        currentMarkdown = editorTextarea.value;
-    } else {
-        editorTextarea.value = result.value;
-        currentMarkdown = result.value;
-    }
-    editorTextarea.focus();
-    if (hasSelection) {
-        editorTextarea.setSelectionRange(start, start + result.value.length, selectionDirection);
-    } else {
-        editorTextarea.setSelectionRange(start, end, selectionDirection);
-    }
-    editorTextarea.scrollTop = scrollTop;
-    editorTextarea.scrollLeft = scrollLeft;
-    requestAnimationFrame(function () {
-        if (!editorTextarea) return;
-        editorTextarea.scrollTop = scrollTop;
-        editorTextarea.scrollLeft = scrollLeft;
-    });
-    renderMarkdown();
-    if (activeSidebarTab === 'toc') renderTOC();
-    performAutoSave();
-    const tidyChanges = Array.isArray(result.changes) ? result.changes.filter(Boolean) : [];
-    showToast(tidyChanges.length ? ('?뷀꽣?뺣━ ?곸슜: ' + tidyChanges.join(', ')) : '?뷀꽣?뺣━ ?곸슜');
 }
 
 function applyMathTidyInEditor() {
-    if (!isEditMode || !editorTextarea) {
-        showToast('Use this in edit mode.');
-        return;
+    if (window.TidyActions && typeof window.TidyActions.applyMath === 'function') {
+        window.TidyActions.applyMath(getTidyActionDeps());
     }
-    closeTidyQuickMenu();
-
-    const start = editorTextarea.selectionStart;
-    const end = editorTextarea.selectionEnd;
-    const scrollTop = editorTextarea.scrollTop;
-    const scrollLeft = editorTextarea.scrollLeft;
-    const selectionDirection = editorTextarea.selectionDirection || 'none';
-    const hasSelection = start !== end;
-    const sourceText = hasSelection
-        ? editorTextarea.value.substring(start, end)
-        : editorTextarea.value;
-
-    const result = (typeof specialTRT !== 'undefined' && typeof specialTRT.analyzeMathTidyChanges === 'function')
-        ? specialTRT.analyzeMathTidyChanges(sourceText)
-        : { value: sourceText, changes: [] };
-
-    if (!result || result.value === sourceText) {
-        showToast('?섏떇?뺣━?먯꽌 諛붾??댁슜???놁뒿?덈떎.');
-        return;
-    }
-
-    if (hasSelection) {
-        const fullText = editorTextarea.value;
-        editorTextarea.value = fullText.substring(0, start) + result.value + fullText.substring(end);
-        currentMarkdown = editorTextarea.value;
-    } else {
-        editorTextarea.value = result.value;
-        currentMarkdown = result.value;
-    }
-    editorTextarea.focus();
-    if (hasSelection) {
-        editorTextarea.setSelectionRange(start, start + result.value.length, selectionDirection);
-    } else {
-        editorTextarea.setSelectionRange(start, end, selectionDirection);
-    }
-    editorTextarea.scrollTop = scrollTop;
-    editorTextarea.scrollLeft = scrollLeft;
-    requestAnimationFrame(function () {
-        if (!editorTextarea) return;
-        editorTextarea.scrollTop = scrollTop;
-        editorTextarea.scrollLeft = scrollLeft;
-    });
-    renderMarkdown();
-    if (activeSidebarTab === 'toc') renderTOC();
-    performAutoSave();
-    showToast('?섏떇?뺣━ ?곸슜: \\[??$, \\]??$, \\(??, \\)??');
 }
 
 function closeTidyQuickMenu() {
-    const panel = document.getElementById('tidy-quick-panel');
-    if (panel) panel.classList.add('hidden');
+    if (window.TidyActions && typeof window.TidyActions.closeMenu === 'function') {
+        window.TidyActions.closeMenu();
+    }
 }
 
 function toggleTidyQuickMenu(forceOpen) {
-    const panel = document.getElementById('tidy-quick-panel');
-    const btn = document.getElementById('btn-tidy-quick');
+    if (window.TidyActions && typeof window.TidyActions.toggleMenu === 'function') {
+        window.TidyActions.toggleMenu(forceOpen);
+    }
+}
+
+function closeMermaidQuickMenu() {
+    const panel = document.getElementById('mermaid-quick-panel');
+    if (panel) panel.classList.add('hidden');
+}
+
+function toggleMermaidQuickMenu(forceOpen) {
+    const panel = document.getElementById('mermaid-quick-panel');
+    const btn = document.getElementById('btn-mermaid-quick');
     if (!panel || !btn) return;
-    bindTidyQuickMenuDismiss();
+    bindMermaidQuickMenuDismiss();
     const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
     panel.classList.toggle('hidden', !shouldOpen);
 }
 
-function bindTidyQuickMenuDismiss() {
-    if (tidyQuickMenuBound || !document.body) return;
-    tidyQuickMenuBound = true;
+function bindMermaidQuickMenuDismiss() {
+    if (mermaidQuickMenuBound || !document.body) return;
+    mermaidQuickMenuBound = true;
     document.body.addEventListener('click', function (event) {
-        const panel = document.getElementById('tidy-quick-panel');
-        const btn = document.getElementById('btn-tidy-quick');
+        const panel = document.getElementById('mermaid-quick-panel');
+        const btn = document.getElementById('btn-mermaid-quick');
         if (!panel || !btn) return;
         const target = event.target;
         if (panel.contains(target) || btn.contains(target)) return;
@@ -4112,66 +4047,47 @@ function applyTextStyleToSelection() {
     showToast('Applied text style using HTML tags.');
 }
 
+function setInputModalImagePanelToggleState() {
+    if (window.LinkImageModal && typeof window.LinkImageModal.setImagePanelToggleState === 'function') {
+        window.LinkImageModal.setImagePanelToggleState();
+    }
+}
+
+function toggleInputModalImagePanel() {
+    if (window.LinkImageModal && typeof window.LinkImageModal.toggleImagePanel === 'function') {
+        window.LinkImageModal.toggleImagePanel();
+    }
+}
+
 function openLinkModal(mode) {
     modalMode = mode;
-    const isLink = mode === 'link';
-    const isImage = mode === 'image';
-    const isId = mode === 'id';
-    document.getElementById('modal-title').textContent = isLink ? 'Insert Link' : (isImage ? 'Insert Image' : 'Insert ID Anchor');
-    document.getElementById('label-text').textContent = isLink ? 'Display text' : (isImage ? 'Image description' : 'ID');
-    const shortcuts = document.getElementById('image-link-shortcuts');
-    const urlWrap = document.getElementById('input-url-wrap');
-    if (shortcuts) {
-        if (isImage) {
-            shortcuts.classList.remove('hidden');
-            shortcuts.classList.add('flex');
-        } else {
-            shortcuts.classList.add('hidden');
-            shortcuts.classList.remove('flex');
-        }
+    if (window.LinkImageModal && typeof window.LinkImageModal.open === 'function') {
+        window.LinkImageModal.open(mode, { inputModal: inputModal, editorTextarea: editorTextarea });
     }
-    if (urlWrap) {
-        urlWrap.classList.toggle('hidden', isId);
-    }
-    document.getElementById('input-display-text').value = editorTextarea.value.substring(editorTextarea.selectionStart, editorTextarea.selectionEnd).trim();
-    document.getElementById('input-url').value = isId ? '' : '';
-    inputModal.classList.remove('hidden');
-    inputModal.classList.add('flex');
-    document.getElementById('input-display-text').focus();
 }
 function closeModal() {
-    inputModal.classList.add('hidden');
-    inputModal.classList.remove('flex');
-    editorTextarea.focus();
+    if (window.LinkImageModal && typeof window.LinkImageModal.close === 'function') {
+        window.LinkImageModal.close({ inputModal: inputModal, editorTextarea: editorTextarea });
+        return;
+    }
+    if (inputModal) {
+        inputModal.classList.add('hidden');
+        inputModal.classList.remove('flex');
+    }
+    if (editorTextarea) editorTextarea.focus();
 }
 
 function confirmModalInsert() {
-    const isId = modalMode === 'id';
-    const displayText = document.getElementById('input-display-text').value || (modalMode === 'link' ? 'link text' : 'image');
-    const url = document.getElementById('input-url').value || 'https://';
-    const start = editorTextarea.selectionStart;
-    const end = editorTextarea.selectionEnd;
-    const currentScrollTop = editorTextarea.scrollTop;
-
-    let replacement = '';
-    if (isId) {
-        const idValue = String(displayText || '').trim();
-        if (!idValue) {
-            showToast('\u0049\u0044\uB97C \uC785\uB825\uD574\uC8FC\uC138\uC694.');
-            return;
-        }
-        replacement = `<div id ="${idValue}"></div>\n[${idValue}]\n\n[${idValue}](#${idValue})`;
-    } else {
-        replacement = modalMode === 'link' ? `[${displayText}](${url})` : `![${displayText}](${url})`;
+    if (window.LinkImageModal && typeof window.LinkImageModal.confirm === 'function') {
+        const inserted = window.LinkImageModal.confirm({
+            inputModal: inputModal,
+            editorTextarea: editorTextarea,
+            getMode: function () { return modalMode; },
+            showToast: showToast,
+            onInserted: function (value) { currentMarkdown = value; }
+        });
+        if (!inserted) return;
     }
-
-    editorTextarea.focus();
-    editorTextarea.setSelectionRange(start, end);
-    document.execCommand('insertText', false, replacement);
-    currentMarkdown = editorTextarea.value;
-    closeModal();
-    editorTextarea.scrollTop = currentScrollTop;
-    editorTextarea.setSelectionRange(start + replacement.length, start + replacement.length);
     performAutoSave();
 }
 
@@ -8107,6 +8023,8 @@ window.dismissRecovery = dismissRecovery;
 window.loadFromExternalContent = loadFromExternalContent;
 window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
+window.toggleMermaidQuickMenu = toggleMermaidQuickMenu;
+window.closeMermaidQuickMenu = closeMermaidQuickMenu;
 window.toggleEnterButtonInsertBrSetting = toggleEnterButtonInsertBrSetting;
 window.toggleViewModeEditSetting = toggleViewModeEditSetting;
 if (typeof insertMarkdownImageAtCursor === 'function') window.insertMarkdownImageAtCursor = insertMarkdownImageAtCursor;
@@ -8130,6 +8048,8 @@ if (typeof insertImageFromModal === 'function') window.insertImageFromModal = in
 window.openLinkModal = openLinkModal;
 window.closeModal = closeModal;
 window.confirmModalInsert = confirmModalInsert;
+window.toggleInputModalImagePanel = toggleInputModalImagePanel;
+window.setInputModalImagePanelToggleState = setInputModalImagePanelToggleState;
 window.adjustPageScale = adjustPageScale;
 window.adjustFontSize = adjustFontSize;
 window.adjustHeaderScale = adjustHeaderScale;
@@ -8195,6 +8115,11 @@ window.registerMacroEntryShortcut = registerMacroEntryShortcut;
 window.clearMacroEntryShortcut = clearMacroEntryShortcut;
 window.dockMacroMenuRight = dockMacroMenuRight;
 window.toggleMacroVisibilitySection = toggleMacroVisibilitySection;
+window.tidySeparatorSpacingInEditor = tidySeparatorSpacingInEditor;
+window.applyEnterTidyInEditor = applyEnterTidyInEditor;
+window.applyMathTidyInEditor = applyMathTidyInEditor;
+window.closeTidyQuickMenu = closeTidyQuickMenu;
+window.toggleTidyQuickMenu = toggleTidyQuickMenu;
 window.toggleMathQuickMenu = toggleMathQuickMenu;
 window.insertInlineMathTemplate = insertInlineMathTemplate;
 window.insertDisplayMathTemplate = insertDisplayMathTemplate;

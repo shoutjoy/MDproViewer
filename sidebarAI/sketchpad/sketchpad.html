@@ -1,0 +1,49 @@
+<div id="ai-sketch-pad-box" role="dialog" aria-modal="true" aria-label="스케치 그림판">
+  <div id="ai-sketch-pad-head">
+    <b>스케치 그림판</b>
+    <div class="ai-sketch-head-actions">
+      <button type="button" class="ai-sketch-btn" id="ai-sketch-export">그림내보내기</button>
+      <button type="button" class="ai-sketch-btn" id="ai-sketch-imgbb">ImgBB링크</button>
+      <button type="button" class="ai-sketch-btn" id="ai-sketch-imgbb-insert">이미지 링크삽입</button>
+      <button type="button" class="ai-sketch-btn" id="ai-sketch-doc-insert">문서 이미지삽입</button>
+      <button type="button" class="ai-sketch-btn primary" id="ai-sketch-send">이미지삽입에 넣기</button>
+      <button type="button" class="ai-sketch-btn" id="ai-sketch-close">닫기</button>
+    </div>
+  </div>
+  <div id="ai-sketch-imgbb-result-bar">
+    <strong>ImgBB URL</strong>
+    <a id="ai-sketch-imgbb-result-link" href="#" target="_blank" rel="noreferrer"></a>
+  </div>
+  <div id="ai-sketch-pad-tools">
+    <input type="hidden" id="ai-sketch-tool" value="pen">
+    <span class="ai-sketch-tool-label">도구</span>
+    <button type="button" class="ai-sketch-tool-btn active" data-tool="pen">펜</button>
+    <button type="button" class="ai-sketch-tool-btn" data-tool="highlighter">형광펜</button>
+    <button type="button" class="ai-sketch-tool-btn" data-tool="eraser">지우개</button>
+    <label>펜 종류
+      <select id="ai-sketch-pen-type">
+        <option value="pencil">연필</option>
+        <option value="ball">볼펜</option>
+        <option value="pen">펜</option>
+      </select>
+    </label>
+    <label>펜 색 <input type="color" id="ai-sketch-pen-color" value="#15233d"></label>
+    <label>선두께 <input type="range" id="ai-sketch-pen-size" min="1" max="36" value="5"></label>
+    <span class="tool-split"></span>
+    <label>형광 색 <input type="color" id="ai-sketch-high-color" value="#fff176"></label>
+    <label>두께 <input type="range" id="ai-sketch-high-size" min="4" max="80" value="26"></label>
+    <label>알파 <input type="range" id="ai-sketch-high-alpha" min="5" max="80" value="35"></label>
+    <span class="tool-split"></span>
+    <label>지우개 <input type="range" id="ai-sketch-eraser-size" min="8" max="100" value="28"></label>
+    <button type="button" class="ai-sketch-btn danger" id="ai-sketch-clear">전체 지우기</button>
+    <button type="button" class="ai-sketch-btn" id="ai-sketch-import-btn">그림불러오기</button>
+    <input type="file" id="ai-sketch-import" accept="image/*" style="display:none">
+  </div>
+  <div id="ai-sketch-pad-stage">
+    <canvas id="ai-sketch-pad-canvas" width="1024" height="768"></canvas>
+  </div>
+  <div id="ai-sketch-pad-foot">
+    <span id="ai-sketch-target-help">간단한 개형을 그리고 버튼을 누르면 이미지삽입 탭의 업로드 이미지로 들어갑니다.</span>
+    <span id="ai-sketch-status">1024 x 768</span>
+  </div>
+</div>

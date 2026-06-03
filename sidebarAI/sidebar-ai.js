@@ -31,9 +31,9 @@
     <div class="scholar-ai-header">
       <h3>ScholarAI</h3>
       <span>
-        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="닫기">닫기</button>
-        <button type="button" class="sa-btn sa-popup-toggle-btn" onclick="scholarAIPopupToggle()" title="Popup window">Popup</button>
         <button type="button" class="sa-btn" onclick="scholarAIFullscreen()" title="전체화면">전체화면</button>
+        <button type="button" class="sa-btn sa-popup-toggle-btn" onclick="scholarAIPopupToggle()" title="Popup window">Popup</button>
+        <button type="button" class="sa-btn" onclick="scholarAIShrink()" title="닫기">닫기</button>
       </span>
     </div>
     <div class="scholar-ai-body">
@@ -144,14 +144,17 @@
     <div class="ssp-header">
       <h3>sspimgAI</h3>
       <div class="ssp-header-actions">
-        <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
-        <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
         <button type="button" class="sa-btn ghost ssp-fullscreen-btn" onclick="sspAIFullscreen()" title="전체화면">전체화면</button>
+        <button type="button" class="sa-btn ghost ssp-popup-toggle-btn" onclick="sspAIPopupToggle()" title="Popup">Popup</button>
+        <button type="button" class="sa-btn ghost" onclick="sspAIShrink()" title="닫기">닫기</button>
       </div>
     </div>
     <div class="ssp-main">
       <div id="ssp-upload-zone" class="ssp-upload" onclick="document.getElementById('ssp-file-input').click()" title="Click to upload an image">
         Image upload (JPG, PNG, GIF, WebP)<br><small>or Ctrl+V paste</small>
+      </div>
+      <div class="ssp-sketch-row">
+        <button type="button" class="sa-btn ghost ssp-btn-sketch" onclick="viewerSSPOpenSketchpad()" title="스케치 그림판 열기">스케치 그림판</button>
       </div>
       <input type="file" id="ssp-file-input" accept="image/*" style="display:none">
       <label>Prompt 1 (used for variation when a seed image is provided)</label>
@@ -177,6 +180,7 @@
       <label><input type="checkbox" id="ssp-no-text"> Pure image (no text)</label>
       <div class="ssp-action-row">
         <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">Generate</button>
+        <button type="button" class="sa-btn ghost ssp-btn-internal-insert" onclick="viewerSSPSaveInternalAndInsert('markdown')" title="Save result internally and insert into document">문서삽입</button>
         <button type="button" class="sa-btn ghost ssp-btn-crop" onclick="viewerSSPCropFromPanel()" title="Crop current result">Crop</button>
         <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="Upload to imgBB">[imgBB] Upload</button>
         <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB settings">Settings</button>
@@ -208,7 +212,8 @@
         </div>
       </div>
       <div id="ssp-status" class="ssp-status"></div>
-      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="Open fullscreen">
+      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" title="Generated image preview">
+      <button type="button" class="sa-btn ghost ssp-btn-open-result" style="margin-top:8px" onclick="viewerSSPOpenCurrentResultFullscreen()" disabled>크게보기</button>
       <button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>Download</button>
     </div>
     <div class="ssp-history-resizer" title="Drag to resize history"></div>
@@ -227,7 +232,9 @@
     <button type="button" onclick="viewerSSPFsZoom(0.25)" title="Zoom in">+</button>
     <button type="button" onclick="viewerSSPFsDownload()" title="Download">Download</button>
     <button type="button" class="viewer-fs-imgbb-btn" onclick="viewerSSPFsUploadImgbb()" title="Upload to imgBB">imgBB Upload</button>
+    <button type="button" class="viewer-fs-internal-insert-btn" onclick="viewerSSPFsSaveInternalAndInsert()" title="Save internally and insert into document">문서삽입</button>
     <button type="button" class="viewer-fs-insert-btn" onclick="viewerSSPFsInsert()" title="Insert into document">Insert</button>
+    <button type="button" class="viewer-fs-apply-btn" onclick="viewerSSPFsApplyToSSP()" title="sspimgAI 입력란에 적용">적용</button>
     <button type="button" onclick="viewerSSPFsCrop()" title="Crop">Crop</button>
     <button type="button" onclick="viewerSSPCloseFullscreen()" title="Close">Close</button>
   </div>
@@ -401,6 +408,7 @@
       <label><input type="checkbox" id="ssp-no-text"> Pure image (no text)</label>
       <div class="ssp-action-row">
         <button type="button" class="sa-btn ssp-btn-generate" onclick="viewerSSPGenerate()">Generate</button>
+        <button type="button" class="sa-btn ghost ssp-btn-internal-insert" onclick="viewerSSPSaveInternalAndInsert('markdown')" title="Save result internally and insert into document">문서삽입</button>
         <button type="button" class="sa-btn ghost ssp-btn-crop" onclick="viewerSSPCropFromPanel()" title="Crop current result">Crop</button>
         <button type="button" class="sa-btn ssp-btn-imgbb" onclick="viewerSSPOpenImgbb()" title="Upload to imgBB">[imgBB] Upload</button>
         <button type="button" class="sa-btn ghost ssp-btn-imgbb-settings" onclick="viewerSSPToggleImgbbSettings()" title="imgBB settings">Settings</button>
@@ -432,7 +440,8 @@
         </div>
       </div>
       <div id="ssp-status" class="ssp-status"></div>
-      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" onclick="if(this.src) viewerSSPOpenFullscreen(this.src)" title="Open fullscreen">
+      <img id="ssp-result-img" class="ssp-result" style="display:none" alt="Generated image" title="Generated image preview">
+      <button type="button" class="sa-btn ghost ssp-btn-open-result" style="margin-top:8px" onclick="viewerSSPOpenCurrentResultFullscreen()" disabled>크게보기</button>
       <button type="button" class="sa-btn ghost" style="margin-top:8px" onclick="viewerSSPDownload()" id="ssp-download-btn" disabled>Download</button>
     </div>
     <div class="ssp-history-resizer" title="Drag to resize history"></div>
@@ -451,7 +460,9 @@
     <button type="button" onclick="viewerSSPFsZoom(0.25)" title="Zoom in">+</button>
     <button type="button" onclick="viewerSSPFsDownload()" title="Download">Download</button>
     <button type="button" class="viewer-fs-imgbb-btn" onclick="viewerSSPFsUploadImgbb()" title="Upload to imgBB">imgBB Upload</button>
+    <button type="button" class="viewer-fs-internal-insert-btn" onclick="viewerSSPFsSaveInternalAndInsert()" title="Save internally and insert into document">문서삽입</button>
     <button type="button" class="viewer-fs-insert-btn" onclick="viewerSSPFsInsert()" title="Insert into document">Insert</button>
+    <button type="button" class="viewer-fs-apply-btn" onclick="viewerSSPFsApplyToSSP()" title="sspimgAI 입력란에 적용">적용</button>
     <button type="button" onclick="viewerSSPFsCrop()" title="Crop">Crop</button>
     <button type="button" onclick="viewerSSPCloseFullscreen()" title="Close">Close</button>
   </div>
@@ -467,6 +478,7 @@
 `;
 
   var __scholarAISelStart = null, __scholarAISelEnd = null, __scholarAICursorPos = null, __scholarAIResultFontSize = 13;
+  var __scholarAITextFontSizes = {};
   var __scholarAILastSelectionTarget = null, __scholarAILastSelectionDoc = null;
   var __scholarAIActiveResultTab = 'insert';
   var __scholarAIZoomPercent = 100, __scholarAIZoomMode = 'edit';
@@ -476,6 +488,8 @@
   var __scholarAIProgressValue = 0;
   var __scholarAIHistory = [];
   var __viewerSSPSeedImage = null, __viewerSSPResultImage = null, __viewerSSPRatio = '1:1';
+  var __viewerSSPTextFontSizes = {};
+  var __viewerSSPGenerating = false, __viewerSSPAbortRequested = false;
   var __viewerSSPImgbbUploading = false;
   var __viewerSSPImgHistory = [];
   var __viewerSSPExternalFsGallery = [];
@@ -1797,8 +1811,73 @@
     var insertEl = document.getElementById('scholar-ai-result-insert');
     if (!explainEl && !insertEl) return;
     __scholarAIResultFontSize = Math.max(10, Math.min(24, __scholarAIResultFontSize + delta));
-    if (explainEl) explainEl.style.fontSize = __scholarAIResultFontSize + 'px';
-    if (insertEl) insertEl.style.fontSize = __scholarAIResultFontSize + 'px';
+    if (explainEl) explainEl.style.setProperty('font-size', __scholarAIResultFontSize + 'px', 'important');
+    if (insertEl) insertEl.style.setProperty('font-size', __scholarAIResultFontSize + 'px', 'important');
+  }
+  function scholarAIGetTextFontSize(el) {
+    if (!el) return 12;
+    var id = el.id || '';
+    if (__scholarAITextFontSizes[id]) return __scholarAITextFontSizes[id];
+    var computed = 0;
+    try {
+      computed = parseFloat(window.getComputedStyle(el).fontSize || '');
+    } catch (e) {}
+    return Math.max(10, Math.min(32, Math.round(computed || 12)));
+  }
+  function scholarAISetTextFontSize(el, size) {
+    if (!el) return;
+    var next = Math.max(10, Math.min(32, Math.round(Number(size) || 12)));
+    if (el.id) __scholarAITextFontSizes[el.id] = next;
+    el.style.setProperty('font-size', next + 'px', 'important');
+    if (el.id === 'scholar-ai-result' || el.id === 'scholar-ai-result-insert') {
+      __scholarAIResultFontSize = next;
+      var pairId = el.id === 'scholar-ai-result' ? 'scholar-ai-result-insert' : 'scholar-ai-result';
+      var pair = document.getElementById(pairId);
+      if (pair) {
+        pair.style.setProperty('font-size', next + 'px', 'important');
+        if (pair.id) __scholarAITextFontSizes[pair.id] = next;
+      }
+    }
+  }
+  function scholarAIBindAltWheelFontSize() {
+    var ids = [
+      'scholar-ai-pre-prompt-text',
+      'scholar-ai-selected',
+      'scholar-ai-prompt',
+      'scholar-ai-result',
+      'scholar-ai-result-insert'
+    ];
+    ids.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el || el.__scholarAIAltWheelFontBound) return;
+      el.__scholarAIAltWheelFontBound = true;
+      el.addEventListener('wheel', function (event) {
+        if (!event || !event.altKey || event.ctrlKey || event.metaKey) return;
+        var dy = Number(event.deltaY) || 0;
+        if (dy === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        scholarAISetTextFontSize(el, scholarAIGetTextFontSize(el) + (dy < 0 ? 1 : -1));
+      }, { passive: false });
+    });
+  }
+  function scholarAIBindZoomAltWheel() {
+    var targets = [
+      document.getElementById('scholar-ai-result-zoom-ta'),
+      document.getElementById('scholar-ai-result-zoom-view')
+    ].filter(Boolean);
+    targets.forEach(function (el) {
+      if (el.__scholarAIZoomAltWheelBound) return;
+      el.__scholarAIZoomAltWheelBound = true;
+      el.addEventListener('wheel', function (event) {
+        if (!event || !event.altKey || event.ctrlKey || event.metaKey) return;
+        var dy = Number(event.deltaY) || 0;
+        if (dy === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        scholarAIAdjustZoom(dy < 0 ? 10 : -10);
+      }, { passive: false });
+    });
   }
   function scholarAIApplyZoomUi() {
     var ta = document.getElementById('scholar-ai-result-zoom-ta');
@@ -1807,8 +1886,8 @@
     var editBtn = document.getElementById('scholar-ai-zoom-mode-edit');
     var viewBtn = document.getElementById('scholar-ai-zoom-mode-view');
     var sizePx = Math.max(10, Math.min(42, Math.round(16 * (__scholarAIZoomPercent / 100))));
-    if (ta) ta.style.fontSize = sizePx + 'px';
-    if (view) view.style.fontSize = sizePx + 'px';
+    if (ta) ta.style.setProperty('font-size', sizePx + 'px', 'important');
+    if (view) view.style.setProperty('font-size', sizePx + 'px', 'important');
     if (label) label.textContent = __scholarAIZoomPercent + '%';
     if (editBtn) {
       editBtn.style.borderColor = __scholarAIZoomMode === 'edit' ? '#4f8ef7' : '';
@@ -1880,6 +1959,8 @@
     window.__scholarAIZoomMode = __scholarAIZoomMode;
     scholarAISetZoomMode(__scholarAIZoomMode);
     scholarAIApplyZoomUi();
+    scholarAIBindAltWheelFontSize();
+    scholarAIBindZoomAltWheel();
     zoomTa.focus();
     function onEsc(e) {
       if (e.key === 'Escape') {
@@ -2242,6 +2323,34 @@
       uploadZone.innerHTML = 'Image upload (JPG, PNG, GIF, WebP)<br><small>or Ctrl+V paste</small>';
     }
   }
+  function viewerSSPApplySketchImage(dataURL) {
+    if (!dataURL || String(dataURL).indexOf('data:image') !== 0) return false;
+    __viewerSSPSeedImage = dataURL;
+    __viewerSSPResultImage = dataURL;
+    viewerSSPSetUploadZoneContent(dataURL);
+    var resultImg = document.getElementById('ssp-result-img');
+    if (resultImg) {
+      resultImg.src = dataURL;
+      resultImg.style.display = 'block';
+      resultImg.title = 'Open fullscreen';
+    }
+    var downloadBtn = document.getElementById('ssp-download-btn');
+    if (downloadBtn) downloadBtn.disabled = false;
+    var openBtn = document.querySelector('.ssp-btn-open-result');
+    if (openBtn) openBtn.disabled = false;
+    var linkInput = document.getElementById('ssp-image-link-url');
+    if (linkInput) linkInput.value = '';
+    viewerSSPImgHistoryAdd(dataURL, 'Sketchpad image');
+    setSSPStatus('Sketchpad image inserted into sspimgAI.');
+    return true;
+  }
+  function viewerSSPOpenSketchpad() {
+    if (window.AiSketchPad && typeof window.AiSketchPad.open === 'function') {
+      window.AiSketchPad.open('ssp');
+      return;
+    }
+    notifyUser('Sketchpad is not loaded.', true);
+  }
   function viewerSSPClearSeed() {
     __viewerSSPSeedImage = null;
     viewerSSPSetUploadZoneContent(null);
@@ -2297,15 +2406,35 @@ function viewerSSPFsUploadImgbb() {
     }
     viewerSSPUploadToImgbb(img.src);
   }
+  function viewerSSPFsApplyToSSP() {
+    var img = document.getElementById('viewer-fs-img');
+    if (!img || !img.src) {
+      notifyUser('No image is open.', true);
+      return;
+    }
+    viewerSSPApplyImageToPanel(img.src, 'Applied image');
+    notifyUser('Image applied to sspimgAI input.', false);
+  }
+  function viewerSSPFsSaveInternalAndInsert() {
+    var img = document.getElementById('viewer-fs-img');
+    if (!img || !img.src) {
+      notifyUser('문서에 삽입할 이미지가 없습니다.', true);
+      return;
+    }
+    __viewerSSPResultImage = img.src;
+    return viewerSSPSaveInternalAndInsert('markdown');
+  }
   function viewerSSPFsInsert() {
     var img = document.getElementById('viewer-fs-img');
     if (!img || !img.src) return;
     var h = getHost();
     if (h) try { h.postMessage({ type: 'imgViewerInsert', dataURL: img.src }, '*'); } catch (e) {}
   }
-  function viewerSSPApplyCroppedImage(dataUrl) {
-    if (!dataUrl) return;
+  function viewerSSPApplyImageToPanel(dataUrl, historyLabel) {
+    if (!dataUrl) return false;
+    __viewerSSPSeedImage = dataUrl;
     __viewerSSPResultImage = dataUrl;
+    viewerSSPSetUploadZoneContent(dataUrl);
     var resultImg = document.getElementById('ssp-result-img');
     if (resultImg) {
       resultImg.src = dataUrl;
@@ -2316,10 +2445,49 @@ function viewerSSPFsUploadImgbb() {
     if (fsImg) fsImg.src = dataUrl;
     var downloadBtn = document.getElementById('ssp-download-btn');
     if (downloadBtn) downloadBtn.disabled = false;
+    var openBtn = document.querySelector('.ssp-btn-open-result');
+    if (openBtn) openBtn.disabled = false;
     var linkInput = document.getElementById('ssp-image-link-url');
     if (linkInput) linkInput.value = '';
     viewerSSPUpdateFullscreenInfo(dataUrl);
-    viewerSSPImgHistoryAdd(dataUrl, 'Cropped image');
+    viewerSSPImgHistoryAdd(dataUrl, historyLabel || 'Applied image');
+    return true;
+  }
+  function viewerSSPShowHistoryImage(id) {
+    for (var i = 0; i < __viewerSSPImgHistory.length; i++) {
+      if (__viewerSSPImgHistory[i].id === id) {
+        var dataURL = __viewerSSPImgHistory[i].dataURL;
+        if (!dataURL) return;
+        __viewerSSPSeedImage = dataURL;
+        __viewerSSPResultImage = dataURL;
+        viewerSSPSetUploadZoneContent(dataURL);
+        var resultImg = document.getElementById('ssp-result-img');
+        if (resultImg) {
+          resultImg.src = dataURL;
+          resultImg.style.display = 'block';
+          resultImg.title = 'Generated image preview';
+        }
+        var downloadBtn = document.getElementById('ssp-download-btn');
+        if (downloadBtn) downloadBtn.disabled = false;
+        var openBtn = document.querySelector('.ssp-btn-open-result');
+        if (openBtn) openBtn.disabled = false;
+        setSSPStatus('히스토리 이미지를 결과창에 표시했습니다. 크게 보려면 크게보기 버튼을 누르세요.');
+        return;
+      }
+    }
+    notifyUser('선택한 히스토리 이미지를 찾을 수 없습니다.', true);
+  }
+  function viewerSSPOpenCurrentResultFullscreen() {
+    var resultImg = document.getElementById('ssp-result-img');
+    var src = (resultImg && resultImg.src) || __viewerSSPResultImage;
+    if (!src) {
+      notifyUser('크게 볼 이미지가 없습니다.', true);
+      return;
+    }
+    viewerSSPOpenFullscreen(src);
+  }
+  function viewerSSPApplyCroppedImage(dataUrl) {
+    if (!viewerSSPApplyImageToPanel(dataUrl, 'Cropped image')) return;
     setSSPStatus('Crop applied.');
   }
   function viewerSSPBindCropMessages() {
@@ -2417,13 +2585,68 @@ function viewerSSPFsUploadImgbb() {
     }
   }
   function viewerSSPAbort() {
+    __viewerSSPAbortRequested = true;
     var fn = getCallback('abortCurrentTask');
     if (typeof fn === 'function') try { fn(); } catch (e) {}
+    var statusEl = document.getElementById('ssp-status');
+    if (statusEl) statusEl.textContent = '생성 중지 요청을 보냈습니다.';
+  }
+  function viewerSSPEnsureProgressPlacement() {
+    var actionRow = document.querySelector('.ssp-action-row');
+    var progressWrap = document.getElementById('ssp-progress-wrap');
+    if (actionRow && progressWrap && actionRow.parentNode && actionRow.nextElementSibling !== progressWrap) {
+      actionRow.parentNode.insertBefore(progressWrap, actionRow.nextSibling);
+    }
+  }
+  function viewerSSPSetProgressVisible(visible, pct) {
+    var progressWrap = document.getElementById('ssp-progress-wrap');
+    var progressFill = document.getElementById('ssp-progress-fill');
+    var progressPct = document.getElementById('ssp-progress-pct');
+    viewerSSPEnsureProgressPlacement();
+    if (progressWrap) {
+      progressWrap.classList.toggle('visible', !!visible);
+      progressWrap.style.display = visible ? 'flex' : 'none';
+    }
+    if (typeof pct === 'number') {
+      var safePct = Math.max(0, Math.min(100, Math.round(pct)));
+      if (progressFill) progressFill.style.width = safePct + '%';
+      if (progressPct) progressPct.textContent = safePct + '%';
+    }
+  }
+  function viewerSSPSetGeneratingState(running) {
+    __viewerSSPGenerating = !!running;
+    var generateBtn = document.querySelector('.ssp-btn-generate');
+    var abortBtn = document.querySelector('#ssp-progress-wrap button');
+    if (generateBtn) generateBtn.disabled = __viewerSSPGenerating;
+    if (abortBtn) {
+      abortBtn.disabled = !__viewerSSPGenerating;
+      abortBtn.textContent = '중지';
+    }
+  }
+  function viewerSSPBindAltWheelFont() {
+    ['ssp-prompt', 'ssp-prompt-2'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el || el.__viewerSSPAltWheelBound) return;
+      el.__viewerSSPAltWheelBound = true;
+      var current = parseFloat(window.getComputedStyle(el).fontSize) || 11;
+      __viewerSSPTextFontSizes[id] = __viewerSSPTextFontSizes[id] || current;
+      el.addEventListener('wheel', function (e) {
+        if (!e.altKey) return;
+        e.preventDefault();
+        e.stopPropagation();
+        var base = __viewerSSPTextFontSizes[id] || parseFloat(window.getComputedStyle(el).fontSize) || 11;
+        var next = Math.max(9, Math.min(34, base + (e.deltaY < 0 ? 1 : -1)));
+        __viewerSSPTextFontSizes[id] = next;
+        el.style.setProperty('font-size', next + 'px', 'important');
+      }, { passive: false });
+    });
   }
   function viewerSSPInit() {
     ensureViewerFsOverlayOnBody();
     viewerSSPInitHistoryResizer();
     viewerSSPEnsureFullscreenGallery();
+    viewerSSPEnsureProgressPlacement();
+    viewerSSPBindAltWheelFont();
     var fileInput = document.getElementById('ssp-file-input');
     var uploadZone = document.getElementById('ssp-upload-zone');
     if (fileInput) {
@@ -2497,6 +2720,17 @@ function viewerSSPFsUploadImgbb() {
     var mdInsertBtn = document.querySelector('.ssp-btn-insert-md');
     if (mdInsertBtn) mdInsertBtn.textContent = 'Markdown';
     var actionRow = document.querySelector('.ssp-action-row');
+    if (actionRow && !actionRow.querySelector('.ssp-btn-internal-insert')) {
+      var internalInsertBtn = document.createElement('button');
+      internalInsertBtn.type = 'button';
+      internalInsertBtn.className = 'sa-btn ghost ssp-btn-internal-insert';
+      internalInsertBtn.textContent = '문서삽입';
+      internalInsertBtn.title = '결과 이미지를 문서 내부에 저장하고 삽입';
+      internalInsertBtn.onclick = function () { viewerSSPSaveInternalAndInsert('markdown'); };
+      var generateBtn = actionRow.querySelector('.ssp-btn-generate');
+      if (generateBtn && generateBtn.nextSibling) actionRow.insertBefore(internalInsertBtn, generateBtn.nextSibling);
+      else actionRow.appendChild(internalInsertBtn);
+    }
     if (actionRow && !actionRow.querySelector('.ssp-btn-crop')) {
       var cropBtn = document.createElement('button');
       cropBtn.type = 'button';
@@ -2557,6 +2791,9 @@ function viewerSSPFsUploadImgbb() {
     viewerSSPImgHistoryRender();
   }
   async function viewerSSPGenerate() {
+    if (__viewerSSPGenerating) return;
+    viewerSSPEnsureProgressPlacement();
+    viewerSSPBindAltWheelFont();
     var promptEl = document.getElementById('ssp-prompt');
     var promptEl2 = document.getElementById('ssp-prompt-2');
     var p1 = promptEl && promptEl.value ? promptEl.value.trim() : '';
@@ -2578,6 +2815,9 @@ function viewerSSPFsUploadImgbb() {
     var noText = document.getElementById('ssp-no-text') && document.getElementById('ssp-no-text').checked;
     var h = getHost();
     if (h && h._aiTaskCancelled !== undefined) h._aiTaskCancelled = false;
+    __viewerSSPAbortRequested = false;
+    viewerSSPSetGeneratingState(true);
+    viewerSSPSetProgressVisible(true, 0);
     if (progressWrap) { progressWrap.classList.add('visible'); progressWrap.style.display = 'flex'; }
     if (progressFill) progressFill.style.width = '0%';
     if (progressPct) progressPct.textContent = '0%';
@@ -2596,6 +2836,11 @@ function viewerSSPFsUploadImgbb() {
     try {
       var dataURL = await generateImage(prompt, { seedImage: hasSeed ? seedImage : null, modelId: modelId, aspectRatio: __viewerSSPRatio, noText: noText });
       clearInterval(progressInterval);
+      if (__viewerSSPAbortRequested) {
+        viewerSSPSetProgressVisible(false, 0);
+        if (statusEl) statusEl.textContent = '생성 요청이 중단되었습니다.';
+        return;
+      }
       if (progressFill) progressFill.style.width = '100%';
       if (progressPct) progressPct.textContent = '100%';
       if (progressWrap) setTimeout(function () { progressWrap.classList.remove('visible'); progressWrap.style.display = 'none'; }, 500);
@@ -2603,6 +2848,8 @@ function viewerSSPFsUploadImgbb() {
         __viewerSSPResultImage = dataURL;
         if (resultImg) { resultImg.src = dataURL; resultImg.style.display = 'block'; resultImg.title = 'Open fullscreen'; }
         if (downloadBtn) downloadBtn.disabled = false;
+        var openBtn = document.querySelector('.ssp-btn-open-result');
+        if (openBtn) openBtn.disabled = false;
         if (statusEl) statusEl.textContent = '\uC774\uBBF8\uC9C0 \uC0DD\uC131\uC774 \uC644\uB8CC\uB418\uC5C8\uC2B5\uB2C8\uB2E4.';
         viewerSSPImgHistoryAdd(dataURL, prompt);
       } else {
@@ -2614,6 +2861,9 @@ function viewerSSPFsUploadImgbb() {
       if (statusEl) statusEl.textContent = (e && e.name === 'AbortError')
         ? '\uC0DD\uC131 \uC694\uCCAD\uC774 \uC911\uB2E8\uB418\uC5C8\uC2B5\uB2C8\uB2E4.'
         : ('\uC774\uBBF8\uC9C0 \uC0DD\uC131 \uC911 \uC624\uB958: ' + (e.message || e));
+    } finally {
+      viewerSSPSetGeneratingState(false);
+      __viewerSSPAbortRequested = false;
     }
   }
   function viewerSSPDownload() {
@@ -2736,6 +2986,59 @@ function viewerSSPFsUploadImgbb() {
   async function viewerSSPOpenImgbb() {
     return viewerSSPUploadToImgbb(__viewerSSPResultImage);
   }
+  async function viewerSSPSaveInternalAndInsert(format) {
+    var sourceDataUrl = __viewerSSPResultImage || __viewerSSPSeedImage;
+    if (!sourceDataUrl || String(sourceDataUrl).indexOf('data:image') !== 0) {
+      setSSPStatus('문서에 삽입할 이미지가 없습니다. 먼저 이미지를 생성하거나 불러오세요.');
+      notifyUser('문서에 삽입할 이미지가 없습니다. 먼저 이미지를 생성하거나 불러오세요.', true);
+      return;
+    }
+    if (!window.ImageDB || typeof window.ImageDB.saveDataUrl !== 'function') {
+      setSSPStatus('ImageDB 모듈을 사용할 수 없습니다.');
+      notifyUser('ImageDB 모듈을 사용할 수 없습니다.', true);
+      return;
+    }
+    var imageDb = null;
+    try { imageDb = (typeof db !== 'undefined') ? db : null; } catch (e) { imageDb = null; }
+    if (!imageDb) {
+      setSSPStatus('내부 이미지 DB가 아직 준비되지 않았습니다.');
+      notifyUser('내부 이미지 DB가 아직 준비되지 않았습니다.', true);
+      return;
+    }
+    var btn = document.querySelector('.ssp-btn-internal-insert');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.prevText = btn.textContent;
+      btn.textContent = '저장중...';
+    }
+    try {
+      var saved = await window.ImageDB.saveDataUrl(imageDb, sourceDataUrl, {
+        name: 'sspimgai_' + Date.now() + '.png'
+      });
+      var internalUrl = saved && saved.url ? saved.url : '';
+      if (!internalUrl) throw new Error('Internal image URL was not created.');
+      var linkInput = document.getElementById('ssp-image-link-url');
+      if (linkInput) linkInput.value = internalUrl;
+      if (String(format || 'markdown').toLowerCase() === 'html') {
+        if (typeof window.insertHtmlImageAtCursor !== 'function') throw new Error('HTML image insertion is not available.');
+        window.insertHtmlImageAtCursor(internalUrl, getSspImageAltText(internalUrl));
+      } else {
+        if (typeof window.insertMarkdownImageAtCursor !== 'function') throw new Error('Markdown image insertion is not available.');
+        window.insertMarkdownImageAtCursor(internalUrl, getSspImageAltText(internalUrl));
+      }
+      setSSPStatus('문서 내부에 저장하고 삽입했습니다.');
+      notifyUser('이미지를 문서 내부에 저장하고 삽입했습니다.', false);
+    } catch (e) {
+      var msg = e && e.message ? e.message : String(e || 'internal save error');
+      setSSPStatus('문서 내부 저장/삽입 오류: ' + msg);
+      notifyUser('문서 내부 저장/삽입 오류: ' + msg, true);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = btn.dataset.prevText || '문서삽입';
+      }
+    }
+  }
   function viewerSSPCropFromPanel() {
     var resultImg = document.getElementById('ssp-result-img');
     if (!resultImg || !resultImg.src) {
@@ -2813,7 +3116,7 @@ function viewerSSPFsUploadImgbb() {
       var h = __viewerSSPImgHistory[i];
       var lbl = (h.prompt || '(No prompt)').replace(/</g, '&lt;').substring(0, 30) + ((h.prompt || '').length > 30 ? '...' : '');
       html += '<div class="ssp-img-history-item" data-id="' + h.id + '">';
-      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPOpenFullscreen(this.src); event.stopPropagation()" title="Open fullscreen">';
+      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPShowHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="결과창에 표시">';
       html += '<span class="ssp-h-label">' + lbl + '</span>';
       html += '<button type="button" class="ssp-h-del" onclick="viewerSSPImgHistoryRemove(\'' + h.id + '\'); event.stopPropagation()" title="Delete">X</button>';
       html += '<button type="button" class="sa-btn ghost ssp-h-upload" onclick="viewerSSPUploadHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="Upload to imgBB">imgBB</button>';
@@ -2913,7 +3216,7 @@ function viewerSSPFsUploadImgbb() {
       var rawLabel = String(h.prompt || 'Generated image').replace(/</g, '&lt;');
       var lbl = rawLabel.substring(0, 30) + (rawLabel.length > 30 ? '...' : '');
       html += '<div class="ssp-img-history-item" data-id="' + h.id + '">';
-      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPOpenFullscreen(this.src); event.stopPropagation()" title="Open fullscreen">';
+      html += '<img src="' + (h.dataURL || '').replace(/"/g, '&quot;') + '" onclick="viewerSSPShowHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="결과창에 표시">';
       html += '<span class="ssp-h-label">' + lbl + '</span>';
       html += '<button type="button" class="ssp-h-del" onclick="viewerSSPImgHistoryRemove(\'' + h.id + '\'); event.stopPropagation()" title="Delete">X</button>';
       html += '<button type="button" class="sa-btn ghost ssp-h-upload" onclick="viewerSSPUploadHistoryImage(\'' + h.id + '\'); event.stopPropagation()" title="Upload to imgBB">imgBB</button>';
@@ -3042,14 +3345,20 @@ function viewerSSPFsUploadImgbb() {
   window.sspAIFullscreen = sspAIFullscreen;
   window.viewerSSPSyncSelection = viewerSSPSyncSelection;
   window.viewerSSPInit = viewerSSPInit;
+  window.viewerSSPApplySketchImage = viewerSSPApplySketchImage;
+  window.viewerSSPOpenSketchpad = viewerSSPOpenSketchpad;
   window.viewerSSPGenerate = viewerSSPGenerate;
   window.viewerSSPDownload = viewerSSPDownload;
+  window.viewerSSPOpenCurrentResultFullscreen = viewerSSPOpenCurrentResultFullscreen;
+  window.viewerSSPSaveInternalAndInsert = viewerSSPSaveInternalAndInsert;
   window.viewerSSPToggleImgbbSettings = viewerSSPToggleImgbbSettings;
   window.viewerSSPSaveImgbbSettings = viewerSSPSaveImgbbSettings;
   window.viewerSSPOpenImgbb = viewerSSPOpenImgbb;
+  window.viewerSSPUploadToImgbb = viewerSSPUploadToImgbb;
   window.sspInsertImageMarkdown = sspInsertImageMarkdown;
   window.sspInsertImageHtml = sspInsertImageHtml;
   window.viewerSSPUploadHistoryImage = viewerSSPUploadHistoryImage;
+  window.viewerSSPShowHistoryImage = viewerSSPShowHistoryImage;
   window.viewerSSPClearSeed = viewerSSPClearSeed;
   window.viewerSSPOpenHistoryFullscreen = viewerSSPOpenHistoryFullscreen;
   window.viewerSSPSetFullscreenGallery = viewerSSPSetFullscreenGallery;
@@ -3060,6 +3369,8 @@ function viewerSSPFsUploadImgbb() {
   window.viewerSSPFsZoom = viewerSSPFsZoom;
   window.viewerSSPFsDownload = viewerSSPFsDownload;
   window.viewerSSPFsUploadImgbb = viewerSSPFsUploadImgbb;
+  window.viewerSSPFsApplyToSSP = viewerSSPFsApplyToSSP;
+  window.viewerSSPFsSaveInternalAndInsert = viewerSSPFsSaveInternalAndInsert;
   window.viewerSSPFsInsert = viewerSSPFsInsert;
   window.viewerSSPFsCrop = viewerSSPFsCrop;
   window.viewerSSPCropFromPanel = viewerSSPCropFromPanel;
@@ -3094,10 +3405,11 @@ function viewerSSPFsUploadImgbb() {
     scholarAIInitToneSelect();
     scholarAIInitHistoryPanel();
     scholarAIHistoryRender();
+    scholarAIBindAltWheelFontSize();
     var resTa = document.getElementById('scholar-ai-result');
     var resInsertTa = document.getElementById('scholar-ai-result-insert');
-    if (resTa) resTa.style.fontSize = __scholarAIResultFontSize + 'px';
-    if (resInsertTa) resInsertTa.style.fontSize = __scholarAIResultFontSize + 'px';
+    if (resTa) resTa.style.setProperty('font-size', __scholarAIResultFontSize + 'px', 'important');
+    if (resInsertTa) resInsertTa.style.setProperty('font-size', __scholarAIResultFontSize + 'px', 'important');
     scholarAISetRunningState(false);
     var histSearch = document.getElementById('scholar-ai-history-search');
     if (histSearch) histSearch.addEventListener('input', scholarAIHistoryRender);

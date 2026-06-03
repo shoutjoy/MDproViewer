@@ -235,6 +235,58 @@
         #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-track { background: #e2e8f0; }
         #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%); border-color: #e2e8f0; }
 
+        #image-insert-panel {
+            zoom: 0.8;
+        }
+
+        #input-modal {
+            pointer-events: none;
+            background: transparent !important;
+        }
+
+        #input-modal-panel {
+            position: relative;
+            resize: both;
+            overflow: hidden;
+            width: 464px;
+            min-width: 320px;
+            min-height: 360px;
+            max-width: 96vw;
+            max-height: 92vh;
+            will-change: left, top;
+            pointer-events: auto;
+        }
+
+        #input-modal-panel.input-modal-free {
+            position: fixed;
+            margin: 0;
+        }
+
+        #input-modal-panel.input-modal-dragging {
+            transition: none !important;
+        }
+
+        #input-modal-header {
+            cursor: grab;
+            touch-action: none;
+        }
+
+        #input-modal-header:active {
+            cursor: grabbing;
+        }
+
+        #input-modal-resize-handle {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 14px;
+            height: 14px;
+            cursor: nwse-resize;
+            opacity: 0.8;
+            user-select: none;
+            background: linear-gradient(135deg, transparent 45%, #94a3b8 46%, #94a3b8 54%, transparent 55%);
+        }
+
         .scroll-jump-rail {
             position: absolute;
             top: 50%;
@@ -451,4 +503,20 @@
         #mermaid-editor-modal-header,
         #math99-popup-header {
             touch-action: none;
+        }
+
+        #sites-panel {
+            min-height: 220px;
+        }
+
+        #sites-panel:not(.hidden) {
+            display: flex;
+        }
+
+        #sites-panel-body {
+            overflow: hidden;
+        }
+
+        #sites-list {
+            min-height: 0;
         }
