@@ -58,7 +58,8 @@
         if (!ta) return false;
         var selected = ta.value.substring(ta.selectionStart, ta.selectionEnd);
         var defaultBody = [
-            'flowchart TD',
+            '%%{init: {"flowchart": {"useMaxWidth": true, "htmlLabels": true}}}%%',
+            'flowchart LR',
             '    A[Start] --> B[End]'
         ].join('\n');
         var body = selected || defaultBody;

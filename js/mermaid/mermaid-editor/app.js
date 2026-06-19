@@ -1,12 +1,66 @@
+const LIGHT_MERMAID_THEME_VARIABLES = {
+  fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif',
+  fontSize: '15px',
+  primaryColor: '#ffffff',
+  primaryTextColor: '#172033',
+  primaryBorderColor: '#cbd5e1',
+  lineColor: '#64748b',
+  secondaryColor: '#f8fafc',
+  tertiaryColor: '#eef6ff',
+  background: '#ffffff',
+  mainBkg: '#ffffff',
+  secondBkg: '#f8fafc',
+  tertiaryBkg: '#eef6ff',
+  nodeBorder: '#cbd5e1',
+  clusterBkg: '#f8fafc',
+  clusterBorder: '#d7dee8',
+  edgeLabelBackground: '#ffffff',
+  textColor: '#172033',
+  titleColor: '#0f172a',
+  labelTextColor: '#172033',
+  actorBkg: '#ffffff',
+  actorBorder: '#cbd5e1',
+  actorTextColor: '#172033',
+  noteBkgColor: '#fff7ed',
+  noteTextColor: '#3b2f20',
+  noteBorderColor: '#fed7aa'
+};
+
+const DARK_MERMAID_THEME_VARIABLES = {
+  fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif',
+  fontSize: '15px',
+  primaryColor: '#111827',
+  primaryTextColor: '#e5edf7',
+  primaryBorderColor: '#475569',
+  lineColor: '#94a3b8',
+  secondaryColor: '#172033',
+  tertiaryColor: '#1e293b',
+  background: '#0b1220',
+  mainBkg: '#111827',
+  secondBkg: '#172033',
+  tertiaryBkg: '#1e293b',
+  nodeBorder: '#475569',
+  clusterBkg: '#0f172a',
+  clusterBorder: '#334155',
+  edgeLabelBackground: '#111827',
+  textColor: '#e5edf7',
+  titleColor: '#f8fafc',
+  labelTextColor: '#e5edf7',
+  actorBkg: '#111827',
+  actorBorder: '#475569',
+  actorTextColor: '#e5edf7',
+  noteBkgColor: '#2d2418',
+  noteTextColor: '#fdecc8',
+  noteBorderColor: '#92400e'
+};
+
 mermaid.initialize({
   startOnLoad: false,
   suppressErrorRendering: true,
   securityLevel: 'loose',
   theme: 'default',
   flowchart: { useMaxWidth: true, htmlLabels: true },
-  themeVariables: {
-    fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif'
-  }
+  themeVariables: LIGHT_MERMAID_THEME_VARIABLES
 });
 
 const editor = document.getElementById('raw-code-editor');
@@ -32,7 +86,8 @@ const editorUndoStack = [];
 const MAX_EDITOR_UNDO = 300;
 let applyingEditorUndo = false;
 const EXAMPLE_LIBRARY = {
-  shopping: `flowchart TD
+  shopping: `%%{init: {"flowchart": {"useMaxWidth": true, "htmlLabels": true}}}%%
+flowchart LR
   A[Start] --> B{Decision}
   B -->|Yes| C[Process]
   B -->|No| D[Stop]`,
@@ -573,9 +628,7 @@ function applyMermaidPreviewTheme() {
     securityLevel: 'loose',
     theme: previewDarkMode ? 'dark' : 'default',
     flowchart: { useMaxWidth: true, htmlLabels: true },
-    themeVariables: {
-      fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif'
-    }
+    themeVariables: previewDarkMode ? DARK_MERMAID_THEME_VARIABLES : LIGHT_MERMAID_THEME_VARIABLES
   });
 }
 
@@ -691,6 +744,28 @@ function restoreSankeyAliasLabels(labelMap) {
   }
 }
 
+function polishRenderedMermaidSvg() {
+  if (!renderDiv) return;
+  const svg = renderDiv.querySelector('svg');
+  if (!svg || svg.querySelector('style[data-mdv-mermaid-polish="1"]')) return;
+  const lineColor = previewDarkMode ? '#cbd5e1' : '#64748b';
+  const textColor = previewDarkMode ? '#e5edf7' : '#334155';
+  svg.style.display = 'block';
+  svg.style.marginLeft = 'auto';
+  svg.style.marginRight = 'auto';
+  const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+  style.setAttribute('data-mdv-mermaid-polish', '1');
+  style.textContent = [
+    '.node rect,.node polygon,.node circle,.node ellipse{filter:drop-shadow(0 8px 18px rgba(15,23,42,.10));stroke-width:1.4px;}',
+    '.node .label,.nodeLabel,.edgeLabel,.label{font-weight:600;letter-spacing:0;}',
+    '.edgeLabel{border-radius:8px;color:' + textColor + ';}',
+    '.flowchart-link{stroke:' + lineColor + ' !important;stroke-width:1.9px;}',
+    'marker path,path.arrowMarkerPath{fill:' + lineColor + ' !important;stroke:' + lineColor + ' !important;}',
+    '.cluster rect{stroke-dasharray:0;}'
+  ].join('\n');
+  svg.insertBefore(style, svg.firstChild);
+}
+
 async function render() {
   const code = editor.value.trim();
   const prepared = preprocessMermaidSourceForRender(code);
@@ -722,6 +797,7 @@ async function render() {
 
     renderDiv.innerHTML = svg;
     restoreSankeyAliasLabels(prepared && prepared.labelMap ? prepared.labelMap : null);
+    polishRenderedMermaidSvg();
 
     // Safety net: Mermaid may still emit an error-like SVG in some versions.
     const renderedText = (renderDiv.textContent || '').toLowerCase();
@@ -750,6 +826,7 @@ async function render() {
         throw (e || new Error('Mermaid fallback render failed.'));
       }
       restoreSankeyAliasLabels(prepared && prepared.labelMap ? prepared.labelMap : null);
+      polishRenderedMermaidSvg();
       errorDiv.style.display = 'none';
       errorDiv.textContent = '';
       applyPreviewScale();
@@ -795,7 +872,8 @@ function showError(message) {
 async function renderWithStartupRecovery() {
   await render();
   if (!errorDiv || errorDiv.style.display !== 'block') return;
-  const startupFallback = `flowchart TD
+  const startupFallback = `%%{init: {"flowchart": {"useMaxWidth": true, "htmlLabels": true}}}%%
+flowchart LR
   A[Start] --> B[Process]
   B --> C[End]`;
   editor.value = startupFallback;

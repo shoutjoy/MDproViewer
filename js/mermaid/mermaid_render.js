@@ -8,6 +8,33 @@
         'https://unpkg.com/mermaid@11/dist/mermaid.min.js'
     ];
     const CODE_SELECTOR = 'pre > code.language-mermaid, pre > code.lang-mermaid, pre > code.mermaid';
+    const MERMAID_THEME_VARIABLES = {
+        fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif',
+        fontSize: '15px',
+        primaryColor: '#ffffff',
+        primaryTextColor: '#172033',
+        primaryBorderColor: '#cbd5e1',
+        lineColor: '#64748b',
+        secondaryColor: '#f8fafc',
+        tertiaryColor: '#eef6ff',
+        background: '#ffffff',
+        mainBkg: '#ffffff',
+        secondBkg: '#f8fafc',
+        tertiaryBkg: '#eef6ff',
+        nodeBorder: '#cbd5e1',
+        clusterBkg: '#f8fafc',
+        clusterBorder: '#d7dee8',
+        edgeLabelBackground: '#ffffff',
+        textColor: '#172033',
+        titleColor: '#0f172a',
+        labelTextColor: '#172033',
+        actorBkg: '#ffffff',
+        actorBorder: '#cbd5e1',
+        actorTextColor: '#172033',
+        noteBkgColor: '#fff7ed',
+        noteTextColor: '#3b2f20',
+        noteBorderColor: '#fed7aa'
+    };
     let mermaidLoadPromise = null;
     let mermaidReady = false;
 
@@ -55,9 +82,7 @@
                                 useMaxWidth: true,
                                 htmlLabels: true
                             },
-                            themeVariables: {
-                                fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif'
-                            }
+                            themeVariables: MERMAID_THEME_VARIABLES
                         });
                     } catch (e) {}
                     mermaidReady = true;
@@ -83,7 +108,7 @@
         if (!source) return null;
 
         const wrapper = document.createElement('div');
-        wrapper.className = 'trt-mermaid-wrapper my-3 overflow-x-auto';
+        wrapper.className = 'trt-mermaid-wrapper my-3 overflow-x-auto flex justify-center';
         wrapper.setAttribute('data-mermaid-source', source);
         if (prepared && prepared.labelMap && Object.keys(prepared.labelMap).length) {
             wrapper.setAttribute('data-sankey-label-map', JSON.stringify(prepared.labelMap));
@@ -219,6 +244,28 @@
         }
     }
 
+    function polishMermaidSvg(node) {
+        var svg = node && node.querySelector ? node.querySelector('svg') : null;
+        if (!svg || svg.querySelector('style[data-mdv-mermaid-polish="1"]')) return;
+        var isDark = !!(document.documentElement && document.documentElement.classList && document.documentElement.classList.contains('dark'));
+        var lineColor = isDark ? '#cbd5e1' : '#64748b';
+        var textColor = isDark ? '#e5edf7' : '#334155';
+        svg.style.display = 'block';
+        svg.style.marginLeft = 'auto';
+        svg.style.marginRight = 'auto';
+        var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+        style.setAttribute('data-mdv-mermaid-polish', '1');
+        style.textContent = [
+            '.node rect,.node polygon,.node circle,.node ellipse{filter:drop-shadow(0 8px 18px rgba(15,23,42,.10));stroke-width:1.4px;}',
+            '.node .label,.nodeLabel,.edgeLabel,.label{font-weight:600;letter-spacing:0;}',
+            '.edgeLabel{border-radius:8px;color:' + textColor + ';}',
+            '.flowchart-link{stroke:' + lineColor + ' !important;stroke-width:1.9px;}',
+            'marker path,path.arrowMarkerPath{fill:' + lineColor + ' !important;stroke:' + lineColor + ' !important;}',
+            '.cluster rect{stroke-dasharray:0;}'
+        ].join('\n');
+        svg.insertBefore(style, svg.firstChild);
+    }
+
     async function renderIn(root) {
         const target = root || document;
         const codeNodes = target.querySelectorAll ? target.querySelectorAll(CODE_SELECTOR) : [];
@@ -240,6 +287,7 @@
             try {
                 await global.mermaid.run({ nodes: [n] });
                 restoreSankeyKoreanLabels(n);
+                polishMermaidSvg(n);
                 changedCount += 1;
             } catch (e) {
                 errorCount += 1;

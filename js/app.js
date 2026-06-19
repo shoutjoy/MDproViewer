@@ -3198,7 +3198,7 @@ function insertFencedCodeBlock(language) {
     const lang = String(language || '').trim();
     const fenceOpen = '```' + lang + '\n';
     const placeholder = lang === 'mermaid'
-        ? 'graph TD\n  A[Start] --> B[End]'
+        ? '%%{init: {"flowchart": {"useMaxWidth": true, "htmlLabels": true}}}%%\ngraph LR\n  A[Start] --> B[End]'
         : 'code';
     const content = selectedText || placeholder;
     const replacement = fenceOpen + content + '\n```';

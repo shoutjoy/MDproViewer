@@ -1,3 +1,31 @@
+const PREVIEW_MERMAID_THEME_VARIABLES = {
+    fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif',
+    fontSize: '15px',
+    primaryColor: '#ffffff',
+    primaryTextColor: '#172033',
+    primaryBorderColor: '#cbd5e1',
+    lineColor: '#64748b',
+    secondaryColor: '#f8fafc',
+    tertiaryColor: '#eef6ff',
+    background: '#ffffff',
+    mainBkg: '#ffffff',
+    secondBkg: '#f8fafc',
+    tertiaryBkg: '#eef6ff',
+    nodeBorder: '#cbd5e1',
+    clusterBkg: '#f8fafc',
+    clusterBorder: '#d7dee8',
+    edgeLabelBackground: '#ffffff',
+    textColor: '#172033',
+    titleColor: '#0f172a',
+    labelTextColor: '#172033',
+    actorBkg: '#ffffff',
+    actorBorder: '#cbd5e1',
+    actorTextColor: '#172033',
+    noteBkgColor: '#fff7ed',
+    noteTextColor: '#3b2f20',
+    noteBorderColor: '#fed7aa'
+};
+
 function isPreviewPopupAlive() {
     return !!(previewPopupWindow && !previewPopupWindow.closed);
 }
@@ -44,6 +72,7 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-toolbar .label{font-size:12px;color:#334155;min-width:48px;text-align:center;font-weight:700;}'
         + '#pv-viewport{height:100%;overflow:auto;padding:20px;padding-top:72px;box-sizing:border-box;}'
         + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;margin:0 auto;width:100%;max-width:56rem;}'
+        + '#pv-content .trt-mermaid-wrapper{display:flex;justify-content:center;}'
         + '#pv-content h1{font-size:2.25rem;font-weight:800;margin-top:1.5rem;margin-bottom:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:.5rem;}'
         + '#pv-content h2{font-size:1.875rem;font-weight:700;margin-top:1.25rem;margin-bottom:.75rem;border-bottom:1px solid #e2e8f0;padding-bottom:.3rem;}'
         + '#pv-content h3{font-size:1.5rem;font-weight:600;margin-top:1rem;margin-bottom:.5rem;}'
@@ -194,7 +223,7 @@ async function loadMermaidInPreviewPopup() {
                     securityLevel: 'loose',
                     theme: 'default',
                     flowchart: { useMaxWidth: true, htmlLabels: true },
-                    themeVariables: { fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif' }
+                    themeVariables: PREVIEW_MERMAID_THEME_VARIABLES
                 });
                 win.__mdvMermaidReady = true;
                 resolve(win.mermaid);
@@ -222,6 +251,26 @@ async function loadMermaidInPreviewPopup() {
     });
 
     return previewPopupMermaidLoadPromise;
+}
+
+function polishPreviewPopupMermaidSvg(wrapper) {
+    const doc = previewPopupWindow && previewPopupWindow.document;
+    const svg = wrapper && wrapper.querySelector ? wrapper.querySelector('svg') : null;
+    if (!doc || !svg || svg.querySelector('style[data-mdv-mermaid-polish="1"]')) return;
+    svg.style.display = 'block';
+    svg.style.marginLeft = 'auto';
+    svg.style.marginRight = 'auto';
+    const style = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
+    style.setAttribute('data-mdv-mermaid-polish', '1');
+    style.textContent = [
+        '.node rect,.node polygon,.node circle,.node ellipse{filter:drop-shadow(0 8px 18px rgba(15,23,42,.10));stroke-width:1.4px;}',
+        '.node .label,.nodeLabel,.edgeLabel,.label{font-weight:600;letter-spacing:0;}',
+        '.edgeLabel{border-radius:8px;color:#334155;}',
+        '.flowchart-link{stroke:#64748b !important;stroke-width:1.9px;}',
+        'marker path,path.arrowMarkerPath{fill:#64748b !important;stroke:#64748b !important;}',
+        '.cluster rect{stroke-dasharray:0;}'
+    ].join('\n');
+    svg.insertBefore(style, svg.firstChild);
 }
 
 async function renderMermaidInPreviewPopup(root) {
@@ -260,6 +309,7 @@ async function renderMermaidInPreviewPopup(root) {
         try {
             await win.mermaid.run({ nodes: [item.block] });
             restorePreviewPopupSankeyLabels(item.wrapper);
+            polishPreviewPopupMermaidSvg(item.wrapper);
         } catch (e) {
             item.wrapper.innerHTML = '';
             const errPre = doc.createElement('pre');
