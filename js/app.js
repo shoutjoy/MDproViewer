@@ -3389,6 +3389,203 @@ function insertListAtSelection(kind) {
     performAutoSave();
 }
 
+const captionInsertState = {
+    mode: 'table',
+    format: 'angle'
+};
+
+function getCaptionFormats(mode) {
+    if (mode === 'figure') {
+        return [
+            { id: 'bracket', label: '[그림 N]', build: function (n) { return '[그림 ' + n + ']'; } },
+            { id: 'plain-ko', label: '그림 N.', build: function (n) { return '그림 ' + n + '.'; } },
+            { id: 'bracket-fig', label: '[Fig N]', build: function (n) { return '[Fig ' + n + ']'; } },
+            { id: 'fig', label: 'Fig N.', build: function (n) { return 'Fig ' + n + '.'; } },
+            { id: 'bracket-figure', label: '[Figure N]', build: function (n) { return '[Figure ' + n + ']'; } },
+            { id: 'figure', label: 'Figure N.', build: function (n) { return 'Figure ' + n + '.'; } }
+        ];
+    }
+    return [
+        { id: 'angle', label: '<표 N>', build: function (n) { return '<표 ' + n + '>'; } },
+        { id: 'plain-ko', label: '표 N.', build: function (n) { return '표 ' + n + '.'; } },
+        { id: 'table', label: 'Table N.', build: function (n) { return 'Table ' + n + '.'; } }
+    ];
+}
+
+function escapeCaptionHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function buildCaptionText(mode, formatId, number, title) {
+    const formats = getCaptionFormats(mode);
+    const format = formats.find(function (item) { return item.id === formatId; }) || formats[0];
+    const n = Math.max(1, parseInt(number, 10) || 1);
+    const body = String(title || '').trim() || '내용';
+    return format.build(n) + ' ' + body;
+}
+
+function buildCaptionHtml(mode, formatId, number, title) {
+    const formats = getCaptionFormats(mode);
+    const format = formats.find(function (item) { return item.id === formatId; }) || formats[0];
+    const n = Math.max(1, parseInt(number, 10) || 1);
+    const body = String(title || '').trim() || '내용';
+    return '<span class="tbl-caption">' + format.build(n) + ' ' + escapeCaptionHtml(body) + '</span>';
+}
+
+function getCaptionUi(mode) {
+    const normalized = mode === 'figure' ? 'figure' : 'table';
+    return {
+        mode: normalized,
+        panel: document.getElementById(normalized + '-caption-panel'),
+        formatButtons: document.getElementById(normalized + '-caption-format-buttons'),
+        numberInput: document.getElementById(normalized + '-caption-number-input'),
+        textInput: document.getElementById(normalized + '-caption-text-input'),
+        preview: document.getElementById(normalized + '-caption-preview')
+    };
+}
+
+function updateCaptionInsertPreview(mode) {
+    const ui = getCaptionUi(mode || captionInsertState.mode);
+    const numberInput = ui.numberInput;
+    const textInput = ui.textInput;
+    const preview = ui.preview;
+    if (!preview) return;
+    preview.textContent = buildCaptionText(
+        ui.mode,
+        captionInsertState[ui.mode + 'Format'] || captionInsertState.format,
+        numberInput ? numberInput.value : 1,
+        textInput ? textInput.value : ''
+    );
+}
+
+function renderCaptionFormatButtons(mode) {
+    const ui = getCaptionUi(mode || captionInsertState.mode);
+    const wrap = ui.formatButtons;
+    if (!wrap) return;
+    const formats = getCaptionFormats(ui.mode);
+    const currentFormat = captionInsertState[ui.mode + 'Format'] || (ui.mode === 'figure' ? 'bracket' : 'angle');
+    wrap.innerHTML = '';
+    formats.forEach(function (format) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = format.label;
+        btn.className = 'px-2.5 py-1.5 rounded-md border text-xs font-semibold ' + (format.id === currentFormat
+            ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200'
+            : 'border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700');
+        btn.addEventListener('click', function () {
+            captionInsertState[ui.mode + 'Format'] = format.id;
+            captionInsertState.mode = ui.mode;
+            captionInsertState.format = format.id;
+            renderCaptionFormatButtons(ui.mode);
+            updateCaptionInsertPreview(ui.mode);
+        });
+        wrap.appendChild(btn);
+    });
+}
+
+function guessNextCaptionNumber(mode) {
+    const text = String(editorTextarea ? editorTextarea.value : currentMarkdown || '');
+    const prefix = mode === 'figure' ? '(?:그림|Fig(?:ure)?)' : '(?:표|Table)';
+    const re = new RegExp(prefix + '\\s+(\\d+)', 'gi');
+    let max = 0;
+    let m;
+    while ((m = re.exec(text))) {
+        max = Math.max(max, parseInt(m[1], 10) || 0);
+    }
+    return max + 1;
+}
+
+function prepareCaptionPanel(mode) {
+    if (!isEditMode || !editorTextarea) {
+        showToast('Use this in edit mode.');
+        return false;
+    }
+    const ui = getCaptionUi(mode);
+    captionInsertState.mode = ui.mode;
+    if (!captionInsertState[ui.mode + 'Format']) {
+        captionInsertState[ui.mode + 'Format'] = ui.mode === 'figure' ? 'bracket' : 'angle';
+    }
+    captionInsertState.format = captionInsertState[ui.mode + 'Format'];
+    const numberInput = ui.numberInput;
+    const textInput = ui.textInput;
+    if (numberInput) {
+        numberInput.value = String(guessNextCaptionNumber(ui.mode));
+        numberInput.oninput = function () { updateCaptionInsertPreview(ui.mode); };
+    }
+    if (textInput) {
+        textInput.value = '';
+        textInput.oninput = function () { updateCaptionInsertPreview(ui.mode); };
+    }
+    renderCaptionFormatButtons(ui.mode);
+    updateCaptionInsertPreview(ui.mode);
+    return true;
+}
+
+function toggleCaptionInsertPanel(mode, forceOpen) {
+    const ui = getCaptionUi(mode);
+    if (!ui.panel) return;
+    const shouldOpen = forceOpen === true ? true : forceOpen === false ? false : ui.panel.classList.contains('hidden');
+    if (shouldOpen && !prepareCaptionPanel(ui.mode)) return;
+    ui.panel.classList.toggle('hidden', !shouldOpen);
+    if (shouldOpen && ui.textInput) {
+        setTimeout(function () { ui.textInput.focus(); }, 0);
+    } else if (!shouldOpen && editorTextarea) {
+        editorTextarea.focus();
+    }
+}
+
+function openCaptionInsertModal(mode) {
+    toggleCaptionInsertPanel(mode, true);
+}
+
+function closeCaptionInsertModal() {
+    toggleCaptionInsertPanel(captionInsertState.mode || 'table', false);
+}
+
+function insertCaptionHtmlAtCursor(html) {
+    if (!isEditMode || !editorTextarea) return false;
+    const start = editorTextarea.selectionStart;
+    const end = editorTextarea.selectionEnd;
+    const value = editorTextarea.value;
+    const scrollTop = editorTextarea.scrollTop;
+    const scrollLeft = editorTextarea.scrollLeft;
+    const before = start > 0 && value.charAt(start - 1) !== '\n' ? '\n\n' : '';
+    const after = end < value.length && value.charAt(end) !== '\n' ? '\n\n' : '\n';
+    const replacement = before + html + after;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    document.execCommand('insertText', false, replacement);
+    currentMarkdown = editorTextarea.value;
+    editorTextarea.scrollTop = scrollTop;
+    editorTextarea.scrollLeft = scrollLeft;
+    const pos = start + replacement.length;
+    editorTextarea.setSelectionRange(pos, pos);
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    return true;
+}
+
+function confirmCaptionInsert(mode) {
+    const ui = getCaptionUi(mode || captionInsertState.mode);
+    const numberInput = ui.numberInput;
+    const textInput = ui.textInput;
+    const format = captionInsertState[ui.mode + 'Format'] || (ui.mode === 'figure' ? 'bracket' : 'angle');
+    const html = buildCaptionHtml(
+        ui.mode,
+        format,
+        numberInput ? numberInput.value : 1,
+        textInput ? textInput.value : ''
+    );
+    if (insertCaptionHtmlAtCursor(html)) {
+        if (ui.mode === 'table') toggleCaptionInsertPanel('table', false);
+        showToast(ui.mode === 'figure' ? '그림 캡션을 삽입했습니다.' : '표 캡션을 삽입했습니다.');
+    }
+}
+
 function getBulletMarkerByIndent(indentSpaces) {
     const depth = Math.max(0, Math.floor((Number(indentSpaces) || 0) / 2));
     const markers = ['-', '*', '+'];
@@ -8162,6 +8359,13 @@ window.applyHeading = applyHeading;
 window.insertListAtSelection = insertListAtSelection;
 window.handleTableInsertion = handleTableInsertion;
 window.toggleTableInsertPicker = toggleTableInsertPicker;
+window.closeTableInsertPicker = closeTableInsertPicker;
+window.prepareCaptionPanel = prepareCaptionPanel;
+window.toggleCaptionInsertPanel = toggleCaptionInsertPanel;
+window.openCaptionInsertModal = openCaptionInsertModal;
+window.closeCaptionInsertModal = closeCaptionInsertModal;
+window.confirmCaptionInsert = confirmCaptionInsert;
+window.updateCaptionInsertPreview = updateCaptionInsertPreview;
 window.convertSelectionPatternToTable = convertSelectionPatternToTable;
 window.convertSelectionMarkdownToHtml = convertSelectionMarkdownToHtml;
 window.insertLiteralAtCursor = insertLiteralAtCursor;

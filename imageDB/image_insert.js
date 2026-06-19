@@ -383,6 +383,11 @@ function openImageInsertModal() {
     if (!modal) return;
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    if (window.toggleCaptionInsertPanel) {
+        try { window.toggleCaptionInsertPanel('figure', true); } catch (e) {}
+    } else if (window.prepareCaptionPanel) {
+        try { window.prepareCaptionPanel('figure'); } catch (e) {}
+    }
     applyImageInsertPanelLayout();
     bindImageInsertModalDrag();
     if (!imageInsertCropBound) {

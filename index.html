@@ -467,9 +467,40 @@
                             class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
                             title="표 삽입"><i data-lucide="table" class="w-3.5 h-3.5"></i></button>
                         <div id="table-insert-picker"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[208px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[320px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <div id="table-insert-size-label" class="text-[11px] font-semibold text-slate-700 dark:text-slate-200 mb-2">표 삽입</div>
                             <div id="table-insert-grid" class="grid grid-cols-10 gap-1"></div>
+                            <button type="button" onclick="toggleCaptionInsertPanel('table', true)"
+                                class="mt-2 w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">표 캡션 넣기</button>
+                            <div id="table-caption-panel" class="caption-inline-panel hidden mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">표 캡션 삽입</h3>
+                                    <button type="button" onclick="toggleCaptionInsertPanel('table', false)"
+                                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] text-slate-600 dark:text-slate-300">닫기</button>
+                                </div>
+                                <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-2">형식 선택</div>
+                                <div id="table-caption-format-buttons" class="flex flex-wrap gap-1.5 mb-3"></div>
+                                <div class="grid grid-cols-[48px_1fr] gap-2 mb-3">
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">번호</label>
+                                        <input type="number" id="table-caption-number-input" value="1" min="1"
+                                            class="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">설명 / 제목</label>
+                                        <input type="text" id="table-caption-text-input" placeholder="내용을 입력하세요"
+                                            class="w-full px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100">
+                                    </div>
+                                </div>
+                                <div class="text-[11px] font-semibold text-slate-500 dark:text-slate-400 mb-1">미리보기</div>
+                                <div id="table-caption-preview" class="px-2 py-1.5 min-h-[34px] rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 mb-3"></div>
+                                <div class="flex justify-end gap-2">
+                                    <button type="button" onclick="toggleCaptionInsertPanel('table', false)"
+                                        class="px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300">취소</button>
+                                    <button type="button" onclick="confirmCaptionInsert('table')"
+                                        class="px-3 py-1.5 rounded bg-indigo-600 text-xs font-semibold text-white hover:bg-indigo-700">삽입</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <button onclick="convertSelectionPatternToTable()"
@@ -1483,6 +1514,36 @@
 
             <div class="mt-3 text-xs text-slate-500 dark:text-slate-400" id="img-insert-status"></div>
             <img id="img-insert-preview" class="mt-3 max-h-40 rounded border border-slate-300 dark:border-slate-600 hidden" alt="preview">
+
+            <div id="figure-caption-panel" class="caption-inline-panel mt-4 pt-4 border-t border-slate-300 dark:border-slate-600">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-base font-bold text-slate-800 dark:text-slate-100">그림 캡션 삽입</h3>
+                    <button type="button" onclick="toggleCaptionInsertPanel('figure', false)"
+                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300">닫기</button>
+                </div>
+                <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">형식 선택</div>
+                <div id="figure-caption-format-buttons" class="flex flex-wrap gap-2 mb-3"></div>
+                <div class="grid grid-cols-[64px_1fr] gap-3 mb-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">번호</label>
+                        <input type="number" id="figure-caption-number-input" value="1" min="1"
+                            class="w-full px-2 py-2 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">설명 / 제목</label>
+                        <input type="text" id="figure-caption-text-input" placeholder="내용을 입력하세요"
+                            class="w-full px-3 py-2 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100">
+                    </div>
+                </div>
+                <div class="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">미리보기</div>
+                <div id="figure-caption-preview" class="px-3 py-2 min-h-[38px] rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 text-sm text-slate-900 dark:text-slate-100 mb-4"></div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="toggleCaptionInsertPanel('figure', false)"
+                        class="px-4 py-2 rounded border border-slate-300 dark:border-slate-600 text-sm text-slate-600 dark:text-slate-300">취소</button>
+                    <button type="button" onclick="confirmCaptionInsert('figure')"
+                        class="px-4 py-2 rounded bg-indigo-600 text-sm font-semibold text-white hover:bg-indigo-700">삽입</button>
+                </div>
+            </div>
         </div>
     </div>
 
