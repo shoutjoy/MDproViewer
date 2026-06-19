@@ -144,6 +144,13 @@
             currentStorageSourceTab = 'indb';
             setStorageSourceTabToLocal('indb');
         }
+        if (window.GithubDataSettings && typeof window.GithubDataSettings.checkGithubConnectionFromModal === 'function') {
+            if (cfg.enabled && cfg.token && cfg.repo && cfg.branch) {
+                window.GithubDataSettings.checkGithubConnectionFromModal().catch(function () {});
+            } else if (typeof window.GithubDataSettings.setGithubConnectionStatus === 'function') {
+                window.GithubDataSettings.setGithubConnectionStatus('idle', 'GitHub 연결 상태를 확인하지 않았습니다.');
+            }
+        }
         updateStorageSourceTabsUI();
         if (activeSidebarTab === 'files') renderDBList();
     }
@@ -227,6 +234,16 @@
         return folder ? (folder + '/' + file) : file;
     }
 
+    function confirmGithubDocumentPush(cfg, remotePath) {
+        return window.confirm(
+            'GitHub에 문서를 push합니다.\n\n'
+            + '저장소: ' + String(cfg && cfg.repo ? cfg.repo : '') + '\n'
+            + '브랜치: ' + String(cfg && cfg.branch ? cfg.branch : '') + '\n'
+            + '저장 위치: ' + String(remotePath || '') + '\n\n'
+            + '계속할까요?'
+        );
+    }
+
     function getGithubFolderChoices(settings, suggestedFolder) {
         const folders = new Set();
         const add = function (value) {
@@ -245,24 +262,159 @@
         return Array.from(folders).sort(function (a, b) { return a.localeCompare(b); });
     }
 
+    async function getGithubRemoteFolderChoices(cfg) {
+        if (!cfg || !cfg.token || !cfg.owner || !cfg.name || !cfg.branch) return [];
+        const folders = new Set();
+        const basePrefix = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/') : '';
+        const treeUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/git/trees/' + encodeURIComponent(cfg.branch) + '?recursive=1';
+        const treeData = await githubApiRequest(treeUrl, {}, cfg.token);
+        const items = Array.isArray(treeData && treeData.tree) ? treeData.tree : [];
+        items.forEach(function (it) {
+            const raw = String(it && it.path ? it.path : '').trim();
+            if (!raw) return;
+            if (basePrefix && !raw.startsWith(basePrefix)) return;
+            const rel = basePrefix ? raw.slice(basePrefix.length) : raw;
+            if (!rel) return;
+            if (it.type === 'tree') {
+                const folder = normalizeGithubFolderPath(rel);
+                if (folder) folders.add(folder);
+                return;
+            }
+            if (it.type === 'blob' && rel.includes('/')) {
+                const parts = rel.split('/');
+                parts.pop();
+                for (let i = 1; i <= parts.length; i++) {
+                    const folder = normalizeGithubFolderPath(parts.slice(0, i).join('/'));
+                    if (folder) folders.add(folder);
+                }
+            }
+        });
+        return Array.from(folders).sort(function (a, b) { return a.localeCompare(b); });
+    }
+
+    function mergeGithubFolderChoices() {
+        const folders = new Set();
+        Array.prototype.slice.call(arguments).forEach(function (list) {
+            (Array.isArray(list) ? list : []).forEach(function (folder) {
+                const normalized = normalizeGithubFolderPath(folder);
+                if (normalized) folders.add(normalized);
+            });
+        });
+        return Array.from(folders).sort(function (a, b) { return a.localeCompare(b); });
+    }
+
+    function openGithubPushFolderModal(choices, defaultFolder) {
+        return new Promise(function (resolve) {
+            const overlay = document.createElement('div');
+            overlay.className = 'github-push-folder-overlay';
+            overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;padding:16px;';
+
+            const card = document.createElement('div');
+            card.style.cssText = 'width:min(640px,96vw);max-height:86vh;overflow:hidden;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:10px;box-shadow:0 24px 60px rgba(0,0,0,.35);display:flex;flex-direction:column;';
+
+            const header = document.createElement('div');
+            header.style.cssText = 'padding:14px 16px;border-bottom:1px solid #e2e8f0;';
+            header.innerHTML = '<div style="font-size:15px;font-weight:800;margin-bottom:4px">GitHub push 폴더 선택</div>'
+                + '<div style="font-size:12px;color:#64748b;line-height:1.45">기존 폴더를 선택하거나 새 폴더명을 입력하세요. 새 폴더는 push할 때 자동 생성됩니다.</div>';
+
+            const body = document.createElement('div');
+            body.style.cssText = 'padding:14px 16px;overflow:auto;';
+
+            const inputLabel = document.createElement('label');
+            inputLabel.textContent = '새 폴더명 또는 선택된 폴더';
+            inputLabel.style.cssText = 'display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px;';
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = normalizeGithubFolderPath(defaultFolder);
+            input.placeholder = '예: notes/research, project-a';
+            input.style.cssText = 'width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:7px;padding:9px 10px;font-size:13px;color:#0f172a;background:#fff;margin-bottom:10px;';
+
+            const rootBtn = document.createElement('button');
+            rootBtn.type = 'button';
+            rootBtn.textContent = '저장소 루트에 push';
+            rootBtn.style.cssText = 'border:1px solid #cbd5e1;background:#f8fafc;color:#334155;border-radius:7px;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;';
+            rootBtn.onclick = function () { input.value = ''; };
+
+            const listTitle = document.createElement('div');
+            listTitle.textContent = choices.length ? '기존 폴더 목록' : '기존 폴더가 없습니다. 새 폴더명을 입력하세요.';
+            listTitle.style.cssText = 'font-size:12px;font-weight:800;color:#334155;margin:6px 0;';
+
+            const list = document.createElement('div');
+            list.style.cssText = 'border:1px solid #e2e8f0;border-radius:8px;max-height:280px;overflow:auto;background:#f8fafc;';
+            if (choices.length) {
+                choices.forEach(function (folder) {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.textContent = folder;
+                    btn.title = folder;
+                    btn.style.cssText = 'display:block;width:100%;text-align:left;border:0;border-bottom:1px solid #e2e8f0;background:transparent;color:#1e293b;padding:8px 10px;font-size:12px;cursor:pointer;';
+                    btn.onmouseenter = function () { btn.style.background = '#eef2ff'; };
+                    btn.onmouseleave = function () { btn.style.background = 'transparent'; };
+                    btn.onclick = function () { input.value = folder; };
+                    list.appendChild(btn);
+                });
+            } else {
+                const empty = document.createElement('div');
+                empty.textContent = '아직 GitHub 저장소나 캐시에 폴더가 없습니다.';
+                empty.style.cssText = 'padding:12px;color:#64748b;font-size:12px;';
+                list.appendChild(empty);
+            }
+
+            const footer = document.createElement('div');
+            footer.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;padding:12px 16px;border-top:1px solid #e2e8f0;background:#f8fafc;';
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.textContent = '취소';
+            cancel.style.cssText = 'border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;';
+            const ok = document.createElement('button');
+            ok.type = 'button';
+            ok.textContent = '이 폴더로 push';
+            ok.style.cssText = 'border:1px solid #4f46e5;background:#4f46e5;color:#fff;border-radius:7px;padding:8px 12px;font-size:12px;font-weight:800;cursor:pointer;';
+
+            function close(value) {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                resolve(value);
+            }
+            cancel.onclick = function () { close(null); };
+            ok.onclick = function () { close(normalizeGithubFolderPath(input.value)); };
+            overlay.onclick = function (ev) { if (ev.target === overlay) close(null); };
+            input.onkeydown = function (ev) {
+                if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    close(normalizeGithubFolderPath(input.value));
+                }
+                if (ev.key === 'Escape') close(null);
+            };
+
+            body.appendChild(inputLabel);
+            body.appendChild(input);
+            body.appendChild(rootBtn);
+            body.appendChild(listTitle);
+            body.appendChild(list);
+            footer.appendChild(cancel);
+            footer.appendChild(ok);
+            card.appendChild(header);
+            card.appendChild(body);
+            card.appendChild(footer);
+            overlay.appendChild(card);
+            document.body.appendChild(overlay);
+            setTimeout(function () { input.focus(); input.select(); }, 0);
+        });
+    }
+
     async function chooseGithubPushFolder(settings, suggestedFolder) {
         const cfg = getGithubConfigFromSettings(settings || {});
-        const choices = getGithubFolderChoices(settings || {}, suggestedFolder || cfg.defaultPushPath);
-        const defaultFolder = normalizeGithubFolderPath(suggestedFolder || cfg.defaultPushPath || '');
-        const lines = [
-            'GitHub에 push할 폴더를 입력하세요.',
-            '빈칸이면 저장소 루트에 저장됩니다.',
-            '새 폴더명 또는 하위경로를 입력하면 GitHub에 자동 생성됩니다.'
-        ];
-        if (choices.length) {
-            lines.push('');
-            lines.push('기존 폴더:');
-            choices.slice(0, 30).forEach(function (folder) { lines.push('- ' + folder); });
-            if (choices.length > 30) lines.push('- ...');
+        const localChoices = getGithubFolderChoices(settings || {}, suggestedFolder || cfg.defaultPushPath);
+        let remoteChoices = [];
+        try {
+            remoteChoices = await getGithubRemoteFolderChoices(cfg);
+        } catch (e) {
+            showToast('GitHub folder list load failed. You can still enter a new folder.');
         }
-        const entered = window.prompt(lines.join('\n'), defaultFolder);
-        if (entered === null) return null;
-        return normalizeGithubFolderPath(entered);
+        const choices = mergeGithubFolderChoices(localChoices, remoteChoices);
+        const defaultFolder = normalizeGithubFolderPath(suggestedFolder || cfg.defaultPushPath || '');
+        return await openGithubPushFolderModal(choices, defaultFolder);
     }
 
     async function pullGithubRepo() {
@@ -329,6 +481,15 @@
         showToast('GitHub module is not loaded.');
     }
 
+    async function checkGithubConnectionFromModal() {
+        const api = window.GithubDataSettings;
+        if (api && typeof api.checkGithubConnectionFromModal === 'function') {
+            return await api.checkGithubConnectionFromModal();
+        }
+        showToast('GitHub module is not loaded.');
+        return false;
+    }
+
     async function loadFromGithubCache(path) {
         const target = String(path || '').trim();
         if (!target) return;
@@ -391,6 +552,10 @@
         }
         const path = joinGithubPath(pushFolder, docName + '.md');
         const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
+        if (!confirmGithubDocumentPush(cfg, remotePath)) {
+            showToast('GitHub push canceled.');
+            return false;
+        }
         const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
 
         try {
@@ -476,6 +641,10 @@
         }
         const path = joinGithubPath(pushFolder, fileName);
         const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
+        if (!confirmGithubDocumentPush(cfg, remotePath)) {
+            showToast('GitHub push canceled.');
+            return false;
+        }
         const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
 
         try {
@@ -616,6 +785,7 @@
         confirmGithubRepoCreateModal: confirmGithubRepoCreateModal,
         createGithubRepository: createGithubRepository,
         saveGithubSettingsFromModal: saveGithubSettingsFromModal,
+        checkGithubConnectionFromModal: checkGithubConnectionFromModal,
         loadFromGithubCache: loadFromGithubCache,
         pushDocToGithub: pushDocToGithub,
         pushCurrentContentToGithub: pushCurrentContentToGithub,
@@ -642,6 +812,7 @@
     window.confirmGithubRepoCreateModal = confirmGithubRepoCreateModal;
     window.createGithubRepository = createGithubRepository;
     window.saveGithubSettingsFromModal = saveGithubSettingsFromModal;
+    window.checkGithubConnectionFromModal = checkGithubConnectionFromModal;
     window.loadFromGithubCache = loadFromGithubCache;
     window.pushDocToGithub = pushDocToGithub;
     window.pushCurrentContentToGithub = pushCurrentContentToGithub;

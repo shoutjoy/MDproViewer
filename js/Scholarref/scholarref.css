@@ -84,6 +84,7 @@
 
 .scholarref-method-btn,
 .scholarref-secondary { background: #fff; color: #334155; }
+.scholarref-link { display: inline-block; text-decoration: none; }
 .scholarref-method-btn.active { border-color: #6366f1; color: #4f46e5; background: #eef2ff; }
 .scholarref-primary { background: #6366f1; color: #fff; border-color: #4f46e5; font-weight: 700; }
 .scholarref-danger { background: #fff1f2; color: #b91c1c; border-color: #fecdd3; }

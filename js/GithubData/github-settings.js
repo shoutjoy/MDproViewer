@@ -3,6 +3,8 @@
 
     const UI_TEMPLATE_URL = './js/GithubData/github-settings-ui.html';
     let uiReadyPromise = null;
+    let githubConnectionCheckPromise = null;
+    let githubConnectionCheckKey = '';
 
     function getUiFallbackHtml() {
         return ''
@@ -30,8 +32,13 @@
             + '    <input type="text" id="github-new-repo-name-input" placeholder="my-notes" class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
             + '    <div class="flex items-center gap-2 flex-wrap">'
             + '      <button type="button" onclick="saveGithubSettingsFromModal()" class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700">github 설정 저장</button>'
+            + '      <button type="button" onclick="checkGithubConnectionFromModal()" class="px-3 py-1.5 bg-cyan-600 rounded-md text-xs font-medium text-white hover:bg-cyan-700">연결 확인</button>'
             + '      <button type="button" onclick="pullGithubRepo()" class="px-3 py-1.5 bg-slate-600 rounded-md text-xs font-medium text-white hover:bg-slate-700">pull</button>'
             + '      <button type="button" onclick="openGithubRepoCreateModal()" class="px-3 py-1.5 bg-emerald-600 rounded-md text-xs font-medium text-white hover:bg-emerald-700">저장소 생성</button>'
+            + '    </div>'
+            + '    <div id="github-connection-status" class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400">'
+            + '      <span id="github-connection-dot" class="inline-block w-2.5 h-2.5 rounded-full bg-slate-400"></span>'
+            + '      <span id="github-connection-text">GitHub 연결 상태를 확인하지 않았습니다.</span>'
             + '    </div>'
             + '    <p id="github-settings-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>'
             + '  </div>'
@@ -60,6 +67,78 @@
         if (t === 'error') el.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
         else if (t === 'ok') el.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
         else el.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
+    }
+
+    function setGithubConnectionStatus(state, message) {
+        const wrap = document.getElementById('github-connection-status');
+        const dot = document.getElementById('github-connection-dot');
+        const text = document.getElementById('github-connection-text');
+        if (!wrap || !dot || !text) return;
+        const s = String(state || 'idle').toLowerCase();
+        text.textContent = String(message || '');
+        if (s === 'ok') {
+            wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs text-emerald-700 dark:text-emerald-300';
+            dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,.18)]';
+        } else if (s === 'checking') {
+            wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-cyan-200 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-950/40 text-xs text-cyan-700 dark:text-cyan-300';
+            dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-cyan-500';
+        } else if (s === 'error') {
+            wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 text-xs text-red-700 dark:text-red-300';
+            dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-red-500';
+        } else {
+            wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400';
+            dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-slate-400';
+        }
+    }
+
+    function getGithubConfigFromFields() {
+        const enabledEl = document.getElementById('ai-github-enabled');
+        const tokenEl = document.getElementById('github-token-input');
+        const repoEl = document.getElementById('github-repo-input');
+        const branchEl = document.getElementById('github-branch-input');
+        const repoRaw = String(repoEl && repoEl.value ? repoEl.value : '').trim()
+            .replace(/^https?:\/\/github\.com\//i, '')
+            .replace(/\.git$/i, '')
+            .replace(/^\/+|\/+$/g, '');
+        const parts = repoRaw.split('/').filter(Boolean);
+        return {
+            enabled: !!(enabledEl && enabledEl.checked),
+            token: String(tokenEl && tokenEl.value ? tokenEl.value : '').trim(),
+            owner: parts[0] || '',
+            name: parts[1] || '',
+            repo: parts.length >= 2 ? (parts[0] + '/' + parts[1]) : '',
+            branch: String(branchEl && branchEl.value ? branchEl.value : 'main').trim() || 'main'
+        };
+    }
+
+    async function checkGithubConnectionFromModal() {
+        await ensureUiReady();
+        const cfg = getGithubConfigFromFields();
+        if (!cfg.enabled) {
+            setGithubConnectionStatus('idle', 'GitHub 사용설정을 켜면 연결 상태를 확인합니다.');
+            return false;
+        }
+        if (!cfg.token || !cfg.owner || !cfg.name || !cfg.branch) {
+            setGithubConnectionStatus('error', 'PAT / 저장소 / 브랜치를 입력하세요.');
+            return false;
+        }
+        const key = [cfg.repo, cfg.branch, cfg.token.slice(-8)].join('|');
+        if (githubConnectionCheckPromise && githubConnectionCheckKey === key) return await githubConnectionCheckPromise;
+        githubConnectionCheckKey = key;
+        setGithubConnectionStatus('checking', 'GitHub 연결 확인 중...');
+        githubConnectionCheckPromise = (async function () {
+            await githubApiRequest('https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name), {}, cfg.token);
+            await githubApiRequest('https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/git/ref/heads/' + encodeURIComponent(cfg.branch), {}, cfg.token);
+            setGithubConnectionStatus('ok', '연결됨: ' + cfg.repo + ' / ' + cfg.branch);
+            return true;
+        })();
+        try {
+            return await githubConnectionCheckPromise;
+        } catch (e) {
+            setGithubConnectionStatus('error', '연결 실패: ' + String(e && e.message ? e.message : e));
+            githubConnectionCheckPromise = null;
+            return false;
+        }
     }
 
     function loadUiTemplateFromUrl(url) {
@@ -258,19 +337,20 @@
                     updatedAt: new Date().toISOString()
                 });
             }
-            await setAiSettings({
-                githubEnabled: true,
-                githubToken: cfg.token,
-                githubRepo: cfg.repo,
-                githubBranch: cfg.branch,
-                githubPullMaxFiles: maxFiles,
-                githubCacheDocs: docs,
-                githubLastPulledAt: new Date().toISOString()
-            });
+        await setAiSettings({
+            githubEnabled: true,
+            githubToken: cfg.token,
+            githubRepo: cfg.repo,
+            githubBranch: cfg.branch,
+            githubPullMaxFiles: maxFiles,
+            githubCacheDocs: docs,
+            githubLastPulledAt: new Date().toISOString()
+        });
             const limitedNote = files.length > maxFiles
                 ? ' (limited to ' + maxFiles + ' of ' + files.length + ')'
                 : '';
             setGithubFeedback('Pulled ' + docs.length + ' files from GitHub' + limitedNote + '.', 'ok');
+            setGithubConnectionStatus('ok', '연결됨: ' + cfg.repo + ' / ' + cfg.branch);
             showToast('GitHub pull complete: ' + docs.length + ' files' + limitedNote);
             if (typeof d.renderDBList === 'function') d.renderDBList();
         } catch (e) {
@@ -319,6 +399,7 @@
                 githubBranch: branch
             });
             await applyGithubUiState();
+            await checkGithubConnectionFromModal();
             setGithubFeedback('Repository created (' + (isPrivate ? 'private' : 'public') + '): ' + fullName, 'ok');
             showToast('GitHub ' + (isPrivate ? 'private' : 'public') + ' repository created.');
         } catch (e) {
@@ -361,13 +442,16 @@
             githubPullMaxFiles: pullMaxFiles
         });
         await applyGithubUiState();
-        setGithubFeedback('GitHub settings saved.', 'ok');
+        const connected = await checkGithubConnectionFromModal();
+        setGithubFeedback(connected ? 'GitHub settings saved. Connection verified.' : 'GitHub settings saved. Check connection message.', connected ? 'ok' : 'error');
         showToast('GitHub settings saved.');
     }
 
     window.GithubDataSettings = {
         ensureUiReady: ensureUiReady,
         setGithubFeedback: setGithubFeedback,
+        setGithubConnectionStatus: setGithubConnectionStatus,
+        checkGithubConnectionFromModal: checkGithubConnectionFromModal,
         toggleGithubSettingsSection: toggleGithubSettingsSection,
         openGithubRepoCreateModal: openGithubRepoCreateModal,
         closeGithubRepoCreateModal: closeGithubRepoCreateModal,

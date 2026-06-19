@@ -516,6 +516,10 @@
   function downloadScholarRefTxt() { invokeScholarRef('downloadTxt'); }
   function downloadScholarRefMd() { invokeScholarRef('downloadMd'); }
   function openScholarRefListWindow() { invokeScholarRef('openListWindow'); }
+  function pushScholarRefItemToGithub(id) { invokeScholarRef('pushGithubReferenceItem', id); }
+  function pushScholarRefsToGithub() { invokeScholarRef('pushGithubSavedList'); }
+  function pullScholarRefsFromGithub() { invokeScholarRef('pullGithubSavedList'); }
+  function refreshScholarRefGithubList() { invokeScholarRef('renderGithubSavedList'); }
   function deleteScholarRefItem(id) { invokeScholarRef('deleteOne', id); }
   function clearAllScholarRefs() { invokeScholarRef('clearAll'); }
 
@@ -543,6 +547,10 @@
     global.downloadScholarRefTxt = downloadScholarRefTxt;
     global.downloadScholarRefMd = downloadScholarRefMd;
     global.openScholarRefListWindow = openScholarRefListWindow;
+    global.pushScholarRefItemToGithub = pushScholarRefItemToGithub;
+    global.pushScholarRefsToGithub = pushScholarRefsToGithub;
+    global.pullScholarRefsFromGithub = pullScholarRefsFromGithub;
+    global.refreshScholarRefGithubList = refreshScholarRefGithubList;
     global.deleteScholarRefItem = deleteScholarRefItem;
     global.clearAllScholarRefs = clearAllScholarRefs;
 

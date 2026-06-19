@@ -45,6 +45,7 @@
           <button type="button" class="scholarref-tab active" data-tab="0" onclick="switchScholarRefTab(0)">① 참고문헌 추가</button>
           <button type="button" class="scholarref-tab" data-tab="1" onclick="switchScholarRefTab(1)">② 인용 삽입</button>
           <button type="button" class="scholarref-tab" data-tab="2" onclick="switchScholarRefTab(2)">④ 저장된 목록</button>
+          <button type="button" class="scholarref-tab" data-tab="3" onclick="switchScholarRefTab(3)">저장목록(github)</button>
         </div>
         <div id="scholarref-tab-0" class="scholarref-tab-content active">
           <div class="scholarref-row">
@@ -92,11 +93,23 @@
               <button type="button" class="scholarref-secondary" onclick="downloadScholarRefMd()">MD 다운로드</button>
               <button type="button" class="scholarref-secondary" onclick="openScholarRefMdImport()">MD 불러오기</button>
               <button type="button" class="scholarref-secondary" onclick="openScholarRefListWindow()">새창목록</button>
+              <button type="button" id="scholarref-push-all-github-btn" class="scholarref-primary" onclick="pushScholarRefsToGithub()">전체 push</button>
               <button type="button" class="scholarref-danger" onclick="clearAllScholarRefs()">전체 삭제</button>
               <input type="file" id="scholarref-md-file" accept=".md,.txt" class="hidden" onchange="importScholarRefMd(event)">
             </div>
           </div>
           <div id="scholarref-saved-list" class="scholarref-list"></div>
+        </div>
+        <div id="scholarref-tab-3" class="scholarref-tab-content">
+          <div class="scholarref-row scholarref-between">
+            <div class="scholarref-count">GitHub Reference 폴더</div>
+            <div class="scholarref-row">
+              <button type="button" class="scholarref-primary" onclick="pullScholarRefsFromGithub()">pull</button>
+              <button type="button" class="scholarref-secondary" onclick="refreshScholarRefGithubList()">목록 새로고침</button>
+            </div>
+          </div>
+          <p id="scholarref-github-status" class="scholarref-help">GitHub 저장소의 Reference 폴더에 있는 저장목록입니다. pull하면 로컬 저장 목록에 병합됩니다.</p>
+          <div id="scholarref-github-list" class="scholarref-list"></div>
         </div>
       </div>
     </div>
