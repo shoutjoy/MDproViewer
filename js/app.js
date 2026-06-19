@@ -6215,9 +6215,11 @@ async function persistAiSettingsFromModal() {
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
     const githubPullMaxEl = document.getElementById('github-pull-max-files-input');
+    const githubDefaultPushPathEl = document.getElementById('github-default-push-path-input');
     const githubToken = String(githubTokenEl && githubTokenEl.value ? githubTokenEl.value : '').trim();
     const githubRepo = String(githubRepoEl && githubRepoEl.value ? githubRepoEl.value : '').trim();
     const githubBranch = String(githubBranchEl && githubBranchEl.value ? githubBranchEl.value : 'main').trim() || 'main';
+    const githubDefaultPushPath = String(githubDefaultPushPathEl && githubDefaultPushPathEl.value ? githubDefaultPushPathEl.value : '').trim();
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     const sqliteEnabledEl = document.getElementById('sqlite-enabled');
@@ -6229,6 +6231,7 @@ async function persistAiSettingsFromModal() {
         githubToken: githubToken,
         githubRepo: githubRepo,
         githubBranch: githubBranch,
+        githubDefaultPushPath: githubDefaultPushPath,
         scholarSearchVisible: scholarSearchVisible,
         highlightVisible: highlightVisible,
         sitesVisible: sitesVisible,
@@ -7429,6 +7432,8 @@ async function loadAiSettingsToUI() {
         if (githubRepoEmpty) githubRepoEmpty.value = '';
         const githubBranchEmpty = document.getElementById('github-branch-input');
         if (githubBranchEmpty) githubBranchEmpty.value = 'main';
+        const githubDefaultPushPathEmpty = document.getElementById('github-default-push-path-input');
+        if (githubDefaultPushPathEmpty) githubDefaultPushPathEmpty.value = '';
         toggleGithubSettingsSection();
         setGithubFeedback('', 'info');
         if (window.GoogleDocs && typeof window.GoogleDocs.resetGoogleDocsSettingsUI === 'function') {
@@ -7457,6 +7462,7 @@ async function loadAiSettingsToUI() {
             githubToken: '',
             githubRepo: '',
             githubBranch: 'main',
+            githubDefaultPushPath: '',
             githubCacheDocs: []
         });
         return;
@@ -7534,12 +7540,14 @@ async function loadAiSettingsToUI() {
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
     const githubPullMaxEl = document.getElementById('github-pull-max-files-input');
+    const githubDefaultPushPathEl = document.getElementById('github-default-push-path-input');
     if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
     if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
     if (githubEl) githubEl.checked = !!settings.githubEnabled;
     if (githubTokenEl) githubTokenEl.value = settings.githubToken || '';
     if (githubRepoEl) githubRepoEl.value = settings.githubRepo || '';
     if (githubBranchEl) githubBranchEl.value = settings.githubBranch || 'main';
+    if (githubDefaultPushPathEl) githubDefaultPushPathEl.value = settings.githubDefaultPushPath || '';
     if (githubPullMaxEl) {
         const rawMax = Number(settings.githubPullMaxFiles);
         const maxFiles = Number.isFinite(rawMax) ? Math.max(1, Math.min(10000, Math.floor(rawMax))) : 10000;

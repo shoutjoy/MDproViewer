@@ -24,6 +24,8 @@
             + '    <input type="number" id="github-pull-max-files-input" min="1" max="10000" step="1" value="10000" class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
             + '    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">저장소 (owner/repo)</label>'
             + '    <input type="text" id="github-repo-input" placeholder="username/my-notes" class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
+            + '    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">기본 push 폴더 (선택)</label>'
+            + '    <input type="text" id="github-default-push-path-input" placeholder="notes/research" class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
             + '    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">새 저장소명(생성용)</label>'
             + '    <input type="text" id="github-new-repo-name-input" placeholder="my-notes" class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
             + '    <div class="flex items-center gap-2 flex-wrap">'
@@ -341,10 +343,12 @@
         const repoEl = document.getElementById('github-repo-input');
         const branchEl = document.getElementById('github-branch-input');
         const pullMaxEl = document.getElementById('github-pull-max-files-input');
+        const defaultPushPathEl = document.getElementById('github-default-push-path-input');
         const enabled = !!(enabledEl && enabledEl.checked);
         const token = String(tokenEl && tokenEl.value ? tokenEl.value : '').trim();
         const repo = String(repoEl && repoEl.value ? repoEl.value : '').trim();
         const branch = String(branchEl && branchEl.value ? branchEl.value : 'main').trim() || 'main';
+        const defaultPushPath = String(defaultPushPathEl && defaultPushPathEl.value ? defaultPushPathEl.value : '').trim();
         const rawPullMax = Number(pullMaxEl && pullMaxEl.value ? pullMaxEl.value : 10000);
         const pullMaxFiles = Number.isFinite(rawPullMax) ? Math.max(1, Math.min(10000, Math.floor(rawPullMax))) : 10000;
         if (pullMaxEl) pullMaxEl.value = String(pullMaxFiles);
@@ -353,6 +357,7 @@
             githubToken: token,
             githubRepo: repo,
             githubBranch: branch,
+            githubDefaultPushPath: defaultPushPath,
             githubPullMaxFiles: pullMaxFiles
         });
         await applyGithubUiState();

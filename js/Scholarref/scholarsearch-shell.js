@@ -145,24 +145,31 @@
   function getTemplateHtml() {
     return FALLBACK_TEMPLATE_HTML;
   }
+
+  function mountTemplateHtml(html) {
+    if (q('scholar-search-modal')) return true;
+    var wrap = document.createElement('div');
+    wrap.innerHTML = String(html || getTemplateHtml()).trim();
+    var modal = wrap.firstElementChild;
+    if (!modal) return false;
+
+    var slot = q('scholar-search-slot');
+    if (slot && slot.parentNode) slot.parentNode.replaceChild(modal, slot);
+    else document.body.appendChild(modal);
+    return !!q('scholar-search-modal');
+  }
+
   function ensureModalMarkup() {
     if (q('scholar-search-modal')) return;
 
     if (!state.templateHtml) {
       primeTemplateHtml().then(function (html) {
         if (!html || q('scholar-search-modal')) return;
-        ensureModalMarkup();
+        mountTemplateHtml(html);
       });
     }
 
-    var wrap = document.createElement('div');
-    wrap.innerHTML = state.templateHtml || getTemplateHtml();
-    var modal = wrap.firstElementChild;
-    if (!modal) return;
-
-    var slot = q('scholar-search-slot');
-    if (slot && slot.parentNode) slot.parentNode.replaceChild(modal, slot);
-    else document.body.appendChild(modal);
+    mountTemplateHtml(state.templateHtml || getTemplateHtml());
   }
 
   function openScholarSearchWindow(query, options) {
@@ -192,6 +199,14 @@
     params.set('as_vis', '1');
 
     var url = 'https://scholar.google.com/scholar?' + params.toString();
+    if (window.web2electron && typeof window.web2electron.openExternal === 'function') {
+      window.web2electron.openExternal(url).then(function (res) {
+        if (!res || res.ok === false) toast((res && res.error) || 'Failed to open Scholar search.');
+      }).catch(function (err) {
+        toast((err && err.message) || 'Failed to open Scholar search.');
+      });
+      return;
+    }
     var win = window.open(url, '_blank', 'noopener,noreferrer,width=1200,height=900');
     if (!win) toast('Popup blocked. Please allow popups for this site.');
   }
@@ -315,7 +330,15 @@
     ensureModalMarkup();
     var modal = q('scholar-search-modal');
     var input = q('scholar-search-query');
-    if (!modal || !input) return;
+    if (!modal || !input) {
+      mountTemplateHtml(getTemplateHtml());
+      modal = q('scholar-search-modal');
+      input = q('scholar-search-query');
+    }
+    if (!modal || !input) {
+      toast('Scholar Search UI could not be opened.');
+      return;
+    }
 
     bindScholarSearchModalDrag();
     applyScholarSearchPanelLayout();

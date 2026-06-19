@@ -33,6 +33,7 @@
             owner: parsed ? parsed.owner : '',
             name: parsed ? parsed.repo : '',
             basePath: parsed ? parsed.basePath : '',
+            defaultPushPath: normalizeGithubFolderPath(s.githubDefaultPushPath || ''),
             repoWithPath: parsed ? parsed.fullWithPath : '',
             pullMaxFiles: pullMaxFiles,
             cacheDocs: Array.isArray(s.githubCacheDocs) ? s.githubCacheDocs : [],
@@ -210,6 +211,60 @@
         return file.replace(/\.(md|markdown|txt)$/i, '');
     }
 
+    function normalizeGithubFolderPath(path) {
+        return String(path || '')
+            .trim()
+            .replace(/\\/g, '/')
+            .split('/')
+            .map(function (part) { return part.trim().replace(/[\\:*?"<>|]+/g, '_'); })
+            .filter(Boolean)
+            .join('/');
+    }
+
+    function joinGithubPath(folderPath, fileName) {
+        const folder = normalizeGithubFolderPath(folderPath);
+        const file = String(fileName || 'untitled.md').trim().replace(/[/\\:*?"<>|]+/g, '_') || 'untitled.md';
+        return folder ? (folder + '/' + file) : file;
+    }
+
+    function getGithubFolderChoices(settings, suggestedFolder) {
+        const folders = new Set();
+        const add = function (value) {
+            const normalized = normalizeGithubFolderPath(value);
+            if (normalized) folders.add(normalized);
+        };
+        add(suggestedFolder);
+        add(settings && settings.githubDefaultPushPath);
+        const docs = Array.isArray(settings && settings.githubCacheDocs) ? settings.githubCacheDocs : [];
+        docs.forEach(function (doc) {
+            const folder = String(doc && doc.folderPath ? doc.folderPath : '');
+            if (folder && folder !== 'root') add(folder);
+            const path = String(doc && doc.path ? doc.path : '');
+            if (path.includes('/')) add(path.slice(0, path.lastIndexOf('/')));
+        });
+        return Array.from(folders).sort(function (a, b) { return a.localeCompare(b); });
+    }
+
+    async function chooseGithubPushFolder(settings, suggestedFolder) {
+        const cfg = getGithubConfigFromSettings(settings || {});
+        const choices = getGithubFolderChoices(settings || {}, suggestedFolder || cfg.defaultPushPath);
+        const defaultFolder = normalizeGithubFolderPath(suggestedFolder || cfg.defaultPushPath || '');
+        const lines = [
+            'GitHub에 push할 폴더를 입력하세요.',
+            '빈칸이면 저장소 루트에 저장됩니다.',
+            '새 폴더명 또는 하위경로를 입력하면 GitHub에 자동 생성됩니다.'
+        ];
+        if (choices.length) {
+            lines.push('');
+            lines.push('기존 폴더:');
+            choices.slice(0, 30).forEach(function (folder) { lines.push('- ' + folder); });
+            if (choices.length > 30) lines.push('- ...');
+        }
+        const entered = window.prompt(lines.join('\n'), defaultFolder);
+        if (entered === null) return null;
+        return normalizeGithubFolderPath(entered);
+    }
+
     async function pullGithubRepo() {
         const api = window.GithubDataSettings;
         if (api && typeof api.pullGithubRepo === 'function') {
@@ -304,7 +359,7 @@
         const cfg = getGithubConfigFromSettings(settings);
         if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
             showToast('Set GitHub token/repo/branch first.');
-            return;
+            return false;
         }
 
         const tx = db.transaction(['documents', 'folders'], 'readonly');
@@ -317,7 +372,7 @@
         });
         if (!doc) {
             showToast('Document not found.');
-            return;
+            return false;
         }
 
         const folder = await new Promise(function (resolve) {
@@ -329,7 +384,12 @@
             ? String(folder.name || '').trim().replace(/[\\/:*?"<>|]+/g, '_')
             : '';
         const docName = String(doc.title || 'untitled').trim().replace(/[\\/:*?"<>|]+/g, '_') || 'untitled';
-        const path = folderName ? (folderName + '/' + docName + '.md') : (docName + '.md');
+        const pushFolder = await chooseGithubPushFolder(settings, folderName || cfg.defaultPushPath);
+        if (pushFolder === null) {
+            showToast('GitHub push canceled.');
+            return false;
+        }
+        const path = joinGithubPath(pushFolder, docName + '.md');
         const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
         const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
 
@@ -376,8 +436,10 @@
             await setAiSettings({ githubCacheDocs: nextCache });
             showToast('Pushed to GitHub: ' + remotePath);
             if (currentStorageSourceTab === 'github') renderDBList();
+            return true;
         } catch (e) {
             showToast('GitHub push failed: ' + String(e && e.message ? e.message : e));
+            return false;
         }
     }
 
@@ -401,14 +463,18 @@
             return false;
         }
         if (currentDbDocId) {
-            await pushDocToGithub(currentDbDocId);
-            return true;
+            return !!(await pushDocToGithub(currentDbDocId));
         }
 
         let fileName = String(currentFileName || 'untitled.md').trim().replace(/[/\\:*?"<>|]+/g, '_');
         if (!fileName) fileName = 'untitled.md';
         if (!/\.[a-z0-9]+$/i.test(fileName)) fileName += '.md';
-        const path = fileName;
+        const pushFolder = await chooseGithubPushFolder(settings, cfg.defaultPushPath);
+        if (pushFolder === null) {
+            showToast('GitHub push canceled.');
+            return false;
+        }
+        const path = joinGithubPath(pushFolder, fileName);
         const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
         const getContentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/contents/' + remotePath.split('/').map(encodeURIComponent).join('/') + '?ref=' + encodeURIComponent(cfg.branch);
 
