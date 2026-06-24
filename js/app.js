@@ -1617,6 +1617,21 @@ function getSaveCandidateFileName() {
         : "document.md";
 }
 
+async function resolveCurrentFilePathForSave() {
+    if (currentFilePath && String(currentFilePath).trim()) return currentFilePath;
+
+    const opened = await tryGetOpenedFileViaElectronApi();
+    if (!opened || !opened.path) return null;
+
+    const openedName = opened.fileName || getNameFromPath(opened.path);
+    if (openedName && (!currentFileName || currentFileName === 'untitled.md')) {
+        currentFileName = openedName;
+        if (fileNameDisplay) fileNameDisplay.textContent = currentFileName;
+    }
+    currentFilePath = opened.path;
+    return currentFilePath;
+}
+
 function downloadMarkdownFile(markdown, fileName) {
     const content = markdown == null ? currentMarkdown : String(markdown);
     const name = String(fileName || currentFileName || 'document.md');
@@ -2030,8 +2045,9 @@ async function saveCurrentFile() {
             return false;
         }
     }
+    const savePath = await resolveCurrentFilePathForSave();
     const result = await window.electron.ipcRenderer.invoke('save-current-file', {
-        filePath: currentFilePath,
+        filePath: savePath,
         fileName: getSaveCandidateFileName(),
         content: currentMarkdown
     });
@@ -2055,8 +2071,9 @@ async function saveFileAs() {
             return false;
         }
     }
+    const savePath = await resolveCurrentFilePathForSave();
     const result = await window.electron.ipcRenderer.invoke('save-file-as', {
-        filePath: currentFilePath,
+        filePath: savePath,
         fileName: getSaveCandidateFileName(),
         content: currentMarkdown
     });
