@@ -26,12 +26,23 @@ const PREVIEW_MERMAID_THEME_VARIABLES = {
     noteBorderColor: '#fed7aa'
 };
 
+let previewPopupFileMode = false;
+let previewPopupFileObjectUrl = '';
+
+function revokePreviewPopupFileObjectUrl() {
+    if (!previewPopupFileObjectUrl) return;
+    try { URL.revokeObjectURL(previewPopupFileObjectUrl); } catch (_) {}
+    previewPopupFileObjectUrl = '';
+}
+
 function isPreviewPopupAlive() {
     return !!(previewPopupWindow && !previewPopupWindow.closed);
 }
 
 function onPreviewPopupClosed() {
     previewPopupWindow = null;
+    previewPopupFileMode = false;
+    revokePreviewPopupFileObjectUrl();
     resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
 }
@@ -39,14 +50,99 @@ function onPreviewPopupClosed() {
 function closePreviewPopupWindow() {
     if (!isPreviewPopupAlive()) {
         previewPopupWindow = null;
+        previewPopupFileMode = false;
+        revokePreviewPopupFileObjectUrl();
         resetPreviewPopupMermaidLoader();
         revokeObjectUrls(previewInternalImageObjectUrls);
         return;
     }
     previewPopupWindow.close();
     previewPopupWindow = null;
+    previewPopupFileMode = false;
+    revokePreviewPopupFileObjectUrl();
     resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
+}
+
+function ensurePreviewPopupForFile() {
+    if (isPreviewPopupAlive()) return true;
+    openPreviewPopupWindow();
+    return isPreviewPopupAlive();
+}
+
+function choosePreviewPopupFile(kind) {
+    if (!isPreviewPopupAlive()) return false;
+    const type = String(kind || '').toLowerCase();
+    const input = previewPopupWindow.document.createElement('input');
+    input.type = 'file';
+    input.accept = type === 'pdf'
+        ? '.pdf,application/pdf'
+        : '.pptx,.ppsx,application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    input.style.display = 'none';
+    input.addEventListener('change', function () {
+        const file = input.files && input.files[0];
+        if (file) openSelectedFileInPreviewPopup(file);
+        input.remove();
+    }, { once: true });
+    previewPopupWindow.document.body.appendChild(input);
+    input.click();
+    return true;
+}
+
+function openSelectedFileInPreviewPopup(file) {
+    if (!file || !isPreviewPopupAlive()) return false;
+    const name = String(file.name || 'Document');
+    const lowerName = name.toLowerCase();
+    const isPdf = lowerName.endsWith('.pdf');
+    const isPresentation = /\.(pptx|ppsx)$/.test(lowerName);
+    if (!isPdf && !isPresentation) {
+        showToast('PDF 또는 PPTX 파일을 선택하세요.');
+        return false;
+    }
+    revokePreviewPopupFileObjectUrl();
+    previewPopupFileObjectUrl = URL.createObjectURL(file);
+    if (isPdf) {
+        return openFileViewerInPreviewPopup(previewPopupFileObjectUrl, name);
+    }
+    const viewerUrl = new URL('./pptx-viewer.html', window.location.href);
+    viewerUrl.searchParams.set('title', name);
+    const bufferPromise = file.arrayBuffer();
+    return openFileViewerInPreviewPopup(viewerUrl.href, name, function (frame) {
+        bufferPromise.then(function (buffer) {
+            frame.contentWindow.postMessage({
+                type: 'mdv-open-pptx-buffer',
+                fileName: name,
+                buffer: buffer
+            }, window.location.origin, [buffer]);
+        }).catch(function (error) {
+            showToast('PPTX 파일을 읽을 수 없습니다: ' + (error && error.message ? error.message : error));
+        });
+    });
+}
+
+function openFileViewerInPreviewPopup(viewerUrl, fileName, onReady) {
+    if (!isPreviewPopupAlive()) return false;
+    const doc = previewPopupWindow.document;
+    const root = doc.getElementById('pv-root');
+    if (!root) return false;
+
+    previewPopupFileMode = true;
+    doc.title = 'MDproViewer Preview - ' + String(fileName || 'Document');
+    root.innerHTML = '';
+    const frame = doc.createElement('iframe');
+    if (typeof onReady === 'function') {
+        frame.addEventListener('load', function () { onReady(frame); }, { once: true });
+    }
+    frame.src = String(viewerUrl || '');
+    frame.title = String(fileName || 'Document');
+    frame.style.display = 'block';
+    frame.style.width = '100%';
+    frame.style.height = '100vh';
+    frame.style.border = '0';
+    frame.setAttribute('allow', 'fullscreen');
+    root.appendChild(frame);
+    try { previewPopupWindow.focus(); } catch (_) {}
+    return true;
 }
 
 function escapeHtmlForPreview(text) {
@@ -67,7 +163,7 @@ function getPreviewPopupDocumentHtml() {
         + '<style>'
         + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;}'
         + '#pv-root{height:100%;}'
-        + '#pv-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#e2e8f0;border-bottom:1px solid #cbd5e1;position:fixed;top:0;left:0;right:0;z-index:9999;box-sizing:border-box;}'
+        + '#pv-toolbar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#e2e8f0;border-bottom:1px solid #cbd5e1;position:fixed;top:0;left:0;right:0;z-index:9999;box-sizing:border-box;overflow-x:auto;white-space:nowrap;}'
         + '#pv-toolbar button{padding:4px 10px;border:1px solid #94a3b8;background:#fff;border-radius:6px;font-weight:700;color:#1e293b;cursor:pointer;}'
         + '#pv-toolbar .label{font-size:12px;color:#334155;min-width:48px;text-align:center;font-weight:700;}'
         + '#pv-viewport{height:100%;overflow:auto;padding:20px;padding-top:72px;box-sizing:border-box;}'
@@ -92,6 +188,8 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-content .md-footnote-ref a:hover,#pv-content .md-footnote-backref:hover{text-decoration:underline;}'
         + '</style></head><body><div id=\"pv-root\"><div id=\"pv-toolbar\">'
         + '<strong style=\"margin-right:6px\">Preview</strong>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.choosePreviewPopupFile(\'pdf\')\">PDF 열기</button>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.choosePreviewPopupFile(\'pptx\')\">PPTX 열기</button>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">Zoom Out</button>'
         + '<span id=\"pv-scale-label\" class=\"label\">100%</span>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(0.1)\">Zoom In</button>'
@@ -425,6 +523,15 @@ async function updatePreviewPopupContent() {
 
 function openPreviewPopupWindow() {
     if (isPreviewPopupAlive()) {
+        if (previewPopupFileMode) {
+            try {
+                revokePreviewPopupFileObjectUrl();
+                previewPopupWindow.document.open();
+                previewPopupWindow.document.write(getPreviewPopupDocumentHtml());
+                previewPopupWindow.document.close();
+                previewPopupFileMode = false;
+            } catch (_) {}
+        }
         previewPopupWindow.focus();
         updatePreviewPopupContent();
         return;

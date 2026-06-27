@@ -531,3 +531,8 @@
         #sites-list {
             min-height: 0;
         }
+
+        /* Mermaid Container Size Adjustment */
+        .trt-mermaid-wrapper, .trt-mermaid-viewport {
+            min-height: 500px !important;
+        }

@@ -102,6 +102,18 @@ document.getElementById("btnSave").onclick = saveCurrent;
 document.getElementById("btnRevert").onclick = revertCurrent;
 document.getElementById("btnZoomIn").onclick = () => { zoom = clamp(zoom + 0.1, 0.2, 3); applyZoom(); };
 document.getElementById("btnZoomOut").onclick = () => { zoom = clamp(zoom - 0.1, 0.2, 3); applyZoom(); };
+const btnFitPptxSlide = document.getElementById("btnFitPptxSlide");
+if (btnFitPptxSlide) {
+  btnFitPptxSlide.onclick = () => {
+    if (typeof window.fitPptxSlideHtmlToCanvas !== "function" || !slides[cur]) return;
+    const fitted = window.fitPptxSlideHtmlToCanvas(slides[cur].html, slideWidth, slideHeight);
+    if (!fitted || fitted === slides[cur].html) return;
+    if (typeof pushHistory === "function") pushHistory();
+    slides[cur].html = fitted;
+    backup = fitted;
+    loadCurrent();
+  };
+}
 
 function bindCtrlWheelZoom() {
   const onWheelZoom = (e) => {
@@ -163,6 +175,32 @@ bindClick("btnReplaceAll", "code-replace-all", replaceAllInCode);
 bindClick("btnFindClose", "code-find-close", closeFindReplace);
 document.getElementById("btnExport").onclick = exportMpp;
 document.getElementById("btnImport").onclick = () => els.fileInput.click();
+const btnPptxImport = document.getElementById("btnPptxImport");
+const pptxFileInput = document.getElementById("pptxFileInput");
+if (btnPptxImport && pptxFileInput) {
+  btnPptxImport.onclick = () => pptxFileInput.click();
+  pptxFileInput.onchange = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const originalText = btnPptxImport.textContent;
+    btnPptxImport.disabled = true;
+    btnPptxImport.textContent = "pptx 변환 중";
+    try {
+      await importPptxToGenSlide(file);
+      btnPptxImport.textContent = "pptx 완료";
+    } catch (error) {
+      console.error("[GenSlide] PPTX import failed:", error);
+      alert("PPTX Import 실패: " + (error && error.message ? error.message : error));
+      btnPptxImport.textContent = "pptx 실패";
+    } finally {
+      e.target.value = "";
+      setTimeout(() => {
+        btnPptxImport.disabled = false;
+        btnPptxImport.textContent = originalText || "pptx Import";
+      }, 900);
+    }
+  };
+}
 document.getElementById("btnImageExport").onclick = () => { exportImage().catch(() => {}); };
 document.getElementById("btnPptxExport").onclick = () => { exportPptx().catch(() => {}); };
 const btnScholarAI = document.getElementById("btnScholarAI");

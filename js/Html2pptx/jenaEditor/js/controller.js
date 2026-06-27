@@ -42,11 +42,13 @@
   <button class="btn" id="btnInDbSave">inDB Save</button>
   <button class="btn" id="btnInDbOpen">inDB Open</button>
   <button class="btn" id="btnImport">mpp Import</button>
+  <button class="btn" id="btnPptxImport">pptx Import</button>
   <button class="btn" id="btnExport">mpp Export</button>
   <button class="btn" id="btnImageExport">image Export</button>
   <button class="btn" id="btnPptxExport">pptx Export</button>
   <button class="btn" id="btnScholarAI">ScholarAI</button>
   <input id="fileInput" type="file" accept=".mpp,.json,application/json,text/plain" style="display:none">
+  <input id="pptxFileInput" type="file" accept=".pptx,.ppsx,application/vnd.openxmlformats-officedocument.presentationml.presentation" style="display:none">
 </div>`,
     leftSidebar: `<aside class="side">
   <div class="side-head">
@@ -103,6 +105,7 @@
     <button class="btn tiny" id="btnZoomOut" title="Zoom Out">-</button>
     <div class="zoom" id="zoomView">75%</div>
     <button class="btn tiny" id="btnZoomIn" title="Zoom In">+</button>
+    <button class="btn tiny" id="btnFitPptxSlide" title="Fit imported PPTX slide to canvas">Fit</button>
     <button class="btn tiny" id="btnSyncToCode" data-action="sync-editor-to-code" title="Apply editor to code">Editor -> Code</button>
     <button class="btn tiny" data-cmd="bold"><b>B</b></button>
     <button class="btn tiny" data-cmd="italic"><i>I</i></button>
@@ -189,6 +192,7 @@
     "./js/save.js",
     "./js/export.js",
     "./js/Export/mppExport.js",
+    "./js/Import/pptxImport.js",
     "./js/Export/imageExport.js",
     "./js/Export/pptModeObject.js",
     "./js/Export/pptModeImage.js",
@@ -197,7 +201,7 @@
     "./js/Export/pptExport.js",
     "./js/main.js"
   ];
-  const ASSET_VERSION = "20260603-scholar-3";
+  const ASSET_VERSION = "20260628-pptx-import-fit-1";
 
   const loadedScripts = new Set();
   let booted = false;

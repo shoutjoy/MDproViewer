@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob:; img-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; worker-src 'self' file: blob:;">
+  <title>PDF Preview</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #3f4448;
+      color: #e5e7eb;
+      font-family: "Malgun Gothic", "Segoe UI", Arial, sans-serif;
+    }
+    .toolbar {
+      height: 44px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: #202326;
+      border-bottom: 1px solid #17191b;
+    }
+    .title {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .status, .zoom-label, .page-label {
+      color: #cbd5e1;
+      font-size: 12px;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .zoom-label { min-width: 48px; text-align: center; }
+    button {
+      box-sizing: border-box;
+      min-height: 30px;
+      padding: 4px 9px;
+      border: 1px solid #59616a;
+      border-radius: 5px;
+      background: #30353a;
+      color: #f3f4f6;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button:hover { background: #454c53; }
+    button.active { border-color: #60a5fa; background: #1e4f7a; }
+    button:disabled { opacity: .45; cursor: default; }
+    #viewer {
+      box-sizing: border-box;
+      width: 100%;
+      height: calc(100vh - 44px);
+      padding: 18px;
+      overflow: auto;
+      background: #464b50;
+    }
+    #pages {
+      width: 100%;
+      min-width: min-content;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      box-sizing: border-box;
+    }
+    #viewer.two-page #pages,
+    #viewer.matrix-view #pages {
+      display: grid;
+      align-items: start;
+      justify-content: center;
+      gap: 24px;
+    }
+    .page-frame {
+      position: relative;
+      flex: 0 0 auto;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: 0 5px 18px rgba(0, 0, 0, .45);
+    }
+    #viewer.two-page .page-frame,
+    #viewer.matrix-view .page-frame { cursor: pointer; }
+    .page-frame canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background: #fff;
+    }
+    .page-number {
+      position: absolute;
+      right: 5px;
+      bottom: 5px;
+      padding: 2px 5px;
+      border-radius: 3px;
+      background: rgba(17, 24, 39, .72);
+      color: #fff;
+      font-size: 10px;
+      pointer-events: none;
+    }
+    .message {
+      width: min(640px, calc(100vw - 48px));
+      margin: 48px auto;
+      padding: 18px;
+      box-sizing: border-box;
+      border: 1px solid #6b7280;
+      border-radius: 6px;
+      background: #2c3136;
+      color: #e5e7eb;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+    @media (max-width: 900px) {
+      .toolbar { gap: 5px; padding-left: 6px; padding-right: 6px; }
+      button { padding-left: 6px; padding-right: 6px; }
+      .status { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="title" id="title">PDF Preview</div>
+    <div class="status" id="status">불러오는 중</div>
+    <div class="page-label" id="page-label">0 / 0</div>
+    <button type="button" data-view-mode="single">한 페이지</button>
+    <button type="button" data-view-mode="2-page">2 페이지</button>
+    <button type="button" data-view-mode="matrix">매트릭스</button>
+    <button type="button" id="prev-btn" disabled>위로</button>
+    <button type="button" id="next-btn" disabled>아래로</button>
+    <button type="button" id="zoom-out-btn" disabled>-</button>
+    <span class="zoom-label" id="zoom-label">맞춤</span>
+    <button type="button" id="zoom-in-btn" disabled>+</button>
+    <button type="button" id="zoom-fit-btn" disabled>맞춤</button>
+    <button type="button" id="external-btn">외부앱</button>
+  </div>
+  <main id="viewer"><div class="message">PDF를 불러오는 중입니다.</div></main>
+
+  <script type="module">
+    import * as pdfjsLib from './vendor/pdfjs/build/pdf.min.mjs';
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./vendor/pdfjs/build/pdf.worker.min.mjs', import.meta.url).href;
+
+    const params = new URLSearchParams(window.location.search);
+    const fileUrl = params.get('file') || '';
+    const filePath = params.get('path') || '';
+    const title = params.get('title') || 'PDF Preview';
+    const viewer = document.getElementById('viewer');
+    const status = document.getElementById('status');
+    const pageLabel = document.getElementById('page-label');
+    const zoomLabel = document.getElementById('zoom-label');
+    let pdfDocument = null;
+    let pageEntries = [];
+    let viewMode = 'single';
+    let zoomMode = 'fit';
+    let fitScale = 1;
+    let manualScale = 1;
+    let currentPageIndex = 0;
+    let pageObserver = null;
+    let layoutTimer = null;
+
+    document.title = title;
+    document.getElementById('title').textContent = title;
+
+    function clampScale(value) {
+      return Math.max(0.08, Math.min(4, Number(value) || 1));
+    }
+
+    function setControlsEnabled(enabled) {
+      ['prev-btn', 'next-btn', 'zoom-out-btn', 'zoom-in-btn', 'zoom-fit-btn'].forEach((id) => {
+        document.getElementById(id).disabled = !enabled;
+      });
+    }
+
+    function setActiveModeButton() {
+      document.querySelectorAll('[data-view-mode]').forEach((button) => {
+        button.classList.toggle('active', button.dataset.viewMode === viewMode);
+      });
+    }
+
+    function updatePageLabel() {
+      pageLabel.textContent = pageEntries.length ? `${currentPageIndex + 1} / ${pageEntries.length}` : '0 / 0';
+    }
+
+    function pageTop(index) {
+      const frame = pageEntries[index] && pageEntries[index].frame;
+      if (!frame) return 0;
+      return frame.getBoundingClientRect().top - viewer.getBoundingClientRect().top + viewer.scrollTop;
+    }
+
+    function scrollToPage(index) {
+      if (!pageEntries.length) return;
+      currentPageIndex = Math.max(0, Math.min(pageEntries.length - 1, index));
+      viewer.scrollTop = Math.max(0, pageTop(currentPageIndex) - 18);
+      updatePageLabel();
+    }
+
+    function navigatePage(delta) {
+      if (viewMode === 'single' && pageEntries.length) {
+        const currentTop = viewer.scrollTop + 18;
+        currentPageIndex = pageEntries.reduce((best, _entry, index) => (
+          Math.abs(pageTop(index) - currentTop) < Math.abs(pageTop(best) - currentTop) ? index : best
+        ), 0);
+      }
+      scrollToPage(currentPageIndex + delta);
+    }
+
+    async function renderPage(entry, scale) {
+      if (!entry || entry.renderedScale === scale) return;
+      if (!entry.page) {
+        entry.pagePromise = entry.pagePromise || pdfDocument.getPage(entry.pageNumber);
+        entry.page = await entry.pagePromise;
+        entry.baseViewport = entry.page.getViewport({ scale: 1 });
+        entry.pagePromise = null;
+      }
+      if (entry.renderTask) {
+        try { entry.renderTask.cancel(); } catch (_) {}
+      }
+      const viewport = entry.page.getViewport({ scale });
+      entry.frame.style.width = `${Math.max(1, Math.round(viewport.width))}px`;
+      entry.frame.style.height = `${Math.max(1, Math.round(viewport.height))}px`;
+      entry.canvas.style.width = `${Math.max(1, Math.round(viewport.width))}px`;
+      entry.canvas.style.height = `${Math.max(1, Math.round(viewport.height))}px`;
+      const outputScale = Math.min(2, window.devicePixelRatio || 1);
+      entry.canvas.width = Math.max(1, Math.floor(viewport.width * outputScale));
+      entry.canvas.height = Math.max(1, Math.floor(viewport.height * outputScale));
+      const context = entry.canvas.getContext('2d', { alpha: false });
+      entry.renderTask = entry.page.render({
+        canvasContext: context,
+        viewport,
+        transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0],
+      });
+      try {
+        await entry.renderTask.promise;
+        entry.renderedScale = scale;
+      } catch (error) {
+        if (!error || error.name !== 'RenderingCancelledException') console.error(error);
+      } finally {
+        entry.renderTask = null;
+      }
+    }
+
+    function observePages(scale) {
+      if (pageObserver) pageObserver.disconnect();
+      pageObserver = new IntersectionObserver((entries) => {
+        entries.forEach((observed) => {
+          if (!observed.isIntersecting) return;
+          const entry = pageEntries[Number(observed.target.dataset.pageIndex)];
+          renderPage(entry, scale);
+        });
+      }, { root: viewer, rootMargin: '900px 300px', threshold: 0.01 });
+      pageEntries.forEach((entry) => pageObserver.observe(entry.frame));
+    }
+
+    function layoutPages() {
+      if (!pageEntries.length) return;
+      const pages = document.getElementById('pages');
+      const gap = 24;
+      const availableWidth = Math.max(160, viewer.clientWidth - 36);
+      const availableHeight = Math.max(120, viewer.clientHeight - 36);
+      const maxWidth = Math.max(...pageEntries.map((entry) => entry.baseViewport.width));
+      const maxHeight = Math.max(...pageEntries.map((entry) => entry.baseViewport.height));
+
+      if (viewMode === '2-page') {
+        fitScale = Math.min((availableWidth - gap) / 2 / maxWidth, availableHeight / maxHeight);
+      } else if (viewMode === 'matrix') {
+        const targetWidth = Math.min(340, availableWidth);
+        const columns = Math.max(1, Math.floor((availableWidth + gap) / (targetWidth + gap)));
+        const cellWidth = (availableWidth - gap * (columns - 1)) / columns;
+        fitScale = Math.min(cellWidth / maxWidth, 0.6);
+      } else {
+        fitScale = Math.min(availableWidth / maxWidth, availableHeight / maxHeight);
+      }
+      fitScale = clampScale(fitScale);
+      const scale = zoomMode === 'fit' ? fitScale : manualScale;
+      const scaledMaxWidth = Math.max(1, Math.round(maxWidth * scale));
+      const columns = viewMode === '2-page'
+        ? 2
+        : Math.max(1, Math.floor((availableWidth + gap) / (scaledMaxWidth + gap)));
+
+      pages.style.gridTemplateColumns = viewMode === 'single' ? '' : `repeat(${columns}, ${scaledMaxWidth}px)`;
+      pageEntries.forEach((entry) => {
+        const width = Math.max(1, Math.round(entry.baseViewport.width * scale));
+        const height = Math.max(1, Math.round(entry.baseViewport.height * scale));
+        entry.frame.style.width = `${width}px`;
+        entry.frame.style.height = `${height}px`;
+        entry.canvas.style.width = `${width}px`;
+        entry.canvas.style.height = `${height}px`;
+      });
+      zoomLabel.textContent = zoomMode === 'fit' ? '맞춤' : `${Math.round(scale * 100)}%`;
+      observePages(scale);
+    }
+
+    function setViewMode(mode, preferredIndex) {
+      if (!['single', '2-page', 'matrix'].includes(mode)) return;
+      const selectedIndex = Number.isFinite(preferredIndex) ? preferredIndex : currentPageIndex;
+      viewMode = mode;
+      viewer.classList.toggle('two-page', mode === '2-page');
+      viewer.classList.toggle('matrix-view', mode === 'matrix');
+      zoomMode = 'fit';
+      manualScale = 1;
+      currentPageIndex = Math.max(0, Math.min(pageEntries.length - 1, selectedIndex));
+      setActiveModeButton();
+      layoutPages();
+    }
+
+    function zoomBy(delta) {
+      if (!pageEntries.length) return;
+      manualScale = clampScale((zoomMode === 'fit' ? fitScale : manualScale) + delta);
+      zoomMode = 'manual';
+      layoutPages();
+    }
+
+    function resetZoom() {
+      zoomMode = 'fit';
+      layoutPages();
+    }
+
+    function handleMenuCommand(command) {
+      if (!command || typeof command !== 'object') return;
+      if (command.type === 'pptx-view-mode') setViewMode(command.mode);
+      if (command.type === 'pptx-zoom-in') zoomBy(0.1);
+      if (command.type === 'pptx-zoom-out') zoomBy(-0.1);
+      if (command.type === 'pptx-zoom-fit') resetZoom();
+    }
+
+    async function loadPdf() {
+      if (!fileUrl) throw new Error('PDF 파일 경로가 없습니다.');
+      const standardFontDataUrl = new URL('./vendor/pdfjs/standard_fonts/', import.meta.url).href;
+      const loadingTask = pdfjsLib.getDocument({ url: fileUrl, standardFontDataUrl });
+      loadingTask.onProgress = function (progress) {
+        if (!progress || !progress.total) return;
+        status.textContent = `불러오는 중 ${Math.min(100, Math.round(progress.loaded / progress.total * 100))}%`;
+      };
+      pdfDocument = await loadingTask.promise;
+      viewer.innerHTML = '<div id="pages"></div>';
+      const pages = document.getElementById('pages');
+      const firstPage = await pdfDocument.getPage(1);
+      const firstViewport = firstPage.getViewport({ scale: 1 });
+
+      for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+        const frame = document.createElement('section');
+        frame.className = 'page-frame';
+        frame.dataset.pageIndex = String(pageNumber - 1);
+        const canvas = document.createElement('canvas');
+        const number = document.createElement('span');
+        number.className = 'page-number';
+        number.textContent = String(pageNumber);
+        frame.append(canvas, number);
+        pages.appendChild(frame);
+        pageEntries.push({
+          pageNumber,
+          page: pageNumber === 1 ? firstPage : null,
+          pagePromise: null,
+          frame,
+          canvas,
+          baseViewport: firstViewport,
+          renderedScale: 0,
+          renderTask: null
+        });
+      }
+
+      status.textContent = '준비됨';
+      setControlsEnabled(true);
+      updatePageLabel();
+      setActiveModeButton();
+      layoutPages();
+    }
+
+    document.querySelectorAll('[data-view-mode]').forEach((button) => {
+      button.addEventListener('click', () => setViewMode(button.dataset.viewMode));
+    });
+    document.getElementById('prev-btn').addEventListener('click', () => navigatePage(-1));
+    document.getElementById('next-btn').addEventListener('click', () => navigatePage(1));
+    document.getElementById('zoom-out-btn').addEventListener('click', () => zoomBy(-0.1));
+    document.getElementById('zoom-in-btn').addEventListener('click', () => zoomBy(0.1));
+    document.getElementById('zoom-fit-btn').addEventListener('click', resetZoom);
+    document.getElementById('external-btn').addEventListener('click', () => {
+      if (window.web2electron && typeof window.web2electron.openExternalFile === 'function') {
+        window.web2electron.openExternalFile({ filePath });
+      }
+    });
+    viewer.addEventListener('click', (event) => {
+      const frame = event.target.closest('.page-frame');
+      if (!frame || viewMode === 'single') return;
+      const clickedIndex = Number(frame.dataset.pageIndex);
+      setViewMode('single', clickedIndex);
+      scrollToPage(clickedIndex);
+    });
+    viewer.addEventListener('wheel', (event) => {
+      if (!event.ctrlKey || !pageEntries.length) return;
+      event.preventDefault();
+      zoomBy(event.deltaY < 0 ? 0.1 : -0.1);
+    }, { passive: false });
+    window.addEventListener('keydown', (event) => {
+      if (event.ctrlKey && !event.altKey && !event.metaKey && (event.key === '+' || event.key === '=')) {
+        event.preventDefault();
+        zoomBy(0.1);
+      } else if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === '-') {
+        event.preventDefault();
+        zoomBy(-0.1);
+      } else if (event.ctrlKey && !event.altKey && !event.metaKey && event.key === '0') {
+        event.preventDefault();
+        resetZoom();
+      } else if (event.key === 'ArrowDown' || event.key === 'PageDown') {
+        event.preventDefault();
+        navigatePage(1);
+      } else if (event.key === 'ArrowUp' || event.key === 'PageUp') {
+        event.preventDefault();
+        navigatePage(-1);
+      }
+    });
+    window.addEventListener('resize', () => {
+      clearTimeout(layoutTimer);
+      layoutTimer = setTimeout(layoutPages, 100);
+    });
+    if (window.web2electron && typeof window.web2electron.onMenuCommand === 'function') {
+      window.web2electron.onMenuCommand(handleMenuCommand);
+    }
+
+    loadPdf().catch((error) => {
+      console.error(error);
+      status.textContent = 'failed';
+      viewer.innerHTML = `<div class="message"><strong>PDF 미리보기 실패</strong><br>${String(error && error.message ? error.message : error)}</div>`;
+    });
+  </script>
+</body>
+</html>

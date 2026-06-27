@@ -45,12 +45,12 @@
         const style = d.createElement('style');
         style.id = 'mdv-mermaid-controls-style';
         style.textContent = [
-            '.trt-mermaid-wrapper{position:relative;display:block;overflow:hidden;border:1px solid rgba(148,163,184,.35);border-radius:8px;background:#fff;min-height:180px;padding-right:118px;}',
+            '.trt-mermaid-wrapper{position:relative;display:block;overflow:hidden;border:1px solid rgba(148,163,184,.35);border-radius:8px;background:#fff;min-height:300px;height:450px;padding-right:118px;}',
             '.dark .trt-mermaid-wrapper{background:#0f172a;border-color:rgba(51,65,85,.9);}',
-            '.trt-mermaid-viewport{position:relative;overflow:hidden;min-height:180px;cursor:grab;touch-action:none;}',
+            '.trt-mermaid-viewport{position:relative;overflow:hidden;min-height:300px;cursor:grab;touch-action:none;height:100%;}',
             '.trt-mermaid-viewport.dragging{cursor:grabbing;}',
-            '.trt-mermaid-canvas{transform-origin:0 0;will-change:transform;padding:24px;min-width:max-content;min-height:160px;}',
-            '.trt-mermaid-canvas svg{max-width:none !important;}',
+            '.trt-mermaid-canvas{transform-origin:0 0;padding:24px;min-width:max-content;min-height:160px;}',
+            '.trt-mermaid-canvas svg{max-width:none !important; text-rendering: geometricPrecision; shape-rendering: geometricPrecision; image-rendering: auto;}',
             '.trt-mermaid-control-top,.trt-mermaid-control-pad{position:absolute;right:12px;display:grid;gap:5px;z-index:20;}',
             '.trt-mermaid-control-top{top:12px;grid-template-columns:repeat(2,34px);}',
             '.trt-mermaid-control-pad{top:62px;grid-template-columns:repeat(3,34px);}',
@@ -58,7 +58,12 @@
             '.trt-mermaid-btn:hover{background:#eef2ff;border-color:#a5b4fc;color:#3730a3;}',
             '.dark .trt-mermaid-btn{background:#172033;border-color:#475569;color:#e2e8f0;}',
             '.dark .trt-mermaid-btn:hover{background:#1e293b;border-color:#818cf8;color:#c7d2fe;}',
-            '.trt-mermaid-pad-spacer{visibility:hidden;}'
+            '.trt-mermaid-pad-spacer{visibility:hidden;}',
+            '.trt-mermaid-resize-handle{position:absolute;z-index:21;}',
+            '.trt-mermaid-resize-e{top:0;right:0;bottom:0;width:10px;cursor:ew-resize;}',
+            '.trt-mermaid-resize-s{left:0;right:0;bottom:0;height:10px;cursor:ns-resize;}',
+            '.trt-mermaid-resize-se{right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 45%, #94a3b8 46%, #94a3b8 54%, transparent 55%);opacity:0.7;}',
+            '.trt-mermaid-resize-se:hover{opacity:1;}'
         ].join('\n');
         d.head.appendChild(style);
         mermaidControlStyleInjected = true;
@@ -316,7 +321,14 @@
         const canvas = wrapper && wrapper.querySelector ? wrapper.querySelector('.trt-mermaid-canvas') : null;
         if (!canvas) return;
         const s = getMermaidPanState(wrapper);
-        canvas.style.transform = 'translate(' + s.x + 'px,' + s.y + 'px) scale(' + s.scale + ')';
+        const svg = canvas.querySelector('svg');
+        if (svg) {
+            svg.style.transformOrigin = '0 0';
+            svg.style.transform = 'translate(' + s.x + 'px,' + s.y + 'px) scale(' + s.scale + ')';
+            canvas.style.transform = 'none';
+        } else {
+            canvas.style.transform = 'translate(' + s.x + 'px,' + s.y + 'px) scale(' + s.scale + ')';
+        }
     }
 
     function adjustMermaidView(wrapper, dx, dy, scaleDelta) {
@@ -340,11 +352,23 @@
         const canvas = wrapper && wrapper.querySelector ? wrapper.querySelector('.trt-mermaid-canvas') : null;
         if (!viewport || !canvas) return;
         const svg = canvas.querySelector('svg');
+        
+        // Measure sizes with scale reset to ensure getBoundingClientRect returns correct original size
+        const oldSvgTransform = svg ? svg.style.transform : '';
+        const oldCanvasTransform = canvas.style.transform;
+        if (svg) svg.style.transform = 'none';
+        canvas.style.transform = 'none';
+
         const target = svg || canvas;
         const vw = Math.max(1, viewport.clientWidth - 84);
         const vh = Math.max(1, viewport.clientHeight - 40);
         const w = Math.max(1, target.scrollWidth || target.getBoundingClientRect().width);
         const h = Math.max(1, target.scrollHeight || target.getBoundingClientRect().height);
+
+        // Restore transforms
+        if (svg) svg.style.transform = oldSvgTransform;
+        canvas.style.transform = oldCanvasTransform;
+
         const scale = Math.max(0.25, Math.min(2, Math.min(vw / w, vh / h)));
         const s = getMermaidPanState(wrapper);
         s.scale = Math.round(scale * 100) / 100;
@@ -397,6 +421,72 @@
         }, { passive: false });
     }
 
+    function bindMermaidResize(wrapper) {
+        if (!wrapper || wrapper.__mdvMermaidResizeBound) return;
+        wrapper.__mdvMermaidResizeBound = true;
+    
+        const handleE = wrapper.querySelector('.trt-mermaid-resize-e');
+        const handleS = wrapper.querySelector('.trt-mermaid-resize-s');
+        const handleSE = wrapper.querySelector('.trt-mermaid-resize-se');
+    
+        let startX, startY, startWidth, startHeight;
+        let activeHandle = null;
+    
+        function onPointerDown(ev) {
+            if (ev.target.classList.contains('trt-mermaid-resize-e')) activeHandle = 'e';
+            else if (ev.target.classList.contains('trt-mermaid-resize-s')) activeHandle = 's';
+            else if (ev.target.classList.contains('trt-mermaid-resize-se')) activeHandle = 'se';
+            else return;
+    
+            ev.preventDefault();
+            ev.stopPropagation();
+    
+            startX = ev.clientX;
+            startY = ev.clientY;
+            const rect = wrapper.getBoundingClientRect();
+            startWidth = rect.width;
+            startHeight = rect.height;
+    
+            document.documentElement.addEventListener('pointermove', onPointerMove);
+            document.documentElement.addEventListener('pointerup', onPointerUp, { once: true });
+            
+            document.body.style.userSelect = 'none';
+            
+            try { 
+                ev.target.setPointerCapture(ev.pointerId); 
+            } catch(e) {}
+        }
+    
+        function onPointerMove(ev) {
+            if (!activeHandle) return;
+            
+            const dx = ev.clientX - startX;
+            const dy = ev.clientY - startY;
+    
+            if (activeHandle === 'e' || activeHandle === 'se') {
+                const newWidth = Math.max(320, startWidth + dx);
+                wrapper.style.width = newWidth + 'px';
+            }
+            if (activeHandle === 's' || activeHandle === 'se') {
+                const newHeight = Math.max(240, startHeight + dy);
+                wrapper.style.height = newHeight + 'px';
+            }
+        }
+    
+        function onPointerUp(ev) {
+            if(ev.target.releasePointerCapture) {
+                try { ev.target.releasePointerCapture(ev.pointerId); } catch(e) {}
+            }
+            document.documentElement.removeEventListener('pointermove', onPointerMove);
+            document.body.style.userSelect = '';
+            activeHandle = null;
+        }
+    
+        handleE.addEventListener('pointerdown', onPointerDown);
+        handleS.addEventListener('pointerdown', onPointerDown);
+        handleSE.addEventListener('pointerdown', onPointerDown);
+    }
+
     function addMermaidControls(node) {
         const wrapper = node && node.closest ? node.closest('.trt-mermaid-wrapper') : null;
         if (!wrapper || wrapper.__mdvMermaidControlsReady) return;
@@ -434,7 +524,24 @@
         pad.appendChild(btn('-', '축소', function () { adjustMermaidView(wrapper, 0, 0, -0.1); }));
         wrapper.appendChild(top);
         wrapper.appendChild(pad);
+
+        const resizeE = document.createElement('div');
+        resizeE.className = 'trt-mermaid-resize-handle trt-mermaid-resize-e';
+        resizeE.title = '너비 조절';
+        wrapper.appendChild(resizeE);
+
+        const resizeS = document.createElement('div');
+        resizeS.className = 'trt-mermaid-resize-handle trt-mermaid-resize-s';
+        resizeS.title = '높이 조절';
+        wrapper.appendChild(resizeS);
+
+        const resizeSE = document.createElement('div');
+        resizeSE.className = 'trt-mermaid-resize-handle trt-mermaid-resize-se';
+        resizeSE.title = '크기 조절';
+        wrapper.appendChild(resizeSE);
+
         bindMermaidPan(wrapper);
+        bindMermaidResize(wrapper);
         setTimeout(function () { fitMermaidView(wrapper); }, 0);
     }
 

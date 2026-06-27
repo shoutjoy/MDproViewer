@@ -189,6 +189,9 @@ const viewer = document.getElementById('viewer');
 const editorContainer = document.getElementById('content-viewport');
 const editorTextarea = document.getElementById('viewer-edit-ta');
 const fileNameDisplay = document.getElementById('file-name-display');
+const fileTitleDisplay = document.getElementById('file-title-display');
+const filePathDisplay = document.getElementById('file-path-display');
+const filePathSeparator = document.getElementById('file-path-separator');
 const dropZone = document.getElementById('drop-zone');
 const inputModal = document.getElementById('input-modal');
 
@@ -1562,9 +1565,27 @@ function setCurrentDocumentInfo(fileName, filePath = null) {
     currentFileName = fileName;
     currentFilePath = filePath || null;
     currentDbDocId = null;
-    fileNameDisplay.textContent = currentFileName;
+    updateCurrentDocumentDisplay();
     if (window.GoogleDocs && typeof window.GoogleDocs.handleActiveDocumentChanged === 'function') {
         window.GoogleDocs.handleActiveDocumentChanged();
+    }
+}
+
+function updateCurrentDocumentDisplay() {
+    const fileName = currentFileName || 'untitled.md';
+    const filePath = currentFilePath ? String(currentFilePath) : '';
+    if (fileTitleDisplay && filePathDisplay) {
+        fileTitleDisplay.textContent = fileName;
+        filePathDisplay.textContent = filePath || '로컬 경로 없음';
+        if (filePathSeparator) filePathSeparator.classList.toggle('hidden', !filePath);
+        filePathDisplay.classList.toggle('text-slate-400', !filePath);
+        filePathDisplay.classList.toggle('dark:text-slate-500', !filePath);
+        if (fileNameDisplay) fileNameDisplay.title = filePath ? fileName + '\n' + filePath : fileName;
+        return;
+    }
+    if (fileNameDisplay) {
+        fileNameDisplay.textContent = filePath ? fileName + ' | ' + filePath : fileName;
+        fileNameDisplay.title = filePath ? fileName + '\n' + filePath : fileName;
     }
 }
 
@@ -1626,9 +1647,9 @@ async function resolveCurrentFilePathForSave() {
     const openedName = opened.fileName || getNameFromPath(opened.path);
     if (openedName && (!currentFileName || currentFileName === 'untitled.md')) {
         currentFileName = openedName;
-        if (fileNameDisplay) fileNameDisplay.textContent = currentFileName;
     }
     currentFilePath = opened.path;
+    updateCurrentDocumentDisplay();
     return currentFilePath;
 }
 
@@ -1819,7 +1840,7 @@ async function readFile(file, options) {
     }
     const reader = new FileReader();
     reader.onload = (e) => {
-        const raw = e.target.result;
+        const raw = decodeOpenedTextBytes(e.target.result).text;
         const parsed = (formatApi && typeof formatApi.parseFileText === 'function')
             ? formatApi.parseFileText(name, raw)
             : null;
@@ -1868,7 +1889,40 @@ async function readFile(file, options) {
         markPersistedState();
         showToast("File loaded successfully.");
     };
-    reader.readAsText(file, 'UTF-8');
+    reader.readAsArrayBuffer(file);
+}
+
+function decodeOpenedTextBytes(arrayBuffer) {
+    const bytes = new Uint8Array(arrayBuffer || new ArrayBuffer(0));
+    if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+        return { text: new TextDecoder('utf-8').decode(bytes.subarray(3)), encoding: 'utf-8' };
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe) {
+        return { text: new TextDecoder('utf-16le').decode(bytes.subarray(2)), encoding: 'utf-16le' };
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
+        return { text: new TextDecoder('utf-16be').decode(bytes.subarray(2)), encoding: 'utf-16be' };
+    }
+    const sampleLength = Math.min(bytes.length, 4096);
+    let evenNuls = 0;
+    let oddNuls = 0;
+    for (let i = 0; i < sampleLength; i++) {
+        if (bytes[i] === 0) {
+            if (i % 2) oddNuls++;
+            else evenNuls++;
+        }
+    }
+    if (sampleLength >= 4 && oddNuls > sampleLength / 8 && evenNuls < sampleLength / 32) {
+        return { text: new TextDecoder('utf-16le').decode(bytes), encoding: 'utf-16le' };
+    }
+    if (sampleLength >= 4 && evenNuls > sampleLength / 8 && oddNuls < sampleLength / 32) {
+        return { text: new TextDecoder('utf-16be').decode(bytes), encoding: 'utf-16be' };
+    }
+    try {
+        return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'utf-8' };
+    } catch (_) {
+        return { text: new TextDecoder('windows-949').decode(bytes), encoding: 'cp949' };
+    }
 }
 
 async function importMddDocumentFile(file, options) {
@@ -2623,7 +2677,8 @@ async function loadFromDB(id) {
             window.GoogleDocs.handleActiveDocumentChanged();
         }
         currentFileName = doc.title + ".md";
-        fileNameDisplay.textContent = currentFileName;
+        currentFilePath = null;
+        updateCurrentDocumentDisplay();
         updateContent(doc.content);
         markPersistedState();
         showToast("Loaded from inDB.");
@@ -2880,7 +2935,8 @@ function loadFromExternalContent(content, title, opts) {
     }
     if (title) {
         currentFileName = String(title);
-        if (fileNameDisplay) fileNameDisplay.textContent = currentFileName;
+        currentFilePath = null;
+        updateCurrentDocumentDisplay();
     }
     if (db) {
         const tx = db.transaction('autosave', 'readwrite');
@@ -3063,6 +3119,12 @@ function applyEnterTidyInEditor() {
 function applyMathTidyInEditor() {
     if (window.TidyActions && typeof window.TidyActions.applyMath === 'function') {
         window.TidyActions.applyMath(getTidyActionDeps());
+    }
+}
+
+function applyHtmlTidyInEditor() {
+    if (window.TidyActions && typeof window.TidyActions.applyHtml === 'function') {
+        window.TidyActions.applyHtml(getTidyActionDeps());
     }
 }
 
@@ -8193,7 +8255,8 @@ function saveToDB() {
                     window.GoogleDocs.handleActiveDocumentChanged();
                 }
                 currentFileName = resolvedTitle + '.md';
-                if (fileNameDisplay) fileNameDisplay.textContent = currentFileName;
+                currentFilePath = null;
+                updateCurrentDocumentDisplay();
                 showToast(targetDoc ? 'Existing inDB document overwritten.' : `Saved to inDB as "${resolvedTitle}".`);
                 renderDBList();
                 if (isSidebarHidden) toggleSidebarVisibility();
@@ -8340,6 +8403,7 @@ window.toggleMacroVisibilitySection = toggleMacroVisibilitySection;
 window.tidySeparatorSpacingInEditor = tidySeparatorSpacingInEditor;
 window.applyEnterTidyInEditor = applyEnterTidyInEditor;
 window.applyMathTidyInEditor = applyMathTidyInEditor;
+window.applyHtmlTidyInEditor = applyHtmlTidyInEditor;
 window.closeTidyQuickMenu = closeTidyQuickMenu;
 window.toggleTidyQuickMenu = toggleTidyQuickMenu;
 window.toggleMathQuickMenu = toggleMathQuickMenu;

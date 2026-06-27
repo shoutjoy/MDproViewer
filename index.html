@@ -585,6 +585,8 @@
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">엔터정리</button>
                                 <button type="button" onclick="applyMathTidyInEditor()"
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">수식정리</button>
+                                <button type="button" onclick="applyHtmlTidyInEditor()"
+                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">HTML정리</button>
                                 <button type="button" onclick="convertSelectionMarkdownToHtml(); closeTidyQuickMenu && closeTidyQuickMenu()"
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">MD2HTML</button>
                             </div>
@@ -727,7 +729,11 @@
                 <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 min-w-0">
                     <span class="shrink-0 font-semibold">MDproViewer</span>
                     <span class="shrink-0 text-slate-300 dark:text-slate-600">|</span>
-                    <p id="file-name-display" class="truncate min-w-0 flex-1">새 문서: 문서명이 표시됩니다.</p>
+                    <p id="file-name-display" class="min-w-0 flex-1 flex items-center gap-1.5 overflow-hidden" title="">
+                        <span id="file-title-display" class="shrink-0 max-w-[35%] truncate font-medium">새 문서</span>
+                        <span id="file-path-separator" class="hidden shrink-0 text-slate-300 dark:text-slate-600">|</span>
+                        <span id="file-path-display" class="min-w-0 flex-1 truncate text-slate-400 dark:text-slate-500">로컬 경로 없음</span>
+                    </p>
                     <div id="footer-zoom-font" class="shrink-0 flex items-center gap-1 sm:gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
                         <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">헤더</span>
                         <div class="flex items-center gap-0.5">
@@ -1604,7 +1610,7 @@
             </div>
         </div>
         <div id="html2ppt-panel-body" class="flex-1 p-2 min-h-0">
-            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html?v=20260603-3"
+            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html?v=20260628-pptx-import-fit-1"
                 class="w-full h-full border-0 rounded bg-white dark:bg-slate-900" title="GenSlide"></iframe>
         </div>
         <div id="html2ppt-panel-resizer" title="Resize"
@@ -1617,7 +1623,7 @@
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js" defer></script>
     <script src="./trt/special_trt.js?v=20260415-3" charset="utf-8" defer></script>
-    <script src="./js/mermaid/mermaid_render.js?v=20260620-1" charset="utf-8" defer></script>
+    <script src="./js/mermaid/mermaid_render.js?v=20260626-10000" charset="utf-8" defer></script>
     <script src="./Setting/user.js" charset="utf-8" defer></script>
     <script src="./hotkey/hotkey.js" charset="utf-8" defer></script>
     <script src="./imageDB/imageDB.js" charset="utf-8" defer></script>
@@ -1641,12 +1647,12 @@
     <script src="./Setting/settings-ui.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./sidebar_left/sidebar-left.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/Imagetool/link-image-modal.js?v=20260604-1" charset="utf-8" defer></script>
-    <script src="./js/Tidy/tidy-actions.js?v=20260604-1" charset="utf-8" defer></script>
+    <script src="./js/Tidy/tidy-actions.js?v=20260628-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/minipv.js?v=20260603-3" charset="utf-8" defer></script>
-    <script src="./js/app.js?v=20260603-13" charset="utf-8" defer></script>
+    <script src="./js/app.js?v=20260628-4" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-app.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/viewmode/viewmode-edit-input.js?v=20260602-1" charset="utf-8" defer></script>
-    <script src="./js/UI_PV/editpv.js?v=20260603-1" charset="utf-8" defer></script>
+    <script src="./js/UI_PV/editpv.js?v=20260628-4" charset="utf-8" defer></script>
     <script src="./js/MergeDoc/merge.js?v=20260603-3" charset="utf-8" defer></script>
     <script src="https://apis.google.com/js/api.js" defer onload="onGoogleApiJsLoaded()"></script>
     <script src="https://accounts.google.com/gsi/client" defer onload="onGoogleGisLoaded()"></script>

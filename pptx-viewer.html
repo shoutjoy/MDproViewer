@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data: blob: 'unsafe-inline' 'unsafe-eval'; img-src 'self' file: data: blob:; media-src 'self' file: data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval';">
+  <title>PPTX Preview</title>
+  <link rel="stylesheet" href="./vendor/pptxjs/css/pptxjs.css">
+  <link rel="stylesheet" href="./vendor/pptxjs/css/nv.d3.min.css">
+  <style>
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0f172a;
+      color: #e5e7eb;
+      font-family: "Malgun Gothic", "Segoe UI", Arial, sans-serif;
+    }
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      padding: 7px 12px;
+      box-sizing: border-box;
+      background: #111827;
+      border-bottom: 1px solid rgba(148, 163, 184, .25);
+    }
+    .title {
+      min-width: 0;
+      flex: 1;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .status {
+      font-size: 12px;
+      color: #9ca3af;
+    }
+    .zoom-label {
+      min-width: 48px;
+      text-align: center;
+      font-size: 12px;
+      color: #cbd5e1;
+      font-variant-numeric: tabular-nums;
+    }
+    button {
+      border: 1px solid rgba(148, 163, 184, .35);
+      background: #1f2937;
+      color: #e5e7eb;
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button:hover { background: #374151; }
+    button:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+    #viewer {
+      box-sizing: border-box;
+      height: calc(100vh - 42px);
+      padding: 18px 18px 28px;
+      overflow-x: auto;
+      overflow-y: auto;
+      scroll-behavior: auto;
+    }
+    #all_slides_warpper {
+      width: 100% !important;
+      max-width: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      box-sizing: border-box !important;
+      height: auto !important;
+      gap: 28px;
+    }
+    #viewer.grid-2,
+    #viewer.grid-3 {
+      padding: 18px;
+    }
+    #viewer.matrix-view #all_slides_warpper,
+    #viewer.grid-2 #all_slides_warpper {
+      display: grid !important;
+      gap: 24px;
+      align-items: center;
+      justify-content: center;
+    }
+    #viewer.matrix-view .slide-container,
+    #viewer.grid-2 .slide-container {
+      margin: 0 !important;
+      min-width: 0;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    #viewer.grid-2 .slide-container:hover,
+    #viewer.grid-3 .slide-container:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 22px 60px rgba(0,0,0,.55);
+    }
+    #viewer.html-rendered {
+      padding-left: 10px;
+      padding-right: 10px;
+    }
+    .loading,
+    .error,
+    .thumb-wrap {
+      width: min(760px, calc(100vw - 32px));
+      margin: 48px auto;
+      padding: 18px;
+      border: 1px solid rgba(148, 163, 184, .35);
+      border-radius: 8px;
+      background: #111827;
+      color: #d1d5db;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+    .error strong { color: #fca5a5; }
+    .thumb-wrap {
+      width: min(1100px, calc(100vw - 32px));
+      text-align: center;
+    }
+    .thumb-wrap img {
+      max-width: 100%;
+      max-height: calc(100vh - 150px);
+      object-fit: contain;
+      background: #fff;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .45);
+    }
+    .hint {
+      margin-top: 12px;
+      color: #9ca3af;
+      font-size: 12px;
+    }
+    .slide-container {
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 16px 50px rgba(0, 0, 0, .35);
+      border-radius: 10px;
+      box-sizing: border-box;
+      background: #ffffff;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      transform-origin: top left;
+      flex: 0 0 auto;
+    }
+    .slide {
+      margin: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+      transform-origin: top left !important;
+    }
+    .code-panel {
+      position: fixed;
+      inset: 42px 0 0 auto;
+      z-index: 30;
+      width: min(720px, 52vw);
+      min-width: 360px;
+      display: none;
+      flex-direction: column;
+      background: #0b1220;
+      border-left: 1px solid rgba(148, 163, 184, .35);
+      box-shadow: -20px 0 60px rgba(0, 0, 0, .35);
+    }
+    .code-panel.open { display: flex; }
+    .code-panel-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(148, 163, 184, .25);
+      background: #111827;
+      box-sizing: border-box;
+    }
+    .code-panel-title {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 12px;
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+    #html-code {
+      flex: 1;
+      width: 100%;
+      box-sizing: border-box;
+      resize: none;
+      border: 0;
+      outline: 0;
+      padding: 12px;
+      background: #020617;
+      color: #d1d5db;
+      font: 12px/1.5 "JetBrains Mono", Consolas, monospace;
+      tab-size: 2;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="title" id="title">PPTX Preview</div>
+    <div class="status" id="status">loading</div>
+    <button type="button" id="html-btn" style="display: none;">HTML 렌더</button>
+    <div id="view-controls" style="display: none;">
+      <button type="button" data-view-mode="single">한 페이지</button>
+      <button type="button" data-view-mode="2-page">2 페이지</button>
+      <button type="button" data-view-mode="matrix">매트릭스</button>
+    </div>
+    <button type="button" id="prev-btn" disabled>위로</button>
+    <button type="button" id="next-btn" disabled>아래로</button>
+    <button type="button" id="zoom-out-btn" disabled>-</button>
+    <span class="zoom-label" id="zoom-label">맞춤</span>
+    <button type="button" id="zoom-in-btn" disabled>+</button>
+    <button type="button" id="zoom-fit-btn" disabled>맞춤</button>
+    <button type="button" id="code-btn" disabled style="display: none;">HTML 코드</button>
+    <button type="button" id="external-btn">외부앱</button>
+  </div>
+  <div id="viewer"><div class="loading">PPTX를 HTML로 렌더링하는 중입니다.</div></div>
+  <aside id="code-panel" class="code-panel" aria-label="HTML code panel">
+    <div class="code-panel-header">
+      <div class="code-panel-title">렌더링된 HTML 코드</div>
+      <button type="button" id="copy-code-btn">복사</button>
+      <button type="button" id="close-code-btn">닫기</button>
+    </div>
+    <textarea id="html-code" spellcheck="false" readonly></textarea>
+  </aside>
+
+  <script src="./vendor/pptxjs/js/jquery-1.11.3.min.js"></script>
+  <script src="./vendor/pptxjs/js/jszip.min.js"></script>
+  <script src="./vendor/pptxjs/filereader.js"></script>
+  <script src="./vendor/pptxjs/js/d3.min.js"></script>
+  <script src="./vendor/pptxjs/js/nv.d3.min.js"></script>
+  <script src="./vendor/pptxjs/js/dingbat.js"></script>
+  <script src="./vendor/pptxjs/js/pptxjs.js"></script>
+  <script src="./vendor/pptxjs/js/divs2slides.js"></script>
+  <script>
+    (function () {
+      function getParam(name) {
+        return new URLSearchParams(window.location.search).get(name) || '';
+      }
+      function showError(message) {
+        document.getElementById('status').textContent = 'failed';
+        document.getElementById('viewer').innerHTML = '<div class="error"><strong>미리보기 실패</strong><br>' + String(message || '오류가 발생했습니다.') + '<br><br>상단의 외부앱 버튼을 사용하세요.</div>';
+      }
+      var fileCache = null;
+      function getFileBuffer() {
+        if (fileCache) return Promise.resolve(fileCache);
+        if (!fileUrl) return Promise.reject(new Error('PPTX 데이터가 없습니다.'));
+        var safeUrl = encodeURI(decodeURI(fileUrl));
+        return fetch(safeUrl).then(function (res) {
+          if (!res.ok) throw new Error('파일을 읽을 수 없습니다.');
+          return res.arrayBuffer();
+        }).then(function (buf) {
+          fileCache = buf;
+          return buf;
+        });
+      }
+      function normalizeSlideFrames() {
+        var wrapper = document.querySelector('#viewer #all_slides_warpper');
+        if (!wrapper) return [];
+        Array.prototype.slice.call(wrapper.children).forEach(function (child) {
+          if (!child.classList || !child.classList.contains('slide')) return;
+          var frame = document.createElement('div');
+          frame.className = 'slide-container';
+          child.parentNode.insertBefore(frame, child);
+          frame.appendChild(child);
+        });
+        return Array.prototype.slice.call(wrapper.querySelectorAll(':scope > .slide-container'));
+      }
+      function getSlides() {
+        return normalizeSlideFrames();
+      }
+      var zoomMode = 'fit';
+      var manualZoom = 1;
+      var fitScale = 1;
+      function clampZoom(value) {
+        return Math.max(0.25, Math.min(3, Number(value) || 1));
+      }
+      function setZoomControlsEnabled(enabled) {
+        ['zoom-out-btn', 'zoom-in-btn', 'zoom-fit-btn', 'prev-btn', 'next-btn'].forEach(function (id) {
+          var btn = document.getElementById(id);
+          if (btn) btn.disabled = !enabled;
+        });
+      }
+      function updateZoomLabel(scale) {
+        var label = document.getElementById('zoom-label');
+        if (!label) return;
+        var viewer = document.getElementById('viewer');
+        label.textContent = zoomMode === 'fit' ? '맞춤' : Math.round(scale * 100) + '%';
+      }
+      function fitSlidesToWindow() {
+        var viewer = document.getElementById('viewer');
+        var slides = getSlides();
+        if (!viewer || !slides.length) return;
+        var wrapper = document.getElementById('all_slides_warpper');
+        var isMatrix = viewer.classList.contains('matrix-view');
+        var isTwoPage = viewer.classList.contains('grid-2');
+        var gap = 24;
+        var availableWidth = Math.max(160, viewer.clientWidth - 36);
+        var availableHeight = Math.max(120, viewer.clientHeight - 36);
+        var firstSlide = slides[0].querySelector('.slide, .pptx-slide');
+        if (!firstSlide) return;
+        var naturalWidth = parseFloat(firstSlide.dataset.naturalWidth) || firstSlide.offsetWidth || 960;
+        var naturalHeight = parseFloat(firstSlide.dataset.naturalHeight) || firstSlide.offsetHeight || 540;
+        if (naturalWidth < 100) naturalWidth = 960;
+        if (naturalHeight < 100) naturalHeight = 540;
+        firstSlide.dataset.naturalWidth = naturalWidth;
+        firstSlide.dataset.naturalHeight = naturalHeight;
+
+        if (isTwoPage) {
+          fitScale = Math.min((availableWidth - gap) / 2 / naturalWidth, availableHeight / naturalHeight);
+        } else if (isMatrix) {
+          var targetWidth = Math.min(360, availableWidth);
+          var columns = Math.max(1, Math.floor((availableWidth + gap) / (targetWidth + gap)));
+          var cellWidth = (availableWidth - gap * (columns - 1)) / columns;
+          fitScale = Math.min(cellWidth / naturalWidth, 0.6);
+        } else {
+          fitScale = Math.min(availableWidth / naturalWidth, availableHeight / naturalHeight);
+        }
+        fitScale = Math.max(0.05, Math.min(3, fitScale));
+        var scale = zoomMode === 'fit' ? fitScale : manualZoom;
+        var scaledWidth = Math.max(1, Math.round(naturalWidth * scale));
+        var scaledHeight = Math.max(1, Math.round(naturalHeight * scale));
+
+        wrapper.style.gridTemplateColumns = (isTwoPage || isMatrix)
+          ? 'repeat(' + (isTwoPage ? 2 : Math.max(1, Math.floor((availableWidth + gap) / (scaledWidth + gap)))) + ', ' + scaledWidth + 'px)'
+          : '';
+        slides.forEach(function (container) {
+          var slide = container.querySelector('.slide, .pptx-slide');
+          if (!slide) return;
+          if (!slide.dataset.naturalWidth) slide.dataset.naturalWidth = slide.offsetWidth || naturalWidth;
+          if (!slide.dataset.naturalHeight) slide.dataset.naturalHeight = slide.offsetHeight || naturalHeight;
+          slide.style.transform = 'scale(' + scale + ')';
+          container.style.width = scaledWidth + 'px';
+          container.style.height = scaledHeight + 'px';
+          container.style.marginBottom = isTwoPage || isMatrix ? '0' : '28px';
+        });
+        setZoomControlsEnabled(true);
+        updateZoomLabel(scale);
+        setupSlideObserver();
+      }
+      function setManualZoom(nextZoom) {
+        zoomMode = 'manual';
+        manualZoom = clampZoom(nextZoom);
+        fitSlidesToWindow();
+      }
+      function zoomBy(delta) {
+        var viewer = document.getElementById('viewer');
+        if (!viewer || !getSlides().length) return;
+        var base = zoomMode === 'fit' ? fitScale : manualZoom;
+        setManualZoom(base + delta);
+      }
+      function resetFitZoom() {
+        var viewer = document.getElementById('viewer');
+        if (!viewer || !getSlides().length) return;
+        zoomMode = 'fit';
+        fitSlidesToWindow();
+      }
+      function scheduleFitSlides() {
+        setTimeout(finalizeRenderedSlides, 100);
+        setTimeout(finalizeRenderedSlides, 500);
+        setTimeout(finalizeRenderedSlides, 1200);
+        setTimeout(finalizeRenderedSlides, 2500);
+      }
+      var renderObserver = null;
+      function finalizeRenderedSlides() {
+        var hasSlide = !!document.querySelector('#viewer .slide, #viewer .pptx-slide');
+        if (!hasSlide) return false;
+        normalizeSlideFrames();
+        document.getElementById('status').textContent = 'ready';
+        setCodeAvailable(true);
+        setZoomControlsEnabled(true);
+        setupMatrixViewControls();
+        fitSlidesToWindow();
+        return true;
+      }
+      function watchRenderedSlides() {
+        if (renderObserver) renderObserver.disconnect();
+        if (!('MutationObserver' in window)) return;
+        renderObserver = new MutationObserver(function () {
+          if (finalizeRenderedSlides()) {
+            renderObserver.disconnect();
+            renderObserver = null;
+          }
+        });
+        renderObserver.observe(document.getElementById('viewer'), { childList: true, subtree: true });
+      }
+      function renderHtml(reason) {
+        document.getElementById('status').textContent = 'rendering';
+        zoomMode = 'fit';
+        manualZoom = 1;
+        setZoomControlsEnabled(false);
+        updateZoomLabel(1);
+        document.getElementById('viewer').classList.add('html-rendered');
+        document.getElementById('viewer').innerHTML = '<div class="loading">' + (reason || 'PPTX를 HTML로 렌더링하는 중입니다.') + '</div>';
+        watchRenderedSlides();
+        
+        if (window.JSZipUtils && fileCache) {
+          window.JSZipUtils.getBinaryContent = function (url, callback) {
+            setTimeout(function () {
+              callback(null, fileCache);
+            }, 0);
+          };
+        }
+
+        try {
+          $('#viewer').pptxToHtml({
+            pptxFileUrl: fileUrl,
+            slidesScale: '100%',
+            slideMode: false,
+            keyBoardShortCut: false,
+            mediaProcess: true,
+            jsZipV2: false,
+            themeProcess: 'colorsAndImageOnly',
+            incSlide: { width: 0, height: 0 }
+          });
+          setTimeout(function () {
+            if (!finalizeRenderedSlides()) document.getElementById('status').textContent = 'rendering';
+          }, 300);
+          scheduleFitSlides();
+        } catch (err) {
+          showError(err && err.message ? err.message : String(err));
+        }
+      }
+
+      var currentSlideIndex = 0;
+      var slideObserver = null;
+      var viewControlsBound = false;
+
+      function setCodeAvailable(enabled) {
+        var btn = document.getElementById('code-btn');
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.style.display = 'none';
+      }
+
+      function refreshCodePanel() {
+        var textarea = document.getElementById('html-code');
+        var viewer = document.getElementById('viewer');
+        if (!textarea || !viewer) return;
+        textarea.value = viewer.innerHTML;
+      }
+
+      function openCodePanel() {
+        refreshCodePanel();
+        var panel = document.getElementById('code-panel');
+        if (panel) panel.classList.add('open');
+      }
+
+      function closeCodePanel() {
+        var panel = document.getElementById('code-panel');
+        if (panel) panel.classList.remove('open');
+      }
+
+      function setupSlideObserver() {
+        var slides = getSlides();
+        if (!slides.length) return;
+        if (slideObserver) slideObserver.disconnect();
+        if (!('IntersectionObserver' in window)) return;
+        slideObserver = new IntersectionObserver(function(entries) {
+          var best = null;
+          entries.forEach(function(entry) {
+            if (!entry.isIntersecting) return;
+            if (!best || entry.intersectionRatio > best.intersectionRatio) best = entry;
+          });
+          if (best) currentSlideIndex = Math.max(0, slides.indexOf(best.target));
+        }, { root: document.getElementById('viewer'), threshold: [0.25, 0.5, 0.75] });
+        slides.forEach(function(slide) { slideObserver.observe(slide); });
+      }
+
+      function scrollToSlide(index) {
+        var slides = getSlides();
+        if (!slides.length) return;
+        var viewer = document.getElementById('viewer');
+        currentSlideIndex = Math.max(0, Math.min(slides.length - 1, index));
+        var target = slides[currentSlideIndex];
+        var viewerRect = viewer.getBoundingClientRect();
+        var targetRect = target.getBoundingClientRect();
+        var targetTop = targetRect.top - viewerRect.top + viewer.scrollTop - 18;
+        viewer.scrollTop = Math.max(0, targetTop);
+      }
+
+      function navigateSlide(delta) {
+        var slides = getSlides();
+        if (!slides.length) return;
+        var viewer = document.getElementById('viewer');
+        if (!viewer.classList.contains('grid-2') && !viewer.classList.contains('matrix-view')) {
+          var currentTop = viewer.scrollTop + 18;
+          currentSlideIndex = slides.reduce(function (bestIndex, slide, index) {
+            var slideTop = slide.getBoundingClientRect().top - viewer.getBoundingClientRect().top + viewer.scrollTop;
+            var bestTop = slides[bestIndex].getBoundingClientRect().top - viewer.getBoundingClientRect().top + viewer.scrollTop;
+            return Math.abs(slideTop - currentTop) < Math.abs(bestTop - currentTop) ? index : bestIndex;
+          }, 0);
+        }
+        scrollToSlide(currentSlideIndex + delta);
+      }
+
+      function setViewMode(mode, preferredIndex) {
+        var viewer = document.getElementById('viewer');
+        if (!viewer) return;
+        var slides = getSlides();
+        if (Number.isFinite(preferredIndex)) {
+          currentSlideIndex = Math.max(0, Math.min(slides.length - 1, preferredIndex));
+        } else if (slides.length) {
+          var viewerTop = viewer.getBoundingClientRect().top;
+          currentSlideIndex = slides.reduce(function (bestIndex, slide, index) {
+            var distance = Math.abs(slide.getBoundingClientRect().top - viewerTop - 18);
+            var bestDistance = Math.abs(slides[bestIndex].getBoundingClientRect().top - viewerTop - 18);
+            return distance < bestDistance ? index : bestIndex;
+          }, 0);
+        }
+        viewer.classList.remove('grid-2', 'grid-3', 'matrix-view');
+        if (mode === '2-page') viewer.classList.add('grid-2');
+        if (mode === 'matrix') viewer.classList.add('matrix-view');
+        zoomMode = 'fit';
+        manualZoom = 1;
+        fitSlidesToWindow();
+      }
+
+      function handleMenuCommand(command) {
+        if (!command) return;
+        if (typeof command === 'string') {
+          command = { type: command };
+        }
+        if (command.type === 'pptx-view-mode' && (command.mode === 'single' || command.mode === '2-page' || command.mode === 'matrix')) {
+          setViewMode(command.mode);
+        } else if (command.type === 'pptx-zoom-in') {
+          zoomBy(0.1);
+        } else if (command.type === 'pptx-zoom-out') {
+          zoomBy(-0.1);
+        } else if (command.type === 'pptx-zoom-fit') {
+          resetFitZoom();
+        } else if (command.type === 'pptx-html-render') {
+          renderHtml('PPTX를 다시 렌더링하는 중입니다.');
+        }
+      }
+
+      function setupMatrixViewControls() {
+        var controls = document.getElementById('view-controls');
+        if (controls && getSlides().length) controls.style.display = '';
+        if (viewControlsBound) return;
+        viewControlsBound = true;
+        document.querySelectorAll('[data-view-mode]').forEach(function(btn) {
+          btn.addEventListener('click', function() { setViewMode(btn.getAttribute('data-view-mode')); });
+        });
+        document.getElementById('viewer').addEventListener('click', function(event) {
+          var container = event.target.closest && event.target.closest('.slide-container');
+          if (!container) return;
+          var viewer = document.getElementById('viewer');
+          if (!viewer.classList.contains('grid-2') && !viewer.classList.contains('matrix-view')) return;
+          var slides = getSlides();
+          var clickedIndex = Math.max(0, slides.indexOf(container));
+          setViewMode('single', clickedIndex);
+          setTimeout(function() { scrollToSlide(clickedIndex); }, 120);
+        });
+      }
+
+      var fileUrl = getParam('file');
+      var title = getParam('title') || 'PPTX Preview';
+      document.title = title;
+      document.getElementById('title').textContent = title;
+      document.getElementById('external-btn').onclick = function () {
+        if (window.web2electron && typeof window.web2electron.openExternalFile === 'function') {
+          window.web2electron.openExternalFile({ filePath: getParam('path') });
+        }
+      };
+      document.getElementById('html-btn').onclick = renderHtml;
+      document.getElementById('prev-btn').onclick = function () { navigateSlide(-1); };
+      document.getElementById('next-btn').onclick = function () { navigateSlide(1); };
+      document.getElementById('zoom-out-btn').onclick = function () { zoomBy(-0.1); };
+      document.getElementById('zoom-in-btn').onclick = function () { zoomBy(0.1); };
+      document.getElementById('zoom-fit-btn').onclick = resetFitZoom;
+      document.getElementById('code-btn').onclick = openCodePanel;
+      document.getElementById('close-code-btn').onclick = closeCodePanel;
+      document.getElementById('copy-code-btn').onclick = function () {
+        refreshCodePanel();
+        var code = document.getElementById('html-code').value;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code).catch(function () {});
+        } else {
+          document.getElementById('html-code').select();
+          document.execCommand('copy');
+        }
+      };
+      window.addEventListener('resize', fitSlidesToWindow);
+      window.addEventListener('keydown', function (event) {
+        if (document.activeElement && (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT')) {
+          return;
+        }
+        var key = event.key;
+        if (event.ctrlKey && !event.altKey && !event.metaKey && (key === '+' || key === '=')) {
+          event.preventDefault();
+          zoomBy(0.1);
+        } else if (event.ctrlKey && !event.altKey && !event.metaKey && key === '-') {
+          event.preventDefault();
+          zoomBy(-0.1);
+        } else if (event.ctrlKey && !event.altKey && !event.metaKey && key === '0') {
+          event.preventDefault();
+          resetFitZoom();
+        } else if (key === 'ArrowDown' || key === 'PageDown' || (key === ' ' && !event.shiftKey)) {
+          event.preventDefault();
+          navigateSlide(1);
+        } else if (key === 'ArrowUp' || key === 'PageUp' || (key === ' ' && event.shiftKey)) {
+          event.preventDefault();
+          navigateSlide(-1);
+        }
+      });
+      document.getElementById('viewer').addEventListener('wheel', function (event) {
+        if (!event.ctrlKey) return;
+        if (!getSlides().length) return;
+        event.preventDefault();
+        zoomBy(event.deltaY < 0 ? 0.1 : -0.1);
+      }, { passive: false });
+      if (window.web2electron && typeof window.web2electron.on === 'function') {
+        window.web2electron.on('set-view-mode', (mode) => {
+          if (mode === 'single' || mode === '2-page' || mode === 'matrix') {
+            setViewMode(mode);
+          }
+        });
+      }
+      if (window.web2electron && typeof window.web2electron.onMenuCommand === 'function') {
+        window.web2electron.onMenuCommand(handleMenuCommand);
+      }
+      setupMatrixViewControls();
+      window.addEventListener('message', function (event) {
+        if (event.origin !== window.location.origin) return;
+        var payload = event.data || {};
+        if (payload.type !== 'mdv-open-pptx-buffer' || !(payload.buffer instanceof ArrayBuffer)) return;
+        fileCache = payload.buffer;
+        fileUrl = 'memory-presentation.pptx';
+        if (payload.fileName) {
+          title = String(payload.fileName);
+          document.title = title;
+          document.getElementById('title').textContent = title;
+        }
+        renderHtml('PPTX를 HTML로 렌더링하는 중입니다.');
+      });
+      if (!fileUrl) {
+        document.getElementById('status').textContent = 'waiting';
+        document.getElementById('viewer').innerHTML = '<div class="loading">PPTX 데이터를 받는 중입니다.</div>';
+        return;
+      }
+      getFileBuffer().then(function() {
+        renderHtml();
+      }).catch(function(err) {
+        showError(err && err.message ? err.message : '파일을 불러올 수 없습니다.');
+      });
+    })();
+  </script>
+</body>
+</html>
