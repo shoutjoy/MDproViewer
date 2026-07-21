@@ -2412,68 +2412,51 @@
 
   function academicSystemInstruction(evidenceText, partNumber) {
     var splitPart = Number(partNumber) || 0;
-    var structureLines = splitPart
-      ? [
-          'This response is intentionally divided into three independent parts because the local model has a small context window.',
-          academicPartTask(splitPart),
-          'Treat the numbered requirements as a fixed checklist. Cover each assigned item once, summarize only representative evidence, and stop immediately when those items are complete. Do not use the remaining token budget to add more detail.'
-        ]
-      : [
-          'Required final-answer structure:',
-          '1. 검색 근거의 범위와 한계',
-          '2. 초록에서 추출한 전체 핵심 주장 목록 + 각 주장에 인용',
-          '3. 같은 방향의 주장과 이를 함께 지지하는 연구 인용',
-          '4. 다른·반대·조건부·비유의한 주장과 인용',
-          '5. 주장 간 관계를 통합한 종합 해석'
-        ];
-    return [
-      'You are an academic evidence-synthesis assistant. Respond in Korean.',
-      'Use a formal Korean academic plain style throughout: end propositions with -이다, -한다, -로 나타났다, -를 시사한다, or equivalent forms. Never use polite endings such as -입니다, -합니다, -습니다, or conversational language.',
-      'Write analytically rather than as a shallow summary. Connect each central claim as evidence -> comparison or condition -> interpretation/implication, while clearly distinguishing association from causation.',
-      'Do not think aloud. Never output analysis, reasoning, strategy, a plan, task interpretation, or statements such as "the user wants" and "I need to". Start immediately with the required Korean answer heading.',
-      'The VERIFIED PUBLIC ACADEMIC SEARCH RESULTS below were retrieved from OpenAlex and/or Crossref before this AI request.',
-      splitPart ? 'Compact record keys are T=title, A=authors, Y=year, and X=public abstract excerpt. Never infer a finding beyond X.' : '',
-      'Use only the supplied records and abstracts for evidence-backed claims, authors, years, journal names, DOI values, and citations. Never fabricate or complete missing bibliographic facts.',
-      'Do not organize the answer paper-by-paper and do not merely repeat the search-result list.',
-      'Read the abstracts and summarize only the claims needed by the assigned checklist items. Select representative evidence instead of mentioning every retrieved paper.',
-      'Group the synthesis by claims/results. For every supported or opposing statement, attach an author-year citation such as Kim과 Lee(2024) or (Kim & Lee, 2024).',
-      'In parenthetical citations, always put one space on both sides of an ampersand: write (강 & 성, 2022), never (강&성, 2022).',
-      structureLines.join('\n'),
-      'If an abstract does not support a claim, say 근거 부족. Distinguish metadata-only information from abstract-supported findings.',
-      'If a record has no author metadata, never write 저자 미상, Unknown author, or a fabricated author-year citation. Discuss its supplied content without an author citation, or omit it when attribution is necessary.',
-      splitPart
-        ? 'Do not repeat a previous part, paraphrase an already completed claim, or write a later part early. The app will request each remaining checklist group separately.'
-        : 'Write all five required sections in 1600 to 2300 Korean characters total. Use representative evidence to provide academic interpretation without adding unrelated background detail, and stop immediately after checklist item 5 is complete.',
-      'Do not output a checklist or meta-commentary. The app generates the checklist after validating the completed answer. Return only the structured synthesis.',
-      '',
-      'VERIFIED PUBLIC ACADEMIC SEARCH RESULTS:',
-      evidenceText
+    var writingTask = splitPart ? academicPartTask(splitPart) : [
+      '다음 순서를 모두 작성하라:',
+      '1. 검색 근거의 범위와 한계',
+      '2. 핵심 주장과 대표 인용',
+      '3. 같은 방향의 연구 비교',
+      '4. 다른·반대·조건부 결과',
+      '5. 근거 관계의 종합 해석',
+      '전체 분량은 한국어 1600~2300자로 제한하라.'
     ].join('\n');
+    return [
+      '역할: 아래 검증 학술검색 논문을 주장 중심으로 요약하는 연구자이다.',
+      '문체: 한국어 학술적 평서체(-이다/-한다/-로 나타났다/-를 시사한다)만 사용한다.',
+      '요약: 논문별 나열이 아니라 핵심 주장마다 근거, 연구 간 비교·조건, 제한적인 해석이나 함의를 연결한다. 관련성을 인과로 확대하지 않는다.',
+      '근거: 아래 레코드의 제목(T), 저자(A), 연도(Y), 공개 초록(X)만 사용한다. X가 없으면 결과 근거로 쓰지 않는다. 없는 사실·인용은 만들지 않는다.',
+      '저자: A가 없으면 저자 미상이나 가짜 인용을 쓰지 않는다. 괄호 인용의 & 양쪽에는 공백을 둔다.',
+      '작성 범위:',
+      writingTask,
+      splitPart ? '이전·다음 파트의 내용을 반복하거나 미리 작성하지 않는다.' : '',
+      '출력: 지정된 한국어 본문만 즉시 작성한다. 추론, 계획, 체크리스트, 지시 설명은 출력하지 않는다.',
+      '',
+      '검증 검색 레코드:',
+      evidenceText
+    ].filter(Boolean).join('\n');
   }
 
   function academicContinuationInstruction(evidenceText, partNumber) {
     var splitPart = Number(partNumber) || 0;
     if (splitPart) {
       return [
-        'Write only the requested checklist group of a concise Korean academic-search summary. Start immediately with the exact Korean heading requested by the user prompt.',
-        'Use formal Korean academic plain style only (-이다/-한다/-로 나타났다/-를 시사한다). Never use -입니다/-합니다/-습니다 endings. Each new claim must include evidence and a restrained interpretation or implication.',
-        'Do not think aloud. Never output analysis, reasoning, strategy, a plan, task interpretation, a checklist, instructions, "the user wants", or "I need to".',
-        'Use only the compact verified records below. T=title, A=authors, Y=year, X=public abstract excerpt. Never infer a finding beyond X.',
-        'Use only representative sources needed for the checklist. Never repeat or paraphrase content from a completed part. Stop as soon as the requested checklist items are covered.',
-        'Never fabricate bibliographic facts. When A says Not provided, do not write 저자 미상 or invent a citation.',
+        '검증 논문 요약의 미완료 파트만 이어 쓴다.',
+        '한국어 학술체(-이다/-한다)로 근거와 제한적인 해석을 연결한다.',
+        '아래 T/A/Y/X만 사용하며 X 밖의 결과, 없는 저자·연도·인용을 만들지 않는다.',
+        '완료된 문장과 파트는 반복하지 않고 사용자 지시에 지정된 현재 파트만 작성한다.',
+        '추론, 계획, 체크리스트, 지시 설명은 출력하지 않는다.',
         '',
-        'COMPACT VERIFIED RECORDS:',
+        '검증 검색 레코드:',
         evidenceText
       ].join('\n');
     }
     return [
-      'Continue an interrupted Korean academic synthesis using only the verified records below.',
-      'Use formal Korean academic plain style only (-이다/-한다). Do not use polite -입니다/-합니다/-습니다 endings.',
-      'Write only the unfinished or missing portion. Do not repeat completed sections, the checklist, the question, or earlier paragraphs.',
-      'Complete the current sentence first when the previous answer ended mid-sentence, then cover every explicitly listed missing section.',
-      'Never fabricate bibliographic facts. If a record has no author metadata, never write 저자 미상, Unknown author, or invent an author-year citation; interpret the supplied content without an author citation.',
+      '검증 논문 요약에서 아직 작성하지 않은 내용만 한국어 학술체(-이다/-한다)로 이어 쓴다.',
+      '아래 검색 근거만 사용하고 완료된 문장·체크리스트·질문을 반복하지 않는다.',
+      '없는 저자·연도·인용을 만들지 않으며 추론이나 계획을 출력하지 않는다.',
       '',
-      'VERIFIED PUBLIC ACADEMIC SEARCH RESULTS:',
+      '검증 검색 레코드:',
       evidenceText
     ].join('\n');
   }
@@ -2507,6 +2490,30 @@
     return value;
   }
 
+  function isAcademicResummaryRequest(value) {
+    var text = String(value || '').trim().replace(/[.!?。！？]+$/g, '').replace(/\s+/g, ' ');
+    if (!text || text.length > 70) return false;
+    return /^(?:(?:위|앞서|기존|검색된|찾은)\s*(?:논문|자료|검색\s*결과)(?:을|를)?\s*)?(?:다시\s*)?(?:학술적으로\s*)?(?:요약|정리|종합)(?:해\s*줘|해주세요|해\s*주세요|해라|하라|해|하여\s*줘|하여\s*주세요)?$/i.test(text);
+  }
+
+  function findReusableAcademicSearch() {
+    for (var i = state.messages.length - 2; i >= 0; i--) {
+      var message = state.messages[i];
+      if (message && message.role === 'user' && Array.isArray(message.academicSources) && message.academicSources.length) return message;
+    }
+    return null;
+  }
+
+  function academicModelInput(userText, academicQuery, splitPart, reusedSources) {
+    var query = String(academicQuery || userText || '').trim();
+    return [
+      '연구 주제: ' + query,
+      '작업: 시스템에 제공된 검증 학술검색 논문만 사용하여 주장 중심의 학술 요약을 작성하라.',
+      splitPart ? '현재 범위: 체크리스트 1·2에 해당하는 분할 답변 1/3만 작성하라.' : '현재 범위: 체크리스트 1~5를 순서대로 완결하라.',
+      reusedSources ? '직전 검색 논문을 재사용하여 새 문장으로 다시 요약하되 근거 밖의 내용을 추가하지 마라.' : ''
+    ].filter(Boolean).join('\n');
+  }
+
   async function sendMessage() {
     if (state.running || state.storageInitializing) return;
     var input = document.getElementById('ai-chat-input');
@@ -2528,14 +2535,30 @@
         if (!root.AIChatAcademicSearch || typeof root.AIChatAcademicSearch.search !== 'function') {
           throw new Error('공개 학술검색 모듈이 준비되지 않았습니다. 앱을 새로고침하세요.');
         }
-        academicAbortController = new AbortController();
-        var academicSearch = await root.AIChatAcademicSearch.search(text, state.academicSearchCount, {
-          signal: academicAbortController.signal,
-          onProgress: function (progress) { setStatus(progress, 'loading'); },
-          translateQuery: translateAcademicSearchQuery
-        });
-        academicAbortController = null;
-        pendingUser.academicQuery = text;
+        var resummaryRequested = isAcademicResummaryRequest(text);
+        var reusableAcademic = resummaryRequested ? findReusableAcademicSearch() : null;
+        if (resummaryRequested && !reusableAcademic) {
+          throw new Error('다시 요약할 이전 학술검색 논문이 없습니다. 먼저 구체적인 연구 주제로 학술검색을 실행하세요.');
+        }
+        var academicSearch;
+        if (reusableAcademic) {
+          academicSearch = {
+            results: reusableAcademic.academicSources.slice(),
+            warnings: Array.isArray(reusableAcademic.academicWarnings) ? reusableAcademic.academicWarnings.slice() : [],
+            abstractCount: reusableAcademic.academicSources.filter(function (item) { return !!String(item && item.abstract || '').trim(); }).length
+          };
+          pendingUser.academicQuery = String(reusableAcademic.academicQuery || reusableAcademic.content || '').trim();
+          setStatus('직전 학술검색 논문 ' + academicSearch.results.length + '건을 재사용하여 다시 요약하는 중...', 'loading');
+        } else {
+          academicAbortController = new AbortController();
+          academicSearch = await root.AIChatAcademicSearch.search(text, state.academicSearchCount, {
+            signal: academicAbortController.signal,
+            onProgress: function (progress) { setStatus(progress, 'loading'); },
+            translateQuery: translateAcademicSearchQuery
+          });
+          academicAbortController = null;
+          pendingUser.academicQuery = text;
+        }
         pendingUser.academicSources = academicSearch.results;
         pendingUser.academicWarnings = academicSearch.warnings || [];
         // LM Studio models are frequently loaded with a 4K context window. Keep the
@@ -2550,7 +2573,7 @@
         var academicAbstractCount = Number.isFinite(Number(academicSearch.abstractCount))
           ? Number(academicSearch.abstractCount)
           : academicSearch.results.filter(function (item) { return !!String(item && item.abstract || '').trim(); }).length;
-        setStatus('검색 근거 ' + academicSearch.results.length + '건 · 공개 초록 ' + academicAbstractCount + '건 수집 완료 · AI가 주장별로 종합하는 중...', 'loading');
+        setStatus((reusableAcademic ? '기존 검색 근거 재사용' : '검색 근거 수집 완료') + ' · ' + academicSearch.results.length + '건 · 공개 초록 ' + academicAbstractCount + '건 · AI 요약 중...', 'loading');
       }
       var result = await getBridge().complete({
         provider: state.provider,
@@ -2559,7 +2582,9 @@
         academicSearch: academicSearchActive,
         splitAcademicResponse: splitAcademicResponse,
         retainForContinuation: true,
-        messages: contextMessages(),
+        messages: academicSearchActive
+          ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic) }]
+          : contextMessages(),
         systemInstruction: academicSearchActive
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0)
           : 'You are a helpful conversational assistant. Respond in Korean unless the user asks for another language. Preserve context from earlier messages. Complete every requested section before adding optional detail; if space is limited, be concise rather than ending mid-sentence. Before the final answer, make a short checklist that shows how you understood the request, what the answer should include, and the requested length/tone. Return exactly this structure: [CHECKLIST] numbered checklist [/CHECKLIST] [ANSWER] final answer only [/ANSWER]. Do not put the checklist inside the final answer.'

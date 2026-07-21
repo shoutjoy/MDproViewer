@@ -340,6 +340,12 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
     return data;
   }
 
+  function isUnsupportedReasoningSettingError(error) {
+    const message = trim(error && error.message || error).toLowerCase();
+    return /reasoning(?:\s+setting)?[\s\S]{0,100}(?:not\s+supported|unsupported)/i.test(message)
+      || /supported\s+settings?\s*:[\s\S]{0,80}(?:'on'|'off'|on|off)/i.test(message);
+  }
+
   function composeUserText(prompt, userText) {
     const first = trim(prompt);
     const second = userText == null ? '' : String(userText);
@@ -540,13 +546,28 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       if (options.topP != null || active.topP != null) body.top_p = options.topP == null ? active.topP : options.topP;
       if (options.previousResponseId) body.previous_response_id = String(options.previousResponseId);
       try {
-        const response = await resolveFetch(options.fetch || fetchImpl)(getServerRoot(active.baseUrl) + endpoints.nativeChat, {
-          method: 'POST',
-          headers: makeHeaders(active, options.headers),
-          body: JSON.stringify(body),
-          signal: requestSignal.signal
-        });
-        const data = await parseResponse(response, 'LM Studio native chat');
+        const nativeFetch = resolveFetch(options.fetch || fetchImpl);
+        const nativeUrl = getServerRoot(active.baseUrl) + endpoints.nativeChat;
+        const sendNativeChat = async function (requestBody) {
+          const response = await nativeFetch(nativeUrl, {
+            method: 'POST',
+            headers: makeHeaders(active, options.headers),
+            body: JSON.stringify(requestBody),
+            signal: requestSignal.signal
+          });
+          return parseResponse(response, 'LM Studio native chat');
+        };
+        let data;
+        let reasoningSettingFallback = false;
+        try {
+          data = await sendNativeChat(body);
+        } catch (error) {
+          if (!Object.prototype.hasOwnProperty.call(body, 'reasoning') || !isUnsupportedReasoningSettingError(error)) throw error;
+          const fallbackBody = Object.assign({}, body);
+          delete fallbackBody.reasoning;
+          data = await sendNativeChat(fallbackBody);
+          reasoningSettingFallback = true;
+        }
         const output = Array.isArray(data.output) ? data.output : [];
         const text = trim(output.filter(function (item) { return item && item.type === 'message'; }).map(function (item) { return item.content || ''; }).join('\n'));
         const reasoning = trim(output.filter(function (item) { return item && item.type === 'reasoning'; }).map(function (item) { return item.content || ''; }).join('\n'));
@@ -560,6 +581,7 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
           finishReason: data.finish_reason || data.stop_reason
             || (data.stats && (data.stats.finish_reason || data.stats.stop_reason)) || '',
           responseId: data.response_id || null,
+          reasoningSettingFallback: reasoningSettingFallback,
           raw: options.includeRaw ? data : undefined
         };
       } catch (error) {

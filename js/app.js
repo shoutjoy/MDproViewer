@@ -8046,7 +8046,9 @@ window.AIChatBridge = Object.freeze({
             const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true;
             const continuationMode = request.continuation === true;
             const splitAcademicMode = request.splitAcademicResponse === true;
-            const modeInstruction = continuationMode
+            const modeInstruction = request.academicSearch
+                ? ''
+                : continuationMode
                 ? '이전 응답에서 아직 작성하지 않은 본문만 이어서 작성하세요. 질문·체크리스트·계획·작업 지시·모델의 생각·이미 작성한 문장은 출력하지 마세요.'
                 : splitAcademicMode
                 ? '학술 답변은 작은 컨텍스트에 맞춰 여러 파트로 나눕니다. 시스템 지시가 지정한 현재 파트만 충분히 상세하게 작성하고, 이전·다음 파트나 체크리스트·추론·계획은 출력하지 마세요. 완성된 한국어 문장으로 끝내세요.'
@@ -8064,7 +8066,7 @@ window.AIChatBridge = Object.freeze({
                 model: synced.model,
                 reasoning: request.academicSearch || continuationMode || splitAcademicMode ? 'off' : (reasoningMode ? 'on' : 'off'),
                 maxTokens: splitAcademicMode
-                    ? Math.min(1400, Math.max(900, Number(config.maxTokens) || 1200))
+                    ? Math.min(2200, Math.max(1400, Number(config.maxTokens) || 1800))
                     : continuationMode
                     ? Math.min(3000, Math.max(1800, Number(config.maxTokens) || 2200))
                     : reasoningMode
@@ -8074,7 +8076,7 @@ window.AIChatBridge = Object.freeze({
                     : (request.academicSearch ? Math.min(2048, Math.max(1024, Number(config.maxTokens) || 2048)) : 384),
                 timeoutMs: reasoningMode
                     ? Math.max(300000, Number(config.timeoutMs) || 0)
-                    : (request.academicSearch ? Math.max(120000, Number(config.timeoutMs) || 0) : Math.min(60000, Number(config.timeoutMs) || 60000)),
+                    : (request.academicSearch ? Math.max(240000, Number(config.timeoutMs) || 0) : Math.min(60000, Number(config.timeoutMs) || 60000)),
                 store: splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),
                 previousResponseId: request.previousResponseId || undefined,
                 signal: controller.signal
