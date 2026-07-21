@@ -1836,13 +1836,13 @@
   }
 
   function insertQuestionAnswer(messageIndex, message, mode) {
-    var question = findQuestionForAnswer(messageIndex);
-    if (!question) return setStatus('문서에 삽입할 질문을 찾지 못했습니다.', 'error');
+    var answer = String(message && message.content || '').trim();
+    if (!answer) return setStatus('문서에 삽입할 AI 답변이 없습니다.', 'error');
     try {
       var bridge = getBridge();
       if (typeof bridge.insertIntoDocument !== 'function') throw new Error('문서 삽입 모듈이 준비되지 않았습니다.');
-      bridge.insertIntoDocument(formatQuestionAnswer(question, message.content), mode || 'cursor');
-      setStatus('질문과 답변을 ' + insertModeLabel(mode) + '했습니다.', 'ok');
+      bridge.insertIntoDocument(answer, mode || 'cursor');
+      setStatus('AI 답변만 ' + insertModeLabel(mode) + '했습니다.', 'ok');
     } catch (error) {
       setStatus(error && error.message ? error.message : '문서에 삽입하지 못했습니다.', 'error');
     }
@@ -2076,15 +2076,15 @@
             insertWrap.className = 'ai-chat-insert-wrap';
             var insertSummary = document.createElement('summary');
             insertSummary.textContent = '문서에 넣기 ▾';
-            insertSummary.title = '질문과 답변을 문서에 넣는 방법 선택';
+            insertSummary.title = 'AI 답변만 문서에 넣는 방법 선택';
             insertWrap.appendChild(insertSummary);
             var insertMenu = document.createElement('div');
             insertMenu.className = 'ai-chat-insert-menu';
             [
-              { mode: 'replace', label: '대체 삽입', title: '선택한 내용을 질문과 답변으로 대체합니다.' },
-              { mode: 'cursor', label: '커서 위치에 삽입', title: '현재 커서 위치에 질문과 답변을 삽입합니다.' },
-              { mode: 'line-below', label: '한 줄 아래 삽입', title: '커서가 있는 줄 바로 아래에 질문과 답변을 삽입합니다.' },
-              { mode: 'document-end', label: '문서 맨 아래에 삽입', title: '질문과 답변을 현재 문서의 맨 아래에 삽입합니다.' }
+              { mode: 'replace', label: '대체 삽입', title: '선택한 내용을 AI 답변으로 대체합니다.' },
+              { mode: 'cursor', label: '커서 위치에 삽입', title: '현재 커서 위치에 AI 답변만 삽입합니다.' },
+              { mode: 'line-below', label: '한 줄 아래 삽입', title: '커서가 있는 줄 바로 아래에 AI 답변만 삽입합니다.' },
+              { mode: 'document-end', label: '문서 맨 아래에 삽입', title: 'AI 답변만 현재 문서의 맨 아래에 삽입합니다.' }
             ].forEach(function (option) {
               var insertOption = document.createElement('button');
               insertOption.type = 'button';
