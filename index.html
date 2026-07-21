@@ -21,9 +21,9 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260603-6" charset="utf-8">
-    <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-1" charset="utf-8">
-    <link rel="stylesheet" href="./aiChat/ai-chat.css?v=20260721-18" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260603-8" charset="utf-8">
+    <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
+    <link rel="stylesheet" href="./aiChat/ai-chat.css?v=20260721-24" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
@@ -1197,9 +1197,16 @@
                         <div id="ai-link-settings-block">
                         <div>
                             <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">AI Studio API Key</label>
-                            <input type="password" id="ai-api-key" placeholder="API 키를 입력하세요..." autocomplete="off"
-                                oninput="validateApiKeyInputUI()"
-                                class="ai-api-key-input w-full px-3 py-1.5 border rounded-md focus:outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors">
+                            <div class="settings-credential-field">
+                                <input type="password" id="ai-api-key" placeholder="API 키를 입력하세요..." autocomplete="off"
+                                    oninput="validateApiKeyInputUI()"
+                                    class="ai-api-key-input w-full px-3 py-1.5 border rounded-md focus:outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors">
+                                <button type="button" class="settings-credential-visibility" onclick="toggleCredentialVisibility('ai-api-key', this)"
+                                    aria-label="AI Studio API 키 보기" aria-pressed="false" title="API 키 보기">
+                                    <svg class="settings-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>
+                                    <svg class="settings-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"></path><path d="M10.7 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a15 15 0 0 1-2.1 2.8M6.2 6.2C3.8 7.8 2.5 12 2.5 12s3.5 6 9.5 6c1.5 0 2.8-.4 4-1"></path></svg>
+                                </button>
+                            </div>
                             <p id="ai-api-key-feedback" class="text-xs mt-1 min-h-[1.25rem]" aria-live="polite"></p>
                         </div>
                         <div class="flex items-center justify-end gap-2">
@@ -1223,8 +1230,9 @@
                                         class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
                                 </label>
                                 <label class="text-xs text-slate-600 dark:text-slate-400">API Key (선택)
-                                    <input id="settings-lmstudio-api-key" type="password" autocomplete="off" spellcheck="false"
+                                    <input id="settings-lmstudio-api-key" type="password" autocomplete="off" spellcheck="false" oninput="updateLMStudioApiKeyConnectionUI()"
                                         class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
+                                    <span id="settings-lmstudio-api-key-feedback" class="mt-1 text-[11px] min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></span>
                                 </label>
                             </div>
                             <div class="rounded-md border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 p-2.5">
@@ -1381,9 +1389,16 @@
                                 <div id="image-upload-settings" class="pl-6 space-y-2">
                                     <label for="ai-imgbb-api-key" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase">imgBB API Key</label>
                                     <div class="flex items-center gap-2 flex-wrap">
-                                        <input type="password" id="ai-imgbb-api-key" placeholder="imgBB API key"
-                                            autocomplete="off"
-                                            class="flex-1 min-w-[160px] px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
+                                        <div class="settings-credential-field flex-1 min-w-[160px]">
+                                            <input type="password" id="ai-imgbb-api-key" placeholder="imgBB API key" oninput="updateImgbbApiKeyConnectionUI()"
+                                                autocomplete="off"
+                                                class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
+                                            <button type="button" class="settings-credential-visibility" onclick="toggleCredentialVisibility('ai-imgbb-api-key', this)"
+                                                aria-label="imgBB API 키 보기" aria-pressed="false" title="API 키 보기">
+                                                <svg class="settings-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>
+                                                <svg class="settings-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"></path><path d="M10.7 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a15 15 0 0 1-2.1 2.8M6.2 6.2C3.8 7.8 2.5 12 2.5 12s3.5 6 9.5 6c1.5 0 2.8-.4 4-1"></path></svg>
+                                            </button>
+                                        </div>
                                         <button type="button" onclick="saveImgbbApiKeyFromModal()"
                                             class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700">저장</button>
                                     </div>
@@ -1680,7 +1695,7 @@
             style="background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);"></div>
     </div>
 
-    <script src="./js/math_render/math_render.js?v=20260428-1" charset="utf-8" defer></script>
+    <script src="./js/math_render/math_render.js?v=20260722-1" charset="utf-8" defer></script>
     <script src="./js/math_render/latex_render.js?v=20260415-1" charset="utf-8" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js" defer></script>
@@ -1702,20 +1717,20 @@
     <script src="./trt/macro.js?v=20260408-1" charset="utf-8" defer></script>
     <script src="./trt/ai-panel-avoid.js?v=20260604-1" charset="utf-8" defer></script>
     <script src="./ShareSites/Share/share.js?v=20260603-2" charset="utf-8" defer></script>
-    <script src="./ShareSites/googleDocs.js?v=20260330-1" charset="utf-8" defer></script>
+    <script src="./ShareSites/googleDocs.js?v=20260330-2" charset="utf-8" defer></script>
     <script src="./ShareSites/sitesshow/sitesshow.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/export/html-export.js" charset="utf-8" defer></script>
-    <script src="./js/GithubData/github-settings.js?v=20260428-1" charset="utf-8" defer></script>
+    <script src="./js/GithubData/github-settings.js?v=20260428-2" charset="utf-8" defer></script>
     <script src="./Setting/settings-ui.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./sidebar_left/sidebar-left.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/Imagetool/link-image-modal.js?v=20260604-1" charset="utf-8" defer></script>
     <script src="./js/Tidy/tidy-actions.js?v=20260628-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/minipv.js?v=20260603-3" charset="utf-8" defer></script>
-    <script src="./ai_local/local-ai.js?v=20260721-4" charset="utf-8" defer></script>
+    <script src="./ai_local/local-ai.js?v=20260721-5" charset="utf-8" defer></script>
     <script src="./ai_local/scholar-ai-provider.js?v=20260721-3" charset="utf-8" defer></script>
-    <script src="./js/app.js?v=20260721-15" charset="utf-8" defer></script>
-    <script src="./aiChat/academic-search.js?v=20260721-3" charset="utf-8" defer></script>
-    <script src="./aiChat/ai-chat.js?v=20260721-24" charset="utf-8" defer></script>
+    <script src="./js/app.js?v=20260722-1" charset="utf-8" defer></script>
+    <script src="./aiChat/academic-search.js?v=20260721-9" charset="utf-8" defer></script>
+    <script src="./aiChat/ai-chat.js?v=20260722-2" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-app.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/viewmode/viewmode-edit-input.js?v=20260602-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/editpv.js?v=20260628-4" charset="utf-8" defer></script>

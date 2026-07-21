@@ -27,6 +27,16 @@
     return cleanText(value).toLowerCase().replace(/[^a-z0-9가-힣]+/g, ' ').trim();
   }
 
+  function relaxedAcademicQuery(value) {
+    return cleanText(value)
+      .replace(/([가-힣])(과|와)\s+/g, '$1 ')
+      .replace(/([가-힣])([A-Za-z])/g, '$1 $2')
+      .replace(/([A-Za-z])([가-힣])/g, '$1 $2')
+      .replace(/(?:에\s*대하(?:여|해)|에\s*관한|관련\s*(?:내용|연구)?|논문|연구)\s*$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function abstractFromInvertedIndex(index) {
     if (!index || typeof index !== 'object') return '';
     var words = [];
@@ -52,7 +62,7 @@
 
   function authorLabel(authors) {
     var values = (Array.isArray(authors) ? authors : []).map(cleanText).filter(Boolean);
-    if (!values.length) return '저자 미상';
+    if (!values.length) return '';
     if (values.length === 1) return values[0];
     if (values.length === 2) return values[0] + ' & ' + values[1];
     return values[0] + ' 외';
@@ -146,20 +156,20 @@
     return response.json();
   }
 
-  async function searchOpenAlex(query, rows, signal) {
+  async function searchOpenAlex(query, rows, signal, requireAbstract) {
     var params = new URLSearchParams();
     params.set('search', query);
-    params.set('filter', 'has_abstract:true');
+    if (requireAbstract !== false) params.set('filter', 'has_abstract:true');
     params.set('per-page', String(rows));
     params.set('select', 'id,doi,title,display_name,publication_year,authorships,primary_location,abstract_inverted_index,cited_by_count,type');
     var data = await fetchJson(OPENALEX_API + '?' + params.toString(), signal, 'OpenAlex');
     return (Array.isArray(data && data.results) ? data.results : []).map(fromOpenAlex);
   }
 
-  async function searchCrossref(query, rows, signal) {
+  async function searchCrossref(query, rows, signal, requireAbstract) {
     var params = new URLSearchParams();
     params.set('query.bibliographic', query);
-    params.set('filter', 'has-abstract:true');
+    if (requireAbstract !== false) params.set('filter', 'has-abstract:true');
     params.set('rows', String(rows));
     var data = await fetchJson(CROSSREF_API + '?' + params.toString(), signal, 'Crossref');
     var items = data && data.message && Array.isArray(data.message.items) ? data.message.items : [];
@@ -176,43 +186,143 @@
     progress('OpenAlex에서 초록을 검색하는 중...');
     var openAlex = [];
     var crossref = [];
-    var errors = [];
-    try { openAlex = await searchOpenAlex(q, rows, opts.signal); }
+    var warnings = [];
+    function addWarning(message) {
+      var value = cleanText(message);
+      if (value && warnings.indexOf(value) < 0) warnings.push(value);
+    }
+    try { openAlex = await searchOpenAlex(q, rows, opts.signal, true); }
     catch (error) {
       if (error && error.name === 'AbortError') throw error;
-      errors.push(error.message || String(error));
+      addWarning(error.message || String(error));
     }
     progress('Crossref에서 초록과 DOI를 보강하는 중...');
-    try { crossref = await searchCrossref(q, rows, opts.signal); }
+    try { crossref = await searchCrossref(q, rows, opts.signal, true); }
     catch (error) {
       if (error && error.name === 'AbortError') throw error;
-      errors.push(error.message || String(error));
+      addWarning(error.message || String(error));
     }
     var results = mergeRecords(openAlex, crossref, limit);
-    if (!results.length) throw new Error(errors.length ? errors.join(' / ') : '공개 학술검색 결과가 없습니다.');
-    progress('검색 근거 ' + results.length + '건을 AI 분석용으로 정리하는 중...');
-    return { results: results, warnings: errors, requestedCount: limit };
+    if (results.length < limit) {
+      progress('공개 초록 결과가 부족하여 서지정보까지 확대 검색하는 중...');
+      var metadataOpenAlex = [];
+      var metadataCrossref = [];
+      try { metadataOpenAlex = await searchOpenAlex(q, rows, opts.signal, false); }
+      catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        addWarning(error.message || String(error));
+      }
+      try { metadataCrossref = await searchCrossref(q, rows, opts.signal, false); }
+      catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        addWarning(error.message || String(error));
+      }
+      openAlex = openAlex.concat(metadataOpenAlex);
+      crossref = crossref.concat(metadataCrossref);
+      results = mergeRecords(openAlex, crossref, limit);
+      if (metadataOpenAlex.length || metadataCrossref.length) {
+        addWarning('공개 초록이 부족하여 일부 서지정보 검색 결과를 포함했습니다. 초록이 없는 자료는 연구 결과의 직접 근거로 사용하지 않습니다.');
+      }
+    }
+    var relaxedQuery = relaxedAcademicQuery(q);
+    if (!results.length && /[가-힣]/.test(q) && typeof opts.translateQuery === 'function') {
+      progress('한국어 주제를 영문 학술 검색어로 변환하는 중...');
+      try {
+        var translatedQuery = cleanText(await opts.translateQuery(q)).slice(0, 300);
+        if (translatedQuery && translatedQuery !== q) relaxedQuery = translatedQuery;
+      } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        addWarning('영문 검색어 변환 실패: ' + (error.message || String(error)));
+      }
+    }
+    if (!results.length && relaxedQuery && relaxedQuery !== q) {
+      progress('대체 학술 검색어 “' + relaxedQuery + '”로 다시 검색하는 중...');
+      var relaxedOpenAlex = [];
+      var relaxedCrossref = [];
+      try { relaxedOpenAlex = await searchOpenAlex(relaxedQuery, rows, opts.signal, false); }
+      catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        addWarning(error.message || String(error));
+      }
+      try { relaxedCrossref = await searchCrossref(relaxedQuery, rows, opts.signal, false); }
+      catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        addWarning(error.message || String(error));
+      }
+      results = mergeRecords(relaxedOpenAlex, relaxedCrossref, limit);
+      if (results.length) addWarning('원 검색어를 보완한 대체 검색어 “' + relaxedQuery + '” 결과를 사용했습니다.');
+    }
+    if (!results.length) {
+      throw new Error(warnings.length
+        ? warnings.join(' / ')
+        : '공개 학술검색 결과가 없습니다. 핵심 개념 2~4개로 검색어를 줄여 다시 시도하세요.');
+    }
+    var abstractCount = results.filter(function (item) { return !!cleanText(item && item.abstract); }).length;
+    progress('검색 근거 ' + results.length + '건(공개 초록 ' + abstractCount + '건)을 AI 분석용으로 정리하는 중...');
+    return {
+      results: results,
+      warnings: warnings,
+      requestedCount: limit,
+      abstractCount: abstractCount,
+      queryUsed: relaxedQuery && relaxedQuery !== q && warnings.some(function (item) { return item.indexOf('대체 검색어') >= 0; }) ? relaxedQuery : q
+    };
   }
 
-  function formatEvidence(results) {
+  function formatEvidence(results, options) {
     var items = Array.isArray(results) ? results : [];
-    var abstractLimit = Math.max(1200, Math.min(5000, Math.floor(80000 / Math.max(1, items.length))));
-    return items.map(function (item, index) {
+    var opts = options || {};
+    var maxChars = Math.max(0, Number(opts.maxChars) || 0);
+    var compact = opts.compact === true;
+    var abstractLimit = compact && maxChars
+      ? Math.max(45, Math.min(150, Math.floor((maxChars - 160) / Math.max(1, Math.min(items.length, 12))) - 178))
+      : maxChars
+      ? Math.max(240, Math.min(900, Math.floor((maxChars - 500) / Math.max(1, Math.min(items.length, 12))) - 320))
+      : Math.max(1200, Math.min(5000, Math.floor(80000 / Math.max(1, items.length))));
+    var blocks = [];
+    var usedChars = 0;
+    var included = 0;
+    items.some(function (item, index) {
+      var knownAuthors = Array.isArray(item.authors) ? item.authors.map(cleanText).filter(Boolean) : [];
       var abstract = item.abstract || 'Abstract not available';
       if (abstract.length > abstractLimit) abstract = abstract.slice(0, abstractLimit) + ' [truncated for AI context]';
-      return [
-        '[SOURCE ' + (index + 1) + ']',
-        'Title: ' + item.title,
-        'Authors: ' + (item.authors && item.authors.length ? item.authors.join(', ') : 'Unknown'),
-        'Citation label: ' + item.authorLabel + ' (' + (item.year || 'n.d.') + ')',
-        'Year: ' + (item.year || 'n.d.'),
-        'Journal: ' + (item.journal || 'Unknown'),
-        'DOI: ' + (item.doi || 'Not available'),
-        'URL: ' + (item.url || 'Not available'),
-        'Public metadata: ' + (item.sources || []).join(' + '),
-        'Abstract: ' + abstract
-      ].join('\n');
-    }).join('\n\n');
+      var block = compact
+        ? [
+            '[S' + (index + 1) + '] T: ' + cleanText(item.title).slice(0, 82),
+            'A: ' + (knownAuthors.length ? knownAuthors.join(', ').slice(0, 72) : 'Not provided; no citation'),
+            'Y: ' + (item.year || 'n.d.'),
+            'X: ' + abstract
+          ].join('\n')
+        : [
+            '[SOURCE ' + (index + 1) + ']',
+            'Title: ' + item.title,
+            'Authors: ' + (knownAuthors.length ? knownAuthors.join(', ') : 'Not provided'),
+            'Citation label: ' + (knownAuthors.length ? item.authorLabel + ' (' + (item.year || 'n.d.') + ')' : 'Not available - do not create an author-year citation'),
+            'Year: ' + (item.year || 'n.d.'),
+            'Journal: ' + (item.journal || 'Unknown'),
+            'DOI: ' + (item.doi || 'Not available'),
+            'URL: ' + (item.url || 'Not available'),
+            'Public metadata: ' + (item.sources || []).join(' + '),
+            'Abstract: ' + abstract
+          ].join('\n');
+      if (maxChars && blocks.length && usedChars + block.length + 2 > maxChars) return true;
+      if (maxChars && block.length > maxChars) block = block.slice(0, Math.max(0, maxChars - 35)) + '\n[truncated for AI context]';
+      blocks.push(block);
+      usedChars += block.length + 2;
+      included += 1;
+      return usedChars >= maxChars && maxChars > 0;
+    });
+    if (included < items.length) {
+      var notice = '[CONTEXT NOTICE] ' + included + ' of ' + items.length
+        + ' ranked results were supplied to the AI because the local model has a limited context window. The full result list remains visible in the app.';
+      while (maxChars && blocks.length > 1 && usedChars + notice.length + 2 > maxChars) {
+        usedChars -= blocks.pop().length + 2;
+        included -= 1;
+        notice = '[CONTEXT NOTICE] ' + included + ' of ' + items.length
+          + ' ranked results were supplied to the AI because the local model has a limited context window. The full result list remains visible in the app.';
+      }
+      blocks.push(notice);
+    }
+    return blocks.join('\n\n');
   }
 
   function formatMarkdown(results, query) {
@@ -220,7 +330,9 @@
     (results || []).forEach(function (item, index) {
       lines.push('### ' + (index + 1) + '. ' + item.title);
       lines.push('');
-      lines.push('- 저자·연도: ' + item.authorLabel + ' (' + (item.year || 'n.d.') + ')');
+      var knownAuthors = Array.isArray(item.authors) ? item.authors.map(cleanText).filter(Boolean) : [];
+      if (knownAuthors.length) lines.push('- 저자·연도: ' + item.authorLabel + ' (' + (item.year || 'n.d.') + ')');
+      else if (item.year) lines.push('- 연도: ' + item.year);
       if (item.journal) lines.push('- 학술지: ' + item.journal);
       if (item.doi) lines.push('- DOI: https://doi.org/' + item.doi);
       lines.push('- 메타데이터: ' + (item.sources || []).join(' + '));

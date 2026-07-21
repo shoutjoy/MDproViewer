@@ -536,3 +536,159 @@
         .trt-mermaid-wrapper, .trt-mermaid-viewport {
             min-height: 500px !important;
         }
+
+/* Settings credential connection indicators */
+.settings-credential-field {
+    position: relative;
+}
+
+.settings-credential-field > input {
+    padding-right: 2.7rem !important;
+}
+
+.settings-credential-visibility {
+    position: absolute;
+    top: 50%;
+    right: .45rem;
+    z-index: 2;
+    display: inline-flex;
+    width: 2rem;
+    height: 2rem;
+    transform: translateY(-50%);
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: .45rem;
+    color: #94a3b8;
+    background: transparent;
+    cursor: pointer;
+    transition: color .16s ease, background .16s ease, border-color .16s ease;
+}
+
+.settings-credential-visibility:hover,
+.settings-credential-visibility:focus-visible,
+.settings-credential-visibility[aria-pressed="true"] {
+    color: #34d399;
+    border-color: rgba(52, 211, 153, .35);
+    background: rgba(16, 185, 129, .12);
+    outline: none;
+}
+
+.settings-credential-visibility svg {
+    width: 1.15rem;
+    height: 1.15rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.settings-credential-visibility .settings-eye-closed,
+.settings-credential-visibility[aria-pressed="true"] .settings-eye-open {
+    display: none;
+}
+
+.settings-credential-visibility[aria-pressed="true"] .settings-eye-closed {
+    display: block;
+}
+
+@keyframes settingsCredentialGlow {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(16, 185, 129, .42), 0 0 8px rgba(16, 185, 129, .28); }
+    50% { box-shadow: 0 0 0 2px rgba(52, 211, 153, .68), 0 0 18px rgba(16, 185, 129, .52); }
+}
+
+@keyframes settingsConnectedDotPulse {
+    0%, 100% { transform: scale(.92); opacity: .82; box-shadow: 0 0 0 2px rgba(16, 185, 129, .18), 0 0 7px rgba(52, 211, 153, .5); }
+    50% { transform: scale(1.08); opacity: 1; box-shadow: 0 0 0 5px rgba(16, 185, 129, .14), 0 0 13px rgba(52, 211, 153, .82); }
+}
+
+.settings-credential-connected {
+    border-color: #10b981 !important;
+    outline: 1px solid rgba(52, 211, 153, .25);
+    animation: settingsCredentialGlow 2.2s ease-in-out infinite;
+}
+
+.settings-credential-checking {
+    border-color: #06b6d4 !important;
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, .2) !important;
+}
+
+.settings-credential-error { border-color: #ef4444 !important; }
+
+.settings-credential-connected-status,
+.settings-credential-checking-status,
+.settings-credential-error-status {
+    display: inline-flex !important;
+    width: fit-content;
+    max-width: 100%;
+    align-items: center;
+    gap: .45rem;
+    margin-top: .32rem;
+    padding: .3rem .55rem;
+    border: 1px solid;
+    border-radius: .5rem;
+    line-height: 1.35;
+}
+
+.settings-credential-connected-status {
+    border-color: rgba(16, 185, 129, .55) !important;
+    background: rgba(6, 78, 59, .22) !important;
+    color: #34d399 !important;
+    animation: settingsCredentialGlow 2.2s ease-in-out infinite;
+}
+
+.settings-credential-checking-status {
+    border-color: rgba(6, 182, 212, .5) !important;
+    background: rgba(8, 51, 68, .2) !important;
+    color: #22d3ee !important;
+}
+
+.settings-credential-error-status {
+    border-color: rgba(239, 68, 68, .48) !important;
+    background: rgba(127, 29, 29, .16) !important;
+    color: #f87171 !important;
+}
+
+.settings-credential-connected-status::before,
+.settings-credential-checking-status::before,
+.settings-credential-error-status::before {
+    content: '';
+    width: .62rem;
+    height: .62rem;
+    flex: 0 0 .62rem;
+    border-radius: 999px;
+    background: currentColor;
+}
+
+.settings-credential-connected-status::before,
+.settings-connected-dot {
+    animation: settingsConnectedDotPulse 1.8s ease-in-out infinite;
+}
+
+.settings-connection-glow {
+    border-color: rgba(16, 185, 129, .65) !important;
+    animation: settingsCredentialGlow 2.2s ease-in-out infinite;
+}
+
+html:not(.dark) .settings-credential-connected-status {
+    background: rgba(209, 250, 229, .78) !important;
+    color: #047857 !important;
+}
+
+html:not(.dark) .settings-credential-checking-status {
+    background: rgba(207, 250, 254, .8) !important;
+    color: #0e7490 !important;
+}
+
+html:not(.dark) .settings-credential-error-status {
+    background: rgba(254, 226, 226, .82) !important;
+    color: #b91c1c !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .settings-credential-connected,
+    .settings-credential-connected-status,
+    .settings-connected-dot,
+    .settings-connection-glow { animation: none !important; }
+}

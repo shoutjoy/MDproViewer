@@ -56,7 +56,7 @@
     function looksLikeCitationText(text) {
         var s = String(text || '').trim();
         if (!s) return false;
-        if (!/[A-Za-z]/.test(s)) return false;
+        if (!/[A-Za-z가-힣]/.test(s)) return false;
         if (!/\d{3,4}/.test(s)) return false;
         if (!/[,&;]/.test(s)) return false;
         return true;
@@ -111,7 +111,7 @@
                 var body = String(inner || '').trim();
                 if (!looksLikeMathText(body)) return match;
                 if (looksLikeCitationText(body)) return match;
-                if (/[&;,]/.test(body) && /[A-Za-z]/.test(body)) return match;
+                if (/[&;,]/.test(body) && /[A-Za-z가-힣]/.test(body)) return match;
                 return String(prefix || '') + '\\(' + body + '\\)';
             });
         }).join('');

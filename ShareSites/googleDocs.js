@@ -905,16 +905,22 @@
         const pickerFeedback = document.getElementById('gdocs-picker-api-key-feedback');
 
         const clientId = String(clientInput && clientInput.value ? clientInput.value : '').trim();
+        const setVisual = typeof window.setCredentialConnectionVisual === 'function'
+            ? window.setCredentialConnectionVisual
+            : function () {};
         if (clientFeedback) {
             if (!clientId) {
                 clientFeedback.textContent = '';
                 clientFeedback.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
+                setVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'neutral');
             } else if (isValidGoogleOAuthClientId(clientId)) {
                 clientFeedback.textContent = 'Valid OAuth Client ID format.';
                 clientFeedback.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
+                setVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'neutral');
             } else {
                 clientFeedback.textContent = 'Invalid OAuth Client ID format.';
                 clientFeedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
+                setVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'error');
             }
         }
 
@@ -923,12 +929,15 @@
             if (!pickerKey) {
                 pickerFeedback.textContent = 'Optional. Used only when Google Picker is enabled.';
                 pickerFeedback.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
+                setVisual('gdocs-picker-api-key', 'gdocs-picker-api-key-feedback', 'neutral');
             } else if (isValidGoogleCloudApiKey(pickerKey)) {
                 pickerFeedback.textContent = 'Valid Google API key format.';
                 pickerFeedback.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
+                setVisual('gdocs-picker-api-key', 'gdocs-picker-api-key-feedback', 'neutral');
             } else {
                 pickerFeedback.textContent = 'Invalid Google API key format.';
                 pickerFeedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
+                setVisual('gdocs-picker-api-key', 'gdocs-picker-api-key-feedback', 'error');
             }
         }
     }
@@ -974,6 +983,9 @@
             feedback.textContent = 'Checking OAuth Client ID...';
             feedback.className = 'text-xs min-h-[1rem] text-slate-500 dark:text-slate-400';
         }
+        if (typeof window.setCredentialConnectionVisual === 'function') {
+            window.setCredentialConnectionVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'checking', 'Google OAuth 연결을 확인하는 중...');
+        }
 
         try {
             await ensureTokenClient(clientId);
@@ -982,6 +994,9 @@
             if (feedback) {
                 feedback.textContent = msg;
                 feedback.className = 'text-xs min-h-[1rem] text-red-600 dark:text-red-400';
+            }
+            if (typeof window.setCredentialConnectionVisual === 'function') {
+                window.setCredentialConnectionVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'error', 'Google OAuth 연결 실패: ' + msg);
             }
             if (typeof showToast === 'function') showToast(msg);
             return;
@@ -1006,6 +1021,15 @@
                 feedback.textContent = 'DocSync settings saved. Picker key not set.';
             }
             feedback.className = 'text-xs min-h-[1rem] text-emerald-600 dark:text-emerald-400';
+        }
+        if (typeof window.setCredentialConnectionVisual === 'function') {
+            window.setCredentialConnectionVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'connected', '연결됨: Google Docs OAuth Client ID');
+            window.setCredentialConnectionVisual(
+                'gdocs-picker-api-key',
+                'gdocs-picker-api-key-feedback',
+                pickerInfo.valid ? 'connected' : 'neutral',
+                pickerInfo.valid ? '연결됨: Google Picker API Key' : '선택 항목 · Picker API Key 미사용'
+            );
         }
         if (typeof showToast === 'function') showToast('DocSync settings saved.');
     }
@@ -1032,6 +1056,10 @@
 
         const pickerFeedback = document.getElementById('gdocs-picker-api-key-feedback');
         if (pickerFeedback) pickerFeedback.textContent = '';
+        if (typeof window.setCredentialConnectionVisual === 'function') {
+            window.setCredentialConnectionVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'neutral');
+            window.setCredentialConnectionVisual('gdocs-picker-api-key', 'gdocs-picker-api-key-feedback', 'neutral');
+        }
 
         if (window.ShareModule && typeof window.ShareModule.resetShareSettingsUI === 'function') {
             window.ShareModule.resetShareSettingsUI();
@@ -1060,6 +1088,16 @@
         if (feedback) feedback.textContent = '';
 
         validateGoogleDocsCredentialInputsUI();
+        if (typeof window.setCredentialConnectionVisual === 'function') {
+            const storedClient = String(settings && settings.googleDocsClientId || '').trim();
+            const storedPicker = String(settings && settings.googlePickerApiKey || '').trim();
+            if (storedClient && isValidGoogleOAuthClientId(storedClient)) {
+                window.setCredentialConnectionVisual('gdocs-client-id', 'gdocs-client-id-feedback', 'connected', '연결됨: 저장된 Google Docs OAuth Client ID');
+            }
+            if (storedPicker && isValidGoogleCloudApiKey(storedPicker)) {
+                window.setCredentialConnectionVisual('gdocs-picker-api-key', 'gdocs-picker-api-key-feedback', 'connected', '연결됨: 저장된 Google Picker API Key');
+            }
+        }
         applyToDocsVisibility(settings || { googleDocsUseEnabled: false, toDocsVisible: false, docSyncVisible: false, shareSites: DEFAULT_SHARE_SITES.slice() });
     }
 

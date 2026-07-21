@@ -4246,14 +4246,21 @@ function toggleMermaidEditorFullscreen() {
 function insertMermaidBlockFromExternal(codeText) {
     const raw = String(codeText || '').trim();
     if (!raw) {
-        showToast('?쎌엯??Mermaid 肄붾뱶媛 鍮꾩뼱 ?덉뒿?덈떎.');
+        // 한글 복원: "입력된 Mermaid 코드가 비어 있습니다."
+        showToast('입력된 Mermaid 코드가 비어 있습니다.');
         return;
     }
     if (!isEditMode) toggleMode('edit');
     if (!editorTextarea) return;
 
-    const start = typeof editorTextarea.selectionStart === 'number' ? editorTextarea.selectionStart : editorTextarea.value.length;
-    const end = typeof editorTextarea.selectionEnd === 'number' ? editorTextarea.selectionEnd : start;
+    const start =
+        typeof editorTextarea.selectionStart === 'number'
+            ? editorTextarea.selectionStart
+            : editorTextarea.value.length;
+    const end =
+        typeof editorTextarea.selectionEnd === 'number'
+            ? editorTextarea.selectionEnd
+            : start;
     const replacement = '```mermaid\n' + raw + '\n```\n';
 
     editorTextarea.focus();
@@ -4262,8 +4269,11 @@ function insertMermaidBlockFromExternal(codeText) {
     currentMarkdown = editorTextarea.value;
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
-    showToast('Mermaid 肄붾뱶媛 臾몄꽌???쎌엯?섏뿀?듬땲??');
+
+    // 한글 복원: "Mermaid 코드가 문서에 삽입되었습니다."
+    showToast('Mermaid 코드가 문서에 삽입되었습니다.');
 }
+
 
 window.addEventListener('message', function (event) {
     const data = event && event.data ? event.data : null;
@@ -4592,6 +4602,48 @@ function isValidGoogleAiApiKey(key) {
     return /^AIza[0-9A-Za-z_-]{35,120}$/.test(k);
 }
 
+function credentialFingerprint(value) {
+    const text = String(value || '').trim();
+    return text ? text.length + ':' + text.slice(-10) : '';
+}
+
+function toggleCredentialVisibility(inputId, button) {
+    const input = document.getElementById(inputId);
+    if (!input) return false;
+    const visible = input.type === 'password';
+    input.type = visible ? 'text' : 'password';
+    const control = button || document.querySelector('[onclick*="' + inputId + '"]');
+    if (control) {
+        control.setAttribute('aria-pressed', visible ? 'true' : 'false');
+        control.setAttribute('aria-label', visible ? 'API 키 숨기기' : 'API 키 보기');
+        control.title = visible ? 'API 키 숨기기' : 'API 키 보기';
+    }
+    input.focus({ preventScroll: true });
+    try { input.setSelectionRange(input.value.length, input.value.length); } catch (_) {}
+    return visible;
+}
+
+function setCredentialConnectionVisual(inputId, statusId, state, message) {
+    const input = inputId ? document.getElementById(inputId) : null;
+    const status = statusId ? document.getElementById(statusId) : null;
+    const normalized = String(state || 'neutral').toLowerCase();
+    if (input) {
+        input.classList.remove('settings-credential-connected', 'settings-credential-checking', 'settings-credential-error');
+        if (normalized === 'connected' && String(input.value || '').trim()) input.classList.add('settings-credential-connected');
+        else if (normalized === 'checking') input.classList.add('settings-credential-checking');
+        else if (normalized === 'error') input.classList.add('settings-credential-error');
+    }
+    if (status) {
+        status.classList.remove('settings-credential-connected-status', 'settings-credential-checking-status', 'settings-credential-error-status');
+        if (normalized === 'connected') status.classList.add('settings-credential-connected-status');
+        else if (normalized === 'checking') status.classList.add('settings-credential-checking-status');
+        else if (normalized === 'error') status.classList.add('settings-credential-error-status');
+        if (message != null) status.textContent = String(message);
+    }
+}
+
+window.setCredentialConnectionVisual = setCredentialConnectionVisual;
+
 function validateApiKeyInputUI() {
     const input = document.getElementById('ai-api-key');
     const fb = document.getElementById('ai-api-key-feedback');
@@ -4604,19 +4656,73 @@ function validateApiKeyInputUI() {
     if (!key) {
         input.className = neutral + ' ai-api-key-input';
         if (fb) { fb.textContent = ''; fb.className = 'text-xs mt-1 min-h-[1.25rem]'; }
+        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'neutral');
         return;
     }
     if (isValidGoogleAiApiKey(key)) {
         input.className = ok + ' ai-api-key-input';
-        if (fb) {
-            fb.textContent = 'Valid API key format.';
+        const verified = localStorage.getItem('ss_gemini_api_key_verified') === credentialFingerprint(key)
+            && localStorage.getItem('ss_gemini_api_key') === key;
+        if (fb && !verified) {
+            fb.textContent = 'API key 형식이 올바릅니다. 저장하면 연결을 확인합니다.';
             fb.className = 'text-xs mt-1 text-green-600 dark:text-green-400 min-h-[1.25rem]';
         }
+        setCredentialConnectionVisual(
+            'ai-api-key',
+            'ai-api-key-feedback',
+            verified ? 'connected' : 'neutral',
+            verified ? '연결됨: AI Studio API Key 확인 완료' : null
+        );
     } else {
         input.className = bad + ' ai-api-key-input';
         if (fb) {
             fb.textContent = 'Invalid key format. It should usually start with AIza...';
             fb.className = 'text-xs mt-1 text-red-600 dark:text-red-400 min-h-[1.25rem]';
+        }
+        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error');
+    }
+}
+
+let aiStudioConnectionCheckKey = '';
+let aiStudioConnectionCheckPromise = null;
+
+async function verifyAIStudioApiKeyConnection(apiKey) {
+    const key = String(apiKey || '').trim();
+    if (!isValidGoogleAiApiKey(key)) throw new Error('AI Studio API Key 형식이 올바르지 않습니다.');
+    if (aiStudioConnectionCheckPromise && aiStudioConnectionCheckKey === key) return aiStudioConnectionCheckPromise;
+    setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'checking', 'AI Studio 연결을 확인하는 중...');
+    const request = (async function () {
+        try {
+            const models = await listAIStudioTextModels(key);
+            saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, models);
+            localStorage.setItem('ss_gemini_api_key', key);
+            localStorage.setItem('ss_gemini_api_key_verified', credentialFingerprint(key));
+            const currentInput = document.getElementById('ai-api-key');
+            if (!currentInput || String(currentInput.value || '').trim() === key) {
+                setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · Gemini 모델 ' + models.length + '개 확인');
+            } else {
+                validateApiKeyInputUI();
+            }
+            return models;
+        } catch (error) {
+            localStorage.removeItem('ss_gemini_api_key_verified');
+            const currentInput = document.getElementById('ai-api-key');
+            if (!currentInput || String(currentInput.value || '').trim() === key) {
+                setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error', '저장됨 · 연결 확인 실패: ' + (error && error.message ? error.message : error));
+            } else {
+                validateApiKeyInputUI();
+            }
+            throw error;
+        }
+    })();
+    aiStudioConnectionCheckKey = key;
+    aiStudioConnectionCheckPromise = request;
+    try {
+        return await request;
+    } finally {
+        if (aiStudioConnectionCheckPromise === request) {
+            aiStudioConnectionCheckKey = '';
+            aiStudioConnectionCheckPromise = null;
         }
     }
 }
@@ -4631,8 +4737,19 @@ async function saveApiKey() {
     }
     await setAiSettings({ apiKey: key });
     if (key) localStorage.setItem('ss_gemini_api_key', key);
-    else localStorage.removeItem('ss_gemini_api_key');
-    showToast("API key saved.");
+    else {
+        localStorage.removeItem('ss_gemini_api_key');
+        localStorage.removeItem('ss_gemini_api_key_verified');
+        validateApiKeyInputUI();
+        showToast('AI Studio API key를 비웠습니다.');
+        return;
+    }
+    try {
+        await verifyAIStudioApiKeyConnection(key);
+        showToast('AI Studio API key가 저장되고 연결되었습니다.');
+    } catch (error) {
+        showToast('API key는 저장했지만 AI Studio 연결을 확인하지 못했습니다.');
+    }
 }
 
 function getImgbbApiKey() {
@@ -5122,9 +5239,11 @@ async function toggleViewModeEditSetting(enabled) {
 
 async function saveImgbbApiKey(key) {
     const value = String(key || '').trim();
+    const previous = String(localStorage.getItem('ss_imgbb_api_key') || '').trim();
     await setAiSettings({ imgbbApiKey: value });
     if (value) localStorage.setItem('ss_imgbb_api_key', value);
     else localStorage.removeItem('ss_imgbb_api_key');
+    if (!value || value !== previous) localStorage.removeItem('ss_imgbb_api_key_verified');
     syncImgbbApiKeyInputs(value);
     return value;
 }
@@ -6319,11 +6438,9 @@ async function toggleImageUploadSection() {
 
 async function saveImgbbApiKeyFromModal() {
     const input = document.getElementById('ai-imgbb-api-key');
-    const feedback = document.getElementById('ai-imgbb-feedback');
     const value = (input && input.value) ? input.value.trim() : '';
     await saveImgbbApiKey(value);
-    if (feedback) feedback.textContent = value ? 'imgBB API key saved.' : 'imgBB API key is empty.';
-    showToast(value ? 'imgBB API key saved.' : 'imgBB API key cleared.');
+    showToast(value ? 'imgBB API key가 저장되어 연결 준비가 완료되었습니다.' : 'imgBB API key를 비웠습니다.');
 }
 
 function syncImgbbApiKeyInputs(value) {
@@ -6332,6 +6449,27 @@ function syncImgbbApiKeyInputs(value) {
     if (settingsInput && settingsInput.value !== v) settingsInput.value = v;
     const sspInput = document.getElementById('ssp-imgbb-api-key');
     if (sspInput && sspInput.value !== v) sspInput.value = v;
+    const uploadVerified = !!v && localStorage.getItem('ss_imgbb_api_key_verified') === credentialFingerprint(v);
+    setCredentialConnectionVisual(
+        'ai-imgbb-api-key',
+        'ai-imgbb-feedback',
+        v ? 'connected' : 'neutral',
+        v ? (uploadVerified ? '연결됨: imgBB 업로드 확인 완료' : '연결됨: imgBB API Key 저장 완료') : 'imgBB API Key가 저장되지 않았습니다.'
+    );
+}
+
+function updateImgbbApiKeyConnectionUI() {
+    const input = document.getElementById('ai-imgbb-api-key');
+    const value = String(input && input.value || '').trim();
+    const saved = String(getImgbbApiKey() || '').trim();
+    const unchanged = !!value && value === saved;
+    const uploadVerified = unchanged && localStorage.getItem('ss_imgbb_api_key_verified') === credentialFingerprint(value);
+    setCredentialConnectionVisual(
+        'ai-imgbb-api-key',
+        'ai-imgbb-feedback',
+        unchanged ? 'connected' : 'neutral',
+        unchanged ? (uploadVerified ? '연결됨: imgBB 업로드 확인 완료' : '연결됨: imgBB API Key 저장 완료') : (value ? '변경된 API Key를 저장해 주세요.' : 'imgBB API Key가 저장되지 않았습니다.')
+    );
 }
 
 function setAiPasswordVerifiedUI(state) {
@@ -6342,18 +6480,21 @@ function setAiPasswordVerifiedUI(state) {
     if (state === 'ok') {
         input.className = base + ' border-green-500 dark:border-green-500 ring-2 ring-green-500/40';
         if (fb) {
-            fb.textContent = 'Verification saved. You can now choose AI features below.';
+            fb.textContent = '연결됨: AI 기능 인증 완료';
             fb.className = 'text-xs text-green-600 dark:text-green-400 min-h-[1.25rem]';
         }
+        setCredentialConnectionVisual('ai-password-input', 'ai-password-feedback', 'connected');
     } else if (state === 'bad') {
         input.className = base + ' border-red-500 dark:border-red-500 ring-2 ring-red-500/40';
         if (fb) {
             fb.textContent = 'Verification code is invalid. Please try again.';
             fb.className = 'text-xs text-red-600 dark:text-red-400 min-h-[1.25rem]';
         }
+        setCredentialConnectionVisual('ai-password-input', 'ai-password-feedback', 'error');
     } else {
         input.className = base + ' border-slate-200 dark:border-slate-600';
         if (fb) { fb.textContent = ''; fb.className = 'text-xs min-h-[1.25rem]'; }
+        setCredentialConnectionVisual('ai-password-input', 'ai-password-feedback', 'neutral');
     }
 }
 
@@ -7348,21 +7489,29 @@ function renderSettingsLMStudioLoadedModels(models, errorMessage) {
     if (errorMessage) {
         current.textContent = 'LM Studio 연결 또는 로드 모델 확인 필요';
         current.className = 'mt-2 px-2 py-2 rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-sm font-semibold text-red-700 dark:text-red-300 break-all';
+        current.classList.remove('settings-connection-glow');
         detail.textContent = errorMessage;
         if (state) {
             state.textContent = '확인 필요';
             state.className = 'px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 text-[10px]';
+            state.classList.remove('settings-connection-glow');
         }
+        const lmKeyInput = document.getElementById('settings-lmstudio-api-key');
+        setCredentialConnectionVisual('settings-lmstudio-api-key', 'settings-lmstudio-api-key-feedback', lmKeyInput && lmKeyInput.value.trim() ? 'error' : 'neutral', lmKeyInput && lmKeyInput.value.trim() ? 'API Key 연결 확인 실패' : '선택 항목 · API Key 미사용');
         return;
     }
     current.className = 'mt-2 px-2 py-2 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-800 dark:text-slate-100 break-all';
     if (!loaded.length) {
         current.textContent = '현재 로드된 LLM 없음';
+        current.classList.remove('settings-connection-glow');
         detail.textContent = 'LM Studio의 Developer → Local Server에서 모델을 Load한 뒤 다시 확인하세요.';
         if (state) {
             state.textContent = '로드 없음';
             state.className = 'px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px]';
+            state.classList.remove('settings-connection-glow');
         }
+        const lmKeyInput = document.getElementById('settings-lmstudio-api-key');
+        setCredentialConnectionVisual('settings-lmstudio-api-key', 'settings-lmstudio-api-key-feedback', 'neutral', lmKeyInput && lmKeyInput.value.trim() ? 'API Key 저장됨 · 모델 연결 확인 필요' : '선택 항목 · API Key 미사용');
         return;
     }
     const primary = loaded[0];
@@ -7375,7 +7524,16 @@ function renderSettingsLMStudioLoadedModels(models, errorMessage) {
     if (state) {
         state.textContent = '로드됨 · 자동 사용';
         state.className = 'px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px]';
+        state.classList.add('settings-connection-glow');
     }
+    current.classList.add('settings-connection-glow');
+    const lmKeyInput = document.getElementById('settings-lmstudio-api-key');
+    setCredentialConnectionVisual(
+        'settings-lmstudio-api-key',
+        'settings-lmstudio-api-key-feedback',
+        'connected',
+        lmKeyInput && lmKeyInput.value.trim() ? '연결됨: LM Studio API Key 확인 완료' : '연결됨: LM Studio · API Key 미사용'
+    );
 }
 
 function migrateLegacyScholarAIProviderSettings(legacySettings) {
@@ -7422,6 +7580,12 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
 function saveScholarAIProviderSettingsFromUI(showStatus) {
     try {
         const config = getScholarAIProviderRuntime().saveLMStudioConfig(readScholarAIProviderSettingsForm());
+        setCredentialConnectionVisual(
+            'settings-lmstudio-api-key',
+            'settings-lmstudio-api-key-feedback',
+            'neutral',
+            config.apiKey ? 'API Key 저장됨 · 연결 확인 필요' : '선택 항목 · API Key 미사용'
+        );
         if (showStatus) setSettingsScholarAIStatus('LM Studio 설정을 저장했습니다.', false);
         return config;
     } catch (error) {
@@ -7468,13 +7632,36 @@ async function loadSettingsGeminiModels() {
     const keyInput = document.getElementById('ai-api-key');
     const key = keyInput && keyInput.value ? keyInput.value.trim() : '';
     setSettingsScholarAIStatus('Gemini 모델을 불러오는 중...', false);
+    setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'checking', 'AI Studio 연결을 확인하는 중...');
     try {
         const models = await listAIStudioTextModels(key);
         saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, models);
+        localStorage.setItem('ss_gemini_api_key', key);
+        localStorage.setItem('ss_gemini_api_key_verified', credentialFingerprint(key));
+        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · Gemini 모델 ' + models.length + '개 확인');
         setSettingsScholarAIStatus('Gemini 텍스트 모델 ' + models.length + '개를 불러왔습니다.', false);
     } catch (error) {
+        localStorage.removeItem('ss_gemini_api_key_verified');
+        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error', '연결 확인 실패: ' + (error && error.message ? error.message : error));
         setSettingsScholarAIStatus('Gemini 모델 조회 실패: ' + (error && error.message ? error.message : error), true);
     }
+}
+
+function updateLMStudioApiKeyConnectionUI() {
+    const input = document.getElementById('settings-lmstudio-api-key');
+    const value = String(input && input.value || '').trim();
+    let saved = '';
+    try { saved = String(window.LocalAI && window.LocalAI.loadConfig(localStorage).apiKey || '').trim(); } catch (_) {}
+    const loaded = readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY).length > 0;
+    const connected = value === saved && loaded;
+    setCredentialConnectionVisual(
+        'settings-lmstudio-api-key',
+        'settings-lmstudio-api-key-feedback',
+        connected ? 'connected' : 'neutral',
+        connected
+            ? (value ? '연결됨: LM Studio API Key 확인 완료' : '연결됨: LM Studio · API Key 미사용')
+            : (value ? '변경된 API Key를 저장하고 연결을 확인해 주세요.' : '선택 항목 · API Key 미사용')
+    );
 }
 
 async function callAIStudioText(prompt, systemInstruction, useSearch, modelOverride, signal) {
@@ -7631,7 +7818,7 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     const imageModel = isAIChatGeminiImageModel(model);
     const generationConfig = imageModel
         ? { responseModalities: ['TEXT', 'IMAGE'] }
-        : { maxOutputTokens: reasoningMode ? 8192 : (academicSearch ? 4096 : 1024) };
+        : { maxOutputTokens: reasoningMode ? 8192 : (academicSearch ? 2048 : 1024) };
     if (!imageModel && /^gemini-3/i.test(model)) {
         generationConfig.thinkingConfig = { thinkingLevel: reasoningMode ? 'high' : 'low' };
     } else if (!imageModel && /^gemini-2\.5/i.test(model)) {
@@ -7695,7 +7882,7 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     if (!text && !reasoning && !images.length) throw new Error('AI Studio 응답이 비어 있습니다.');
     if (!text && images.length) text = '요청한 이미지를 생성했습니다.';
     else if (!text) text = '모델이 추론 내용만 반환하고 최종 답변을 생성하지 못했습니다. 출력 토큰 설정을 확인하세요.';
-    return { provider: 'aistudio', model: model, text: text, reasoning: reasoning, images: images };
+    return { provider: 'aistudio', model: model, text: text, reasoning: reasoning, images: images, finishReason: candidate.finishReason || '' };
 }
 
 function insertAIChatTextIntoDocument(text, mode) {
@@ -7703,7 +7890,7 @@ function insertAIChatTextIntoDocument(text, mode) {
     if (!value) throw new Error('문서에 삽입할 질문과 답변이 없습니다.');
     if (!editorTextarea) throw new Error('문서 편집기를 찾지 못했습니다.');
     if (!isEditMode) toggleMode('edit');
-    const insertMode = ['replace', 'cursor', 'line-below'].includes(mode) ? mode : 'cursor';
+    const insertMode = ['replace', 'cursor', 'line-below', 'document-end'].includes(mode) ? mode : 'cursor';
     const raw = String(editorTextarea.value || '');
     const rawSelectionStart = Number(editorTextarea.selectionStart);
     const rawSelectionEnd = Number(editorTextarea.selectionEnd);
@@ -7714,6 +7901,8 @@ function insertAIChatTextIntoDocument(text, mode) {
     } else if (insertMode === 'line-below') {
         const lineEnd = raw.indexOf('\n', start);
         start = end = lineEnd >= 0 ? lineEnd : raw.length;
+    } else if (insertMode === 'document-end') {
+        start = end = raw.length;
     }
     const before = raw.slice(0, start);
     const after = raw.slice(end);
@@ -7725,6 +7914,8 @@ function insertAIChatTextIntoDocument(text, mode) {
     } else if (insertMode === 'line-below') {
         prefix = before && !before.endsWith('\n') ? '\n' : '';
         suffix = after && !after.startsWith('\n') ? '\n' : '';
+    } else if (insertMode === 'document-end') {
+        prefix = before && !/\n\s*\n$/.test(before) ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
     }
     const insertion = prefix + value + suffix;
     editorTextarea.focus();
@@ -7741,6 +7932,57 @@ function insertAIChatTextIntoDocument(text, mode) {
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
     return true;
+}
+
+function getAIChatGeneratedImageDataUrl(image) {
+    if (!image || !image.data) throw new Error('생성 이미지 데이터가 없습니다.');
+    const mimeType = String(image.mimeType || 'image/png');
+    return 'data:' + mimeType + ';base64,' + String(image.data);
+}
+
+function getAIChatGeneratedImageFileName(image, index) {
+    const mimeType = String(image && image.mimeType || 'image/png');
+    const extension = mimeType.includes('jpeg') ? 'jpg' : ((mimeType.split('/')[1] || 'png').replace(/[^a-z0-9]/gi, '') || 'png');
+    return 'ai-chat-image-' + Date.now() + '-' + (Number(index) + 1) + '.' + extension;
+}
+
+async function saveAIChatGeneratedImageForDocument(image, index) {
+    if (!db) throw new Error('내부 이미지 데이터베이스가 준비되지 않았습니다.');
+    if (!window.ImageDB || typeof window.ImageDB.saveDataUrl !== 'function') {
+        throw new Error('내부 이미지 저장 모듈이 준비되지 않았습니다.');
+    }
+    const saved = await window.ImageDB.saveDataUrl(db, getAIChatGeneratedImageDataUrl(image), {
+        name: getAIChatGeneratedImageFileName(image, index)
+    });
+    if (!saved || !saved.url) throw new Error('내부 이미지 주소를 만들지 못했습니다.');
+    return String(saved.url);
+}
+
+async function uploadAIChatGeneratedImageToImgbb(image, index) {
+    getAIChatGeneratedImageDataUrl(image);
+    const apiKey = String(getImgbbApiKey() || '').trim();
+    if (!apiKey) throw new Error('imgBB API key가 없습니다. 설정의 이미지 업로드에서 API key를 저장해 주세요.');
+    const form = new FormData();
+    form.append('image', String(image && image.data || ''));
+    form.append('name', getAIChatGeneratedImageFileName(image, index).replace(/\.[^.]+$/, ''));
+    const response = await fetch('https://api.imgbb.com/1/upload?key=' + encodeURIComponent(apiKey), {
+        method: 'POST',
+        body: form
+    });
+    let payload = {};
+    try { payload = await response.json(); } catch (e) {}
+    if (!response.ok || !payload || payload.success === false) {
+        const detail = payload && payload.error && payload.error.message
+            ? payload.error.message
+            : 'HTTP ' + response.status;
+        throw new Error('imgBB 업로드 실패: ' + detail);
+    }
+    const data = payload.data || {};
+    const directUrl = String(data.url || (data.image && data.image.url) || data.display_url || '').trim();
+    if (!/^https?:\/\//i.test(directUrl)) throw new Error('imgBB가 유효한 이미지 주소를 반환하지 않았습니다.');
+    localStorage.setItem('ss_imgbb_api_key_verified', credentialFingerprint(apiKey));
+    setCredentialConnectionVisual('ai-imgbb-api-key', 'ai-imgbb-feedback', 'connected', '연결됨: imgBB 업로드 확인 완료');
+    return directUrl;
 }
 
 window.AIChatBridge = Object.freeze({
@@ -7768,6 +8010,12 @@ window.AIChatBridge = Object.freeze({
     insertIntoDocument: function (text, mode) {
         return insertAIChatTextIntoDocument(text, mode);
     },
+    saveImageForDocument: function (image, index) {
+        return saveAIChatGeneratedImageForDocument(image, index);
+    },
+    uploadImageToImgbb: function (image, index) {
+        return uploadAIChatGeneratedImageToImgbb(image, index);
+    },
     complete: async function (request) {
         request = request || {};
         if (aiChatAbortController) aiChatAbortController.abort();
@@ -7775,7 +8023,7 @@ window.AIChatBridge = Object.freeze({
         aiChatAbortController = controller;
         try {
             if (request.provider === 'aistudio') {
-                return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.mode, request.academicSearch);
+                return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch);
             }
             const synced = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
             if (controller.signal.aborted) {
@@ -7788,14 +8036,24 @@ window.AIChatBridge = Object.freeze({
             const messages = normalizeAIChatMessages(request.messages);
             const lastUserIndex = messages.map(function (message) { return message.role; }).lastIndexOf('user');
             if (lastUserIndex < 0) throw new Error('전송할 사용자 질문이 없습니다.');
-            const history = messages.slice(0, lastUserIndex).map(function (message) {
+            // Academic search is a self-contained retrieval request. On small local
+            // context windows, old conversation text competes with the abstracts and
+            // can make LM Studio reject the prompt before generation starts.
+            const historyMessages = request.academicSearch ? [] : messages.slice(0, lastUserIndex);
+            const history = historyMessages.map(function (message) {
                 return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
             }).join('\n\n');
-            const reasoningMode = request.mode === 'reasoning';
-            const modeInstruction = request.academicSearch
+            const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true;
+            const continuationMode = request.continuation === true;
+            const splitAcademicMode = request.splitAcademicResponse === true;
+            const modeInstruction = continuationMode
+                ? '이전 응답에서 아직 작성하지 않은 본문만 이어서 작성하세요. 질문·체크리스트·계획·작업 지시·모델의 생각·이미 작성한 문장은 출력하지 마세요.'
+                : splitAcademicMode
+                ? '학술 답변은 작은 컨텍스트에 맞춰 여러 파트로 나눕니다. 시스템 지시가 지정한 현재 파트만 충분히 상세하게 작성하고, 이전·다음 파트나 체크리스트·추론·계획은 출력하지 마세요. 완성된 한국어 문장으로 끝내세요.'
+                : request.academicSearch
                 ? (reasoningMode
-                    ? '제공된 학술 초록 근거를 충분히 비교·검토하여 주장 중심의 상세한 학술 종합을 작성하세요.'
-                    : '제공된 학술 초록 근거에서 핵심 주장, 같은 결과, 다른 결과를 간결한 학술 종합으로 작성하세요.')
+                    ? '제공된 학술 초록 근거를 충분히 비교·검토하되 필수 항목을 먼저 모두 완결하고 남은 범위에서 상세화하세요. 문장 중간에서 끝내지 마세요.'
+                    : '제공된 학술 초록 근거에서 핵심 주장, 같은 결과, 다른 결과를 간결하게 모두 완결하세요. 세부 내용보다 전체 항목의 완성을 우선하고 문장 중간에서 끝내지 마세요.')
                 : (reasoningMode
                     ? '충분히 검토하고 논리적으로 설명하세요. 필요한 경우 상세하고 긴 답변을 작성하세요.'
                     : '내부 추론 과정을 생성하지 말고 핵심부터 즉시 답하세요. 특별한 요청이 없으면 5문장 이내로 간결하게 답하세요.');
@@ -7804,21 +8062,31 @@ window.AIChatBridge = Object.freeze({
                 input: messages[lastUserIndex].content,
                 systemInstruction: systemPrompt,
                 model: synced.model,
-                reasoning: reasoningMode ? 'on' : 'off',
-                maxTokens: reasoningMode
-                    ? Math.min(3072, Math.max(1024, Number(config.maxTokens) || 3072))
+                reasoning: request.academicSearch || continuationMode || splitAcademicMode ? 'off' : (reasoningMode ? 'on' : 'off'),
+                maxTokens: splitAcademicMode
+                    ? Math.min(1400, Math.max(900, Number(config.maxTokens) || 1200))
+                    : continuationMode
+                    ? Math.min(3000, Math.max(1800, Number(config.maxTokens) || 2200))
+                    : reasoningMode
+                    ? (request.academicSearch
+                        ? Math.min(2304, Math.max(1024, Number(config.maxTokens) || 2304))
+                        : Math.min(3072, Math.max(1024, Number(config.maxTokens) || 3072)))
                     : (request.academicSearch ? Math.min(2048, Math.max(1024, Number(config.maxTokens) || 2048)) : 384),
                 timeoutMs: reasoningMode
                     ? Math.max(300000, Number(config.timeoutMs) || 0)
                     : (request.academicSearch ? Math.max(120000, Number(config.timeoutMs) || 0) : Math.min(60000, Number(config.timeoutMs) || 60000)),
-                store: false,
+                store: splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),
+                previousResponseId: request.previousResponseId || undefined,
                 signal: controller.signal
             });
             return {
                 provider: 'lmstudio',
                 model: result.model || synced.model,
                 text: result.text || '',
-                reasoning: result.reasoning || ''
+                reasoning: result.reasoning || '',
+                finishReason: result.finishReason || '',
+                usage: result.usage || null,
+                responseId: result.responseId || null
             };
         } finally {
             if (aiChatAbortController === controller) aiChatAbortController = null;
@@ -8042,7 +8310,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260721-6';
+    const aiSidebarScriptVersion = '20260721-7';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -8312,6 +8580,7 @@ async function loadAiSettingsToUI() {
     }
     const apiInput = document.getElementById('ai-api-key');
     if (apiInput && settings.apiKey) apiInput.value = settings.apiKey;
+    if (settings.apiKey) localStorage.setItem('ss_gemini_api_key', settings.apiKey);
     if (settings.imgbbApiKey) localStorage.setItem('ss_imgbb_api_key', settings.imgbbApiKey);
     else localStorage.removeItem('ss_imgbb_api_key');
     const imageCheck = document.getElementById('image-upload-enabled');
@@ -8355,6 +8624,10 @@ async function loadAiSettingsToUI() {
     }
     syncImgbbApiKeyInputs(settings.imgbbApiKey || '');
     if (typeof validateApiKeyInputUI === 'function') validateApiKeyInputUI();
+    if (settings.apiKey && isValidGoogleAiApiKey(settings.apiKey)
+        && localStorage.getItem('ss_gemini_api_key_verified') !== credentialFingerprint(settings.apiKey)) {
+        verifyAIStudioApiKeyConnection(settings.apiKey).catch(function () {});
+    }
     const useCheck = document.getElementById('ai-use-checkbox');
     const section = document.getElementById('ai-password-section');
     if (useCheck) {
@@ -8369,8 +8642,9 @@ async function loadAiSettingsToUI() {
     const fb = document.getElementById('ai-password-feedback');
     if (fb) {
         if (verified) {
-            fb.textContent = 'Already verified. You can use AI features below.';
+            fb.textContent = '연결됨: AI 기능 인증 완료';
             fb.className = 'text-xs text-emerald-700 dark:text-emerald-400 min-h-[1.25rem]';
+            setCredentialConnectionVisual('ai-password-input', 'ai-password-feedback', 'connected');
         } else {
             fb.textContent = '';
             fb.className = 'text-xs min-h-[1.25rem]';
@@ -8954,6 +9228,7 @@ window.toggleSelectedOnlyMergeView = toggleSelectedOnlyMergeView;
 window.exportZip = exportZip;
 window.exportMpv = exportMpv;
 window.saveApiKey = saveApiKey;
+window.toggleCredentialVisibility = toggleCredentialVisibility;
 window.toggleAiPasswordSection = toggleAiPasswordSection;
 window.toggleAiUseFold = toggleAiUseFold;
 window.toggleShareSettingsFold = toggleShareSettingsFold;

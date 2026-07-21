@@ -89,6 +89,13 @@
             wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400';
             dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-slate-400';
         }
+        const tokenInput = document.getElementById('github-token-input');
+        wrap.classList.toggle('settings-connection-glow', s === 'ok');
+        dot.classList.toggle('settings-connected-dot', s === 'ok');
+        if (tokenInput) {
+            tokenInput.classList.toggle('settings-credential-connected', s === 'ok' && !!String(tokenInput.value || '').trim());
+            tokenInput.classList.toggle('settings-credential-error', s === 'error' && !!String(tokenInput.value || '').trim());
+        }
     }
 
     function getGithubConfigFromFields() {
@@ -109,6 +116,19 @@
             repo: parts.length >= 2 ? (parts[0] + '/' + parts[1]) : '',
             branch: String(branchEl && branchEl.value ? branchEl.value : 'main').trim() || 'main'
         };
+    }
+
+    function bindGithubConnectionDirtyState() {
+        ['github-token-input', 'github-repo-input', 'github-branch-input'].forEach(function (id) {
+            const input = document.getElementById(id);
+            if (!input || input._githubConnectionDirtyBound) return;
+            input._githubConnectionDirtyBound = true;
+            input.addEventListener('input', function () {
+                githubConnectionCheckKey = '';
+                githubConnectionCheckPromise = null;
+                setGithubConnectionStatus('idle', '설정이 변경되었습니다. 연결 확인을 다시 실행하세요.');
+            });
+        });
     }
 
     async function checkGithubConnectionFromModal() {
@@ -168,11 +188,13 @@
             document.body.appendChild(modal);
         }
 
+        if (wrap) bindGithubConnectionDirtyState();
         return !!wrap;
     }
 
     function ensureUiReady() {
         if (document.getElementById('github-settings-wrap') && document.getElementById('github-create-repo-modal')) {
+            bindGithubConnectionDirtyState();
             return Promise.resolve(true);
         }
         if (uiReadyPromise) return uiReadyPromise;

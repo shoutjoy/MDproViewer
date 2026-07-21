@@ -881,6 +881,13 @@
     if (!statusEl) return;
     statusEl.textContent = message || '';
     statusEl.style.color = isError ? '#dc2626' : '#64748b';
+    if (typeof window.setCredentialConnectionVisual === 'function') {
+      var value = String(message || '');
+      var state = isError
+        ? 'error'
+        : (/Uploading/i.test(value) ? 'checking' : (/(?:saved|loaded|ready|completed|연결됨)/i.test(value) ? 'connected' : 'neutral'));
+      window.setCredentialConnectionVisual('ssp-imgbb-api-key', 'ssp-imgbb-settings-status', state, state === 'connected' ? '연결됨: imgBB API Key 사용 가능' : value);
+    }
   }
   function escapeHtml(value) {
     return String(value || '')

@@ -557,6 +557,8 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
           text: text || '모델이 추론 내용만 반환하고 최종 답변을 생성하지 못했습니다. 출력 토큰 설정을 늘려 다시 시도하세요.',
           reasoning: reasoning,
           usage: data.stats || null,
+          finishReason: data.finish_reason || data.stop_reason
+            || (data.stats && (data.stats.finish_reason || data.stats.stop_reason)) || '',
           responseId: data.response_id || null,
           raw: options.includeRaw ? data : undefined
         };
