@@ -6467,6 +6467,7 @@ async function persistAiSettingsFromModal() {
     viewModeEditEnabled = viewModeEditEnabledValue;
     setViewModeEditEnabledToLocal(viewModeEditEnabledValue);
     applyEditToolsVisibilityByMode();
+    saveScholarAIProviderSettingsFromUI(false);
     if (!db) return;
     const s = await getAiSettings();
     const verified = !!(s && s.verified);
@@ -6562,7 +6563,19 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     STORAGE_SOURCE_TAB_KEY,
     'md_viewer_code_bg',
     'md_viewer_code_text',
-    'ss_imgbb_api_key'
+    'ss_imgbb_api_key',
+    'local_ai_lmstudio_settings_v1',
+    'ss_scholar_ai_provider',
+    'ss_scholar_ai_model',
+    'ss_scholar_ai_gemini_models_v1',
+    'ss_scholar_ai_lmstudio_models_v1',
+    'ss_viewer_scholar_ai_ui_font_size',
+    'ss_ai_chat_enabled',
+    'ss_ai_chat_provider',
+    'ss_ai_chat_gemini_model',
+    'ss_ai_chat_gemini_models_v1',
+    'ss_ai_chat_response_mode',
+    'ss_ai_chat_layout'
 ];
 
 function buildSettingsExportPayload(aiSettings) {
@@ -7278,6 +7291,543 @@ if (!window.__aiSidebarResizeBound) {
 }
 
 let sidebarAILoaded = false;
+let scholarAIProviderRuntime = null;
+const SCHOLAR_AI_GEMINI_MODELS_KEY = 'ss_scholar_ai_gemini_models_v1';
+const SCHOLAR_AI_LM_MODELS_KEY = 'ss_scholar_ai_lmstudio_models_v1';
+
+function readStoredModelList(key) {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+        return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+    } catch (_) { return []; }
+}
+
+function saveStoredModelList(key, models) {
+    const values = Array.from(new Set((Array.isArray(models) ? models : []).map(String).filter(Boolean)));
+    localStorage.setItem(key, JSON.stringify(values));
+    return values;
+}
+
+function setSettingsScholarAIStatus(message, isError) {
+    const status = document.getElementById('settings-scholar-ai-provider-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.className = 'text-xs min-h-[1.25rem] ' + (isError
+        ? 'text-red-600 dark:text-red-400'
+        : 'text-emerald-600 dark:text-emerald-400');
+}
+
+function readScholarAIProviderSettingsForm() {
+    const value = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+    return {
+        baseUrl: value('settings-lmstudio-base-url'),
+        apiKey: value('settings-lmstudio-api-key'),
+        temperature: Number(value('settings-lmstudio-temperature') || 0.4),
+        maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
+        timeoutMs: Number(value('settings-lmstudio-timeout') || 90) * 1000,
+        topP: value('settings-lmstudio-top-p') === '' ? null : Number(value('settings-lmstudio-top-p'))
+    };
+}
+
+function normalizeLMStudioLoadedModels(models) {
+    return (Array.isArray(models) ? models : []).map(function (item) {
+        if (typeof item === 'string') return { id: item, displayName: item };
+        return {
+            id: String((item && (item.id || item.key)) || '').trim(),
+            displayName: String((item && (item.displayName || item.display_name || item.id || item.key)) || '').trim()
+        };
+    }).filter(function (item) { return !!item.id; });
+}
+
+function renderSettingsLMStudioLoadedModels(models, errorMessage) {
+    const current = document.getElementById('settings-lmstudio-loaded-model');
+    const detail = document.getElementById('settings-lmstudio-loaded-models-detail');
+    const state = document.getElementById('settings-lmstudio-loaded-state');
+    if (!current || !detail) return;
+    const loaded = normalizeLMStudioLoadedModels(models);
+    if (errorMessage) {
+        current.textContent = 'LM Studio 연결 또는 로드 모델 확인 필요';
+        current.className = 'mt-2 px-2 py-2 rounded border border-red-300 dark:border-red-800 bg-red-50 dark:bg-red-950/30 text-sm font-semibold text-red-700 dark:text-red-300 break-all';
+        detail.textContent = errorMessage;
+        if (state) {
+            state.textContent = '확인 필요';
+            state.className = 'px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 text-[10px]';
+        }
+        return;
+    }
+    current.className = 'mt-2 px-2 py-2 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-semibold text-slate-800 dark:text-slate-100 break-all';
+    if (!loaded.length) {
+        current.textContent = '현재 로드된 LLM 없음';
+        detail.textContent = 'LM Studio의 Developer → Local Server에서 모델을 Load한 뒤 다시 확인하세요.';
+        if (state) {
+            state.textContent = '로드 없음';
+            state.className = 'px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px]';
+        }
+        return;
+    }
+    const primary = loaded[0];
+    current.textContent = primary.displayName && primary.displayName !== primary.id
+        ? primary.displayName + '  ·  ' + primary.id
+        : primary.id;
+    detail.textContent = loaded.length === 1
+        ? '이 모델을 ScholarAI 요청에 자동으로 사용합니다.'
+        : '로드된 LLM ' + loaded.length + '개: ' + loaded.map(function (item) { return item.id; }).join(', ') + ' · 첫 번째 모델을 자동으로 사용합니다.';
+    if (state) {
+        state.textContent = '로드됨 · 자동 사용';
+        state.className = 'px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px]';
+    }
+}
+
+function migrateLegacyScholarAIProviderSettings(legacySettings) {
+    if (!window.LocalAI || localStorage.getItem(window.LocalAI.storageKey)) return;
+    let legacy = legacySettings || {};
+    try {
+        const key = window.LocalAI.compatibility && window.LocalAI.compatibility.mdlive
+            ? window.LocalAI.compatibility.mdlive.providerSettingsKey
+            : 'mdpro_ai_provider_settings_v1';
+        const stored = JSON.parse(localStorage.getItem(key) || '{}');
+        legacy = Object.assign({}, stored || {}, legacy || {});
+    } catch (_) {}
+    const baseUrl = legacy.lmStudioBaseUrl || legacy.baseUrl;
+    const model = legacy.lmStudioModel || legacy.model;
+    if (!baseUrl && !model && legacy.lmStudioConfigured !== true) return;
+    window.LocalAI.saveConfig({
+        baseUrl: baseUrl,
+        model: model,
+        apiKey: legacy.lmStudioApiKey || '',
+        temperature: legacy.lmStudioTemperature == null ? legacy.temperature : legacy.lmStudioTemperature,
+        maxTokens: legacy.lmStudioMaxTokens == null ? legacy.maxTokens : legacy.lmStudioMaxTokens,
+        timeoutMs: legacy.lmStudioTimeoutMs == null ? legacy.timeoutMs : legacy.lmStudioTimeoutMs,
+        topP: legacy.lmStudioTopP == null ? legacy.topP : legacy.lmStudioTopP
+    }, localStorage);
+    if (model) saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, [model]);
+}
+
+function loadScholarAIProviderSettingsUI(legacySettings) {
+    if (!window.LocalAI) return;
+    migrateLegacyScholarAIProviderSettings(legacySettings);
+    let config;
+    try { config = window.LocalAI.loadConfig(localStorage); } catch (_) { config = window.LocalAI.defaults || {}; }
+    const setValue = function (id, value) { const el = document.getElementById(id); if (el) el.value = value == null ? '' : value; };
+    setValue('settings-lmstudio-base-url', config.baseUrl || 'http://127.0.0.1:5678/v1');
+    setValue('settings-lmstudio-api-key', config.apiKey || '');
+    setValue('settings-lmstudio-temperature', config.temperature == null ? 0.4 : config.temperature);
+    setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
+    setValue('settings-lmstudio-timeout', Math.max(1, Math.round((config.timeoutMs || 90000) / 1000)));
+    setValue('settings-lmstudio-top-p', config.topP == null ? '' : config.topP);
+    renderSettingsLMStudioLoadedModels(readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY));
+    setTimeout(function () { loadSettingsLMStudioModels({ silent: true }); }, 0);
+}
+
+function saveScholarAIProviderSettingsFromUI(showStatus) {
+    try {
+        const config = getScholarAIProviderRuntime().saveLMStudioConfig(readScholarAIProviderSettingsForm());
+        if (showStatus) setSettingsScholarAIStatus('LM Studio 설정을 저장했습니다.', false);
+        return config;
+    } catch (error) {
+        setSettingsScholarAIStatus('저장 실패: ' + (error && error.message ? error.message : error), true);
+        return null;
+    }
+}
+
+async function loadSettingsLMStudioModels(options) {
+    options = options || {};
+    const config = saveScholarAIProviderSettingsFromUI(false);
+    if (!config) return;
+    if (!options.silent) setSettingsScholarAIStatus('LM Studio에서 현재 로드된 모델을 확인하는 중...', false);
+    try {
+        const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel(config);
+        const ids = result.models.map(function (item) { return item.id; }).filter(Boolean);
+        saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
+        renderSettingsLMStudioLoadedModels(result.models);
+        if (!options.silent) setSettingsScholarAIStatus('현재 로드 모델 확인 완료: ' + result.model, false);
+    } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, []);
+        renderSettingsLMStudioLoadedModels([], message);
+        if (!options.silent) setSettingsScholarAIStatus('LM Studio 로드 모델 확인 실패: ' + message, true);
+    }
+}
+
+async function testSettingsLMStudioConnection() {
+    const config = saveScholarAIProviderSettingsFromUI(false);
+    if (!config) return;
+    setSettingsScholarAIStatus('LM Studio 연결을 확인하는 중...', false);
+    const result = await getScholarAIProviderRuntime().testLMStudio(config);
+    if (!result.ok) {
+        setSettingsScholarAIStatus('LM Studio 연결 실패: ' + (result.error || '알 수 없는 오류'), true);
+        return;
+    }
+    const ids = (result.models || []).map(function (item) { return item.id; }).filter(Boolean);
+    saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
+    renderSettingsLMStudioLoadedModels(result.models || []);
+    setSettingsScholarAIStatus('LM Studio 연결 성공 · 현재 모델 ' + result.model + ' · ' + result.latencyMs + 'ms', false);
+}
+
+async function loadSettingsGeminiModels() {
+    const keyInput = document.getElementById('ai-api-key');
+    const key = keyInput && keyInput.value ? keyInput.value.trim() : '';
+    setSettingsScholarAIStatus('Gemini 모델을 불러오는 중...', false);
+    try {
+        const models = await listAIStudioTextModels(key);
+        saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, models);
+        setSettingsScholarAIStatus('Gemini 텍스트 모델 ' + models.length + '개를 불러왔습니다.', false);
+    } catch (error) {
+        setSettingsScholarAIStatus('Gemini 모델 조회 실패: ' + (error && error.message ? error.message : error), true);
+    }
+}
+
+async function callAIStudioText(prompt, systemInstruction, useSearch, modelOverride, signal) {
+    const key = localStorage.getItem('ss_gemini_api_key') || '';
+    if (!key.trim()) throw new Error('AI Studio API Key가 없습니다. 설정에서 API Key를 저장하거나 LM Studio를 선택하세요.');
+    const modelId = modelOverride || 'gemini-2.5-flash';
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent?key=' + encodeURIComponent(key);
+    const payload = { contents: [{ parts: [{ text: prompt }] }] };
+    if (systemInstruction) payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+    if (useSearch) payload.tools = [{ googleSearch: {} }];
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: signal
+    });
+    if (!res.ok) {
+        let message = 'AI Studio API Error: ' + res.status;
+        try {
+            const errorData = await res.json();
+            if (errorData && errorData.error && errorData.error.message) message = errorData.error.message;
+        } catch (_) {}
+        throw new Error(message);
+    }
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.map(function (part) { return part.text || ''; }).join('') || '';
+    if (!text) throw new Error('AI Studio 응답이 비어 있습니다.');
+    return { provider: 'aistudio', model: modelId, text: text };
+}
+
+async function listAIStudioTextModels(apiKeyOverride) {
+    const key = String(apiKeyOverride || localStorage.getItem('ss_gemini_api_key') || '');
+    if (!key.trim()) throw new Error('AI Studio API Key가 없습니다. 설정에서 API Key를 먼저 저장하세요.');
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=' + encodeURIComponent(key);
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+        let message = 'Gemini 모델 조회 오류: ' + res.status;
+        try {
+            const errorData = await res.json();
+            if (errorData && errorData.error && errorData.error.message) message = errorData.error.message;
+        } catch (_) {}
+        throw new Error(message);
+    }
+    const data = await res.json();
+    return (Array.isArray(data.models) ? data.models : []).filter(function (model) {
+        const methods = Array.isArray(model.supportedGenerationMethods) ? model.supportedGenerationMethods : [];
+        const id = String(model.name || '').replace(/^models\//, '');
+        return /^gemini-/i.test(id)
+            && methods.indexOf('generateContent') >= 0
+            && !/(embedding|image|tts|live|audio)/i.test(id);
+    }).map(function (model) {
+        return String(model.name || '').replace(/^models\//, '');
+    }).filter(Boolean).sort();
+}
+
+function getScholarAIProviderRuntime() {
+    if (scholarAIProviderRuntime) return scholarAIProviderRuntime;
+    if (!window.ScholarAIProvider || typeof window.ScholarAIProvider.create !== 'function') {
+        throw new Error('ScholarAI 공급자 모듈이 로드되지 않았습니다.');
+    }
+    scholarAIProviderRuntime = window.ScholarAIProvider.create({
+        storage: localStorage,
+        callAIStudio: callAIStudioText
+    });
+    return scholarAIProviderRuntime;
+}
+
+let aiChatAbortController = null;
+const AI_CHAT_GEMINI_MODELS_KEY = 'ss_ai_chat_gemini_models_v1';
+const AI_CHAT_GEMINI_DEFAULT_MODELS = [
+    'gemini-3.5-flash',
+    'gemini-3.1-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash-lite',
+    'gemini-3.1-flash-lite-image',
+    'gemini-3.1-flash-image',
+    'gemini-3-pro-image',
+    'gemini-2.5-flash-image'
+];
+
+function mergeAIChatGeminiModels(models) {
+    return Array.from(new Set(AI_CHAT_GEMINI_DEFAULT_MODELS.concat(Array.isArray(models) ? models : []).filter(Boolean)));
+}
+
+function isAIChatGeminiImageModel(model) {
+    return /(?:^|-)image(?:-|$)/i.test(String(model || ''));
+}
+
+async function getAIStudioKeyForChat() {
+    let key = String(localStorage.getItem('ss_gemini_api_key') || '').trim();
+    if (key) return key;
+    try {
+        const settings = await getAiSettings();
+        key = String((settings && settings.apiKey) || '').trim();
+        if (key) localStorage.setItem('ss_gemini_api_key', key);
+    } catch (_) {}
+    return key;
+}
+
+function normalizeAIChatMessages(messages) {
+    return (Array.isArray(messages) ? messages : []).filter(function (message) {
+        return message && (message.role === 'user' || message.role === 'assistant') && String(message.content || '').trim();
+    }).map(function (message) {
+        return { role: message.role, content: String(message.content) };
+    });
+}
+
+async function listAIStudioChatModels(apiKeyOverride) {
+    const key = String(apiKeyOverride || await getAIStudioKeyForChat() || '').trim();
+    if (!key) throw new Error('AI Studio API Key가 없습니다. 설정에서 API Key를 먼저 저장하세요.');
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=' + encodeURIComponent(key);
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) {
+        let message = 'Gemini 모델 조회 오류: ' + res.status;
+        try {
+            const errorData = await res.json();
+            if (errorData && errorData.error && errorData.error.message) message = errorData.error.message;
+        } catch (_) {}
+        throw new Error(message);
+    }
+    const data = await res.json();
+    const models = (Array.isArray(data.models) ? data.models : []).filter(function (model) {
+        const methods = Array.isArray(model.supportedGenerationMethods) ? model.supportedGenerationMethods : [];
+        const id = String(model.name || '').replace(/^models\//, '');
+        return /^gemini-/i.test(id)
+            && methods.indexOf('generateContent') >= 0
+            && !/(embedding|tts|live|audio)/i.test(id);
+    }).map(function (model) {
+        return String(model.name || '').replace(/^models\//, '');
+    }).filter(Boolean);
+    return mergeAIChatGeminiModels(models);
+}
+
+async function callAIStudioChat(messages, systemInstruction, modelOverride, signal, responseMode, academicSearch) {
+    const key = await getAIStudioKeyForChat();
+    if (!key) throw new Error('AI Studio API Key가 없습니다. 앱 설정에서 API Key를 먼저 저장하세요.');
+    const model = String(modelOverride || 'gemini-2.5-flash').trim();
+    const normalized = normalizeAIChatMessages(messages);
+    while (normalized.length && normalized[0].role !== 'user') normalized.shift();
+    const contents = [];
+    normalized.forEach(function (message) {
+        const role = message.role === 'assistant' ? 'model' : 'user';
+        const previous = contents[contents.length - 1];
+        if (previous && previous.role === role) {
+            previous.parts[0].text += '\n\n' + message.content;
+        } else {
+            contents.push({ role: role, parts: [{ text: message.content }] });
+        }
+    });
+    if (!contents.length) throw new Error('전송할 대화가 없습니다.');
+    const reasoningMode = responseMode === 'reasoning';
+    const imageModel = isAIChatGeminiImageModel(model);
+    const generationConfig = imageModel
+        ? { responseModalities: ['TEXT', 'IMAGE'] }
+        : { maxOutputTokens: reasoningMode ? 8192 : (academicSearch ? 4096 : 1024) };
+    if (!imageModel && /^gemini-3/i.test(model)) {
+        generationConfig.thinkingConfig = { thinkingLevel: reasoningMode ? 'high' : 'low' };
+    } else if (!imageModel && /^gemini-2\.5/i.test(model)) {
+        generationConfig.thinkingConfig = { thinkingBudget: reasoningMode ? 4096 : 0 };
+    }
+    const payload = { contents: contents, generationConfig: generationConfig };
+    if (systemInstruction && !imageModel) payload.systemInstruction = { parts: [{ text: String(systemInstruction) }] };
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key);
+    let response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: signal
+    });
+    if (!response.ok && response.status === 400 && imageModel) {
+        payload.generationConfig = {};
+        response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: signal
+        });
+    }
+    if (!response.ok) {
+        let message = 'AI Studio API Error: ' + response.status;
+        try {
+            const data = await response.json();
+            if (data && data.error && data.error.message) message = data.error.message;
+        } catch (_) {}
+        throw new Error(message);
+    }
+    const data = await response.json();
+    const candidate = data.candidates?.[0] || {};
+    const parts = candidate.content?.parts || [];
+    const reasoningParts = [];
+    const answerParts = [];
+    const images = [];
+    parts.forEach(function (part) {
+        const inlineData = part && (part.inlineData || part.inline_data);
+        if (inlineData && inlineData.data) {
+            images.push({
+                mimeType: String(inlineData.mimeType || inlineData.mime_type || 'image/png'),
+                data: String(inlineData.data)
+            });
+        }
+        const value = part && part.text ? String(part.text) : '';
+        if (!value) return;
+        if (part.thought === true) reasoningParts.push(value);
+        else answerParts.push(value);
+    });
+    const candidateReasoning = candidate.reasoning_content || candidate.reasoningContent || candidate.reasoning || '';
+    if (candidateReasoning) reasoningParts.unshift(String(candidateReasoning));
+    let text = answerParts.join('');
+    let reasoning = reasoningParts.join('\n\n');
+    const taggedReasoning = [];
+    text = text.replace(/<think>([\s\S]*?)<\/think>/gi, function (_, value) {
+        if (String(value || '').trim()) taggedReasoning.push(String(value).trim());
+        return '';
+    }).trim();
+    if (taggedReasoning.length) reasoning = [reasoning].concat(taggedReasoning).filter(Boolean).join('\n\n');
+    if (!text && !reasoning && !images.length) throw new Error('AI Studio 응답이 비어 있습니다.');
+    if (!text && images.length) text = '요청한 이미지를 생성했습니다.';
+    else if (!text) text = '모델이 추론 내용만 반환하고 최종 답변을 생성하지 못했습니다. 출력 토큰 설정을 확인하세요.';
+    return { provider: 'aistudio', model: model, text: text, reasoning: reasoning, images: images };
+}
+
+function insertAIChatTextIntoDocument(text, mode) {
+    const value = String(text || '').trim();
+    if (!value) throw new Error('문서에 삽입할 질문과 답변이 없습니다.');
+    if (!editorTextarea) throw new Error('문서 편집기를 찾지 못했습니다.');
+    if (!isEditMode) toggleMode('edit');
+    const insertMode = ['replace', 'cursor', 'line-below'].includes(mode) ? mode : 'cursor';
+    const raw = String(editorTextarea.value || '');
+    const rawSelectionStart = Number(editorTextarea.selectionStart);
+    const rawSelectionEnd = Number(editorTextarea.selectionEnd);
+    let start = Math.max(0, Math.min(Number.isFinite(rawSelectionStart) ? rawSelectionStart : raw.length, raw.length));
+    let end = Math.max(start, Math.min(Number.isFinite(rawSelectionEnd) ? rawSelectionEnd : start, raw.length));
+    if (insertMode === 'cursor') {
+        end = start;
+    } else if (insertMode === 'line-below') {
+        const lineEnd = raw.indexOf('\n', start);
+        start = end = lineEnd >= 0 ? lineEnd : raw.length;
+    }
+    const before = raw.slice(0, start);
+    const after = raw.slice(end);
+    let prefix = '';
+    let suffix = '';
+    if (insertMode === 'cursor') {
+        prefix = before && !/\n\s*\n$/.test(before) ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+        suffix = after && !/^\s*\n/.test(after) ? (after.startsWith('\n') ? '\n' : '\n\n') : '';
+    } else if (insertMode === 'line-below') {
+        prefix = before && !before.endsWith('\n') ? '\n' : '';
+        suffix = after && !after.startsWith('\n') ? '\n' : '';
+    }
+    const insertion = prefix + value + suffix;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start, end);
+    const applied = document.execCommand('insertText', false, insertion);
+    if (!applied) {
+        editorTextarea.value = before + insertion + after;
+        editorTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    const caret = start + prefix.length + value.length;
+    editorTextarea.setSelectionRange(caret, caret);
+    currentMarkdown = String(editorTextarea.value || '');
+    lastEditCaretPos = caret;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    return true;
+}
+
+window.AIChatBridge = Object.freeze({
+    getSelectedDocumentText: function () {
+        if (!editorTextarea) return '';
+        const raw = String(editorTextarea.value || '');
+        const start = Math.max(0, Math.min(Number(editorTextarea.selectionStart) || 0, raw.length));
+        const end = Math.max(start, Math.min(Number(editorTextarea.selectionEnd) || start, raw.length));
+        return raw.slice(start, end);
+    },
+    getCachedGeminiModels: function () {
+        return mergeAIChatGeminiModels(readStoredModelList(AI_CHAT_GEMINI_MODELS_KEY));
+    },
+    refreshGeminiModels: async function () {
+        const models = await listAIStudioChatModels();
+        saveStoredModelList(AI_CHAT_GEMINI_MODELS_KEY, models);
+        return models;
+    },
+    refreshLMStudioModels: async function () {
+        const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
+        const models = result.models.map(function (item) { return item.id; }).filter(Boolean);
+        saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, models);
+        return { model: result.model, models: models };
+    },
+    insertIntoDocument: function (text, mode) {
+        return insertAIChatTextIntoDocument(text, mode);
+    },
+    complete: async function (request) {
+        request = request || {};
+        if (aiChatAbortController) aiChatAbortController.abort();
+        const controller = new AbortController();
+        aiChatAbortController = controller;
+        try {
+            if (request.provider === 'aistudio') {
+                return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.mode, request.academicSearch);
+            }
+            const synced = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
+            if (controller.signal.aborted) {
+                const abortError = new Error('AI Chat request aborted');
+                abortError.name = 'AbortError';
+                throw abortError;
+            }
+            const config = getScholarAIProviderRuntime().getLMStudioConfig();
+            const client = window.LocalAI.createClient(Object.assign({}, config, { model: synced.model }));
+            const messages = normalizeAIChatMessages(request.messages);
+            const lastUserIndex = messages.map(function (message) { return message.role; }).lastIndexOf('user');
+            if (lastUserIndex < 0) throw new Error('전송할 사용자 질문이 없습니다.');
+            const history = messages.slice(0, lastUserIndex).map(function (message) {
+                return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
+            }).join('\n\n');
+            const reasoningMode = request.mode === 'reasoning';
+            const modeInstruction = request.academicSearch
+                ? (reasoningMode
+                    ? '제공된 학술 초록 근거를 충분히 비교·검토하여 주장 중심의 상세한 학술 종합을 작성하세요.'
+                    : '제공된 학술 초록 근거에서 핵심 주장, 같은 결과, 다른 결과를 간결한 학술 종합으로 작성하세요.')
+                : (reasoningMode
+                    ? '충분히 검토하고 논리적으로 설명하세요. 필요한 경우 상세하고 긴 답변을 작성하세요.'
+                    : '내부 추론 과정을 생성하지 말고 핵심부터 즉시 답하세요. 특별한 요청이 없으면 5문장 이내로 간결하게 답하세요.');
+            const systemPrompt = [request.systemInstruction || '', modeInstruction, history ? '이전 대화:\n' + history : ''].filter(Boolean).join('\n\n');
+            const result = await client.chat({
+                input: messages[lastUserIndex].content,
+                systemInstruction: systemPrompt,
+                model: synced.model,
+                reasoning: reasoningMode ? 'on' : 'off',
+                maxTokens: reasoningMode
+                    ? Math.min(3072, Math.max(1024, Number(config.maxTokens) || 3072))
+                    : (request.academicSearch ? Math.min(2048, Math.max(1024, Number(config.maxTokens) || 2048)) : 384),
+                timeoutMs: reasoningMode
+                    ? Math.max(300000, Number(config.timeoutMs) || 0)
+                    : (request.academicSearch ? Math.max(120000, Number(config.timeoutMs) || 0) : Math.min(60000, Number(config.timeoutMs) || 60000)),
+                store: false,
+                signal: controller.signal
+            });
+            return {
+                provider: 'lmstudio',
+                model: result.model || synced.model,
+                text: result.text || '',
+                reasoning: result.reasoning || ''
+            };
+        } finally {
+            if (aiChatAbortController === controller) aiChatAbortController = null;
+        }
+    },
+    abort: function () {
+        if (aiChatAbortController) aiChatAbortController.abort();
+    }
+});
 
 function getDocumentBaseUrl() {
     return document.baseURI || window.location.href;
@@ -7298,31 +7848,39 @@ function ensureSidebarAILoaded() {
             getImgbbApiKey: function () { return getImgbbApiKey(); },
             setImgbbApiKey: async function (key) { return saveImgbbApiKey(key); },
             getImageUploadEnabled: function () { return true; },
+            // Kept for portable/older sidebar builds that still request Gemini directly.
             callGemini: async function (prompt, systemInstruction, useSearch, modelOverride) {
-                const key = localStorage.getItem('ss_gemini_api_key') || '';
-                const modelId = modelOverride || 'gemini-2.5-flash';
-                const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent?key=' + key;
-                const payload = { contents: [{ parts: [{ text: prompt }] }] };
-                if (systemInstruction) payload.systemInstruction = { parts: [{ text: systemInstruction }] };
-                if (useSearch) payload.tools = [{ googleSearch: {} }];
                 const ctrl = new AbortController();
                 window._abortController = ctrl;
-                let res;
                 try {
-                    res = await fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload),
-                        signal: ctrl.signal
-                    });
+                    return await callAIStudioText(prompt, systemInstruction, useSearch, modelOverride, ctrl.signal);
                 } finally {
                     if (window._abortController === ctrl) window._abortController = null;
                 }
-                if (!res.ok) throw new Error('API Error: ' + res.status);
-                const data = await res.json();
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                return { text: text };
             },
+            callScholarAI: function (prompt, systemInstruction, useSearch, modelOverride) {
+                return getScholarAIProviderRuntime().complete({
+                    prompt: prompt,
+                    systemInstruction: systemInstruction,
+                    useSearch: useSearch,
+                    model: modelOverride
+                });
+            },
+            listScholarAIGeminiModels: function () { return listAIStudioTextModels(); },
+            getCachedScholarAIGeminiModels: function () { return readStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY); },
+            getCachedScholarAILMStudioModels: function () { return readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY); },
+            refreshScholarAILMStudioModels: async function () {
+                const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
+                const ids = result.models.map(function (item) { return item.id; }).filter(Boolean);
+                saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
+                return ids;
+            },
+            getScholarAIProvider: function () { return getScholarAIProviderRuntime().getProvider(); },
+            setScholarAIProvider: function (provider) { return getScholarAIProviderRuntime().setProvider(provider); },
+            getScholarAILMStudioConfig: function () { return getScholarAIProviderRuntime().getLMStudioConfig(); },
+            saveScholarAILMStudioConfig: function (config) { return getScholarAIProviderRuntime().saveLMStudioConfig(config); },
+            listScholarAILMStudioModels: function (config) { return getScholarAIProviderRuntime().listLMStudioModels(config); },
+            testScholarAILMStudio: function (config) { return getScholarAIProviderRuntime().testLMStudio(config); },
             /**
              */
             generateImage: async function (prompt, options) {
@@ -7331,7 +7889,7 @@ function ensureSidebarAILoaded() {
                 const ctrl = new AbortController();
                 window._abortController = ctrl;
                 try {
-                let modelId = (options && options.modelId) || 'gemini-2.5-flash-image';
+                let modelId = (options && options.modelId) || 'gemini-3.1-flash-image';
                 const aspectRatio = (options && options.aspectRatio) || '1:1';
                 const simpleNoText = !!(options && options.noText);
                 const seedImage = options && options.seedImage;
@@ -7448,10 +8006,18 @@ function ensureSidebarAILoaded() {
                 if (!next) localStorage.removeItem('ss_scholar_ai_system');
                 else localStorage.setItem('ss_scholar_ai_system', next);
             },
-            getScholarAIModelId: function () { return localStorage.getItem('ss_scholar_ai_model') || 'gemini-2.5-pro'; },
-            setScholarAIModelId: function (id) { localStorage.setItem('ss_scholar_ai_model', id || ''); },
-            getImageModelId: function () { return localStorage.getItem('ss_image_model') || 'gemini-2.5-flash-image'; },
-            abortCurrentTask: function () { if (window._abortController) window._abortController.abort(); },
+            getScholarAIModelId: function (provider) { return getScholarAIProviderRuntime().getModel(provider); },
+            setScholarAIModelId: function (id, provider) { return getScholarAIProviderRuntime().setModel(id, provider); },
+            getImageModelId: function () {
+                const saved = localStorage.getItem('ss_image_model') || 'gemini-3.1-flash-image';
+                if (saved === 'gemini-3.1-flash-image-preview') return 'gemini-3.1-flash-image';
+                if (saved === 'gemini-3-pro-image-preview') return 'gemini-3-pro-image';
+                return saved;
+            },
+            abortCurrentTask: function () {
+                if (scholarAIProviderRuntime) scholarAIProviderRuntime.abort();
+                if (window._abortController) window._abortController.abort();
+            },
             setViewerContent: function (text) { if (typeof updateContent === 'function') updateContent(text || ''); },
             getViewerRenderedContent: function (text) {
                 var t = text || '';
@@ -7476,7 +8042,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260603-3';
+    const aiSidebarScriptVersion = '20260721-6';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -7669,6 +8235,7 @@ async function loadAiSettingsToUI() {
         await window.GithubDataSettings.ensureUiReady();
     }
     const settings = await getAiSettings();
+    loadScholarAIProviderSettingsUI(settings);
     if (!settings) {
         const imageCheckEmpty = document.getElementById('image-upload-enabled');
         if (imageCheckEmpty) imageCheckEmpty.checked = false;

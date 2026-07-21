@@ -3,7 +3,8 @@
  * Extracted from viewer-standalone.js
  *
  * Host app provides callbacks via window.SidebarAIConfig:
- *   callGemini, generateImage, getApiKey, getScholarAISystemInstruction,
+ *   callScholarAI (or legacy callGemini), generateImage, getApiKey,
+ *   getScholarAIProvider, setScholarAIProvider, getScholarAISystemInstruction,
  *   setScholarAISystemInstruction, getScholarAIModelId, setScholarAIModelId,
  *   getImageModelId, abortCurrentTask, setViewerContent, getViewerRenderedContent
  *
@@ -52,9 +53,11 @@
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
         <label style="font-size:10px;margin-bottom:4px">Model</label>
         <select id="scholar-ai-model-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
+          <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+          <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+          <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
           <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
           <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-          <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
           <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
         </select>
@@ -163,9 +166,10 @@
       <textarea id="ssp-prompt-2" placeholder="Example: Use a dark blue background and English labels."></textarea>
       <label>Image generation model</label>
       <select id="ssp-model">
-        <option value="gemini-3.1-flash-image-preview">Nano Banana 2</option>
+        <option value="gemini-3.1-flash-image">Nano Banana 2</option>
+        <option value="gemini-3.1-flash-lite-image">Nano Banana 2 Lite</option>
+        <option value="gemini-3-pro-image">Nano Banana Pro</option>
         <option value="gemini-2.5-flash-image">Nano Banana</option>
-        <option value="gemini-3-pro-image-preview">Nano Banana Pro</option>
         <option value="imagen-4.0-generate-001">Imagen 4</option>
       </select>
       <label>Image ratio</label>
@@ -283,9 +287,11 @@
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
         <label style="font-size:10px;margin-bottom:4px">Model</label>
         <select id="scholar-ai-model-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8">
+          <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+          <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
+          <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
           <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
           <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-          <option value="gemini-3-flash-preview">Gemini 3 Flash</option>
           <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
         </select>
@@ -391,9 +397,10 @@
       <textarea id="ssp-prompt-2" placeholder="Example: Use a dark blue background and English labels."></textarea>
       <label>Image generation model</label>
       <select id="ssp-model">
-        <option value="gemini-3.1-flash-image-preview">Nano Banana 2</option>
+        <option value="gemini-3.1-flash-image">Nano Banana 2</option>
+        <option value="gemini-3.1-flash-lite-image">Nano Banana 2 Lite</option>
+        <option value="gemini-3-pro-image">Nano Banana Pro</option>
         <option value="gemini-2.5-flash-image">Nano Banana</option>
-        <option value="gemini-3-pro-image-preview">Nano Banana Pro</option>
         <option value="imagen-4.0-generate-001">Imagen 4</option>
       </select>
       <label>Image ratio</label>
@@ -486,6 +493,7 @@
   var __scholarAIRunning = false;
   var __scholarAIProgressTimer = null;
   var __scholarAIProgressValue = 0;
+  var __scholarAILMRefreshPromise = null;
   var __scholarAIHistory = [];
   var __viewerSSPSeedImage = null, __viewerSSPResultImage = null, __viewerSSPRatio = '1:1';
   var __viewerSSPTextFontSizes = {};
@@ -501,7 +509,13 @@
   var LS_SA_POPUP_RECT = 'ss_viewer_sa_popup_rect';
   var LS_SSP_POPUP_RECT = 'ss_viewer_ssp_popup_rect';
   var LS_SA_TONE_PRESET = 'ss_viewer_scholar_ai_tone_preset';
+  var LS_SA_UI_FONT_SIZE = 'ss_viewer_scholar_ai_ui_font_size';
   var SA_TONE_DEFAULT = 'academic_ida';
+  var SA_UI_FONT_MIN = 12;
+  var SA_UI_FONT_MAX = 20;
+  var SA_UI_FONT_DEFAULT = 14;
+  var __scholarAIUIFontSize = SA_UI_FONT_DEFAULT;
+  var __scholarAIUIFontInitialized = false;
   var SSP_IMG_HISTORY_MAX = 10;
   var __viewerFsScale = 1, __viewerFsTx = 0, __viewerFsTy = 0;
   var __viewerFsStartX = 0, __viewerFsStartY = 0, __viewerFsStartTx = 0, __viewerFsStartTy = 0, __viewerFsDragging = false;
@@ -577,6 +591,73 @@
       fullBtn.textContent = isFullscreen ? '축소' : '전체화면';
       fullBtn.title = isFullscreen ? '축소' : '전체화면';
     }
+  }
+
+  function scholarAIReadUIFontSize() {
+    var saved = 0;
+    try { saved = parseInt(localStorage.getItem(LS_SA_UI_FONT_SIZE) || '', 10); } catch (e) {}
+    if (!isFinite(saved)) saved = SA_UI_FONT_DEFAULT;
+    return Math.max(SA_UI_FONT_MIN, Math.min(SA_UI_FONT_MAX, saved));
+  }
+
+  function scholarAIApplyUIFontSize(size, persist, applyTextFields) {
+    var panel = document.getElementById('scholar-ai-sidebar');
+    var next = Math.max(SA_UI_FONT_MIN, Math.min(SA_UI_FONT_MAX, Math.round(Number(size) || SA_UI_FONT_DEFAULT)));
+    __scholarAIUIFontSize = next;
+    if (persist !== false) {
+      try { localStorage.setItem(LS_SA_UI_FONT_SIZE, String(next)); } catch (e) {}
+    }
+    if (!panel) return;
+    panel.style.setProperty('--sa-ui-font-size', next + 'px');
+    panel.style.setProperty('--sa-ui-small-font-size', Math.max(12, next - 1) + 'px');
+    panel.style.setProperty('--sa-ui-title-font-size', Math.max(15, next + 1) + 'px');
+    var value = panel.querySelector('#scholar-ai-ui-font-value');
+    if (value) value.textContent = next + 'px';
+
+    if (applyTextFields !== false) {
+      var textFields = panel.querySelectorAll('textarea, input, select');
+      for (var i = 0; i < textFields.length; i++) {
+        textFields[i].style.setProperty('font-size', next + 'px', 'important');
+      }
+      __scholarAIResultFontSize = next;
+      var explainEl = document.getElementById('scholar-ai-result');
+      var insertEl = document.getElementById('scholar-ai-result-insert');
+      if (explainEl) explainEl.style.setProperty('font-size', next + 'px', 'important');
+      if (insertEl) insertEl.style.setProperty('font-size', next + 'px', 'important');
+    }
+  }
+
+  function scholarAIAdjustUIFont(delta) {
+    scholarAIApplyUIFontSize(__scholarAIUIFontSize + Number(delta || 0), true);
+  }
+
+  function scholarAIInitUIFontControls() {
+    var panel = document.getElementById('scholar-ai-sidebar');
+    if (!panel) return;
+    var row = panel.querySelector('.scholar-ai-options-row');
+    var controls = panel.querySelector('#scholar-ai-ui-font-controls');
+    var createdControls = false;
+    if (!controls && row) {
+      createdControls = true;
+      controls = document.createElement('div');
+      controls.id = 'scholar-ai-ui-font-controls';
+      controls.className = 'scholar-ai-ui-font-controls';
+      controls.setAttribute('role', 'group');
+      controls.setAttribute('aria-label', 'ScholarAI 텍스트 크기');
+      controls.innerHTML = '<span class="sa-ui-font-label">텍스트</span>' +
+        '<button type="button" class="sa-ui-font-btn" data-font-delta="-1" title="ScholarAI 글자 작게" aria-label="ScholarAI 글자 작게">A−</button>' +
+        '<span id="scholar-ai-ui-font-value" class="sa-ui-font-value">' + SA_UI_FONT_DEFAULT + 'px</span>' +
+        '<button type="button" class="sa-ui-font-btn" data-font-delta="1" title="ScholarAI 글자 크게" aria-label="ScholarAI 글자 크게">A+</button>';
+      row.appendChild(controls);
+      var buttons = controls.querySelectorAll('[data-font-delta]');
+      for (var i = 0; i < buttons.length; i++) {
+        buttons[i].addEventListener('click', function () {
+          scholarAIAdjustUIFont(parseInt(this.getAttribute('data-font-delta') || '0', 10));
+        });
+      }
+    }
+    scholarAIApplyUIFontSize(scholarAIReadUIFontSize(), false, createdControls || !__scholarAIUIFontInitialized);
+    __scholarAIUIFontInitialized = true;
   }
 
   function updateSSPHeaderActionButtons() {
@@ -1331,6 +1412,7 @@
       scholarAILoadPrePrompt();
       scholarAIInitModelSelect();
       scholarAIInitToneSelect();
+      scholarAIInitUIFontControls();
     } else {
       closeAiPanelHard('scholar-ai-sidebar');
       updatePopupToggleLabels();
@@ -1422,18 +1504,158 @@
     var setter = getCallback('setScholarAISystemInstruction');
     if (typeof setter === 'function') setter(next);
   }
+
+  function scholarAISetProviderStatus(message, isError) {
+    var status = document.getElementById('scholar-ai-provider-status');
+    if (!status) return;
+    status.textContent = message || '';
+    status.style.color = isError ? '#f87171' : '#94a3b8';
+  }
+
+  function scholarAIGetProvider() {
+    var getter = getCallback('getScholarAIProvider');
+    try {
+      var provider = getter && getter();
+      return provider === 'aistudio' ? 'aistudio' : 'lmstudio';
+    } catch (e) { return 'lmstudio'; }
+  }
+
+  function scholarAISetModelOptions(models, selected) {
+    var sel = document.getElementById('scholar-ai-model-select');
+    if (!sel) return;
+    var values = Array.isArray(models) ? models.slice() : [];
+    var current = String(selected || '').trim();
+    if (current && values.indexOf(current) < 0) values.unshift(current);
+    sel.innerHTML = '';
+    if (!values.length) {
+      var empty = document.createElement('option');
+      empty.value = current;
+      empty.textContent = current || '모델을 직접 입력하세요';
+      sel.appendChild(empty);
+    } else {
+      values.forEach(function (model) {
+        var option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        sel.appendChild(option);
+      });
+    }
+    sel.value = current || values[0] || '';
+  }
+
+  function scholarAIEnsureProviderControls() {
+    var panel = document.getElementById('scholar-ai-model-panel');
+    if (!panel || document.getElementById('scholar-ai-provider-select')) return;
+    var wrap = document.createElement('div');
+    wrap.id = 'scholar-ai-provider-controls';
+    wrap.innerHTML = ''
+      + '<label for="scholar-ai-provider-select" style="font-size:10px;margin-bottom:4px;display:block">AI 공급자</label>'
+      + '<select id="scholar-ai-provider-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8;margin-bottom:8px">'
+      + '<option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option></select>'
+      + '<button type="button" id="scholar-ai-lm-model-refresh" class="sa-btn ghost" style="display:none;width:100%;margin:0 0 8px">LM Studio 현재 모델 다시 확인</button>'
+      + '<div id="scholar-ai-provider-status" role="status" style="font-size:10px;color:#94a3b8;margin:-2px 0 8px;line-height:1.4">상세 연결 설정은 앱 설정 → AI 연동 설정에서 관리합니다.</div>';
+    panel.insertBefore(wrap, panel.firstChild);
+
+    var providerSel = document.getElementById('scholar-ai-provider-select');
+    providerSel.onchange = function () {
+      var setter = getCallback('setScholarAIProvider');
+      if (typeof setter === 'function') setter(providerSel.value);
+      scholarAIInitModelSelect();
+    };
+    var refreshBtn = document.getElementById('scholar-ai-lm-model-refresh');
+    if (refreshBtn) refreshBtn.onclick = function () { scholarAIRefreshLMStudioModel(false); };
+  }
+
+  function scholarAIApplyLoadedLMStudioModels(models) {
+    var sel = document.getElementById('scholar-ai-model-select');
+    if (!sel) return;
+    var values = Array.isArray(models) ? models.map(String).filter(Boolean) : [];
+    sel.innerHTML = '';
+    if (!values.length) {
+      var empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '현재 로드된 LLM 없음';
+      sel.appendChild(empty);
+      scholarAISetProviderStatus('LM Studio에서 모델을 Load한 뒤 다시 확인하세요.', true);
+      return;
+    }
+    values.forEach(function (model, index) {
+      var option = document.createElement('option');
+      option.value = model;
+      option.textContent = index === 0 ? model + ' (자동 사용)' : model + ' (추가 로드됨)';
+      sel.appendChild(option);
+    });
+    sel.value = values[0];
+    scholarAISetProviderStatus(values.length === 1
+      ? 'LM Studio에 현재 로드된 모델입니다. 앱에서 별도로 선택하지 않습니다.'
+      : '로드된 LLM ' + values.length + '개: ' + values.join(', ') + ' · 첫 번째 모델을 자동 사용합니다.', false);
+  }
+
+  function scholarAIRefreshLMStudioModel(silent) {
+    var refresh = getCallback('refreshScholarAILMStudioModels');
+    if (typeof refresh !== 'function') return Promise.resolve([]);
+    if (__scholarAILMRefreshPromise) return __scholarAILMRefreshPromise;
+    if (!silent) scholarAISetProviderStatus('LM Studio의 현재 로드 모델을 확인하는 중...', false);
+    __scholarAILMRefreshPromise = Promise.resolve().then(function () {
+      return refresh();
+    }).then(function (models) {
+      scholarAIApplyLoadedLMStudioModels(models || []);
+      return models || [];
+    }).catch(function (error) {
+      var sel = document.getElementById('scholar-ai-model-select');
+      if (sel) {
+        sel.innerHTML = '<option value="">LM Studio 확인 실패</option>';
+      }
+      scholarAISetProviderStatus(error && error.message ? error.message : String(error), true);
+      return [];
+    }).finally(function () {
+      __scholarAILMRefreshPromise = null;
+    });
+    return __scholarAILMRefreshPromise;
+  }
+
   function scholarAIInitModelSelect() {
     var sel = document.getElementById('scholar-ai-model-select');
     var getter = getCallback('getScholarAIModelId');
     if (!sel) return;
-    try {
-      sel.value = (getter && typeof getter === 'function' ? getter() : null) || 'gemini-2.5-pro';
-    } catch (e) {
-      sel.value = 'gemini-2.5-pro';
+    scholarAIEnsureProviderControls();
+    var provider = scholarAIGetProvider();
+    var providerSel = document.getElementById('scholar-ai-provider-select');
+    if (providerSel) providerSel.value = provider;
+    var refreshBtn = document.getElementById('scholar-ai-lm-model-refresh');
+    if (refreshBtn) refreshBtn.style.display = provider === 'lmstudio' ? 'block' : 'none';
+    if (sel.previousElementSibling && sel.previousElementSibling.tagName === 'LABEL') {
+      sel.previousElementSibling.style.display = 'block';
+      sel.previousElementSibling.textContent = provider === 'aistudio' ? 'Gemini 모델 선택' : 'LM Studio 현재 로드 모델 (읽기 전용)';
     }
+    if (provider === 'lmstudio') {
+      sel.disabled = true;
+      sel.style.cursor = 'default';
+      sel.title = '모델 변경은 LM Studio에서 수행하세요.';
+      var loadedGetter = getCallback('getCachedScholarAILMStudioModels');
+      var loadedModels = [];
+      try { loadedModels = typeof loadedGetter === 'function' ? (loadedGetter() || []) : []; } catch (loadedError) {}
+      scholarAIApplyLoadedLMStudioModels(loadedModels);
+      scholarAIRefreshLMStudioModel(true);
+      sel.onchange = null;
+      return;
+    }
+    sel.disabled = false;
+    sel.style.cursor = 'pointer';
+    sel.title = '';
+    scholarAISetProviderStatus('AI Studio에서 사용할 Gemini 모델을 선택하세요.', false);
+    var selectedModel = '';
+    try { selectedModel = (getter && typeof getter === 'function' ? getter(provider) : null) || ''; } catch (e) {}
+    var cachedGetter = getCallback('getCachedScholarAIGeminiModels');
+    var models = [];
+    try { models = typeof cachedGetter === 'function' ? (cachedGetter() || []) : []; } catch (e2) {}
+    if (!models.length) {
+      models = ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+    }
+    scholarAISetModelOptions(models, selectedModel || models[0] || '');
     sel.onchange = function () {
       var setter = getCallback('setScholarAIModelId');
-      if (typeof setter === 'function') setter(sel.value);
+      if (typeof setter === 'function') setter(sel.value, scholarAIGetProvider());
     };
   }
   function scholarAIGetTonePreset() {
@@ -1760,8 +1982,8 @@
     var passage = (sel && sel.value) ? sel.value.trim() : '';
     var userQ = (promptEl && promptEl.value) ? promptEl.value.trim() : '';
     if (!passage) { alert('Please provide selected text to analyze.'); return; }
-    var callGemini = getCallback('callGemini');
-    if (typeof callGemini !== 'function') { alert('ScholarAI API is not available. Please check your settings.'); return; }
+    var callScholarAI = getCallback('callScholarAI') || getCallback('callGemini');
+    if (typeof callScholarAI !== 'function') { alert('ScholarAI API is not available. Please check your settings.'); return; }
     if (resultEl) resultEl.value = 'Running ScholarAI...';
     if (insertEl) insertEl.value = '';
     scholarAISetRunningState(true);
@@ -1772,7 +1994,13 @@
       var toneInstruction = scholarAIGetToneInstruction(tonePreset);
       if (toneInstruction) sys += '\n\n' + toneInstruction;
       var modelId = invokeSync('getScholarAIModelId') || null;
-      var res = await callGemini(fullPrompt, sys, false, modelId);
+      var res = await callScholarAI(fullPrompt, sys, false, modelId);
+      if (res && res.fallbackFrom === 'lmstudio') {
+        scholarAISetProviderStatus('LM Studio 실패로 AI Studio를 사용했습니다: ' + (res.fallbackReason || '연결 오류'), true);
+      } else if (res && res.provider === 'lmstudio' && res.model) {
+        scholarAIApplyLoadedLMStudioModels([res.model]);
+        scholarAISetProviderStatus('이번 요청에 사용된 LM Studio 모델: ' + res.model, false);
+      }
       var text = res && res.text ? res.text : (res || '');
       var finalText = typeof text === 'string' ? text : JSON.stringify(text);
       scholarAIApplyResultText(finalText);
@@ -2713,7 +2941,12 @@ function viewerSSPFsUploadImgbb() {
     var modelSel = document.getElementById('ssp-model');
     var getImgModel = getCallback('getImageModelId');
     if (modelSel && typeof getImgModel === 'function') {
-      try { modelSel.value = getImgModel() || 'gemini-3.1-flash-image-preview'; } catch (e) {}
+      try {
+        var savedImageModel = getImgModel() || 'gemini-3.1-flash-image';
+        if (savedImageModel === 'gemini-3.1-flash-image-preview') savedImageModel = 'gemini-3.1-flash-image';
+        if (savedImageModel === 'gemini-3-pro-image-preview') savedImageModel = 'gemini-3-pro-image';
+        modelSel.value = savedImageModel;
+      } catch (e) {}
     }
     var imgLinkLabel = document.querySelector('.ssp-img-link-label');
     if (imgLinkLabel) imgLinkLabel.textContent = 'Image URL -> Insert (Markdown / HTML)';
@@ -2811,7 +3044,7 @@ function viewerSSPFsUploadImgbb() {
     var progressFill = document.getElementById('ssp-progress-fill');
     var progressPct = document.getElementById('ssp-progress-pct');
     var modelSel = document.getElementById('ssp-model');
-    var modelId = modelSel ? modelSel.value : 'gemini-3.1-flash-image-preview';
+    var modelId = modelSel ? modelSel.value : 'gemini-3.1-flash-image';
     var noText = document.getElementById('ssp-no-text') && document.getElementById('ssp-no-text').checked;
     var h = getHost();
     if (h && h._aiTaskCancelled !== undefined) h._aiTaskCancelled = false;
@@ -3410,6 +3643,7 @@ function viewerSSPFsUploadImgbb() {
     var resInsertTa = document.getElementById('scholar-ai-result-insert');
     if (resTa) resTa.style.setProperty('font-size', __scholarAIResultFontSize + 'px', 'important');
     if (resInsertTa) resInsertTa.style.setProperty('font-size', __scholarAIResultFontSize + 'px', 'important');
+    scholarAIInitUIFontControls();
     scholarAISetRunningState(false);
     var histSearch = document.getElementById('scholar-ai-history-search');
     if (histSearch) histSearch.addEventListener('input', scholarAIHistoryRender);
