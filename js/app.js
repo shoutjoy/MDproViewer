@@ -2338,11 +2338,12 @@ async function copyViewFormattedToClipboard() {
 
     let html = String(viewer.innerHTML || '').trim();
     let text = String(viewer.innerText || viewer.textContent || '').trim();
+    const sourceMarkdown = String(currentMarkdown ?? '');
     if (options && typeof options.htmlTransform === 'function') {
-        try { html = String(options.htmlTransform(html, viewer) || html).trim(); } catch (_) {}
+        try { html = String(options.htmlTransform(html, viewer, sourceMarkdown) || html).trim(); } catch (_) {}
     }
     if (options && typeof options.textTransform === 'function') {
-        try { text = String(options.textTransform(text, viewer, html) || text).trim(); } catch (_) {}
+        try { text = String(options.textTransform(text, viewer, html, sourceMarkdown) || text).trim(); } catch (_) {}
     }
     if (!html && !text) {
         showToast('Nothing to copy.');
@@ -8117,7 +8118,7 @@ window.AIChatBridge = Object.freeze({
             const requestedOutputTokens = splitAcademicMode
                 ? Math.min(2200, configuredMaxTokens)
                 : continuationMode
-                ? Math.min(3000, configuredMaxTokens)
+                ? configuredMaxTokens
                 : request.academicSearch
                 ? Math.min(2048, configuredMaxTokens)
                 : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, configuredMaxTokens);
@@ -8148,7 +8149,7 @@ window.AIChatBridge = Object.freeze({
             const requestMaxTokens = splitAcademicMode
                 ? Math.min(2200, normalOutputBudget)
                 : continuationMode
-                ? Math.min(3000, normalOutputBudget)
+                ? normalOutputBudget
                 : reasoningMode
                 ? (request.academicSearch
                     ? Math.min(2304, normalOutputBudget)
@@ -8178,7 +8179,13 @@ window.AIChatBridge = Object.freeze({
                     : (reasoningMode ? (configuredReasoning === 'auto' ? undefined : configuredReasoning) : 'off'),
                 contextLength: contextLength || undefined,
                 maxTokens: requestMaxTokens,
-                timeoutMs: reasoningMode
+                timeoutMs: continuationMode
+                    ? Math.max(
+                        600000,
+                        Number(config.timeoutMs) || 0,
+                        Math.ceil((requestMaxTokens / 8) * 1000 + 120000)
+                    )
+                    : reasoningMode
                     ? Math.max(300000, Number(config.timeoutMs) || 0)
                     : (request.academicSearch ? Math.max(240000, Number(config.timeoutMs) || 0) : Math.min(60000, Number(config.timeoutMs) || 60000)),
                 store: splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),

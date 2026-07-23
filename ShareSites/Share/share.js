@@ -38,39 +38,278 @@
     function createPlainTextFromHtml(html) {
         try {
             const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
-            return String(doc.body && (doc.body.innerText || doc.body.textContent) || '').trim();
+            function readNode(node) {
+                if (!node) return '';
+                if (node.nodeType === 3) return String(node.nodeValue || '').replace(/\u00a0/g, ' ');
+                if (node.nodeType !== 1) return '';
+                const tag = String(node.tagName || '').toLowerCase();
+                if (tag === 'br') return '\n';
+                if (/^(script|style|noscript)$/.test(tag)) return '';
+                if (tag === 'tr') {
+                    return Array.from(node.children).map(readNode).join('\t') + '\n';
+                }
+                const content = Array.from(node.childNodes).map(readNode).join('');
+                return /^(p|div|h[1-6]|blockquote|pre|section|article|table)$/.test(tag)
+                    ? content + '\n'
+                    : content;
+            }
+            return readNode(doc.body)
+                .replace(/\r/g, '')
+                .replace(/[ \t]+\n/g, '\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
         } catch (_) {
             return String(html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         }
     }
 
-    function transformHtmlForNaverBlog(html) {
+    function extractMathSources(markdown) {
+        let source = String(markdown || '');
+        try {
+            if (window.MathRender && typeof window.MathRender.prepareMarkdown === 'function') {
+                source = String(window.MathRender.prepareMarkdown(source) || source);
+            }
+        } catch (_) {}
+
+        const results = [];
+        const codeParts = source.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g);
+
+        function pushMath(body, display) {
+            const tex = String(body || '').replace(/\s+/g, ' ').trim();
+            if (tex) results.push({ tex: tex, display: !!display });
+        }
+
+        codeParts.forEach(function (part) {
+            if (/^(?:```|~~~)[\s\S]*(?:```|~~~)$/.test(part)) return;
+            String(part || '').split(/(`+[^`]*`+)/g).forEach(function (text) {
+                if (/^`+[\s\S]*`+$/.test(text)) return;
+                let i = 0;
+                while (i < text.length) {
+                    let end = -1;
+                    if (text.slice(i, i + 2) === '\\[') {
+                        end = text.indexOf('\\]', i + 2);
+                        if (end >= 0) {
+                            pushMath(text.slice(i + 2, end), true);
+                            i = end + 2;
+                            continue;
+                        }
+                    }
+                    if (text.slice(i, i + 2) === '\\(') {
+                        end = text.indexOf('\\)', i + 2);
+                        if (end >= 0) {
+                            pushMath(text.slice(i + 2, end), false);
+                            i = end + 2;
+                            continue;
+                        }
+                    }
+                    if (text.slice(i, i + 2) === '$$' && (i === 0 || text[i - 1] !== '\\')) {
+                        end = text.indexOf('$$', i + 2);
+                        if (end >= 0) {
+                            pushMath(text.slice(i + 2, end), true);
+                            i = end + 2;
+                            continue;
+                        }
+                    }
+                    if (text[i] === '$' && (i === 0 || text[i - 1] !== '\\')) {
+                        for (let j = i + 1; j < text.length; j += 1) {
+                            if (text[j] === '$' && text[j - 1] !== '\\') {
+                                end = j;
+                                break;
+                            }
+                        }
+                        if (end >= 0) {
+                            pushMath(text.slice(i + 1, end), false);
+                            i = end + 1;
+                            continue;
+                        }
+                    }
+                    i += 1;
+                }
+            });
+        });
+        return results;
+    }
+
+    function getRenderedMathSource(node) {
+        if (!node) return '';
+        const annotation = node.querySelector
+            ? node.querySelector('annotation[encoding*="tex" i], annotation[encoding*="latex" i]')
+            : null;
+        if (annotation && annotation.textContent) return String(annotation.textContent).trim();
+        const aria = node.getAttribute && (node.getAttribute('aria-label') || node.getAttribute('alttext'));
+        if (aria) return String(aria).trim();
+        const assistive = node.querySelector ? node.querySelector('mjx-assistive-mml, math') : null;
+        return String(assistive && assistive.textContent ? assistive.textContent : '').trim();
+    }
+
+    function replaceRenderedMathForNaver(doc, markdown) {
+        const sources = extractMathSources(markdown);
+        const mathNodes = Array.from(doc.querySelectorAll('mjx-container'));
+        Array.from(doc.querySelectorAll('.katex-display, .katex')).forEach(function (node) {
+            if (node.parentElement && node.parentElement.closest('.katex-display, .katex')) return;
+            mathNodes.push(node);
+        });
+
+        mathNodes.forEach(function (node, index) {
+            const source = sources[index] || {};
+            const tex = String(source.tex || getRenderedMathSource(node) || '수식').replace(/\s+/g, ' ').trim();
+            const display = source.display === true
+                || (node.hasAttribute && node.hasAttribute('display'))
+                || (node.classList && node.classList.contains('katex-display'));
+            const replacement = doc.createElement(display ? 'p' : 'span');
+            replacement.setAttribute('data-naver-math', display ? 'display' : 'inline');
+            replacement.textContent = display ? '수식: ' + tex : '［수식: ' + tex + '］';
+            node.replaceWith(replacement);
+        });
+    }
+
+    function replaceCodeBlocksForNaver(doc) {
+        Array.from(doc.querySelectorAll('pre')).forEach(function (pre) {
+            const codeText = String(pre.innerText || pre.textContent || '')
+                .replace(/\r\n?/g, '\n')
+                .replace(/\n$/, '');
+            const box = doc.createElement('div');
+            box.setAttribute('data-naver-code-block', 'true');
+
+            codeText.split('\n').forEach(function (rawLine) {
+                const line = doc.createElement('p');
+                line.setAttribute('data-naver-code-line', 'true');
+                const expanded = String(rawLine || '').replace(/\t/g, '    ');
+                const leading = expanded.match(/^ +/);
+                if (leading) line.appendChild(doc.createTextNode('\u00a0'.repeat(leading[0].length)));
+                const rest = leading ? expanded.slice(leading[0].length) : expanded;
+                if (rest) line.appendChild(doc.createTextNode(rest));
+                else if (!leading) line.appendChild(doc.createElement('br'));
+                box.appendChild(line);
+            });
+            pre.replaceWith(box);
+        });
+    }
+
+    function flattenListsForNaver(doc) {
+        function appendList(list, depth, fragment) {
+            const ordered = list.tagName.toLowerCase() === 'ol';
+            const start = Number(list.getAttribute('start')) || 1;
+            Array.from(list.children).forEach(function (li, index) {
+                if (!li || li.tagName.toLowerCase() !== 'li') return;
+                const p = doc.createElement('p');
+                p.setAttribute('data-naver-list-depth', String(depth));
+                p.appendChild(doc.createTextNode(ordered ? (start + index) + '. ' : '• '));
+
+                Array.from(li.childNodes).forEach(function (child) {
+                    if (child.nodeType === 1 && /^(ul|ol)$/i.test(child.tagName)) return;
+                    if (child.nodeType === 1 && /^(p|div)$/i.test(child.tagName)) {
+                        Array.from(child.childNodes).forEach(function (nested) {
+                            p.appendChild(nested.cloneNode(true));
+                        });
+                        return;
+                    }
+                    p.appendChild(child.cloneNode(true));
+                });
+                fragment.appendChild(p);
+
+                Array.from(li.children).forEach(function (child) {
+                    if (/^(ul|ol)$/i.test(child.tagName)) appendList(child, depth + 1, fragment);
+                });
+            });
+        }
+
+        Array.from(doc.querySelectorAll('ul, ol')).forEach(function (list) {
+            if (!list.isConnected || (list.parentElement && list.parentElement.closest('ul, ol'))) return;
+            const fragment = doc.createDocumentFragment();
+            appendList(list, 0, fragment);
+            list.replaceWith(fragment);
+        });
+    }
+
+    function sanitizeAndStyleNaverHtml(doc) {
+        Array.from(doc.querySelectorAll('script, style, noscript, iframe, button, input, textarea, select')).forEach(function (node) {
+            node.remove();
+        });
+
+        Array.from(doc.body.querySelectorAll('*')).forEach(function (node) {
+            Array.from(node.attributes || []).forEach(function (attr) {
+                const name = String(attr.name || '').toLowerCase();
+                const keep = /^(href|src|alt|title|colspan|rowspan)$/.test(name)
+                    || name === 'data-naver-code-block'
+                    || name === 'data-naver-code-line'
+                    || name === 'data-naver-list-depth'
+                    || name === 'data-naver-math';
+                if (!keep) node.removeAttribute(attr.name);
+            });
+        });
+
+        Array.from(doc.querySelectorAll('h1, h2, h3, h4, h5, h6')).forEach(function (node) {
+            const level = Number(node.tagName.slice(1)) || 3;
+            const sizes = { 1: '26px', 2: '23px', 3: '20px', 4: '18px', 5: '16px', 6: '15px' };
+            node.style.cssText = 'margin:24px 0 10px;font-size:' + sizes[level] + ';line-height:1.4;font-weight:700;color:#111827;';
+        });
+        Array.from(doc.querySelectorAll('p')).forEach(function (node) {
+            node.style.cssText = 'margin:8px 0;font-size:16px;line-height:1.75;color:#1f2937;word-break:normal;overflow-wrap:anywhere;';
+        });
+        Array.from(doc.querySelectorAll('[data-naver-list-depth]')).forEach(function (node) {
+            const depth = Math.max(0, Number(node.getAttribute('data-naver-list-depth')) || 0);
+            node.style.margin = '5px 0 5px ' + (depth * 24) + 'px';
+        });
+        Array.from(doc.querySelectorAll('[data-naver-code-block]')).forEach(function (node) {
+            node.style.cssText = 'margin:16px 0;padding:12px 14px;border:1px solid #d0d7de;border-radius:4px;background-color:#f6f8fa;';
+        });
+        Array.from(doc.querySelectorAll('[data-naver-code-line]')).forEach(function (node) {
+            node.style.cssText = 'margin:0;min-height:1.55em;font-family:Consolas,Monaco,"Courier New",monospace;font-size:14px;line-height:1.55;color:#24292f;white-space:pre-wrap;overflow-wrap:anywhere;';
+        });
+        Array.from(doc.querySelectorAll('[data-naver-math="display"]')).forEach(function (node) {
+            node.style.cssText = 'margin:12px 0;padding:8px 10px;border-left:3px solid #94a3b8;background-color:#f8fafc;font-family:Consolas,Monaco,"Courier New",monospace;font-size:15px;line-height:1.6;color:#1f2937;white-space:pre-wrap;overflow-wrap:anywhere;';
+        });
+        Array.from(doc.querySelectorAll('[data-naver-math="inline"]')).forEach(function (node) {
+            node.style.cssText = 'font-family:Consolas,Monaco,"Courier New",monospace;color:#1f2937;';
+        });
+        Array.from(doc.querySelectorAll('blockquote')).forEach(function (node) {
+            node.style.cssText = 'margin:14px 0;padding:8px 14px;border-left:4px solid #cbd5e1;background-color:#f8fafc;color:#475569;';
+        });
+        Array.from(doc.querySelectorAll('table')).forEach(function (node) {
+            node.style.cssText = 'width:100%;margin:16px 0;border-collapse:collapse;table-layout:auto;';
+            node.setAttribute('border', '1');
+        });
+        Array.from(doc.querySelectorAll('th, td')).forEach(function (node) {
+            node.style.cssText = 'padding:8px 10px;border:1px solid #cbd5e1;vertical-align:top;font-size:15px;line-height:1.55;overflow-wrap:anywhere;';
+        });
+        Array.from(doc.querySelectorAll('th')).forEach(function (node) {
+            node.style.backgroundColor = '#f1f5f9';
+            node.style.fontWeight = '700';
+        });
+        Array.from(doc.querySelectorAll('img')).forEach(function (node) {
+            node.style.cssText = 'max-width:100%;height:auto;';
+        });
+        Array.from(doc.querySelectorAll('hr')).forEach(function (node) {
+            node.style.cssText = 'margin:22px 0;border:0;border-top:1px solid #cbd5e1;';
+        });
+
+        Array.from(doc.querySelectorAll('[data-naver-code-block], [data-naver-code-line], [data-naver-list-depth], [data-naver-math]')).forEach(function (node) {
+            Array.from(node.attributes).forEach(function (attr) {
+                if (String(attr.name).indexOf('data-naver-') === 0) node.removeAttribute(attr.name);
+            });
+        });
+    }
+
+    function transformHtmlForNaverBlog(html, viewer, sourceMarkdown) {
         try {
             const doc = new DOMParser().parseFromString(String(html || ''), 'text/html');
-            const blocks = doc.querySelectorAll('pre');
-            blocks.forEach(function (pre) {
-                const codeText = String(pre.innerText || pre.textContent || '').replace(/\r\n/g, '\n').trim();
-                const table = doc.createElement('table');
-                table.setAttribute('border', '1');
-                table.style.borderCollapse = 'collapse';
-                table.style.width = '100%';
-                const tr = doc.createElement('tr');
-                const td = doc.createElement('td');
-                td.style.padding = '10px';
-                td.style.verticalAlign = 'top';
-                const code = doc.createElement('code');
-                code.style.whiteSpace = 'pre-wrap';
-                code.style.fontFamily = 'Consolas, Monaco, monospace';
-                code.textContent = codeText;
-                td.appendChild(code);
-                tr.appendChild(td);
-                table.appendChild(tr);
-                pre.replaceWith(table);
-            });
+            replaceRenderedMathForNaver(doc, sourceMarkdown);
+            replaceCodeBlocksForNaver(doc);
+            flattenListsForNaver(doc);
+            sanitizeAndStyleNaverHtml(doc);
             return String(doc.body.innerHTML || html || '');
         } catch (_) {
             return String(html || '');
         }
+    }
+
+    function buildNaverClipboardContent(html, sourceMarkdown) {
+        const transformedHtml = transformHtmlForNaverBlog(html, null, sourceMarkdown);
+        return {
+            html: transformedHtml,
+            text: createPlainTextFromHtml(transformedHtml)
+        };
     }
 
     async function saveNaverBlogId(value) {
@@ -785,6 +1024,7 @@
         removeCustomShareDestination,
         openShareDestination: openShareDestinationWithOptions,
         saveNaverBlogIdFromSettings,
+        buildNaverClipboardContent,
         shouldShowInViewMode,
         resetShareSettingsUI,
         loadShareSettingsUI

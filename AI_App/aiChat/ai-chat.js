@@ -1880,10 +1880,23 @@
         ]
       : [
           missingSections.length ? '아직 작성하지 못한 항목: ' + missingSections.join(', ') : '이전 답변의 끊긴 문장과 남은 내용을 완결하세요.',
-          '이전 답변 마지막 부분:\n' + answerTail,
-          '질문, 체크리스트, 분석 계획, 모델의 생각, 기존 제목·문장·문단은 출력하지 마세요. 아직 쓰지 않은 새 본문만 한국어 완성 문장으로 출력하세요.'
+          '직전 답변의 마지막 연결 지점(이 내용 다음부터 작성하며 재출력하지 않음):\n' + answerTail,
+          [
+            '원래 사용자 요청과 직전 답변 전체는 바로 앞 대화 문맥에 제공되어 있습니다.',
+            '직전 답변에서 이미 완성한 내용은 요약·반복·바꾸어 쓰지 말고, 그 이후에 아직 작성하지 않은 내용만 이어서 작성하세요.',
+            '마지막 문장이 중간에 끊겼다면 그 문장을 자연스럽게 완결한 뒤 남은 항목을 모두 작성하세요.',
+            '질문, 체크리스트, 분석 계획, 모델의 생각, 작업 설명, 영어 메타 문장은 출력하지 마세요.',
+            '첫 글자부터 사용자에게 보여 줄 한국어 본문을 시작하고, 모든 남은 내용을 완성된 마지막 문장으로 끝내세요.'
+          ].join(' ')
         ];
     var continuationPrompt = continuationPromptParts.join('\n\n');
+    var continuationMessages = splitAcademic
+      ? [{ role: 'user', content: continuationPrompt }]
+      : [
+          { role: 'user', content: String(sourceUser && sourceUser.content || '원래 사용자 요청') },
+          { role: 'assistant', content: originalAnswer },
+          { role: 'user', content: continuationPrompt }
+        ];
     setRunning(true);
     startThinkingProgress();
     target.continuationAvailable = false;
@@ -1898,11 +1911,16 @@
         continuation: true,
         splitAcademicResponse: splitAcademic,
         previousResponseId: null,
-        messages: [{ role: 'user', content: continuationPrompt }],
+        messages: continuationMessages,
         onStreamEvent: state.provider === 'lmstudio' ? handleStreamEvent : undefined,
         systemInstruction: academicSearch
           ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0)
-          : 'Continue the interrupted answer in Korean. Write only the missing continuation, do not repeat earlier content, and finish all remaining points with a complete final sentence.'
+          : [
+              '원래 사용자 요청과 직전 assistant 답변 전체를 대화 문맥으로 읽고, 직전 답변 바로 다음 내용만 한국어로 이어서 작성한다.',
+              '이미 작성한 내용, 제목, 문장, 문단을 반복하거나 요약하지 않는다.',
+              '내부 추론, 계획, 작업 설명, 체크리스트, "The user wants" 같은 메타 문장을 출력하지 않는다.',
+              '첫 토큰부터 사용자에게 보여 줄 새 본문만 출력하고, 남은 요구사항을 충분히 작성한 뒤 완성된 문장으로 끝낸다.'
+            ].join(' ')
       });
       var continuedRaw = result && result.text != null ? String(result.text) : '';
       var continuedStatus = extractModelStatus(continuedRaw);
