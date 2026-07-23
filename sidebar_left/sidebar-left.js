@@ -302,6 +302,7 @@
 
                     folderDocs.forEach(function (doc) {
                         const docItem = document.createElement('div');
+                        docItem.dataset.indbDocId = String(doc.id || '');
                         docItem.className = isSidebarCollapsed
                             ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
                             : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';

@@ -23,7 +23,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="./css/style.css?v=20260722-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
-    <link rel="stylesheet" href="./aiChat/ai-chat.css?v=20260721-24" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260723-4" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
@@ -1257,6 +1257,27 @@
                                     <input id="settings-lmstudio-top-p" type="number" min="0" max="1" step="0.05" placeholder="기본값" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
                                 </label>
                             </div>
+                            <div class="rounded-md border border-indigo-200 dark:border-indigo-900/70 bg-indigo-50/70 dark:bg-indigo-950/20 p-2.5">
+                                <div class="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-300">AI Chat 출력 토큰</div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">즉시응답 Max tokens
+                                        <input id="settings-aichat-quick-max-tokens" type="number" min="1" step="1" value="4096" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                    </label>
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">추론 Max tokens
+                                        <input id="settings-aichat-reasoning-max-tokens" type="number" min="1" step="1" value="8192" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                    </label>
+                                </div>
+                                <label class="mt-2 block text-xs text-slate-600 dark:text-slate-400">추론 강도
+                                    <select id="settings-aichat-reasoning-level" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                        <option value="auto" selected>LM Studio 자동</option>
+                                        <option value="on">모델 기본 ON</option>
+                                        <option value="low">낮음 (low)</option>
+                                        <option value="medium">중간 (medium)</option>
+                                        <option value="high">높음 (high)</option>
+                                    </select>
+                                </label>
+                                <p class="mt-1.5 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">실제 출력은 위 LM Studio Max tokens와 로드 모델의 남은 컨텍스트 길이를 넘지 않습니다. 모델이 선택한 추론 강도를 지원하지 않으면 LM Studio 자동 설정으로 재시도합니다.</p>
+                            </div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <button type="button" onclick="saveScholarAIProviderSettingsFromUI(true)" class="px-2 py-1.5 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700">LM 설정 저장</button>
                                 <button type="button" onclick="loadSettingsLMStudioModels()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">현재 로드 모델 확인</button>
@@ -1722,15 +1743,15 @@
     <script src="./js/export/html-export.js" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-settings.js?v=20260428-2" charset="utf-8" defer></script>
     <script src="./Setting/settings-ui.js?v=20260603-1" charset="utf-8" defer></script>
-    <script src="./sidebar_left/sidebar-left.js?v=20260603-1" charset="utf-8" defer></script>
+    <script src="./sidebar_left/sidebar-left.js?v=20260723-1" charset="utf-8" defer></script>
     <script src="./js/Imagetool/link-image-modal.js?v=20260604-1" charset="utf-8" defer></script>
     <script src="./js/Tidy/tidy-actions.js?v=20260628-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/minipv.js?v=20260603-3" charset="utf-8" defer></script>
-    <script src="./ai_local/local-ai.js?v=20260722-1" charset="utf-8" defer></script>
-    <script src="./ai_local/scholar-ai-provider.js?v=20260721-3" charset="utf-8" defer></script>
-    <script src="./js/app.js?v=20260722-2" charset="utf-8" defer></script>
-    <script src="./aiChat/academic-search.js?v=20260721-9" charset="utf-8" defer></script>
-    <script src="./aiChat/ai-chat.js?v=20260722-4" charset="utf-8" defer></script>
+    <script src="./AI_App/ai_local/local-ai.js?v=20260723-2" charset="utf-8" defer></script>
+    <script src="./AI_App/ai_local/scholar-ai-provider.js?v=20260721-3" charset="utf-8" defer></script>
+    <script src="./js/app.js?v=20260723-2" charset="utf-8" defer></script>
+    <script src="./AI_App/aiChat/academic-search.js?v=20260721-9" charset="utf-8" defer></script>
+    <script src="./AI_App/aiChat/ai-chat.js?v=20260723-4" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-app.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/viewmode/viewmode-edit-input.js?v=20260602-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/editpv.js?v=20260628-4" charset="utf-8" defer></script>

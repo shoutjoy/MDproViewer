@@ -6,7 +6,7 @@
 
 - 사용자가 ScholarAI에서 `자동: LM Studio → AI Studio`, `LM Studio`, `AI Studio`를 선택할 수 있다.
 - AI Studio의 기존 동작과 저장값은 그대로 유지한다.
-- LM Studio는 `ai_local/local-ai.js`의 OpenAI 호환 클라이언트를 재사용한다.
+- LM Studio는 `AI_App/ai_local/local-ai.js`의 OpenAI 호환 클라이언트를 재사용한다.
 - ScholarAI의 선택 문장, 사전 프롬프트, 문체, 결과 탭, 히스토리, 문서 삽입, 중지 기능은 공급자와 무관하게 동일하게 동작한다.
 - LM Studio가 꺼져 있거나 설정이 잘못된 경우 원인을 구분해 안내하고, AI Studio 설정에는 영향을 주지 않는다.
 
@@ -39,13 +39,13 @@ index.html의 ScholarAI 패널
   - 공용 `window._abortController`를 사용한다.
 - `index.html`
   - 실제 ScholarAI 패널의 모델 목록이 Gemini 값으로 고정되어 있다.
-  - `ai_local/local-ai.js`는 아직 로드하지 않는다.
+  - `AI_App/ai_local/local-ai.js`는 아직 로드하지 않는다.
 - `sidebarAI/sidebar-ai.js` 내부 HTML 템플릿
   - 독립/팝업 사용을 위한 ScholarAI 마크업에도 같은 Gemini 모델 목록이 중복되어 있다.
 
 ### 재사용할 `ai_local` 기능
 
-`ai_local/local-ai.js`는 이미 다음 기능을 제공한다.
+`AI_App/ai_local/local-ai.js`는 이미 다음 기능을 제공한다.
 
 - `LocalAI.createClient(config)`
 - `client.listModels()` / `client.testConnection()`
@@ -76,7 +76,7 @@ callScholarAI({
 
 호환성을 위해 전환 기간에는 `callScholarAI`가 없을 때 기존 `callGemini`로 폴백할 수 있다. 최종적으로 ScholarAI 코어는 특정 API의 요청 형식을 알지 않으며 공통 결과의 `text`만 처리한다.
 
-공급자 어댑터는 `ai_local/scholar-ai-provider.js`로 분리한다.
+공급자 어댑터는 `AI_App/ai_local/scholar-ai-provider.js`로 분리한다.
 
 - `aistudio` 어댑터: 현재 `js/app.js`의 Gemini 텍스트 호출 로직을 보존한다.
 - `lmstudio` 어댑터: `LocalAI.createClient()`와 `client.complete()`를 사용한다.
@@ -174,15 +174,15 @@ UI 동작 기준:
 
 ### `ai_local`에서 개발할 파일
 
-- `ai_local/local-ai.js`
+- `AI_App/ai_local/local-ai.js`
   - 기본적으로 기존 공개 API를 재사용한다.
   - ScholarAI 연동 중 실제 호환성 문제가 확인될 때만 최소 수정한다.
-- `ai_local/scholar-ai-provider.js` (신규)
+- `AI_App/ai_local/scholar-ai-provider.js` (신규)
   - 공급자 공통 인터페이스와 AI Studio/LM Studio 어댑터
   - 설정 읽기/저장, 모델 조회, 연결 확인, 요청, 취소, 오류 정규화
-- `ai_local/README.md`
+- `AI_App/ai_local/README.md`
   - ScholarAI 연결 방법과 설정 예시 추가
-- `ai_local/ailocal_dev.md`
+- `AI_App/ai_local/ailocal_dev.md`
   - 본 개발 방향 및 진행 체크 문서
 
 ### 호스트 앱의 최소 연결 변경
@@ -206,7 +206,7 @@ UI 동작 기준:
 
 ### 1단계: 공급자 어댑터 작성 — 완료
 
-- [x] `ai_local/scholar-ai-provider.js` 공개 API 정의
+- [x] `AI_App/ai_local/scholar-ai-provider.js` 공개 API 정의
 - [x] 현재 Gemini 텍스트 요청을 AI Studio 어댑터로 이동/래핑
 - [x] `LocalAI.createClient()` 기반 LM Studio 어댑터 구현
 - [x] 설정 검증과 오류 메시지 정규화
@@ -283,7 +283,7 @@ UI 동작 기준:
 - [x] Nano Banana 생성 이미지를 채팅/IndexedDB에 저장·표시하고 파일 저장 지원
 - [x] sspimgAI의 Nano Banana Preview ID를 공식 Stable ID로 이전
 
-AI Chat의 UI 및 대화 저장은 `aiChat/ai-chat.js`, `aiChat/ai-chat.css`에서 담당하며, 공급자 호출은 `js/app.js`의 `AIChatBridge`를 통해 기존 `ai_local` 설정을 공유한다.
+AI Chat의 UI 및 대화 저장은 `AI_App/aiChat/ai-chat.js`, `AI_App/aiChat/ai-chat.css`에서 담당하며, 공급자 호출은 `js/app.js`의 `AIChatBridge`를 통해 기존 `ai_local` 설정을 공유한다.
 
 ## 8. 범위 밖 및 주의사항
 

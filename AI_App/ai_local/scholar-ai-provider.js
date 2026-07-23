@@ -1,6 +1,6 @@
 /*
  * ScholarAIProvider - AI Studio / LM Studio text provider adapter.
- * Requires ai_local/local-ai.js when LM Studio is used.
+ * Requires AI_App/ai_local/local-ai.js when LM Studio is used.
  */
 (function (root, factory) {
   var api = factory(root);
@@ -31,7 +31,7 @@
   function requireLocalAI() {
     var localAI = root && root.LocalAI;
     if (!localAI || typeof localAI.createClient !== 'function') {
-      throw new Error('LocalAI가 로드되지 않았습니다. ai_local/local-ai.js를 먼저 불러오세요.');
+      throw new Error('LocalAI가 로드되지 않았습니다. AI_App/ai_local/local-ai.js를 먼저 불러오세요.');
     }
     return localAI;
   }

@@ -27,7 +27,7 @@
 ## 브라우저에서 사용
 
 ```html
-<script src="./ai_local/local-ai.js"></script>
+<script src="./AI_App/ai_local/local-ai.js"></script>
 <script>
   const client = LocalAI.createClient({
     baseUrl: 'http://127.0.0.1:5678/v1',
@@ -112,8 +112,8 @@ API 키가 포함된 설정을 동기화하거나 외부로 내보낼 때는 평
 ## Node / Electron에서 사용
 
 ```js
-const LocalAI = require('./ai_local/local-ai.js');
-const client = LocalAI.createClient(require('./ai_local/local-ai.config.example.js'));
+const LocalAI = require('./AI_App/ai_local/local-ai.js');
+const client = LocalAI.createClient(require('./AI_App/ai_local/local-ai.config.example.js'));
 
 const result = await LocalAI.features.scholar.run(client, {
   role: 'editor',

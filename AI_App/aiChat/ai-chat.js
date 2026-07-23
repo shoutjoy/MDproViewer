@@ -6,6 +6,7 @@
   var PROVIDER_KEY = 'ss_ai_chat_provider';
   var GEMINI_MODEL_KEY = 'ss_ai_chat_gemini_model';
   var RESPONSE_MODE_KEY = 'ss_ai_chat_response_mode';
+  var SHOW_REASONING_KEY = 'ss_ai_chat_show_reasoning';
   var ACADEMIC_SEARCH_KEY = 'ss_ai_chat_academic_search_enabled';
   var ACADEMIC_COUNT_KEY = 'ss_ai_chat_academic_search_count';
   var PROVIDER_CONTROLS_KEY = 'ss_ai_chat_provider_controls_open';
@@ -20,7 +21,7 @@
   var CHAT_DB_VERSION = 1;
   var CONVERSATION_STORE = 'conversations';
   var MAX_STORED_MESSAGES = 100;
-  var MAX_CONTEXT_MESSAGES = 30;
+  var MAX_CONTEXT_MESSAGES = 100;
   var DOCK_HISTORY_MIN_WIDTH = 680;
   var DEFAULT_GEMINI_MODELS = [
     'gemini-3.5-flash',
@@ -42,10 +43,12 @@
     provider: 'lmstudio',
     providerControlsOpen: false,
     responseMode: 'quick',
+    showReasoning: false,
     academicSearchEnabled: false,
     academicSearchCount: 10,
     geminiModel: 'gemini-3.5-flash',
     lmModel: '',
+    lmContextLength: 0,
     messages: [],
     layout: 'popup',
     conversationId: '',
@@ -60,6 +63,9 @@
   var thinkingTimer = null;
   var thinkingStartedAt = 0;
   var thinkingProgress = 0;
+  var liveStream = null;
+  var liveStreamRenderPending = false;
+  var liveStreamLastRenderAt = 0;
   var saveTimer = null;
   var academicAbortController = null;
   var documentSelectionBuffer = '';
@@ -156,6 +162,7 @@
       updatedAt: now,
       provider: state.provider,
       responseMode: state.responseMode,
+      showReasoning: state.showReasoning,
       academicSearchEnabled: state.academicSearchEnabled,
       academicSearchCount: state.academicSearchCount,
       geminiModel: state.geminiModel,
@@ -227,17 +234,20 @@
     });
     if (record && record.provider) state.provider = record.provider === 'aistudio' ? 'aistudio' : 'lmstudio';
     if (record && record.responseMode) state.responseMode = record.responseMode === 'reasoning' ? 'reasoning' : 'quick';
+    if (record && typeof record.showReasoning === 'boolean') state.showReasoning = record.showReasoning;
     if (record && typeof record.academicSearchEnabled === 'boolean') state.academicSearchEnabled = record.academicSearchEnabled;
     if (record && Number(record.academicSearchCount)) state.academicSearchCount = normalizeAcademicCount(record.academicSearchCount);
     if (record && record.geminiModel) state.geminiModel = record.geminiModel;
     storageSet(CURRENT_CONVERSATION_KEY, state.conversationId);
     storageSet(PROVIDER_KEY, state.provider);
     storageSet(RESPONSE_MODE_KEY, state.responseMode);
+    storageSet(SHOW_REASONING_KEY, state.showReasoning ? '1' : '0');
     storageSet(ACADEMIC_SEARCH_KEY, state.academicSearchEnabled ? '1' : '0');
     storageSet(ACADEMIC_COUNT_KEY, String(state.academicSearchCount));
     storageSet(GEMINI_MODEL_KEY, state.geminiModel);
     updateProviderUI();
     setResponseMode(state.responseMode);
+    setShowReasoning(state.showReasoning);
     updateAcademicSearchUI();
     renderMessages();
     renderConversationHistory();
@@ -253,7 +263,7 @@
         if (legacy.length) {
           var migrated = {
             id: newId(), title: titleFromMessages(legacy), createdAt: Date.now(), updatedAt: Date.now(),
-            provider: state.provider, responseMode: state.responseMode,
+            provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
             academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
             geminiModel: state.geminiModel,
             messages: legacy
@@ -270,7 +280,7 @@
       if (!current) {
         current = {
           id: newId(), title: '새 대화', createdAt: Date.now(), updatedAt: Date.now(),
-          provider: state.provider, responseMode: state.responseMode,
+          provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
           academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
           geminiModel: state.geminiModel, messages: []
         };
@@ -358,6 +368,7 @@
       + '        <span>응답 모드</span>'
       + '        <button type="button" data-ai-chat-mode="quick">⚡ 즉시응답</button>'
       + '        <button type="button" data-ai-chat-mode="reasoning">🧠 추론</button>'
+      + '        <label class="ai-chat-reasoning-toggle" title="모델은 그대로 추론하며, 이 설정은 반환된 추론 내용을 채팅에 표시·저장할지만 결정합니다."><input type="checkbox" id="ai-chat-show-reasoning"><span>추론 내용 표시</span></label>'
       + '        <button type="button" id="ai-chat-academic-toggle" class="ai-chat-academic-toggle" aria-pressed="false">🔎 학술검색</button>'
       + '        <label id="ai-chat-academic-count-wrap" class="ai-chat-academic-count-wrap">결과 <select id="ai-chat-academic-count" aria-label="학술검색 결과 수"><option value="5">5개</option><option value="10">10개</option><option value="20">20개</option><option value="30">30개</option><option value="50">50개</option></select></label>'
       + '        <small id="ai-chat-mode-help"></small>'
@@ -421,6 +432,9 @@
         setResponseMode(this.getAttribute('data-ai-chat-mode'));
       });
     }
+    document.getElementById('ai-chat-show-reasoning').addEventListener('change', function (event) {
+      setShowReasoning(event.target.checked);
+    });
     document.getElementById('ai-chat-academic-toggle').addEventListener('click', function () {
       setAcademicSearchEnabled(!state.academicSearchEnabled);
     });
@@ -799,24 +813,216 @@
     return '응답 내용을 정리하는 중';
   }
 
-  function updateThinkingProgress() {
-    if (!state.running) return;
+  function estimateStreamTokens(value) {
+    var text = String(value || '');
+    var ascii = 0;
+    var nonAscii = 0;
+    for (var character of text) {
+      if (character.charCodeAt(0) < 128) ascii += 1;
+      else nonAscii += 1;
+    }
+    return Math.max(0, Math.ceil(ascii / 4 + nonAscii / 1.5));
+  }
+
+  function formatStreamNumber(value) {
+    return Math.max(0, Math.round(Number(value) || 0)).toLocaleString('ko-KR');
+  }
+
+  function shouldFollowLiveStream(element) {
+    if (!element) return false;
+    return element.scrollHeight - element.scrollTop - element.clientHeight < 36;
+  }
+
+  function followLiveStreamEnd(element, enabled) {
+    if (!element || !enabled) return;
+    element.scrollTop = element.scrollHeight;
+  }
+
+  function updateLiveStreamDom() {
+    liveStreamRenderPending = false;
+    liveStreamLastRenderAt = Date.now();
+    if (!state.running || !liveStream) return;
     var elapsed = Math.max(0, (Date.now() - thinkingStartedAt) / 1000);
-    thinkingProgress = Math.min(94, Math.max(thinkingProgress, 8 + Math.log1p(elapsed) * 22));
-    var stage = getThinkingStage(elapsed);
+    var estimatedReasoningTokens = estimateStreamTokens(liveStream.reasoning);
+    var estimatedAnswerTokens = estimateStreamTokens(liveStream.answer);
+    var estimatedTokens = estimatedReasoningTokens + estimatedAnswerTokens;
+    var reasoningTokens = liveStream.hasExactStats ? liveStream.exactReasoningTokens : estimatedReasoningTokens;
+    var answerTokens = liveStream.hasExactStats
+      ? Math.max(0, liveStream.exactOutputTokens - liveStream.exactReasoningTokens)
+      : estimatedAnswerTokens;
+    var outputTokens = liveStream.hasExactStats ? liveStream.exactOutputTokens : estimatedTokens;
+    var tokenRatio = liveStream.maxOutputTokens ? Math.min(1, outputTokens / liveStream.maxOutputTokens) : 0;
+    if (liveStream.phase === 'generating') {
+      liveStream.progress = Math.max(liveStream.progress, 35 + tokenRatio * 64);
+    }
+    var measuredTps = liveStream.tokensPerSecond;
+    if (!measuredTps && liveStream.firstTokenAt && outputTokens) {
+      measuredTps = outputTokens / Math.max(0.1, (Date.now() - liveStream.firstTokenAt) / 1000);
+    }
+    thinkingProgress = Math.max(0, Math.min(100, Number(liveStream.progress) || 0));
     var stageEl = document.getElementById('ai-chat-thinking-stage');
     var elapsedEl = document.getElementById('ai-chat-thinking-elapsed');
     var bar = document.getElementById('ai-chat-thinking-progress');
-    if (stageEl) stageEl.textContent = stage;
+    var contextEl = document.getElementById('ai-chat-thinking-context');
+    var reasoningTokensEl = document.getElementById('ai-chat-thinking-reasoning-tokens');
+    var answerTokensEl = document.getElementById('ai-chat-thinking-answer-tokens');
+    var outputEl = document.getElementById('ai-chat-thinking-output');
+    var speedEl = document.getElementById('ai-chat-thinking-speed');
+    var reasoningWrap = document.getElementById('ai-chat-live-reasoning');
+    var reasoningBody = document.getElementById('ai-chat-live-reasoning-content');
+    var answerWrap = document.getElementById('ai-chat-live-answer');
+    var answerBody = document.getElementById('ai-chat-live-answer-content');
+    var list = document.getElementById('ai-chat-messages');
+    var followReasoning = shouldFollowLiveStream(reasoningBody);
+    var followAnswer = shouldFollowLiveStream(answerBody);
+    var followMessages = shouldFollowLiveStream(list);
+    if (stageEl) stageEl.textContent = liveStream.stage;
     if (elapsedEl) elapsedEl.textContent = Math.floor(elapsed) + '초';
     if (bar) bar.style.width = thinkingProgress.toFixed(1) + '%';
-    setStatus(stage + ' · ' + Math.floor(elapsed) + '초', 'loading');
+    if (contextEl) {
+      contextEl.textContent = liveStream.contextLength
+        ? '컨텍스트 ' + formatStreamNumber(liveStream.estimatedInputTokens) + ' / ' + formatStreamNumber(liveStream.contextLength)
+        : '컨텍스트 확인 중';
+    }
+    if (reasoningTokensEl) {
+      reasoningTokensEl.textContent = '추론 ' + (liveStream.hasExactStats ? '' : '≈')
+        + formatStreamNumber(reasoningTokens) + ' tok';
+    }
+    if (answerTokensEl) {
+      answerTokensEl.textContent = '응답 ' + (liveStream.hasExactStats ? '' : '≈')
+        + formatStreamNumber(answerTokens) + ' tok';
+    }
+    if (outputEl) {
+      outputEl.textContent = '전체 ' + (liveStream.hasExactStats ? '' : '≈') + formatStreamNumber(outputTokens)
+        + (liveStream.maxOutputTokens ? ' / ' + formatStreamNumber(liveStream.maxOutputTokens) : '') + ' tok';
+    }
+    if (speedEl) speedEl.textContent = measuredTps ? measuredTps.toFixed(1) + ' tok/s' : '첫 토큰 대기';
+    var showLiveReasoning = state.responseMode === 'reasoning' && state.showReasoning;
+    if (reasoningWrap) reasoningWrap.hidden = !showLiveReasoning;
+    if (reasoningBody) {
+      reasoningBody.classList.toggle('waiting', !liveStream.reasoning);
+      reasoningBody.textContent = liveStream.reasoning || '첫 추론 토큰을 기다리는 중…';
+      followLiveStreamEnd(reasoningBody, followReasoning && !!liveStream.reasoning);
+    }
+    if (answerWrap) answerWrap.hidden = false;
+    if (answerBody) {
+      answerBody.classList.toggle('waiting', !liveStream.answer);
+      answerBody.textContent = liveStream.answer || (showLiveReasoning
+        ? '추론이 끝난 뒤 첫 응답 토큰이 도착하면 여기에 바로 표시됩니다.'
+        : '첫 응답 토큰을 기다리는 중…');
+      followLiveStreamEnd(answerBody, followAnswer && !!liveStream.answer);
+    }
+    followLiveStreamEnd(list, followMessages);
+    setStatus(liveStream.stage + ' · ' + Math.floor(elapsed) + '초 · ' + (measuredTps ? measuredTps.toFixed(1) + ' tok/s' : '첫 토큰 대기'), 'loading');
+  }
+
+  function scheduleLiveStreamRender(force) {
+    if (force || Date.now() - liveStreamLastRenderAt >= 80) {
+      updateLiveStreamDom();
+      return;
+    }
+    if (liveStreamRenderPending) return;
+    liveStreamRenderPending = true;
+    var schedule = root.requestAnimationFrame || function (callback) { return setTimeout(callback, 16); };
+    schedule(updateLiveStreamDom);
+  }
+
+  function handleStreamEvent(event) {
+    if (!liveStream || !event || !event.type) return;
+    var type = String(event.type);
+    if (type === 'request.start') {
+      liveStream.contextLength = Math.max(0, Number(event.context_length) || 0);
+      liveStream.maxOutputTokens = Math.max(0, Number(event.max_output_tokens) || 0);
+      liveStream.estimatedInputTokens = Math.max(0, Number(event.estimated_input_tokens) || 0);
+      liveStream.stage = 'LM Studio에 요청을 전송하는 중';
+      liveStream.progress = 2;
+    } else if (type === 'transport.start') {
+      liveStream.stage = 'LM Studio 실시간 스트림에 연결하는 중';
+      liveStream.progress = Math.max(liveStream.progress, 3);
+    } else if (type === 'chat.start') {
+      liveStream.stage = '모델 연결 완료 · 문맥 처리 대기';
+      liveStream.progress = Math.max(liveStream.progress, 5);
+    } else if (type === 'model_load.start') {
+      liveStream.stage = '모델을 메모리에 로드하는 중';
+      liveStream.progress = 5;
+    } else if (type === 'model_load.progress') {
+      liveStream.stage = '모델 로드 ' + Math.round((Number(event.progress) || 0) * 100) + '%';
+      liveStream.progress = 5 + Math.max(0, Math.min(1, Number(event.progress) || 0)) * 10;
+    } else if (type === 'model_load.end') {
+      liveStream.stage = '모델 로드 완료 · 문맥 처리 대기';
+      liveStream.progress = 15;
+    } else if (type === 'prompt_processing.start') {
+      liveStream.stage = '대화 문맥을 처리하는 중';
+      liveStream.progress = Math.max(liveStream.progress, 15);
+    } else if (type === 'prompt_processing.progress') {
+      liveStream.stage = '대화 문맥 처리 ' + Math.round((Number(event.progress) || 0) * 100) + '%';
+      liveStream.progress = 15 + Math.max(0, Math.min(1, Number(event.progress) || 0)) * 20;
+    } else if (type === 'prompt_processing.end') {
+      liveStream.stage = '문맥 처리 완료 · 첫 추론 토큰 대기';
+      liveStream.progress = Math.max(liveStream.progress, 35);
+    } else if (type === 'reasoning.start') {
+      liveStream.phase = 'generating';
+      liveStream.stage = '실시간 추론 중';
+      liveStream.progress = Math.max(liveStream.progress, 35);
+    } else if (type === 'reasoning.delta') {
+      if (!liveStream.firstTokenAt) liveStream.firstTokenAt = Date.now();
+      liveStream.phase = 'generating';
+      liveStream.stage = '실시간 추론 중';
+      liveStream.reasoning += String(event.content || '');
+    } else if (type === 'reasoning.end') {
+      liveStream.stage = '추론 완료 · 답변 토큰 대기';
+    } else if (type === 'message.start') {
+      liveStream.phase = 'generating';
+      liveStream.stage = '최종 답변을 실시간 생성하는 중';
+    } else if (type === 'message.delta') {
+      if (!liveStream.firstTokenAt) liveStream.firstTokenAt = Date.now();
+      liveStream.phase = 'generating';
+      liveStream.stage = '최종 답변을 실시간 생성하는 중';
+      liveStream.answer += String(event.content || '');
+    } else if (type === 'message.end') {
+      liveStream.stage = '답변 생성 완료 · 통계를 확인하는 중';
+    } else if (type === 'chat.end') {
+      var stats = event.result && event.result.stats ? event.result.stats : {};
+      liveStream.exactOutputTokens = Math.max(0, Number(stats.total_output_tokens) || 0);
+      liveStream.exactReasoningTokens = Math.max(0, Number(stats.reasoning_output_tokens) || 0);
+      liveStream.hasExactStats = true;
+      liveStream.tokensPerSecond = Math.max(0, Number(stats.tokens_per_second) || 0);
+      liveStream.stage = '응답 완료';
+      liveStream.progress = 100;
+      liveStream.phase = 'complete';
+    } else if (type === 'error') {
+      liveStream.stage = 'LM Studio 스트리밍 오류 확인 중';
+    }
+    scheduleLiveStreamRender(type !== 'reasoning.delta' && type !== 'message.delta');
+  }
+
+  function updateThinkingProgress() {
+    if (!state.running) return;
+    if (liveStream && liveStream.stage === 'LM Studio 연결 중') {
+      liveStream.stage = getThinkingStage(Math.max(0, (Date.now() - thinkingStartedAt) / 1000));
+    }
+    updateLiveStreamDom();
   }
 
   function startThinkingProgress() {
     if (thinkingTimer) clearInterval(thinkingTimer);
     thinkingStartedAt = Date.now();
-    thinkingProgress = 8;
+    thinkingProgress = 2;
+    liveStream = {
+      phase: 'connecting',
+      stage: 'LM Studio 연결 중',
+      progress: 2,
+      contextLength: state.lmContextLength || 0,
+      maxOutputTokens: 0,
+      estimatedInputTokens: 0,
+      exactOutputTokens: 0,
+      exactReasoningTokens: 0,
+      hasExactStats: false,
+      tokensPerSecond: 0,
+      firstTokenAt: 0,
+      reasoning: '',
+      answer: ''
+    };
     updateThinkingProgress();
     thinkingTimer = setInterval(updateThinkingProgress, 300);
   }
@@ -825,6 +1031,9 @@
     if (thinkingTimer) clearInterval(thinkingTimer);
     thinkingTimer = null;
     thinkingProgress = 0;
+    liveStream = null;
+    liveStreamRenderPending = false;
+    liveStreamLastRenderAt = 0;
   }
 
   function setEnabled(enabled) {
@@ -880,9 +1089,15 @@
       help.textContent = 'OpenAlex → Crossref · 초록 근거 ' + state.academicSearchCount + '건 우선';
       return;
     }
+    var contextInfo = state.provider === 'lmstudio' && state.lmContextLength
+      ? ' · 컨텍스트 ' + Number(state.lmContextLength).toLocaleString('ko-KR') + '토큰'
+      : '';
+    var reasoningInfo = state.responseMode === 'reasoning'
+      ? (state.showReasoning ? '추론 ON · 실시간 추론 표시' : '추론 ON · 추론 내용 숨김')
+      : '추론 OFF';
     help.textContent = state.responseMode === 'reasoning'
-      ? '추론 ON · 긴 답변 · 최대 5분 대기'
-      : '추론 OFF · 간결한 답변 · 최대 60초 대기';
+      ? reasoningInfo + contextInfo + ' · 최대 5분 대기'
+      : reasoningInfo + ' · 빠른 답변';
   }
 
   function updateAcademicSearchUI() {
@@ -958,6 +1173,12 @@
   function setResponseMode(mode) {
     state.responseMode = mode === 'reasoning' ? 'reasoning' : 'quick';
     storageSet(RESPONSE_MODE_KEY, state.responseMode);
+    if (state.responseMode === 'reasoning' && !state.showReasoning) {
+      state.showReasoning = true;
+      storageSet(SHOW_REASONING_KEY, '1');
+      var reasoningCheckbox = document.getElementById('ai-chat-show-reasoning');
+      if (reasoningCheckbox) reasoningCheckbox.checked = true;
+    }
     var buttons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-mode]');
     for (var i = 0; i < buttons.length; i++) {
       var active = buttons[i].getAttribute('data-ai-chat-mode') === state.responseMode;
@@ -966,6 +1187,18 @@
     }
     updateModeHelp();
     updateHeaderModel();
+    renderMessages();
+    saveHistory();
+  }
+
+  function setShowReasoning(show) {
+    state.showReasoning = !!show;
+    storageSet(SHOW_REASONING_KEY, state.showReasoning ? '1' : '0');
+    var checkbox = document.getElementById('ai-chat-show-reasoning');
+    if (checkbox) checkbox.checked = state.showReasoning;
+    updateModeHelp();
+    updateHeaderModel();
+    renderMessages();
     saveHistory();
   }
 
@@ -1003,6 +1236,7 @@
     var importSelection = document.getElementById('ai-chat-import-selection');
     var academicToggle = document.getElementById('ai-chat-academic-toggle');
     var academicCount = document.getElementById('ai-chat-academic-count');
+    var showReasoning = document.getElementById('ai-chat-show-reasoning');
     var modeButtons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-mode]');
     if (send) send.disabled = state.running || state.storageInitializing;
     if (stop) stop.disabled = !state.running;
@@ -1013,6 +1247,7 @@
     if (importSelection) importSelection.disabled = state.running || state.storageInitializing;
     var imageModel = state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel);
     for (var i = 0; i < modeButtons.length; i++) modeButtons[i].disabled = state.running || imageModel;
+    if (showReasoning) showReasoning.disabled = state.running || imageModel;
     if (academicToggle) academicToggle.disabled = state.running || imageModel;
     if (academicCount) academicCount.disabled = state.running || imageModel;
   }
@@ -1026,6 +1261,9 @@
     header.textContent += state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel)
       ? ' · 이미지 생성'
       : (state.responseMode === 'reasoning' ? ' · 추론' : ' · 즉시응답');
+    if (state.responseMode === 'reasoning' && !state.showReasoning && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel))) {
+      header.textContent += ' · 내용 숨김';
+    }
     if (state.academicSearchEnabled && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel))) {
       header.textContent += ' · 학술검색';
     }
@@ -1056,12 +1294,14 @@
     var imageModel = state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel);
     var panel = document.getElementById('ai-chat-panel');
     var input = document.getElementById('ai-chat-input');
+    var showReasoning = document.getElementById('ai-chat-show-reasoning');
     var buttons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-mode]');
     if (panel) panel.classList.toggle('image-model-selected', imageModel);
     if (input) input.placeholder = imageModel
       ? '생성할 이미지를 설명하세요. Enter 생성 · Shift+Enter 줄바꿈'
       : '질문을 입력하세요. Enter 전송 · Shift+Enter 줄바꿈';
     for (var i = 0; i < buttons.length; i++) buttons[i].disabled = state.running || imageModel;
+    if (showReasoning) showReasoning.disabled = state.running || imageModel;
     updateAcademicSearchUI();
   }
 
@@ -1117,6 +1357,7 @@
         var lm = await bridge.refreshLMStudioModels();
         if (state.provider !== requestedProvider) return;
         state.lmModel = lm && lm.model ? lm.model : '';
+        state.lmContextLength = Math.max(0, Number(lm && lm.contextLength) || 0);
         setModelOptions(lm && lm.models ? lm.models : [], state.lmModel, true);
         setStatus(state.lmModel ? '현재 LM Studio 로드 모델을 자동으로 사용합니다.' : 'LM Studio에 로드된 LLM이 없습니다.', state.lmModel ? 'ok' : 'error');
       } else {
@@ -1136,6 +1377,7 @@
     } catch (error) {
       if (state.provider === 'lmstudio') {
         state.lmModel = '';
+        state.lmContextLength = 0;
         setModelOptions([], '', true);
       }
       setStatus(error && error.message ? error.message : String(error), 'error');
@@ -1657,6 +1899,7 @@
         splitAcademicResponse: splitAcademic,
         previousResponseId: null,
         messages: [{ role: 'user', content: continuationPrompt }],
+        onStreamEvent: state.provider === 'lmstudio' ? handleStreamEvent : undefined,
         systemInstruction: academicSearch
           ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0)
           : 'Continue the interrupted answer in Korean. Write only the missing continuation, do not repeat earlier content, and finish all remaining points with a complete final sentence.'
@@ -1684,6 +1927,9 @@
         createdAt: Date.now(),
         provider: result.provider,
         model: result.model,
+        usage: result.usage || null,
+        contextLength: result.contextLength || null,
+        maxOutputTokens: result.maxOutputTokens || null,
         responseId: result.responseId || null,
         academicPart: splitAcademic ? requestedPart : null,
         academicTotalParts: splitAcademic ? academicTotalParts : null,
@@ -2064,7 +2310,7 @@
           copyQa.addEventListener('click', function () { copyQuestionAnswer(messageIndex, message); });
           actions.appendChild(copyQa);
           if (!message.error && String(message.content || '').trim() && !(Array.isArray(message.images) && message.images.length)) {
-            if (message.reasoning) {
+            if (state.showReasoning && message.reasoning) {
               var insertReasoning = document.createElement('button');
               insertReasoning.type = 'button';
               insertReasoning.textContent = '추론+응답 삽입';
@@ -2151,7 +2397,7 @@
           checklist.appendChild(checklistBody);
           item.appendChild(checklist);
         }
-        if (message.role === 'assistant' && message.reasoning) {
+        if (message.role === 'assistant' && state.showReasoning && message.reasoning) {
           var reasoning = document.createElement('details');
           reasoning.className = 'ai-chat-reasoning';
           reasoning.open = true;
@@ -2175,6 +2421,25 @@
           item.appendChild(answerLabel);
         }
         if (String(message.content || '').trim()) item.appendChild(content);
+        if (message.role === 'assistant' && message.provider === 'lmstudio' && message.usage) {
+          var usage = message.usage || {};
+          var responseStatsParts = [];
+          if (message.contextLength) {
+            responseStatsParts.push('컨텍스트 ' + formatStreamNumber(usage.input_tokens) + ' / ' + formatStreamNumber(message.contextLength));
+          }
+          if (usage.total_output_tokens || message.maxOutputTokens) {
+            responseStatsParts.push('출력 ' + formatStreamNumber(usage.total_output_tokens) + (message.maxOutputTokens ? ' / ' + formatStreamNumber(message.maxOutputTokens) : '') + ' tok');
+          }
+          if (usage.reasoning_output_tokens) responseStatsParts.push('추론 ' + formatStreamNumber(usage.reasoning_output_tokens) + ' tok');
+          if (usage.tokens_per_second) responseStatsParts.push(Number(usage.tokens_per_second).toFixed(1) + ' tok/s');
+          if (usage.time_to_first_token_seconds) responseStatsParts.push('첫 토큰 ' + Number(usage.time_to_first_token_seconds).toFixed(2) + '초');
+          if (responseStatsParts.length) {
+            var responseStats = document.createElement('div');
+            responseStats.className = 'ai-chat-response-stats';
+            responseStats.textContent = responseStatsParts.join(' · ');
+            item.appendChild(responseStats);
+          }
+        }
         if (message.role === 'assistant' && message.notice) {
           var responseNotice = document.createElement('aside');
           responseNotice.className = 'ai-chat-response-notice';
@@ -2277,7 +2542,22 @@
         + '  <span id="ai-chat-thinking-elapsed" class="ai-chat-thinking-elapsed">0초</span>'
         + '</div>'
         + '<div class="ai-chat-thinking-track"><span id="ai-chat-thinking-progress" style="width:' + thinkingProgress + '%"></span></div>'
-        + '<small>진행바는 실제 완료율이 아니라 응답 대기 상태를 나타냅니다.</small>';
+        + '<div class="ai-chat-thinking-metrics">'
+        + '  <span id="ai-chat-thinking-context">컨텍스트 확인 중</span>'
+        + '  <span id="ai-chat-thinking-reasoning-tokens">추론 ≈0 tok</span>'
+        + '  <span id="ai-chat-thinking-answer-tokens">응답 ≈0 tok</span>'
+        + '  <span id="ai-chat-thinking-output">전체 ≈0 tok</span>'
+        + '  <span id="ai-chat-thinking-speed">첫 토큰 대기</span>'
+        + '</div>'
+        + '<section id="ai-chat-live-reasoning" class="ai-chat-live-stream reasoning" hidden>'
+        + '  <strong>실시간 추론</strong>'
+        + '  <div id="ai-chat-live-reasoning-content" aria-live="polite"></div>'
+        + '</section>'
+        + '<section id="ai-chat-live-answer" class="ai-chat-live-stream answer">'
+        + '  <strong>실시간 답변</strong>'
+        + '  <div id="ai-chat-live-answer-content" aria-live="polite"></div>'
+        + '</section>'
+        + '<small>LM Studio 이벤트와 출력 토큰 사용량을 실시간으로 측정합니다.</small>';
       list.appendChild(thinking);
       updateThinkingProgress();
     }
@@ -2307,7 +2587,7 @@
   function copyConversation() {
     if (!state.messages.length) return setStatus('복사할 대화가 없습니다.', 'error');
     copyText(state.messages.map(function (message) {
-      var reasoning = message.reasoning ? '\n\n[모델의 생각/추론]\n' + message.reasoning : '';
+      var reasoning = state.showReasoning && message.reasoning ? '\n\n[모델의 생각/추론]\n' + message.reasoning : '';
       var checklist = message.checklist ? '\n\n[답변 체크리스트]\n' + message.checklist : '';
       var images = Array.isArray(message.images) && message.images.length ? '\n\n[생성 이미지 ' + message.images.length + '개]' : '';
       return (message.role === 'user' ? '나' : 'AI') + ':\n' + message.content + checklist + reasoning + images;
@@ -2324,6 +2604,7 @@
       '- AI 공급자: ' + (state.provider === 'lmstudio' ? 'LM Studio' : 'AI Studio (Gemini)'),
       '- 모델: ' + (state.provider === 'lmstudio' ? (state.lmModel || '확인되지 않음') : state.geminiModel),
       '- 응답 모드: ' + (state.responseMode === 'reasoning' ? '추론' : '즉시응답'),
+      '- 추론 내용 표시: ' + (state.showReasoning ? '함' : '안 함'),
       ''
     ];
     var questionNumber = 0;
@@ -2342,7 +2623,7 @@
       answerNumber += 1;
       lines.push('## 답변 ' + answerNumber, '');
       if (message.checklist) lines.push('### 답변 체크리스트', '', String(message.checklist).trim(), '');
-      if (message.reasoning) lines.push('### 모델의 생각/추론', '', String(message.reasoning).trim(), '');
+      if (state.showReasoning && message.reasoning) lines.push('### 모델의 생각/추론', '', String(message.reasoning).trim(), '');
       lines.push('### 최종 답변', '', String(message.content || '').trim(), '');
       if (Array.isArray(message.images) && message.images.length) {
         lines.push('> 생성 이미지 ' + message.images.length + '개는 AI Chat 대화 저장소에 보관되어 있습니다.', '');
@@ -2380,7 +2661,7 @@
     if (state.running) stopMessage();
     var record = {
       id: newId(), title: '새 대화', createdAt: Date.now(), updatedAt: Date.now(),
-      provider: state.provider, responseMode: state.responseMode,
+      provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
       academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
       geminiModel: state.geminiModel, messages: []
     };
@@ -2585,9 +2866,10 @@
         messages: academicSearchActive
           ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic) }]
           : contextMessages(),
+        onStreamEvent: state.provider === 'lmstudio' ? handleStreamEvent : undefined,
         systemInstruction: academicSearchActive
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0)
-          : 'You are a helpful conversational assistant. Respond in Korean unless the user asks for another language. Preserve context from earlier messages. Complete every requested section before adding optional detail; if space is limited, be concise rather than ending mid-sentence. Before the final answer, make a short checklist that shows how you understood the request, what the answer should include, and the requested length/tone. Return exactly this structure: [CHECKLIST] numbered checklist [/CHECKLIST] [ANSWER] final answer only [/ANSWER]. Do not put the checklist inside the final answer.'
+          : 'You are a capable conversational assistant. Answer in Korean unless the user requests another language. Follow the requested format, tone, and length precisely. Give a complete, accurate, polished final answer with all requested code or details. Return only the answer intended for the user; never expose internal reasoning, planning, checklists, or meta-commentary.'
       });
       var answer = result && result.text != null ? String(result.text) : '';
       var responseStatus = extractModelStatus(answer);
@@ -2621,12 +2903,15 @@
         role: 'assistant',
         content: sections.answer,
         checklist: sections.checklist,
-        reasoning: reasoningText,
+        reasoning: state.showReasoning ? reasoningText : '',
         notice: responseStatus.notice,
         images: result && Array.isArray(result.images) ? result.images : [],
         createdAt: Date.now(),
         provider: result.provider,
         model: result.model,
+        usage: result.usage || null,
+        contextLength: result.contextLength || null,
+        maxOutputTokens: result.maxOutputTokens || null,
         responseId: result.responseId || null,
         academicPart: splitAcademicResponse ? 1 : null,
         academicTotalParts: splitAcademicResponse ? 3 : null,
@@ -2673,6 +2958,7 @@
     state.provider = storageGet(PROVIDER_KEY, 'lmstudio') === 'aistudio' ? 'aistudio' : 'lmstudio';
     state.providerControlsOpen = storageGet(PROVIDER_CONTROLS_KEY, '0') === '1';
     state.responseMode = storageGet(RESPONSE_MODE_KEY, 'quick') === 'reasoning' ? 'reasoning' : 'quick';
+    state.showReasoning = storageGet(SHOW_REASONING_KEY, '0') === '1';
     state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, '0') === '1';
     state.academicSearchCount = normalizeAcademicCount(storageGet(ACADEMIC_COUNT_KEY, '10'));
     state.geminiModel = storageGet(GEMINI_MODEL_KEY, DEFAULT_GEMINI_MODELS[0]);
@@ -2682,6 +2968,7 @@
     updateProviderUI();
     setProviderControlsOpen(state.providerControlsOpen);
     setResponseMode(state.responseMode);
+    setShowReasoning(state.showReasoning);
     updateAcademicSearchUI();
     renderMessages();
     setLayout(state.layout);

@@ -4,8 +4,8 @@
  * Loading this file only creates an object. It does not access the DOM,
  * localStorage, or the network until one of its methods is called.
  *
- * Browser: <script src="ai_local/local-ai.js"></script> -> window.LocalAI
- * Node/CommonJS: const LocalAI = require('./ai_local/local-ai.js');
+ * Browser: <script src="AI_App/ai_local/local-ai.js"></script> -> window.LocalAI
+ * Node/CommonJS: const LocalAI = require('./AI_App/ai_local/local-ai.js');
  */
 (function (root, factory) {
   const api = factory(root);
@@ -23,6 +23,9 @@
     apiKey: '',
     temperature: 0.4,
     maxTokens: 8192,
+    quickMaxTokens: 4096,
+    reasoningMaxTokens: 8192,
+    reasoningLevel: 'auto',
     timeoutMs: 90000,
     topP: null,
     seed: null,
@@ -36,6 +39,9 @@
     apiKey: { type: 'password', required: false, description: 'Optional Bearer token configured in LM Studio' },
     temperature: { type: 'number', min: 0, max: 2, default: defaults.temperature },
     maxTokens: { type: 'integer', min: 1, default: defaults.maxTokens },
+    quickMaxTokens: { type: 'integer', min: 1, default: defaults.quickMaxTokens },
+    reasoningMaxTokens: { type: 'integer', min: 1, default: defaults.reasoningMaxTokens },
+    reasoningLevel: { type: 'string', default: defaults.reasoningLevel },
     timeoutMs: { type: 'integer', min: 1000, default: defaults.timeoutMs },
     topP: { type: 'number', min: 0, max: 1, nullable: true },
     seed: { type: 'integer', nullable: true },
@@ -265,6 +271,11 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function normalizeReasoningLevel(value) {
+    const level = trim(value || defaults.reasoningLevel).toLowerCase();
+    return ['auto', 'on', 'low', 'medium', 'high'].indexOf(level) >= 0 ? level : defaults.reasoningLevel;
+  }
+
   function normalizeConfig(input) {
     const raw = input || {};
     const source = Object.assign({}, defaults, raw);
@@ -274,6 +285,9 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       apiKey: trim(raw.apiKey || raw.lmStudioApiKey || source.apiKey),
       temperature: finiteOr(source.temperature, defaults.temperature),
       maxTokens: Math.max(1, Math.round(finiteOr(raw.maxTokens == null ? raw.maxOutputTokens : raw.maxTokens, defaults.maxTokens))),
+      quickMaxTokens: Math.max(1, Math.round(finiteOr(source.quickMaxTokens, defaults.quickMaxTokens))),
+      reasoningMaxTokens: Math.max(1, Math.round(finiteOr(source.reasoningMaxTokens, defaults.reasoningMaxTokens))),
+      reasoningLevel: normalizeReasoningLevel(source.reasoningLevel),
       timeoutMs: Math.max(1000, Math.round(finiteOr(source.timeoutMs, defaults.timeoutMs))),
       topP: source.topP == null ? null : finiteOr(source.topP, null),
       seed: source.seed == null ? null : Math.round(finiteOr(source.seed, 0)),
@@ -537,15 +551,172 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
         model: trim(options.model || options.modelId || active.model),
         input: options.input == null ? '' : options.input,
         system_prompt: trim(options.systemInstruction || options.systemPrompt),
-        stream: false,
+        stream: options.internalStream === true,
         store: options.store === true,
         temperature: finiteOr(options.temperature, active.temperature),
         max_output_tokens: Math.max(1, Math.round(finiteOr(options.maxTokens == null ? options.maxOutputTokens : options.maxTokens, active.maxTokens)))
       };
       if (options.reasoning != null) body.reasoning = String(options.reasoning);
+      if (options.contextLength != null) body.context_length = Math.max(1, Math.round(finiteOr(options.contextLength, 1)));
       if (options.topP != null || active.topP != null) body.top_p = options.topP == null ? active.topP : options.topP;
       if (options.previousResponseId) body.previous_response_id = String(options.previousResponseId);
       try {
+        if (options.internalStream === true && root && typeof root.XMLHttpRequest === 'function' && !options.fetch && !fetchImpl) {
+          if (typeof options.onEvent === 'function') {
+            try { options.onEvent({ type: 'transport.start', transport: 'xhr-sse' }, { text: '', reasoning: '' }); } catch (ignore) {}
+          }
+          const runXhrStream = function (requestBody, reasoningSettingFallback) {
+            return new Promise(function (resolve, reject) {
+              const xhr = new root.XMLHttpRequest();
+              let responseOffset = 0;
+              let buffer = '';
+              let eventName = '';
+              let dataLines = [];
+              let text = '';
+              let reasoning = '';
+              let finalData = null;
+              let streamError = null;
+              let settled = false;
+              const emit = function (event) {
+                if (!event || typeof event !== 'object') return;
+                if (event.type === 'reasoning.delta' && event.content) {
+                  reasoning += String(event.content);
+                  if (typeof options.onReasoningToken === 'function') options.onReasoningToken(String(event.content), reasoning, event);
+                } else if (event.type === 'message.delta' && event.content) {
+                  text += String(event.content);
+                  if (typeof options.onToken === 'function') options.onToken(String(event.content), text, event);
+                } else if (event.type === 'chat.end' && event.result) {
+                  finalData = event.result;
+                } else if (event.type === 'error' && event.error) {
+                  streamError = event.error;
+                }
+                if (typeof options.onEvent === 'function') {
+                  try { options.onEvent(event, { text: text, reasoning: reasoning }); } catch (ignore) {}
+                }
+              };
+              const flushEvent = function () {
+                if (!dataLines.length) {
+                  eventName = '';
+                  return;
+                }
+                const raw = dataLines.join('\n');
+                dataLines = [];
+                let event;
+                try { event = JSON.parse(raw); } catch (ignore) { eventName = ''; return; }
+                if (!event.type && eventName) event.type = eventName;
+                eventName = '';
+                emit(event);
+              };
+              const consumeLine = function (line) {
+                if (line === '') return flushEvent();
+                if (line.charAt(0) === ':') return;
+                if (line.indexOf('event:') === 0) eventName = line.slice(6).trim();
+                else if (line.indexOf('data:') === 0) dataLines.push(line.slice(5).trimStart());
+              };
+              const consumeNewText = function (done) {
+                const responseText = String(xhr.responseText || '');
+                if (responseText.length <= responseOffset) return;
+                buffer += responseText.slice(responseOffset);
+                responseOffset = responseText.length;
+                const lines = buffer.split(/\r?\n/);
+                buffer = lines.pop() || '';
+                lines.forEach(consumeLine);
+                if (done) {
+                  if (buffer) consumeLine(buffer.replace(/\r$/, ''));
+                  buffer = '';
+                  flushEvent();
+                }
+              };
+              const cleanupXhr = function () {
+                if (requestSignal.signal) requestSignal.signal.removeEventListener('abort', abortXhr);
+              };
+              const abortXhr = function () {
+                if (settled) return;
+                try { xhr.abort(); } catch (ignore) {}
+                const error = new Error('AI Chat request aborted');
+                error.name = 'AbortError';
+                fail(error);
+              };
+              const fail = function (error) {
+                if (settled) return;
+                settled = true;
+                cleanupXhr();
+                reject(error);
+              };
+              xhr.open('POST', getServerRoot(active.baseUrl) + endpoints.nativeChat, true);
+              xhr.responseType = 'text';
+              if (typeof xhr.overrideMimeType === 'function') xhr.overrideMimeType('text/event-stream; charset=utf-8');
+              const headers = makeHeaders(active, options.headers);
+              Object.keys(headers).forEach(function (name) { xhr.setRequestHeader(name, headers[name]); });
+              xhr.timeout = timeoutMs;
+              xhr.onprogress = function () {
+                // Some browsers keep status at 0 for a cross-origin streaming
+                // response until load, even though responseText is already growing.
+                consumeNewText(false);
+              };
+              xhr.onerror = function () { fail(new Error('LM Studio 스트리밍 연결에 실패했습니다.')); };
+              xhr.ontimeout = function () { fail(new Error('LM Studio 스트리밍 요청 시간이 초과되었습니다 (' + timeoutMs + 'ms).')); };
+              xhr.onabort = function () {
+                const error = new Error('AI Chat request aborted');
+                error.name = 'AbortError';
+                fail(error);
+              };
+              xhr.onload = function () {
+                if (settled) return;
+                if (xhr.status < 200 || xhr.status >= 300) {
+                  let message = '';
+                  try {
+                    const payload = JSON.parse(String(xhr.responseText || '{}'));
+                    message = payload && payload.error && payload.error.message || '';
+                  } catch (ignore) {}
+                  return fail(new Error(message || 'LM Studio native chat stream HTTP ' + xhr.status));
+                }
+                consumeNewText(true);
+                if (!finalData && streamError) return fail(new Error(streamError.message || 'LM Studio 스트리밍 오류'));
+                if (!finalData) {
+                  finalData = {
+                    model_instance_id: requestBody.model,
+                    output: [
+                      reasoning ? { type: 'reasoning', content: reasoning } : null,
+                      text ? { type: 'message', content: text } : null
+                    ].filter(Boolean)
+                  };
+                }
+                const output = Array.isArray(finalData.output) ? finalData.output : [];
+                const finalText = trim(output.filter(function (item) { return item && item.type === 'message'; }).map(function (item) { return item.content || ''; }).join('\n')) || trim(text);
+                const finalReasoning = trim(output.filter(function (item) { return item && item.type === 'reasoning'; }).map(function (item) { return item.content || ''; }).join('\n')) || trim(reasoning);
+                if (!finalText && !finalReasoning) return fail(new Error('LM Studio 응답이 비어 있습니다.'));
+                settled = true;
+                cleanupXhr();
+                resolve({
+                  provider: 'lmstudio',
+                  model: trim(finalData.model_instance_id || requestBody.model),
+                  text: finalText || '모델이 추론 내용만 반환하고 최종 답변을 생성하지 못했습니다. 출력 토큰 설정을 늘려 다시 시도하세요.',
+                  reasoning: finalReasoning,
+                  usage: finalData.stats || null,
+                  finishReason: finalData.finish_reason || finalData.stop_reason
+                    || (finalData.stats && (finalData.stats.finish_reason || finalData.stats.stop_reason)) || '',
+                  responseId: finalData.response_id || null,
+                  reasoningSettingFallback: reasoningSettingFallback,
+                  raw: options.includeRaw ? finalData : undefined
+                });
+              };
+              if (requestSignal.signal) {
+                if (requestSignal.signal.aborted) return abortXhr();
+                requestSignal.signal.addEventListener('abort', abortXhr, { once: true });
+              }
+              xhr.send(JSON.stringify(requestBody));
+            });
+          };
+          try {
+            return await runXhrStream(body, false);
+          } catch (error) {
+            if (!Object.prototype.hasOwnProperty.call(body, 'reasoning') || !isUnsupportedReasoningSettingError(error)) throw error;
+            const fallbackBody = Object.assign({}, body);
+            delete fallbackBody.reasoning;
+            return await runXhrStream(fallbackBody, true);
+          }
+        }
         const nativeFetch = resolveFetch(options.fetch || fetchImpl);
         const nativeUrl = getServerRoot(active.baseUrl) + endpoints.nativeChat;
         const sendNativeChat = async function (requestBody) {
@@ -586,6 +757,150 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
         };
       } catch (error) {
         if (requestSignal.didTimeout()) throw new Error('LM Studio 요청 시간이 초과되었습니다 (' + timeoutMs + 'ms).');
+        throw error;
+      } finally {
+        requestSignal.cleanup();
+      }
+    }
+
+    async function chatStream(options) {
+      options = options || {};
+      if (root && typeof root.XMLHttpRequest === 'function' && !options.fetch && !fetchImpl) {
+        return chat(Object.assign({}, options, { internalStream: true }));
+      }
+      const active = assertConfig(normalizeConfig(Object.assign({}, config, options.config || {})));
+      const timeoutMs = options.timeoutMs || active.timeoutMs;
+      const requestSignal = createRequestSignal(options.signal, timeoutMs);
+      const body = {
+        model: trim(options.model || options.modelId || active.model),
+        input: options.input == null ? '' : options.input,
+        system_prompt: trim(options.systemInstruction || options.systemPrompt),
+        stream: true,
+        store: options.store === true,
+        temperature: finiteOr(options.temperature, active.temperature),
+        max_output_tokens: Math.max(1, Math.round(finiteOr(options.maxTokens == null ? options.maxOutputTokens : options.maxTokens, active.maxTokens)))
+      };
+      if (options.reasoning != null) body.reasoning = String(options.reasoning);
+      if (options.contextLength != null) body.context_length = Math.max(1, Math.round(finiteOr(options.contextLength, 1)));
+      if (options.topP != null || active.topP != null) body.top_p = options.topP == null ? active.topP : options.topP;
+      if (options.previousResponseId) body.previous_response_id = String(options.previousResponseId);
+      try {
+        const nativeFetch = resolveFetch(options.fetch || fetchImpl);
+        const nativeUrl = getServerRoot(active.baseUrl) + endpoints.nativeChat;
+        const openNativeStream = async function (requestBody) {
+          const response = await nativeFetch(nativeUrl, {
+            method: 'POST',
+            headers: makeHeaders(active, options.headers),
+            body: JSON.stringify(requestBody),
+            signal: requestSignal.signal
+          });
+          if (!response.ok) await parseResponse(response, 'LM Studio native chat stream');
+          return response;
+        };
+        let response;
+        let reasoningSettingFallback = false;
+        try {
+          response = await openNativeStream(body);
+        } catch (error) {
+          if (!Object.prototype.hasOwnProperty.call(body, 'reasoning') || !isUnsupportedReasoningSettingError(error)) throw error;
+          const fallbackBody = Object.assign({}, body);
+          delete fallbackBody.reasoning;
+          response = await openNativeStream(fallbackBody);
+          reasoningSettingFallback = true;
+        }
+
+        let text = '';
+        let reasoning = '';
+        let finalData = null;
+        let streamError = null;
+        const emit = function (event) {
+          if (!event || typeof event !== 'object') return;
+          if (event.type === 'reasoning.delta' && event.content) {
+            reasoning += String(event.content);
+            if (typeof options.onReasoningToken === 'function') options.onReasoningToken(String(event.content), reasoning, event);
+          } else if (event.type === 'message.delta' && event.content) {
+            text += String(event.content);
+            if (typeof options.onToken === 'function') options.onToken(String(event.content), text, event);
+          } else if (event.type === 'chat.end' && event.result) {
+            finalData = event.result;
+          } else if (event.type === 'error' && event.error) {
+            streamError = event.error;
+          }
+          if (typeof options.onEvent === 'function') {
+            try { options.onEvent(event, { text: text, reasoning: reasoning }); } catch (ignore) {}
+          }
+        };
+
+        if (!response.body || typeof response.body.getReader !== 'function') {
+          finalData = await parseResponse(response, 'LM Studio native chat stream');
+          emit({ type: 'chat.end', result: finalData });
+        } else {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let eventName = '';
+          let dataLines = [];
+          const flushEvent = function () {
+            if (!dataLines.length) {
+              eventName = '';
+              return;
+            }
+            const raw = dataLines.join('\n');
+            eventName = eventName || '';
+            dataLines = [];
+            let event;
+            try { event = JSON.parse(raw); } catch (ignore) { eventName = ''; return; }
+            if (!event.type && eventName) event.type = eventName;
+            eventName = '';
+            emit(event);
+          };
+          const consumeLine = function (line) {
+            if (line === '') return flushEvent();
+            if (line.charAt(0) === ':') return;
+            if (line.indexOf('event:') === 0) eventName = line.slice(6).trim();
+            else if (line.indexOf('data:') === 0) dataLines.push(line.slice(5).trimStart());
+          };
+          let done = false;
+          while (!done) {
+            const chunk = await reader.read();
+            done = chunk.done;
+            buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !done });
+            const lines = buffer.split(/\r?\n/);
+            buffer = lines.pop() || '';
+            lines.forEach(consumeLine);
+          }
+          if (buffer) consumeLine(buffer.replace(/\r$/, ''));
+          flushEvent();
+        }
+
+        if (!finalData && streamError) throw new Error(streamError.message || 'LM Studio 스트리밍 오류');
+        if (!finalData) {
+          finalData = {
+            model_instance_id: body.model,
+            output: [
+              reasoning ? { type: 'reasoning', content: reasoning } : null,
+              text ? { type: 'message', content: text } : null
+            ].filter(Boolean)
+          };
+        }
+        const output = Array.isArray(finalData.output) ? finalData.output : [];
+        const finalText = trim(output.filter(function (item) { return item && item.type === 'message'; }).map(function (item) { return item.content || ''; }).join('\n')) || trim(text);
+        const finalReasoning = trim(output.filter(function (item) { return item && item.type === 'reasoning'; }).map(function (item) { return item.content || ''; }).join('\n')) || trim(reasoning);
+        if (!finalText && !finalReasoning) throw new Error('LM Studio 응답이 비어 있습니다.');
+        return {
+          provider: 'lmstudio',
+          model: trim(finalData.model_instance_id || body.model),
+          text: finalText || '모델이 추론 내용만 반환하고 최종 답변을 생성하지 못했습니다. 출력 토큰 설정을 늘려 다시 시도하세요.',
+          reasoning: finalReasoning,
+          usage: finalData.stats || null,
+          finishReason: finalData.finish_reason || finalData.stop_reason
+            || (finalData.stats && (finalData.stats.finish_reason || finalData.stats.stop_reason)) || '',
+          responseId: finalData.response_id || null,
+          reasoningSettingFallback: reasoningSettingFallback,
+          raw: options.includeRaw ? finalData : undefined
+        };
+      } catch (error) {
+        if (requestSignal.didTimeout()) throw new Error('LM Studio 스트리밍 요청 시간이 초과되었습니다 (' + timeoutMs + 'ms).');
         throw error;
       } finally {
         requestSignal.cleanup();
@@ -661,6 +976,7 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       listModels: listModels,
       listLoadedModels: listLoadedModels,
       chat: chat,
+      chatStream: chatStream,
       complete: complete,
       stream: stream,
       testConnection: testConnection

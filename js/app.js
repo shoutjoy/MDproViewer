@@ -218,6 +218,7 @@ const STORAGE_SOURCE_TAB_KEY = 'md_viewer_storage_source_tab';
 const GITHUB_DOC_EXT_RE = /\.(md|markdown|txt)$/i;
 let folderCollapseState = {};
 let currentStorageSourceTab = 'indb';
+let renderDBListGeneration = 0;
 let editorHorizontalShiftPx = 0;
 let editorShiftResizeBound = false;
 let tableInsertPickerBuilt = false;
@@ -2644,20 +2645,52 @@ function renderInDbList(listEl, searchTerm, githubReady) {
 async function renderDBList() {
     const listEl = document.getElementById('db-list');
     if (!listEl) return;
+    const generation = ++renderDBListGeneration;
     const searchInput = document.getElementById('db-search');
     const searchTerm = String(searchInput && searchInput.value ? searchInput.value : '').toLowerCase();
-    listEl.innerHTML = '';
+    const nextList = document.createElement('div');
 
     const settings = await getAiSettings() || {};
     const cfg = getGithubConfigFromSettings(settings);
     const githubReady = !!(cfg.enabled && cfg.token);
 
     if (currentStorageSourceTab === 'github' && githubReady) {
-        await renderGithubCachedList(listEl, searchTerm);
+        await renderGithubCachedList(nextList, searchTerm);
     } else {
-        await renderInDbList(listEl, searchTerm, githubReady);
+        await renderInDbList(nextList, searchTerm, githubReady);
     }
+    if (generation !== renderDBListGeneration) return;
+    listEl.replaceChildren(...Array.from(nextList.childNodes));
     lucide.createIcons();
+}
+
+async function revealSavedInDbDocument(doc) {
+    const savedDoc = doc || {};
+    const folderId = String(savedDoc.folderId || 'root');
+    currentStorageSourceTab = 'indb';
+    setStorageSourceTabToLocal('indb');
+    if (typeof updateStorageSourceTabsUI === 'function') updateStorageSourceTabsUI();
+
+    const searchInput = document.getElementById('db-search');
+    if (searchInput) searchInput.value = '';
+    if (isFolderCollapsed(folderId)) {
+        folderCollapseState[folderId] = false;
+        saveFolderCollapseState();
+    }
+    if (activeSidebarTab !== 'files') switchSidebarTab('files');
+    if (isSidebarHidden) toggleSidebarVisibility();
+    if (isSidebarCollapsed) toggleSidebarCollapse();
+
+    await renderDBList();
+    const savedItem = Array.from(document.querySelectorAll('[data-indb-doc-id]')).find(function (item) {
+        return String(item.dataset.indbDocId || '') === String(savedDoc.id || '');
+    });
+    if (!savedItem) return;
+    savedItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    savedItem.style.boxShadow = '0 0 0 2px rgba(99,102,241,.9), 0 0 18px rgba(99,102,241,.38)';
+    setTimeout(function () {
+        savedItem.style.boxShadow = '';
+    }, 2200);
 }
 
 async function loadFromDB(id) {
@@ -7465,6 +7498,9 @@ function readScholarAIProviderSettingsForm() {
         apiKey: value('settings-lmstudio-api-key'),
         temperature: Number(value('settings-lmstudio-temperature') || 0.4),
         maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
+        quickMaxTokens: Number(value('settings-aichat-quick-max-tokens') || 4096),
+        reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
+        reasoningLevel: value('settings-aichat-reasoning-level') || 'auto',
         timeoutMs: Number(value('settings-lmstudio-timeout') || 90) * 1000,
         topP: value('settings-lmstudio-top-p') === '' ? null : Number(value('settings-lmstudio-top-p'))
     };
@@ -7571,6 +7607,9 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     setValue('settings-lmstudio-api-key', config.apiKey || '');
     setValue('settings-lmstudio-temperature', config.temperature == null ? 0.4 : config.temperature);
     setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
+    setValue('settings-aichat-quick-max-tokens', config.quickMaxTokens || 4096);
+    setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
+    setValue('settings-aichat-reasoning-level', config.reasoningLevel || 'auto');
     setValue('settings-lmstudio-timeout', Math.max(1, Math.round((config.timeoutMs || 90000) / 1000)));
     setValue('settings-lmstudio-top-p', config.topP == null ? '' : config.topP);
     renderSettingsLMStudioLoadedModels(readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY));
@@ -7769,6 +7808,24 @@ function normalizeAIChatMessages(messages) {
     }).map(function (message) {
         return { role: message.role, content: String(message.content) };
     });
+}
+
+function getAIChatLMContextLength(synced) {
+    const models = synced && Array.isArray(synced.models) ? synced.models : [];
+    const selected = models.find(function (item) { return item && item.id === synced.model; }) || models[0];
+    const instances = selected && Array.isArray(selected.instances) ? selected.instances : [];
+    return Math.max(0, Number(instances[0] && instances[0].contextLength) || 0);
+}
+
+function estimateAIChatTokens(value) {
+    const text = String(value || '');
+    let ascii = 0;
+    let nonAscii = 0;
+    for (const character of text) {
+        if (character.charCodeAt(0) < 128) ascii += 1;
+        else nonAscii += 1;
+    }
+    return Math.ceil(ascii / 4 + nonAscii / 1.5 + 24);
 }
 
 async function listAIStudioChatModels(apiKeyOverride) {
@@ -8005,7 +8062,7 @@ window.AIChatBridge = Object.freeze({
         const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
         const models = result.models.map(function (item) { return item.id; }).filter(Boolean);
         saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, models);
-        return { model: result.model, models: models };
+        return { model: result.model, models: models, contextLength: getAIChatLMContextLength(result) };
     },
     insertIntoDocument: function (text, mode) {
         return insertAIChatTextIntoDocument(text, mode);
@@ -8033,16 +8090,10 @@ window.AIChatBridge = Object.freeze({
             }
             const config = getScholarAIProviderRuntime().getLMStudioConfig();
             const client = window.LocalAI.createClient(Object.assign({}, config, { model: synced.model }));
+            const contextLength = getAIChatLMContextLength(synced);
             const messages = normalizeAIChatMessages(request.messages);
             const lastUserIndex = messages.map(function (message) { return message.role; }).lastIndexOf('user');
             if (lastUserIndex < 0) throw new Error('전송할 사용자 질문이 없습니다.');
-            // Academic search is a self-contained retrieval request. On small local
-            // context windows, old conversation text competes with the abstracts and
-            // can make LM Studio reject the prompt before generation starts.
-            const historyMessages = request.academicSearch ? [] : messages.slice(0, lastUserIndex);
-            const history = historyMessages.map(function (message) {
-                return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
-            }).join('\n\n');
             const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true;
             const continuationMode = request.continuation === true;
             const splitAcademicMode = request.splitAcademicResponse === true;
@@ -8057,30 +8108,87 @@ window.AIChatBridge = Object.freeze({
                     ? '제공된 학술 초록 근거를 충분히 비교·검토하되 필수 항목을 먼저 모두 완결하고 남은 범위에서 상세화하세요. 문장 중간에서 끝내지 마세요.'
                     : '제공된 학술 초록 근거에서 핵심 주장, 같은 결과, 다른 결과를 간결하게 모두 완결하세요. 세부 내용보다 전체 항목의 완성을 우선하고 문장 중간에서 끝내지 마세요.')
                 : (reasoningMode
-                    ? '충분히 검토하고 논리적으로 설명하세요. 필요한 경우 상세하고 긴 답변을 작성하세요.'
-                    : '내부 추론 과정을 생성하지 말고 핵심부터 즉시 답하세요. 특별한 요청이 없으면 5문장 이내로 간결하게 답하세요.');
-            const systemPrompt = [request.systemInstruction || '', modeInstruction, history ? '이전 대화:\n' + history : ''].filter(Boolean).join('\n\n');
-            const result = await client.chat({
+                    ? '설정된 추론 강도로 충분히 검토한 뒤 완성도 높은 최종 답변을 작성하세요. 사용자가 요청한 모든 항목·코드·설명을 누락하지 말고, 내부 계획이나 추론은 최종 답변에 섞지 마세요.'
+                    : '핵심부터 바로 답하되 사용자가 요청한 코드, 설명, 형식과 분량을 완전하게 충족하세요. 인위적인 문장 수 제한을 두지 마세요.');
+            const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 8192);
+            const quickMaxTokens = Math.max(1, Number(config.quickMaxTokens) || 4096);
+            const reasoningMaxTokens = Math.max(1, Number(config.reasoningMaxTokens) || 8192);
+            const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
+            const requestedOutputTokens = splitAcademicMode
+                ? Math.min(2200, configuredMaxTokens)
+                : continuationMode
+                ? Math.min(3000, configuredMaxTokens)
+                : request.academicSearch
+                ? Math.min(2048, configuredMaxTokens)
+                : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, configuredMaxTokens);
+            const baseSystemPrompt = [request.systemInstruction || '', modeInstruction].filter(Boolean).join('\n\n');
+            const fixedInputTokens = estimateAIChatTokens(baseSystemPrompt) + estimateAIChatTokens(messages[lastUserIndex].content);
+            const historyTokenBudget = contextLength
+                ? Math.max(0, contextLength - fixedInputTokens - requestedOutputTokens - 512)
+                : Number.POSITIVE_INFINITY;
+            const historyCandidates = request.academicSearch ? [] : messages.slice(0, lastUserIndex);
+            const historyMessages = [];
+            let retainedHistoryTokens = 0;
+            for (let historyIndex = historyCandidates.length - 1; historyIndex >= 0; historyIndex--) {
+                const candidate = historyCandidates[historyIndex];
+                const candidateTokens = estimateAIChatTokens((candidate.role === 'assistant' ? 'AI' : '사용자') + ': ' + candidate.content);
+                if (retainedHistoryTokens + candidateTokens > historyTokenBudget) break;
+                historyMessages.unshift(candidate);
+                retainedHistoryTokens += candidateTokens;
+            }
+            const history = historyMessages.map(function (message) {
+                return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
+            }).join('\n\n');
+            const systemPrompt = [baseSystemPrompt, history ? '이전 대화:\n' + history : ''].filter(Boolean).join('\n\n');
+            const estimatedInputTokens = estimateAIChatTokens(systemPrompt) + estimateAIChatTokens(messages[lastUserIndex].content);
+            const contextOutputBudget = contextLength
+                ? Math.max(1, contextLength - estimatedInputTokens - 256)
+                : configuredMaxTokens;
+            const normalOutputBudget = Math.max(1, Math.min(configuredMaxTokens, contextOutputBudget));
+            const requestMaxTokens = splitAcademicMode
+                ? Math.min(2200, normalOutputBudget)
+                : continuationMode
+                ? Math.min(3000, normalOutputBudget)
+                : reasoningMode
+                ? (request.academicSearch
+                    ? Math.min(2304, normalOutputBudget)
+                    : Math.min(reasoningMaxTokens, normalOutputBudget))
+                : (request.academicSearch ? Math.min(2048, normalOutputBudget) : Math.min(quickMaxTokens, normalOutputBudget));
+            const streamEventHandler = typeof request.onStreamEvent === 'function'
+                ? request.onStreamEvent
+                : null;
+            if (streamEventHandler) {
+                streamEventHandler({
+                    type: 'request.start',
+                    context_length: contextLength || null,
+                    max_output_tokens: requestMaxTokens,
+                    estimated_input_tokens: estimatedInputTokens,
+                    retained_history_tokens: retainedHistoryTokens,
+                    reasoning: request.academicSearch || continuationMode || splitAcademicMode
+                        ? 'off'
+                        : (reasoningMode ? configuredReasoning : 'off')
+                });
+            }
+            const chatOptions = {
                 input: messages[lastUserIndex].content,
                 systemInstruction: systemPrompt,
                 model: synced.model,
-                reasoning: request.academicSearch || continuationMode || splitAcademicMode ? 'off' : (reasoningMode ? 'on' : 'off'),
-                maxTokens: splitAcademicMode
-                    ? Math.min(2200, Math.max(1400, Number(config.maxTokens) || 1800))
-                    : continuationMode
-                    ? Math.min(3000, Math.max(1800, Number(config.maxTokens) || 2200))
-                    : reasoningMode
-                    ? (request.academicSearch
-                        ? Math.min(2304, Math.max(1024, Number(config.maxTokens) || 2304))
-                        : Math.min(3072, Math.max(1024, Number(config.maxTokens) || 3072)))
-                    : (request.academicSearch ? Math.min(2048, Math.max(1024, Number(config.maxTokens) || 2048)) : 384),
+                reasoning: request.academicSearch || continuationMode || splitAcademicMode
+                    ? 'off'
+                    : (reasoningMode ? (configuredReasoning === 'auto' ? undefined : configuredReasoning) : 'off'),
+                contextLength: contextLength || undefined,
+                maxTokens: requestMaxTokens,
                 timeoutMs: reasoningMode
                     ? Math.max(300000, Number(config.timeoutMs) || 0)
                     : (request.academicSearch ? Math.max(240000, Number(config.timeoutMs) || 0) : Math.min(60000, Number(config.timeoutMs) || 60000)),
                 store: splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),
                 previousResponseId: request.previousResponseId || undefined,
-                signal: controller.signal
-            });
+                signal: controller.signal,
+                onEvent: streamEventHandler || undefined
+            };
+            const result = streamEventHandler && typeof client.chatStream === 'function'
+                ? await client.chatStream(chatOptions)
+                : await client.chat(chatOptions);
             return {
                 provider: 'lmstudio',
                 model: result.model || synced.model,
@@ -8088,6 +8196,8 @@ window.AIChatBridge = Object.freeze({
                 reasoning: result.reasoning || '',
                 finishReason: result.finishReason || '',
                 usage: result.usage || null,
+                contextLength: contextLength || null,
+                maxOutputTokens: requestMaxTokens,
                 responseId: result.responseId || null
             };
         } finally {
@@ -9055,6 +9165,7 @@ function saveToDB() {
     currentActionCallback = (title) => {
         const normalizedTitle = String(title || '').trim();
         if (!normalizedTitle || !db) return;
+        syncCurrentMarkdownFromEditor();
 
         const readTx = db.transaction('documents', 'readonly');
         const readReq = readTx.objectStore('documents').getAll();
@@ -9092,7 +9203,7 @@ function saveToDB() {
 
             const tx = db.transaction('documents', 'readwrite');
             tx.objectStore('documents').put(doc);
-            tx.oncomplete = () => {
+            tx.oncomplete = async () => {
                 currentDbDocId = String(doc.id || '');
                 if (window.GoogleDocs && typeof window.GoogleDocs.handleActiveDocumentChanged === 'function') {
                     window.GoogleDocs.handleActiveDocumentChanged();
@@ -9100,10 +9211,16 @@ function saveToDB() {
                 currentFileName = resolvedTitle + '.md';
                 currentFilePath = null;
                 updateCurrentDocumentDisplay();
+                markPersistedState();
                 showToast(targetDoc ? 'Existing inDB document overwritten.' : `Saved to inDB as "${resolvedTitle}".`);
-                renderDBList();
-                if (isSidebarHidden) toggleSidebarVisibility();
+                await revealSavedInDbDocument(doc);
             };
+            tx.onerror = () => {
+                showToast('Failed to save to inDB: ' + (tx.error && tx.error.message ? tx.error.message : 'Unknown database error'));
+            };
+        };
+        readReq.onerror = () => {
+            showToast('Failed to read the inDB document list. Please try again.');
         };
     };
 
