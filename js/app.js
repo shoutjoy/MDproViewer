@@ -12,6 +12,8 @@ const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
 const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
+const GOOGLE_CALENDAR_ENABLED_KEY = 'md_viewer_google_calendar_enabled';
+const GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r';
 
 function enableTouchModalDrag(panel, handle, options) {
     const opts = options || {};
@@ -4565,6 +4567,58 @@ function initSettings() {
         editorShiftResizeBound = true;
         window.addEventListener('resize', applyEditorHorizontalShift);
     }
+    const calendarEnabled = getGoogleCalendarEnabledFromLocal();
+    const calendarCheck = document.getElementById('google-calendar-enabled');
+    if (calendarCheck) calendarCheck.checked = calendarEnabled;
+    applyGoogleCalendarVisibility(calendarEnabled);
+}
+
+function getGoogleCalendarEnabledFromLocal() {
+    try {
+        return localStorage.getItem(GOOGLE_CALENDAR_ENABLED_KEY) === '1';
+    } catch (_) {
+        return false;
+    }
+}
+
+function setGoogleCalendarEnabledToLocal(enabled) {
+    try {
+        if (enabled) localStorage.setItem(GOOGLE_CALENDAR_ENABLED_KEY, '1');
+        else localStorage.removeItem(GOOGLE_CALENDAR_ENABLED_KEY);
+    } catch (_) {}
+}
+
+function applyGoogleCalendarVisibility(enabled) {
+    const button = document.getElementById('btn-google-calendar');
+    if (button) button.classList.toggle('hidden', !enabled);
+}
+
+async function toggleGoogleCalendarSetting(enabled) {
+    const value = !!enabled;
+    setGoogleCalendarEnabledToLocal(value);
+    applyGoogleCalendarVisibility(value);
+    try {
+        await setAiSettings({ googleCalendarEnabled: value });
+    } catch (e) {
+        console.error('Failed to save Google Calendar setting:', e);
+    }
+    showToast(value ? 'Google 캘린더 버튼을 표시합니다.' : 'Google 캘린더 버튼을 숨겼습니다.');
+}
+
+function openGoogleCalendarWindow() {
+    if (!getGoogleCalendarEnabledFromLocal()) {
+        showToast('설정에서 Google 캘린더 사용을 먼저 켜 주세요.');
+        openSettingsModal();
+        setTimeout(focusGoogleCalendarSettings, 80);
+        return false;
+    }
+    const opened = window.open(GOOGLE_CALENDAR_URL, '_blank');
+    if (!opened) {
+        showToast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.');
+        return false;
+    }
+    try { opened.opener = null; } catch (_) {}
+    return true;
 }
 
 async function getAiSettings() {
@@ -6629,6 +6683,10 @@ async function onAiFeatureCheckboxChange() {
 }
 
 async function persistAiSettingsFromModal() {
+    const googleCalendarEl = document.getElementById('google-calendar-enabled');
+    const googleCalendarEnabled = !!(googleCalendarEl && googleCalendarEl.checked);
+    setGoogleCalendarEnabledToLocal(googleCalendarEnabled);
+    applyGoogleCalendarVisibility(googleCalendarEnabled);
     const enterBrEl = document.getElementById('enter-button-insert-br');
     const enterButtonInsertBrEnabled = !!(enterBrEl && enterBrEl.checked);
     enterButtonInsertBr = enterButtonInsertBrEnabled;
@@ -6694,6 +6752,7 @@ async function persistAiSettingsFromModal() {
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
         viewModeEditEnabled: viewModeEditEnabledValue,
+        googleCalendarEnabled: googleCalendarEnabled,
         imgbbApiKey: imgbbKey,
         sqliteEnabled: sqliteEnabled
     });
@@ -6736,6 +6795,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     MINI_PREVIEW_LAYOUT_KEY,
     FOLDER_COLLAPSE_STATE_KEY,
     STORAGE_SOURCE_TAB_KEY,
+    GOOGLE_CALENDAR_ENABLED_KEY,
     'md_viewer_code_bg',
     'md_viewer_code_text',
     'ss_imgbb_api_key',
@@ -7829,6 +7889,86 @@ function estimateAIChatTokens(value) {
     return Math.ceil(ascii / 4 + nonAscii / 1.5 + 24);
 }
 
+function getAIChatHistoryOutputReserve(contextLength, requestedOutputTokens, reasoningMode) {
+    if (!contextLength) return requestedOutputTokens;
+    const minimumUsefulOutput = reasoningMode ? 1024 : 768;
+    const contextShare = Math.floor(contextLength * (reasoningMode ? 0.4 : 0.32));
+    return Math.min(requestedOutputTokens, Math.max(minimumUsefulOutput, contextShare));
+}
+
+function clipAIChatHistoryMessage(message, tokenBudget) {
+    const original = String(message && message.content || '').trim();
+    const label = message && message.role === 'assistant' ? 'AI: ' : '사용자: ';
+    if (!original || tokenBudget < 48) return null;
+    if (estimateAIChatTokens(label + original) <= tokenBudget) {
+        return { role: message.role, content: original };
+    }
+    const suffix = '\n\n[이전 메시지의 나머지 내용은 컨텍스트 한도에 맞춰 생략됨]';
+    let low = 1;
+    let high = original.length;
+    let best = '';
+    while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        const candidate = original.slice(0, middle).trimEnd() + suffix;
+        if (estimateAIChatTokens(label + candidate) <= tokenBudget) {
+            best = candidate;
+            low = middle + 1;
+        } else {
+            high = middle - 1;
+        }
+    }
+    return best ? { role: message.role, content: best } : null;
+}
+
+function retainAIChatHistory(messages, tokenBudget) {
+    if (!Number.isFinite(tokenBudget)) return messages.slice();
+    if (tokenBudget < 96 || !messages.length) return [];
+    const turns = [];
+    let currentTurn = [];
+    messages.forEach(function (message) {
+        if (message.role === 'user') {
+            if (currentTurn.length) turns.push(currentTurn);
+            currentTurn = [message];
+        } else if (currentTurn.length) {
+            currentTurn.push(message);
+        }
+    });
+    if (currentTurn.length) turns.push(currentTurn);
+
+    const retainedTurns = [];
+    let retainedTokens = 0;
+    for (let turnIndex = turns.length - 1; turnIndex >= 0; turnIndex--) {
+        const turn = turns[turnIndex];
+        const turnTokens = turn.reduce(function (sum, message) {
+            return sum + estimateAIChatTokens((message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content);
+        }, 0);
+        if (retainedTokens + turnTokens <= tokenBudget) {
+            retainedTurns.unshift(turn);
+            retainedTokens += turnTokens;
+            continue;
+        }
+        if (retainedTurns.length) break;
+
+        // Even a long immediately preceding turn is more useful than losing all
+        // conversational memory. Keep its question and as much of its answer as fits.
+        const clippedTurn = [];
+        let remaining = tokenBudget;
+        for (let messageIndex = 0; messageIndex < turn.length && remaining >= 48; messageIndex++) {
+            const messagesLeft = turn.length - messageIndex;
+            const messageBudget = messagesLeft > 1
+                ? Math.max(48, Math.floor(remaining / messagesLeft))
+                : remaining;
+            const clipped = clipAIChatHistoryMessage(turn[messageIndex], messageBudget);
+            if (!clipped) continue;
+            clippedTurn.push(clipped);
+            remaining -= estimateAIChatTokens((clipped.role === 'assistant' ? 'AI' : '사용자') + ': ' + clipped.content);
+        }
+        if (clippedTurn.length) retainedTurns.unshift(clippedTurn);
+        break;
+    }
+    return retainedTurns.reduce(function (all, turn) { return all.concat(turn); }, []);
+}
+
 async function listAIStudioChatModels(apiKeyOverride) {
     const key = String(apiKeyOverride || await getAIStudioKeyForChat() || '').trim();
     if (!key) throw new Error('AI Studio API Key가 없습니다. 설정에서 API Key를 먼저 저장하세요.');
@@ -7855,7 +7995,7 @@ async function listAIStudioChatModels(apiKeyOverride) {
     return mergeAIChatGeminiModels(models);
 }
 
-async function callAIStudioChat(messages, systemInstruction, modelOverride, signal, responseMode, academicSearch) {
+async function callAIStudioChat(messages, systemInstruction, modelOverride, signal, responseMode, academicSearch, academicEvidenceCount) {
     const key = await getAIStudioKeyForChat();
     if (!key) throw new Error('AI Studio API Key가 없습니다. 앱 설정에서 API Key를 먼저 저장하세요.');
     const model = String(modelOverride || 'gemini-2.5-flash').trim();
@@ -7876,7 +8016,7 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     const imageModel = isAIChatGeminiImageModel(model);
     const generationConfig = imageModel
         ? { responseModalities: ['TEXT', 'IMAGE'] }
-        : { maxOutputTokens: reasoningMode ? 8192 : (academicSearch ? 2048 : 1024) };
+        : { maxOutputTokens: reasoningMode ? 8192 : (academicSearch ? (Number(academicEvidenceCount) > 20 ? 4096 : 3072) : 1024) };
     if (!imageModel && /^gemini-3/i.test(model)) {
         generationConfig.thinkingConfig = { thinkingLevel: reasoningMode ? 'high' : 'low' };
     } else if (!imageModel && /^gemini-2\.5/i.test(model)) {
@@ -8081,7 +8221,7 @@ window.AIChatBridge = Object.freeze({
         aiChatAbortController = controller;
         try {
             if (request.provider === 'aistudio') {
-                return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch);
+                return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch, request.academicEvidenceCount);
             }
             const synced = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
             if (controller.signal.aborted) {
@@ -8115,31 +8255,26 @@ window.AIChatBridge = Object.freeze({
             const quickMaxTokens = Math.max(1, Number(config.quickMaxTokens) || 4096);
             const reasoningMaxTokens = Math.max(1, Number(config.reasoningMaxTokens) || 8192);
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
+            const academicMaxTokens = Math.min(Number(request.academicEvidenceCount) > 20 ? 4096 : 3072, configuredMaxTokens);
             const requestedOutputTokens = splitAcademicMode
                 ? Math.min(2200, configuredMaxTokens)
                 : continuationMode
                 ? configuredMaxTokens
                 : request.academicSearch
-                ? Math.min(2048, configuredMaxTokens)
+                ? academicMaxTokens
                 : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, configuredMaxTokens);
             const baseSystemPrompt = [request.systemInstruction || '', modeInstruction].filter(Boolean).join('\n\n');
             const fixedInputTokens = estimateAIChatTokens(baseSystemPrompt) + estimateAIChatTokens(messages[lastUserIndex].content);
+            const historyOutputReserve = getAIChatHistoryOutputReserve(contextLength, requestedOutputTokens, reasoningMode);
             const historyTokenBudget = contextLength
-                ? Math.max(0, contextLength - fixedInputTokens - requestedOutputTokens - 512)
+                ? Math.max(0, contextLength - fixedInputTokens - historyOutputReserve - 256)
                 : Number.POSITIVE_INFINITY;
             const historyCandidates = request.academicSearch ? [] : messages.slice(0, lastUserIndex);
-            const historyMessages = [];
-            let retainedHistoryTokens = 0;
-            for (let historyIndex = historyCandidates.length - 1; historyIndex >= 0; historyIndex--) {
-                const candidate = historyCandidates[historyIndex];
-                const candidateTokens = estimateAIChatTokens((candidate.role === 'assistant' ? 'AI' : '사용자') + ': ' + candidate.content);
-                if (retainedHistoryTokens + candidateTokens > historyTokenBudget) break;
-                historyMessages.unshift(candidate);
-                retainedHistoryTokens += candidateTokens;
-            }
+            const historyMessages = retainAIChatHistory(historyCandidates, historyTokenBudget);
             const history = historyMessages.map(function (message) {
                 return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
             }).join('\n\n');
+            const retainedHistoryTokens = history ? estimateAIChatTokens(history) : 0;
             const systemPrompt = [baseSystemPrompt, history ? '이전 대화:\n' + history : ''].filter(Boolean).join('\n\n');
             const estimatedInputTokens = estimateAIChatTokens(systemPrompt) + estimateAIChatTokens(messages[lastUserIndex].content);
             const contextOutputBudget = contextLength
@@ -8152,9 +8287,9 @@ window.AIChatBridge = Object.freeze({
                 ? normalOutputBudget
                 : reasoningMode
                 ? (request.academicSearch
-                    ? Math.min(2304, normalOutputBudget)
+                    ? Math.min(academicMaxTokens, normalOutputBudget)
                     : Math.min(reasoningMaxTokens, normalOutputBudget))
-                : (request.academicSearch ? Math.min(2048, normalOutputBudget) : Math.min(quickMaxTokens, normalOutputBudget));
+                : (request.academicSearch ? Math.min(academicMaxTokens, normalOutputBudget) : Math.min(quickMaxTokens, normalOutputBudget));
             const streamEventHandler = typeof request.onStreamEvent === 'function'
                 ? request.onStreamEvent
                 : null;
@@ -8622,6 +8757,13 @@ async function loadAiSettingsToUI() {
         await window.GithubDataSettings.ensureUiReady();
     }
     const settings = await getAiSettings();
+    const googleCalendarEnabled = settings && typeof settings.googleCalendarEnabled === 'boolean'
+        ? settings.googleCalendarEnabled
+        : getGoogleCalendarEnabledFromLocal();
+    setGoogleCalendarEnabledToLocal(googleCalendarEnabled);
+    const googleCalendarCheck = document.getElementById('google-calendar-enabled');
+    if (googleCalendarCheck) googleCalendarCheck.checked = googleCalendarEnabled;
+    applyGoogleCalendarVisibility(googleCalendarEnabled);
     loadScholarAIProviderSettingsUI(settings);
     if (!settings) {
         const imageCheckEmpty = document.getElementById('image-upload-enabled');
@@ -8865,6 +9007,8 @@ async function initAiVisibility() {
 function openSettingsModal() {
     ensureInDbStatusUi();
     document.getElementById('settings-modal').classList.remove('hidden');
+    const settingsBody = document.getElementById('settings-modal-body');
+    if (settingsBody) settingsBody.scrollTop = 0;
     bindSettingsModalDrag();
     bindSettingsModalResize();
     applySettingsModalCompactUI();
@@ -8885,6 +9029,20 @@ function openSettingsModal() {
             return loadAiSettingsToUI();
         }).catch(function () {});
     }
+}
+
+function focusGoogleCalendarSettings() {
+    const settingsBody = document.getElementById('settings-modal-body');
+    const card = document.getElementById('google-calendar-settings-card');
+    if (settingsBody) settingsBody.scrollTop = 0;
+    if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card.classList.remove('ring-4', 'ring-indigo-300', 'dark:ring-indigo-700');
+    void card.offsetWidth;
+    card.classList.add('ring-4', 'ring-indigo-300', 'dark:ring-indigo-700');
+    setTimeout(function () {
+        card.classList.remove('ring-4', 'ring-indigo-300', 'dark:ring-indigo-700');
+    }, 1400);
 }
 function applySettingsModalCompactUI() {
     const panel = document.getElementById('settings-modal-panel');
@@ -9390,6 +9548,24 @@ window.toggleSettingsModalFullscreen = toggleSettingsModalFullscreen;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;
+window.focusGoogleCalendarSettings = focusGoogleCalendarSettings;
+window.toggleGoogleCalendarSetting = toggleGoogleCalendarSetting;
+window.openGoogleCalendarWindow = openGoogleCalendarWindow;
+window.getAtCommandTemplates = function () {
+    return getTemplateLibrary().map(function (item) {
+        return { id: item.id, name: item.name, desc: item.desc, isCustom: item.isCustom };
+    });
+};
+window.insertTemplateByCommandId = function (templateId) {
+    const item = getTemplateLibrary().find(function (template) {
+        return template.id === templateId;
+    });
+    if (!item) {
+        showToast('선택한 양식을 찾을 수 없습니다.');
+        return false;
+    }
+    return insertTemplateTextAtCursor(item.content);
+};
 window.closeSettingsModal = closeSettingsModal;
 window.exportSettingsMset = exportSettingsMset;
 window.triggerImportSettingsMset = triggerImportSettingsMset;

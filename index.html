@@ -23,7 +23,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="./css/style.css?v=20260722-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
-    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260723-4" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260724-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
@@ -177,6 +177,11 @@
                 title="다크/라이트 모드 전환">
                 <i data-lucide="sun" id="theme-icon-sun" class="w-[18px] h-[18px] sm:w-5 sm:h-5 hidden dark:block"></i>
                 <i data-lucide="moon" id="theme-icon-moon" class="w-[18px] h-[18px] sm:w-5 sm:h-5 block dark:hidden"></i>
+            </button>
+            <button type="button" id="btn-google-calendar" onclick="openGoogleCalendarWindow()"
+                class="hidden p-1.5 sm:p-2 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded-md transition-colors text-indigo-600 dark:text-indigo-300 shrink-0"
+                title="Google 캘린더 새 창으로 열기">
+                <i data-lucide="calendar-days" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
             </button>
             <button onclick="openSettingsModal()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 shrink-0"
@@ -962,6 +967,9 @@
             <h3 id="settings-modal-header" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0 select-none">
                 <i data-lucide="settings" class="w-5 h-5"></i> 환경 설정
                 <div class="ml-auto flex items-center gap-2">
+                    <button id="settings-google-calendar-jump-btn" type="button" onclick="focusGoogleCalendarSettings()"
+                        class="px-2 py-1 text-xs font-bold rounded border border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60"
+                        title="Google 캘린더 설정으로 이동">캘린더</button>
                     <button id="settings-modal-drag-handle" type="button" onclick="toggleSettingsModalCompact()"
                         class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
                         title="우측 축소/복원">축소</button>
@@ -975,6 +983,32 @@
             </h3>
 
             <div id="settings-modal-body" class="space-y-4 mb-6 overflow-y-auto custom-scrollbar flex-1 pr-2">
+                <!-- Google Calendar Setting -->
+                <div id="google-calendar-settings-card"
+                    class="border-2 border-indigo-300 dark:border-indigo-700 rounded-lg p-4 bg-indigo-50 dark:bg-indigo-950/40 shadow-sm">
+                    <div class="flex items-center justify-between gap-3 mb-3 border-b border-indigo-200 dark:border-indigo-800 pb-2">
+                        <h4 class="text-sm font-bold text-indigo-800 dark:text-indigo-200 flex items-center gap-2">
+                            <i data-lucide="calendar-days" class="w-4 h-4"></i>
+                            Google 캘린더
+                        </h4>
+                        <span class="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900 text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
+                            연결 기능
+                        </span>
+                    </div>
+                    <label for="google-calendar-enabled"
+                        class="flex items-center gap-3 p-2 rounded-md bg-white/80 dark:bg-slate-900/70 text-sm font-bold text-slate-800 dark:text-slate-100 cursor-pointer select-none">
+                        <input type="checkbox" id="google-calendar-enabled" onchange="toggleGoogleCalendarSetting(this.checked)"
+                            class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                        <span>Google 캘린더 사용</span>
+                    </label>
+                    <p class="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
+                        체크하면 우측 상단의 <strong>설정 버튼 바로 왼쪽</strong>에 달력 버튼이 나타납니다.
+                        버튼을 누르면
+                        <a href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noopener noreferrer"
+                            class="font-semibold text-indigo-700 dark:text-indigo-300 hover:underline">Google 캘린더</a>가 새 창으로 열립니다.
+                    </p>
+                </div>
+
                 <!-- Code Block Color Setting -->
                 <div
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
@@ -1749,9 +1783,10 @@
     <script src="./js/UI_PV/minipv.js?v=20260603-3" charset="utf-8" defer></script>
     <script src="./AI_App/ai_local/local-ai.js?v=20260723-2" charset="utf-8" defer></script>
     <script src="./AI_App/ai_local/scholar-ai-provider.js?v=20260721-3" charset="utf-8" defer></script>
-    <script src="./js/app.js?v=20260723-3" charset="utf-8" defer></script>
-    <script src="./AI_App/aiChat/academic-search.js?v=20260721-9" charset="utf-8" defer></script>
-    <script src="./AI_App/aiChat/ai-chat.js?v=20260723-5" charset="utf-8" defer></script>
+    <script src="./js/app.js?v=20260725-calendar-1" charset="utf-8" defer></script>
+    <script src="./js/command/at-command-menu.js?v=20260725-2" charset="utf-8" defer></script>
+    <script src="./AI_App/aiChat/academic-search.js?v=20260724-2" charset="utf-8" defer></script>
+    <script src="./AI_App/aiChat/ai-chat.js?v=20260724-4" charset="utf-8" defer></script>
     <script src="./js/GithubData/github-app.js?v=20260603-1" charset="utf-8" defer></script>
     <script src="./js/viewmode/viewmode-edit-input.js?v=20260602-1" charset="utf-8" defer></script>
     <script src="./js/UI_PV/editpv.js?v=20260628-4" charset="utf-8" defer></script>

@@ -273,30 +273,36 @@
     var opts = options || {};
     var maxChars = Math.max(0, Number(opts.maxChars) || 0);
     var compact = opts.compact === true;
+    var includeAll = opts.includeAll === true;
+    var itemDivisor = Math.max(1, Math.min(items.length, MAX_RESULTS));
     var abstractLimit = compact && maxChars
-      ? Math.max(45, Math.min(150, Math.floor((maxChars - 160) / Math.max(1, Math.min(items.length, 12))) - 178))
+      ? Math.max(35, Math.min(400, Math.floor((maxChars - 200) / itemDivisor) - 145))
       : maxChars
-      ? Math.max(240, Math.min(900, Math.floor((maxChars - 500) / Math.max(1, Math.min(items.length, 12))) - 320))
+      ? Math.max(180, Math.min(1200, Math.floor((maxChars - 500) / itemDivisor) - 320))
       : Math.max(1200, Math.min(5000, Math.floor(80000 / Math.max(1, items.length))));
     var blocks = [];
     var usedChars = 0;
     var included = 0;
     items.some(function (item, index) {
       var knownAuthors = Array.isArray(item.authors) ? item.authors.map(cleanText).filter(Boolean) : [];
+      var hasAuthorYear = knownAuthors.length && Number(item.year);
+      var citation = hasAuthorYear
+        ? '(' + item.authorLabel + ', ' + item.year + ')'
+        : '인용 불가: 저자와 연도가 모두 확인되지 않음';
       var abstract = item.abstract || 'Abstract not available';
       if (abstract.length > abstractLimit) abstract = abstract.slice(0, abstractLimit) + ' [truncated for AI context]';
       var block = compact
         ? [
-            '[S' + (index + 1) + '] T: ' + cleanText(item.title).slice(0, 82),
-            'A: ' + (knownAuthors.length ? knownAuthors.join(', ').slice(0, 72) : 'Not provided; no citation'),
-            'Y: ' + (item.year || 'n.d.'),
+            '[RESEARCH RECORD]',
+            'C: ' + citation,
+            'T: ' + cleanText(item.title).slice(0, 76),
             'X: ' + abstract
           ].join('\n')
         : [
-            '[SOURCE ' + (index + 1) + ']',
+            '[RESEARCH RECORD]',
             'Title: ' + item.title,
             'Authors: ' + (knownAuthors.length ? knownAuthors.join(', ') : 'Not provided'),
-            'Citation label: ' + (knownAuthors.length ? item.authorLabel + ' (' + (item.year || 'n.d.') + ')' : 'Not available - do not create an author-year citation'),
+            'Required citation: ' + citation,
             'Year: ' + (item.year || 'n.d.'),
             'Journal: ' + (item.journal || 'Unknown'),
             'DOI: ' + (item.doi || 'Not available'),
@@ -304,12 +310,12 @@
             'Public metadata: ' + (item.sources || []).join(' + '),
             'Abstract: ' + abstract
           ].join('\n');
-      if (maxChars && blocks.length && usedChars + block.length + 2 > maxChars) return true;
+      if (maxChars && !includeAll && blocks.length && usedChars + block.length + 2 > maxChars) return true;
       if (maxChars && block.length > maxChars) block = block.slice(0, Math.max(0, maxChars - 35)) + '\n[truncated for AI context]';
       blocks.push(block);
       usedChars += block.length + 2;
       included += 1;
-      return usedChars >= maxChars && maxChars > 0;
+      return !includeAll && usedChars >= maxChars && maxChars > 0;
     });
     if (included < items.length) {
       var notice = '[CONTEXT NOTICE] ' + included + ' of ' + items.length

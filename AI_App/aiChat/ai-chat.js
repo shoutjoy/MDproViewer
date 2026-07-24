@@ -220,7 +220,7 @@
       var academicMessage = !!(sourceMessage && Array.isArray(sourceMessage.academicSources) && sourceMessage.academicSources.length);
       if (academicMessage) {
         var visibleAcademic = extractVisibleAnswerBody(message.content, true);
-        message.content = normalizeAcademicAnswer(visibleAcademic.body);
+        message.content = normalizeAcademicAnswer(visibleAcademic.body, sourceMessage.academicSources);
         message.reasoning = '';
         message.checklist = message.academicTotalParts ? '' : (message.content ? buildAcademicChecklist(message.content) : '');
         if (visibleAcademic.notice) {
@@ -370,7 +370,7 @@
       + '        <button type="button" data-ai-chat-mode="reasoning">🧠 추론</button>'
       + '        <label class="ai-chat-reasoning-toggle" title="모델은 그대로 추론하며, 이 설정은 반환된 추론 내용을 채팅에 표시·저장할지만 결정합니다."><input type="checkbox" id="ai-chat-show-reasoning"><span>추론 내용 표시</span></label>'
       + '        <button type="button" id="ai-chat-academic-toggle" class="ai-chat-academic-toggle" aria-pressed="false">🔎 학술검색</button>'
-      + '        <label id="ai-chat-academic-count-wrap" class="ai-chat-academic-count-wrap">결과 <select id="ai-chat-academic-count" aria-label="학술검색 결과 수"><option value="5">5개</option><option value="10">10개</option><option value="20">20개</option><option value="30">30개</option><option value="50">50개</option></select></label>'
+      + '        <label id="ai-chat-academic-count-wrap" class="ai-chat-academic-count-wrap" title="목록에서 선택하거나 더블클릭하여 1~50 사이 숫자를 직접 입력하세요.">결과 <select id="ai-chat-academic-count" aria-label="학술검색 결과 수"><option value="5">5개</option><option value="10">10개</option><option value="20">20개</option><option value="30">30개</option><option value="50">50개</option></select><input id="ai-chat-academic-count-input" type="number" min="1" max="50" step="1" inputmode="numeric" aria-label="학술검색 결과 수 직접 입력" hidden></label>'
       + '        <small id="ai-chat-mode-help"></small>'
       + '      </div>'
       + '      <div class="ai-chat-compose-actions">'
@@ -439,10 +439,24 @@
       setAcademicSearchEnabled(!state.academicSearchEnabled);
     });
     document.getElementById('ai-chat-academic-count').addEventListener('change', function (event) {
-      state.academicSearchCount = normalizeAcademicCount(event.target.value);
-      storageSet(ACADEMIC_COUNT_KEY, String(state.academicSearchCount));
-      updateAcademicSearchUI();
-      saveHistory();
+      setAcademicSearchCount(event.target.value, false);
+    });
+    document.getElementById('ai-chat-academic-count-wrap').addEventListener('dblclick', function (event) {
+      if (event.target && event.target.id === 'ai-chat-academic-count-input') return;
+      event.preventDefault();
+      beginAcademicCountEdit();
+    });
+    document.getElementById('ai-chat-academic-count-input').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        finishAcademicCountEdit(true);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        finishAcademicCountEdit(false);
+      }
+    });
+    document.getElementById('ai-chat-academic-count-input').addEventListener('blur', function () {
+      finishAcademicCountEdit(true);
     });
     document.getElementById('ai-chat-provider').addEventListener('change', function (event) {
       state.provider = event.target.value === 'aistudio' ? 'aistudio' : 'lmstudio';
@@ -1078,6 +1092,66 @@
     return Math.max(1, Math.min(50, Math.round(count)));
   }
 
+  function syncAcademicCountSelect() {
+    var select = document.getElementById('ai-chat-academic-count');
+    if (!select) return;
+    var value = String(state.academicSearchCount);
+    var custom = select.querySelector('option[data-ai-chat-custom-count]');
+    var standard = Array.prototype.some.call(select.options, function (option) {
+      return !option.hasAttribute('data-ai-chat-custom-count') && option.value === value;
+    });
+    if (standard && custom) {
+      custom.remove();
+      custom = null;
+    } else if (!standard) {
+      if (!custom) {
+        custom = document.createElement('option');
+        custom.setAttribute('data-ai-chat-custom-count', 'true');
+        select.appendChild(custom);
+      }
+      custom.value = value;
+      custom.textContent = value + '개 · 직접 입력';
+    }
+    select.value = value;
+  }
+
+  function setAcademicSearchCount(value, announce) {
+    state.academicSearchCount = normalizeAcademicCount(value);
+    storageSet(ACADEMIC_COUNT_KEY, String(state.academicSearchCount));
+    updateAcademicSearchUI();
+    saveHistory();
+    if (announce) setStatus('학술검색 결과 수를 ' + state.academicSearchCount + '개로 설정했습니다.', 'ok');
+  }
+
+  function beginAcademicCountEdit() {
+    var wrap = document.getElementById('ai-chat-academic-count-wrap');
+    var input = document.getElementById('ai-chat-academic-count-input');
+    var imageModel = state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel);
+    if (!wrap || !input || state.running || imageModel || !state.academicSearchEnabled) return;
+    wrap.classList.add('editing');
+    input.hidden = false;
+    input.disabled = false;
+    input.value = String(state.academicSearchCount);
+    input.focus();
+    input.select();
+  }
+
+  function finishAcademicCountEdit(commit) {
+    var wrap = document.getElementById('ai-chat-academic-count-wrap');
+    var input = document.getElementById('ai-chat-academic-count-input');
+    if (!wrap || !input || !wrap.classList.contains('editing')) return;
+    var value = input.value;
+    wrap.classList.remove('editing');
+    input.hidden = true;
+    if (commit && String(value).trim()) setAcademicSearchCount(value, true);
+    else {
+      input.value = String(state.academicSearchCount);
+      syncAcademicCountSelect();
+    }
+    var select = document.getElementById('ai-chat-academic-count');
+    if (select && document.activeElement === input) select.focus();
+  }
+
   function updateModeHelp() {
     var help = document.getElementById('ai-chat-mode-help');
     if (!help) return;
@@ -1104,6 +1178,7 @@
     var button = document.getElementById('ai-chat-academic-toggle');
     var countWrap = document.getElementById('ai-chat-academic-count-wrap');
     var countSelect = document.getElementById('ai-chat-academic-count');
+    var countInput = document.getElementById('ai-chat-academic-count-input');
     var imageModel = state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel);
     if (button) {
       button.classList.toggle('active', state.academicSearchEnabled);
@@ -1112,8 +1187,13 @@
     }
     if (countWrap) countWrap.classList.toggle('visible', state.academicSearchEnabled && !imageModel);
     if (countSelect) {
-      countSelect.value = String(state.academicSearchCount);
+      syncAcademicCountSelect();
       countSelect.disabled = state.running || imageModel;
+    }
+    if (countInput) countInput.disabled = state.running || imageModel;
+    if (countWrap && (!state.academicSearchEnabled || imageModel)) {
+      countWrap.classList.remove('editing');
+      if (countInput) countInput.hidden = true;
     }
     updateModeHelp();
   }
@@ -1236,6 +1316,7 @@
     var importSelection = document.getElementById('ai-chat-import-selection');
     var academicToggle = document.getElementById('ai-chat-academic-toggle');
     var academicCount = document.getElementById('ai-chat-academic-count');
+    var academicCountInput = document.getElementById('ai-chat-academic-count-input');
     var showReasoning = document.getElementById('ai-chat-show-reasoning');
     var modeButtons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-mode]');
     if (send) send.disabled = state.running || state.storageInitializing;
@@ -1250,6 +1331,7 @@
     if (showReasoning) showReasoning.disabled = state.running || imageModel;
     if (academicToggle) academicToggle.disabled = state.running || imageModel;
     if (academicCount) academicCount.disabled = state.running || imageModel;
+    if (academicCountInput) academicCountInput.disabled = state.running || imageModel;
   }
 
   function updateHeaderModel() {
@@ -1599,8 +1681,57 @@
       .replace(/봅니다/g, '본다');
   }
 
-  function normalizeAcademicAnswer(value) {
-    return normalizeAcademicCitationTypography(normalizeAcademicWritingRegister(stripUnknownAuthorPlaceholders(value)));
+  function academicSourceCitation(item) {
+    var authors = item && Array.isArray(item.authors) ? item.authors.filter(Boolean) : [];
+    var author = String(item && item.authorLabel || '').trim();
+    var year = Number(item && item.year);
+    if (!authors.length || !author || !Number.isFinite(year)) return null;
+    return {
+      parenthetical: author + ', ' + year,
+      narrative: author + ' (' + year + ')'
+    };
+  }
+
+  function replaceAcademicSourceMarkers(value, sources) {
+    var text = String(value || '');
+    var items = Array.isArray(sources) ? sources : [];
+    function citationAt(number) {
+      var index = Number(number) - 1;
+      return index >= 0 && index < items.length ? academicSourceCitation(items[index]) : null;
+    }
+    text = text.replace(/\b(?:S|SOURCE)\s*(\d+)\s*(에\s*따르면|에서는|에서|은|는|이|가|의\s*연구(?:는|가)?)/gi, function (match, number, suffix) {
+      var citation = citationAt(number);
+      return citation ? citation.narrative + suffix : '해당 연구' + suffix;
+    });
+    text = text.replace(/[\[(]\s*(?:(?:S|SOURCE)\s*\d+\s*(?:[,;]\s*)?)+[\])]/gi, function (match) {
+      var seen = Object.create(null);
+      var citations = (match.match(/\d+/g) || []).map(function (number) {
+        var citation = citationAt(number);
+        if (!citation || seen[citation.parenthetical]) return '';
+        seen[citation.parenthetical] = true;
+        return citation.parenthetical;
+      }).filter(Boolean);
+      return citations.length ? '(' + citations.join('; ') + ')' : '';
+    });
+    text = text.replace(/\b(?:S|SOURCE)\s*(\d+)\b/gi, function (match, number) {
+      var citation = citationAt(number);
+      return citation ? '(' + citation.parenthetical + ')' : '';
+    });
+    var adjacentCitations = /\(([^()\n]+,\s*(?:18|19|20)\d{2}[a-z]?)\)\s*[,;]\s*\(([^()\n]+,\s*(?:18|19|20)\d{2}[a-z]?)\)/g;
+    while (adjacentCitations.test(text)) {
+      text = text.replace(adjacentCitations, '($1; $2)');
+      adjacentCitations.lastIndex = 0;
+    }
+    return text
+      .replace(/\[\s*\]/g, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/[ \t]+\n/g, '\n')
+      .trim();
+  }
+
+  function normalizeAcademicAnswer(value, sources) {
+    var cited = replaceAcademicSourceMarkers(value, sources);
+    return normalizeAcademicCitationTypography(normalizeAcademicWritingRegister(stripUnknownAuthorPlaceholders(cited)));
   }
 
   function extractModelStatus(value) {
@@ -1719,6 +1850,12 @@
       .replace(/\n{3,}/g, '\n\n')
       .trim();
     if (!text || !academicSearch) return { body: text, notice: '' };
+    var academicHeadingMatch = text.match(/(?:^|\n|\)\s*\*?)\s*(#{1,6}\s*(?:\d+[.)]\s*)?(?:검색\s*근거|핵심\s*주장|같은\s*방향|다른\s*(?:방향|결과)|반대|조건부|비유의|종합\s*해석))/m);
+    if (academicHeadingMatch) {
+      var academicHeadingIndex = academicHeadingMatch.index + academicHeadingMatch[0].indexOf(academicHeadingMatch[1]);
+      text = text.slice(academicHeadingIndex).replace(/^\s+/, '');
+      return { body: text, notice: '' };
+    }
     if (/^\s*(?:execution\s+plan|strategy|analysis|reasoning|approach|plan)\s*[:.]/i.test(text)) {
       var inlineAnswerBoundary = text.match(/\.\s*(?=[가-힣]{2})/);
       if (inlineAnswerBoundary && inlineAnswerBoundary.index < 700) {
@@ -1726,18 +1863,19 @@
       }
     }
     var lines = text.split(/\r?\n/);
-    var planningPattern = /^\s*(?:#{1,6}\s*)?(?:[*-]\s*)?(?:(?:the\s+user\s+(?:wants|asks|requested)|user\s+wants|i\s+(?:need|should|will|must)|we\s+(?:need|should|will|must))\b|(?:execution\s+plan|strategy|analysis|reasoning|approach|plan|objective|task|context|constraints?|missing\s+sections?|instructions?)\s*[:.])/i;
-    var planningStepPattern = /^\s*\d+[.)]\s*(?:scan|identify|extract|group|compare|ensure|adhere|focus|write|use|check|review|complete|start|avoid|cite)\b/i;
+    var planningPattern = /^\s*(?:#{1,6}\s*)?(?:[*-]\s*)?(?:\*{1,2}\s*)?(?:(?:the\s+user\s+(?:wants|asks|requested)|user\s+wants|i\s+(?:need|should|will|must)|we\s+(?:need|should|will|must))\b|(?:execution\s+plan|strategy|analysis|reasoning|approach|plan|objective|task|context|constraints?|missing\s+sections?|instructions?)\s*[:.]|(?:작업\s*지침\s*분석|분석\s*목표|출력\s*형식\s*준수|작성\s*범위\s*제한|검색\s*레코드\s*검토|주제\s*적합성\s*판단|핵심\s*주장\s*구성\s*전략|작성\s*초안\s*구성|검증\s*검색\s*레코드|이전\s*내용\s*검토|핵심\s*분석\s*대상|분석\s*전략|제약\s*사항|실행|결론)\s*[:：])/i;
+    var planningStepPattern = /^\s*(?:\d+[.)]|[*-])\s*(?:\*{1,2}\s*)?(?:scan|identify|extract|group|compare|ensure|adhere|focus|write|use|check|review|complete|start|avoid|cite|출력\s*파트|포함할\s*내용|시작\s*문구|분석\s*요구사항|작성\s*범위|출력\s*형식|검색\s*근거|핵심\s*주장|작성\s*초안)\b/i;
+    var selfCorrectionPattern = /^\s*(?:[*-]\s*)?\(?\s*self[- ]correction\b/i;
     var planningCount = lines.filter(function (line) {
-      return planningPattern.test(line) || planningStepPattern.test(line);
+      return planningPattern.test(line) || planningStepPattern.test(line) || selfCorrectionPattern.test(line);
     }).length;
-    if (planningCount < 2 && !/^\s*(?:the user|user wants|i need|we need|execution\s+plan\s*:|strategy\s*:|analysis\s*:|reasoning\s*:)/i.test(text)) {
+    if (planningCount < 2 && !/^\s*(?:the user|user wants|i need|we need|execution\s+plan\s*:|strategy\s*:|analysis\s*:|reasoning\s*:|작업\s*지침\s*분석|분석\s*목표|출력\s*형식\s*준수|작성\s*범위\s*제한)/i.test(text)) {
       return { body: text, notice: '' };
     }
     var answerStart = -1;
     for (var i = 0; i < lines.length; i++) {
       var line = String(lines[i] || '').trim();
-      if (!line || planningPattern.test(line) || planningStepPattern.test(line)) continue;
+      if (!line || planningPattern.test(line) || planningStepPattern.test(line) || selfCorrectionPattern.test(line)) continue;
       if (/^\s*(?:\[ANSWER\]|(?:final\s+answer|최종\s*답변)\s*:)/i.test(line)) {
         answerStart = i;
         break;
@@ -1861,11 +1999,11 @@
       return line.replace(/^\s*\d+[.)]\s*/, '').replace(/\s*포함 여부:\s*아니오\s*$/, '');
     });
     var evidence = '';
+    var continuationEvidenceProfile = null;
     if (academicSearch) {
-      evidence = root.AIChatAcademicSearch.formatEvidence(
-        sourceUser.academicSources,
-        state.provider === 'lmstudio' ? { maxChars: splitAcademic ? 2400 : 3000, compact: splitAcademic } : null
-      );
+      var continuationEvidencePlan = academicEvidencePlan(sourceUser.academicSources);
+      evidence = continuationEvidencePlan.evidence;
+      continuationEvidenceProfile = continuationEvidencePlan.profile;
     }
     var continuationPromptParts = splitAcademic
       ? [
@@ -1914,7 +2052,7 @@
         messages: continuationMessages,
         onStreamEvent: state.provider === 'lmstudio' ? handleStreamEvent : undefined,
         systemInstruction: academicSearch
-          ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0)
+          ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0, continuationEvidenceProfile)
           : [
               '원래 사용자 요청과 직전 assistant 답변 전체를 대화 문맥으로 읽고, 직전 답변 바로 다음 내용만 한국어로 이어서 작성한다.',
               '이미 작성한 내용, 제목, 문장, 문단을 반복하거나 요약하지 않는다.',
@@ -1928,7 +2066,7 @@
       var continuationBody = extractContinuationBody(continued);
       continued = continuationBody.body;
       if (continuationBody.notice && !continuedStatus.notice) continuedStatus.notice = continuationBody.notice;
-      if (academicSearch) continued = normalizeAcademicAnswer(continued);
+      if (academicSearch) continued = normalizeAcademicAnswer(continued, sourceUser && sourceUser.academicSources);
       continued = removeRepeatedContinuation(originalAnswer, continued, academicSearch);
       if (!continued && !continuedStatus.notice) {
         continuedStatus.notice = '모델이 새 내용을 추가하지 않고 기존 답변을 반복했습니다. 기존 답변은 변경되지 않았습니다. “이어서 작성”을 다시 누르면 아직 작성되지 않은 내용만 요청합니다.';
@@ -2709,42 +2847,105 @@
     });
   }
 
-  function academicSystemInstruction(evidenceText, partNumber) {
+  function estimateAcademicTextTokens(value) {
+    var text = String(value || '');
+    var ascii = 0;
+    var nonAscii = 0;
+    for (var i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) < 128) ascii += 1;
+      else nonAscii += 1;
+    }
+    return Math.ceil(ascii / 4 + nonAscii / 1.5 + 24);
+  }
+
+  function academicEvidenceProfile(results) {
+    var items = Array.isArray(results) ? results : [];
+    var fullEvidence = root.AIChatAcademicSearch.formatEvidence(items);
+    var abstractCount = 0;
+    var abstractChars = 0;
+    items.forEach(function (item) {
+      var abstract = String(item && item.abstract || '').trim();
+      if (!abstract) return;
+      abstractCount += 1;
+      abstractChars += abstract.length;
+    });
+    return {
+      count: items.length,
+      abstractCount: abstractCount,
+      abstractChars: abstractChars,
+      fullEvidence: fullEvidence,
+      fullEvidenceTokens: estimateAcademicTextTokens(fullEvidence)
+    };
+  }
+
+  function academicEvidencePlan(results) {
+    var profile = academicEvidenceProfile(results);
+    if (state.provider !== 'lmstudio') {
+      return { profile: profile, split: false, evidence: profile.fullEvidence, compact: false };
+    }
+    var contextLength = Math.max(0, Number(state.lmContextLength) || 0);
+    var smallEvidence = profile.count <= 10 || (profile.abstractCount <= 10 && profile.abstractChars <= 16000);
+    var requiredTokens = profile.fullEvidenceTokens + 3600;
+    var split = !smallEvidence && (contextLength
+      ? requiredTokens > Math.floor(contextLength * 0.9)
+      : profile.fullEvidenceTokens > 8000);
+    var mustCompact = contextLength
+      ? requiredTokens > Math.floor(contextLength * 0.9)
+      : profile.fullEvidenceTokens > 8000;
+    if (!mustCompact) {
+      return { profile: profile, split: split, evidence: profile.fullEvidence, compact: false };
+    }
+    var answerReserve = split ? 2500 : 3000;
+    var contextCharBudget = contextLength
+      ? Math.floor(Math.max(1400, contextLength - answerReserve) * 2.6)
+      : 6500;
+    var maxChars = Math.max(5000, contextCharBudget, profile.count * 215 + 250);
+    var evidence = root.AIChatAcademicSearch.formatEvidence(results, {
+      maxChars: maxChars,
+      compact: true,
+      includeAll: true
+    });
+    return { profile: profile, split: split, evidence: evidence, compact: true, maxChars: maxChars };
+  }
+
+  function academicSystemInstruction(evidenceText, partNumber, evidenceProfile) {
     var splitPart = Number(partNumber) || 0;
+    var profile = evidenceProfile || {};
     var writingTask = splitPart ? academicPartTask(splitPart) : [
-      '다음 순서를 모두 작성하라:',
-      '1. 검색 근거의 범위와 한계',
-      '2. 핵심 주장과 대표 인용',
-      '3. 같은 방향의 연구 비교',
-      '4. 다른·반대·조건부 결과',
-      '5. 근거 관계의 종합 해석',
-      '전체 분량은 한국어 1600~2300자로 제한하라.'
+      '근거량에 맞춰 검색 범위와 한계, 핵심 주장, 같은 방향의 연구 비교, 다른·반대·조건부 결과, 종합 해석을 자연스럽게 완결한다.',
+      '근거가 적으면 불필요하게 분량을 늘리거나 인위적으로 여러 파트로 나누지 말고 간결하게 작성한다.',
+      '근거가 많으면 중요한 주장과 연구 간 관계를 충분히 설명하되 논문 목록을 그대로 반복하지 않는다.'
     ].join('\n');
     return [
       '역할: 아래 검증 학술검색 논문을 주장 중심으로 요약하는 연구자이다.',
       '문체: 한국어 학술적 평서체(-이다/-한다/-로 나타났다/-를 시사한다)만 사용한다.',
       '요약: 논문별 나열이 아니라 핵심 주장마다 근거, 연구 간 비교·조건, 제한적인 해석이나 함의를 연결한다. 관련성을 인과로 확대하지 않는다.',
-      '근거: 아래 레코드의 제목(T), 저자(A), 연도(Y), 공개 초록(X)만 사용한다. X가 없으면 결과 근거로 쓰지 않는다. 없는 사실·인용은 만들지 않는다.',
-      '저자: A가 없으면 저자 미상이나 가짜 인용을 쓰지 않는다. 괄호 인용의 & 양쪽에는 공백을 둔다.',
-      '작성 범위:',
+      '근거: 아래 레코드의 인용(C), 제목(T), 공개 초록(X) 또는 같은 의미의 전체 필드만 사용한다. X가 없으면 결과 근거로 쓰지 않는다. 없는 사실·인용은 만들지 않는다.',
+      '전체성: 제공된 ' + (Number(profile.count) || '전체') + '건의 레코드를 처음부터 끝까지 모두 검토한다. 상위 일부 레코드만 보고 결론을 내리지 않는다. 답변에서 모든 논문을 나열할 필요는 없지만 관련 연구를 빠뜨리지 않고 주제별 종합에 반영한다.',
+      '인용 형식: 연구 결과를 서술하는 모든 주장·요약 문장에 해당 레코드의 C를 사용하여 실제 연구자와 연도를 표시한다. 한 연구는 (연구자, 연도), 여러 연구는 (연구자, 연도; 연구자, 연도) 형식으로 문장 안이나 문장 끝에 쓴다.',
+      '인용 금지: S1, S2, [S1], SOURCE 1, 자료 1 같은 번호형 인용은 절대 출력하지 않는다. C가 인용 불가이면 그 레코드를 결과 주장의 근거로 사용하지 않는다. 없는 저자·연도·인용은 만들지 않는다.',
+      '저자: 괄호 인용의 & 양쪽에는 공백을 둔다.',
+      splitPart ? '현재 분할 범위:' : '작성 원칙:',
       writingTask,
       splitPart ? '이전·다음 파트의 내용을 반복하거나 미리 작성하지 않는다.' : '',
-      '출력: 지정된 한국어 본문만 즉시 작성한다. 추론, 계획, 체크리스트, 지시 설명은 출력하지 않는다.',
+      '출력: 첫 토큰부터 사용자에게 보여 줄 한국어 학술 요약 본문만 작성한다. 분석 목표, 검색 레코드 검토 과정, 적합성 판정 목록, 작성 전략, 초안 계획, 자기 수정, 체크리스트, 지시 설명은 절대 출력하지 않는다.',
       '',
       '검증 검색 레코드:',
       evidenceText
     ].filter(Boolean).join('\n');
   }
 
-  function academicContinuationInstruction(evidenceText, partNumber) {
+  function academicContinuationInstruction(evidenceText, partNumber, evidenceProfile) {
     var splitPart = Number(partNumber) || 0;
+    var recordCount = Number(evidenceProfile && evidenceProfile.count) || '전체';
     if (splitPart) {
       return [
         '검증 논문 요약의 미완료 파트만 이어 쓴다.',
         '한국어 학술체(-이다/-한다)로 근거와 제한적인 해석을 연결한다.',
-        '아래 T/A/Y/X만 사용하며 X 밖의 결과, 없는 저자·연도·인용을 만들지 않는다.',
+        '아래 C/T/X 레코드 ' + recordCount + '건을 모두 검토하며 X 밖의 결과, 없는 저자·연도·인용을 만들지 않는다.',
+        '연구 결과를 담은 모든 새 주장·요약 문장에는 C의 실제 (연구자, 연도) 인용을 붙인다. S1, S2, SOURCE 번호는 절대 쓰지 않는다.',
         '완료된 문장과 파트는 반복하지 않고 사용자 지시에 지정된 현재 파트만 작성한다.',
-        '추론, 계획, 체크리스트, 지시 설명은 출력하지 않는다.',
+        '첫 토큰부터 새 한국어 본문만 작성한다. 분석 목표, 레코드 검토, 추론, 계획, 체크리스트, 자기 수정, 지시 설명은 출력하지 않는다.',
         '',
         '검증 검색 레코드:',
         evidenceText
@@ -2752,8 +2953,10 @@
     }
     return [
       '검증 논문 요약에서 아직 작성하지 않은 내용만 한국어 학술체(-이다/-한다)로 이어 쓴다.',
-      '아래 검색 근거만 사용하고 완료된 문장·체크리스트·질문을 반복하지 않는다.',
+      '아래 검색 근거 ' + recordCount + '건을 모두 검토하고 완료된 문장·체크리스트·질문을 반복하지 않는다.',
       '없는 저자·연도·인용을 만들지 않으며 추론이나 계획을 출력하지 않는다.',
+      '연구 결과를 담은 모든 새 주장·요약 문장에는 C의 실제 (연구자, 연도) 인용을 붙인다. S1, S2, SOURCE 번호는 절대 쓰지 않는다.',
+      '첫 토큰부터 새 한국어 본문만 작성하며 분석 목표, 레코드 검토, 작성 전략, 자기 수정은 출력하지 않는다.',
       '',
       '검증 검색 레코드:',
       evidenceText
@@ -2803,12 +3006,14 @@
     return null;
   }
 
-  function academicModelInput(userText, academicQuery, splitPart, reusedSources) {
+  function academicModelInput(userText, academicQuery, splitPart, reusedSources, evidenceProfile) {
     var query = String(academicQuery || userText || '').trim();
+    var profile = evidenceProfile || {};
     return [
       '연구 주제: ' + query,
       '작업: 시스템에 제공된 검증 학술검색 논문만 사용하여 주장 중심의 학술 요약을 작성하라.',
-      splitPart ? '현재 범위: 체크리스트 1·2에 해당하는 분할 답변 1/3만 작성하라.' : '현재 범위: 체크리스트 1~5를 순서대로 완결하라.',
+      '검토 대상: 검색 레코드 ' + (Number(profile.count) || 0) + '건, 공개 초록 ' + (Number(profile.abstractCount) || 0) + '건. 제공된 레코드를 끝까지 모두 검토하라.',
+      splitPart ? '자료량이 컨텍스트 예산을 초과하여 자동 분할되었다. 현재는 분할 답변 1/3만 작성하라.' : '자료량이 한 번의 답변 범위이므로 분할하지 말고 완결된 학술 요약을 작성하라.',
       reusedSources ? '직전 검색 논문을 재사용하여 새 문장으로 다시 요약하되 근거 밖의 내용을 추가하지 마라.' : ''
     ].filter(Boolean).join('\n');
   }
@@ -2828,8 +3033,9 @@
     renderMessages();
     try {
       var academicSearchActive = state.academicSearchEnabled && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel));
-      var splitAcademicResponse = academicSearchActive && state.provider === 'lmstudio';
+      var splitAcademicResponse = false;
       var academicEvidence = '';
+      var academicProfile = null;
       if (academicSearchActive) {
         if (!root.AIChatAcademicSearch || typeof root.AIChatAcademicSearch.search !== 'function') {
           throw new Error('공개 학술검색 모듈이 준비되지 않았습니다. 앱을 새로고침하세요.');
@@ -2860,19 +3066,30 @@
         }
         pendingUser.academicSources = academicSearch.results;
         pendingUser.academicWarnings = academicSearch.warnings || [];
-        // LM Studio models are frequently loaded with a 4K context window. Keep the
-        // academic-only prompt safely below that limit; cloud models retain the
-        // richer evidence payload.
-        academicEvidence = root.AIChatAcademicSearch.formatEvidence(
-          academicSearch.results,
-          state.provider === 'lmstudio' ? { maxChars: splitAcademicResponse ? 2400 : 5600, compact: splitAcademicResponse } : null
-        );
+        var evidencePlan = academicEvidencePlan(academicSearch.results);
+        academicProfile = evidencePlan.profile;
+        splitAcademicResponse = evidencePlan.split;
+        academicEvidence = evidencePlan.evidence;
+        pendingUser.academicEvidenceProfile = {
+          count: academicProfile.count,
+          abstractCount: academicProfile.abstractCount,
+          abstractChars: academicProfile.abstractChars,
+          estimatedTokens: academicProfile.fullEvidenceTokens,
+          compact: !!evidencePlan.compact,
+          split: splitAcademicResponse
+        };
         saveHistory();
         renderMessages();
         var academicAbstractCount = Number.isFinite(Number(academicSearch.abstractCount))
           ? Number(academicSearch.abstractCount)
           : academicSearch.results.filter(function (item) { return !!String(item && item.abstract || '').trim(); }).length;
-        setStatus((reusableAcademic ? '기존 검색 근거 재사용' : '검색 근거 수집 완료') + ' · ' + academicSearch.results.length + '건 · 공개 초록 ' + academicAbstractCount + '건 · AI 요약 중...', 'loading');
+        setStatus(
+          (reusableAcademic ? '기존 검색 근거 재사용' : '검색 근거 수집 완료')
+          + ' · ' + academicSearch.results.length + '건 · 공개 초록 ' + academicAbstractCount + '건'
+          + (splitAcademicResponse ? ' · 근거량 초과로 자동 분할' : ' · 한 번에 완결 요약')
+          + ' · AI 요약 중...',
+          'loading'
+        );
       }
       var result = await getBridge().complete({
         provider: state.provider,
@@ -2880,14 +3097,23 @@
         mode: academicSearchActive ? 'quick' : state.responseMode,
         academicSearch: academicSearchActive,
         splitAcademicResponse: splitAcademicResponse,
+        academicEvidenceCount: academicProfile ? academicProfile.count : 0,
+        academicEvidenceTokens: academicProfile ? academicProfile.fullEvidenceTokens : 0,
         retainForContinuation: true,
         messages: academicSearchActive
-          ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic) }]
+          ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic, academicProfile) }]
           : contextMessages(),
         onStreamEvent: state.provider === 'lmstudio' ? handleStreamEvent : undefined,
         systemInstruction: academicSearchActive
-          ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0)
-          : 'You are a capable conversational assistant. Answer in Korean unless the user requests another language. Follow the requested format, tone, and length precisely. Give a complete, accurate, polished final answer with all requested code or details. Return only the answer intended for the user; never expose internal reasoning, planning, checklists, or meta-commentary.'
+          ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0, academicProfile)
+          : [
+              'You are a capable conversational assistant. Answer in Korean unless the user requests another language.',
+              'This is a continuous multi-turn conversation. Use the previous conversation as context for every new message.',
+              'Resolve follow-up references such as "위 질문", "그것", "그중", "두 번째", "더 자세히", and "계속" from the previous user and assistant messages instead of asking the user to repeat them.',
+              'When the latest request changes or corrects an earlier request, follow the latest request while preserving still-relevant context.',
+              'Follow the requested format, tone, and length precisely. Give a complete, accurate, polished final answer with all requested code or details.',
+              'Return only the answer intended for the user; never expose internal reasoning, planning, checklists, or meta-commentary.'
+            ].join(' ')
       });
       var answer = result && result.text != null ? String(result.text) : '';
       var responseStatus = extractModelStatus(answer);
@@ -2900,7 +3126,7 @@
         : { answer: '', checklist: '', remaining: '' };
       if (academicSearchActive) {
         var visibleAcademicAnswer = extractVisibleAnswerBody(sections.answer, true);
-        sections.answer = normalizeAcademicAnswer(visibleAcademicAnswer.body);
+        sections.answer = normalizeAcademicAnswer(visibleAcademicAnswer.body, pendingUser.academicSources);
         if (visibleAcademicAnswer.notice && !responseStatus.notice) responseStatus.notice = visibleAcademicAnswer.notice;
         if (!sections.answer && reasoningText && !responseStatus.notice) responseStatus.notice = academicReasoningOnlyNotice();
         sections.checklist = splitAcademicResponse ? '' : (sections.answer ? buildAcademicChecklist(sections.answer) : '');
