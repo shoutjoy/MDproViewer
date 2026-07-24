@@ -130,6 +130,182 @@
         return results;
     }
 
+    function convertMathToPlainText(tex) {
+        let text = String(tex || '')
+            .replace(/\r\n?/g, '\n')
+            .replace(/\\(?:displaystyle|textstyle|scriptstyle|scriptscriptstyle)\b/g, '')
+            .replace(/\\(?:limits|nolimits)\b/g, '')
+            .replace(/\\(?:left|right|middle)\b/g, '');
+
+        function compact(value) {
+            return String(value || '').replace(/\s+/g, ' ').trim();
+        }
+
+        function simpleTerm(value) {
+            return /^[A-Za-z0-9가-힣Α-ω∞πθφμσλΔΩ.+-]+$/.test(compact(value));
+        }
+
+        function fractionText(top, bottom) {
+            const numerator = compact(top);
+            const denominator = compact(bottom);
+            return (simpleTerm(numerator) ? numerator : '(' + numerator + ')')
+                + '/'
+                + (simpleTerm(denominator) ? denominator : '(' + denominator + ')');
+        }
+
+        function replaceStructuredMath(value) {
+            let result = value;
+            for (let pass = 0; pass < 32; pass += 1) {
+                const before = result;
+                result = result
+                    .replace(/\\begin\{(matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix)\}([\s\S]*?)\\end\{\1\}/g, function (_, __, body) {
+                        return '[' + compact(body.replace(/\\\\/g, '; ').replace(/&/g, ', ')) + ']';
+                    })
+                    .replace(/\\begin\{cases\}([\s\S]*?)\\end\{cases\}/g, function (_, body) {
+                        return '{ ' + compact(body.replace(/\\\\/g, '; ').replace(/&/g, ', ')) + ' }';
+                    })
+                    .replace(/\\(?:dfrac|tfrac|frac)\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, function (_, top, bottom) {
+                        return fractionText(top, bottom);
+                    })
+                    .replace(/\\binom\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, function (_, top, bottom) {
+                        return 'C(' + compact(top) + ', ' + compact(bottom) + ')';
+                    })
+                    .replace(/\\sqrt\s*\[([^\[\]{}]*)\]\s*\{([^{}]*)\}/g, function (_, degree, body) {
+                        return compact(degree) + '√(' + compact(body) + ')';
+                    })
+                    .replace(/\\sqrt\s*\{([^{}]*)\}/g, function (_, body) {
+                        return '√(' + compact(body) + ')';
+                    })
+                    .replace(/\\(?:text|textrm|textsf|texttt|mathrm|mathbf|mathit|mathsf|mathtt|operatorname)\s*\{([^{}]*)\}/g, '$1')
+                    .replace(/\\(?:overline|bar)\s*\{([^{}]*)\}/g, '$1\u0305')
+                    .replace(/\\underline\s*\{([^{}]*)\}/g, '$1\u0332')
+                    .replace(/\\hat\s*\{([^{}]*)\}/g, '$1\u0302')
+                    .replace(/\\tilde\s*\{([^{}]*)\}/g, '$1\u0303')
+                    .replace(/\\vec\s*\{([^{}]*)\}/g, '$1\u20d7')
+                    .replace(/\\overrightarrow\s*\{([^{}]*)\}/g, '$1→')
+                    .replace(/\\overleftarrow\s*\{([^{}]*)\}/g, '←$1')
+                    .replace(/\\boxed\s*\{([^{}]*)\}/g, '[$1]')
+                    .replace(/\\(?:cancel|phantom)\s*\{([^{}]*)\}/g, '$1')
+                    .replace(/\\(?:overbrace|underbrace)\s*\{([^{}]*)\}(?:\s*[_^]\s*\{([^{}]*)\})?/g, function (_, body, label) {
+                        return compact(body) + (label ? ' (' + compact(label) + ')' : '');
+                    });
+                if (result === before) break;
+            }
+            return result;
+        }
+
+        text = replaceStructuredMath(text);
+
+        const symbolMap = {
+            '\\Longleftrightarrow': '⟺', '\\Longrightarrow': '⟹', '\\Longleftarrow': '⟸',
+            '\\leftrightarrows': '⇆', '\\rightleftarrows': '⇄',
+            '\\leftrightarrow': '↔', '\\rightarrow': '→', '\\leftarrow': '←',
+            '\\Rightarrow': '⇒', '\\Leftarrow': '⇐', '\\Leftrightarrow': '⇔',
+            '\\longleftrightarrow': '⟷', '\\longrightarrow': '⟶', '\\longleftarrow': '⟵',
+            '\\uparrow': '↑', '\\downarrow': '↓', '\\Uparrow': '⇑', '\\Downarrow': '⇓',
+            '\\mapsto': '↦', '\\implies': '⇒', '\\iff': '⇔', '\\to': '→',
+            '\\triangleq': '≜', '\\coloneqq': '≔', '\\approx': '≈', '\\simeq': '≃',
+            '\\equiv': '≡', '\\cong': '≅', '\\propto': '∝', '\\neq': '≠', '\\ne': '≠',
+            '\\leqslant': '≤', '\\geqslant': '≥', '\\leq': '≤', '\\geq': '≥',
+            '\\ll': '≪', '\\gg': '≫',
+            '\\times': '×', '\\div': '÷', '\\cdot': '·', '\\pm': '±', '\\mp': '∓',
+            '\\circ': '∘', '\\bullet': '•', '\\ast': '∗', '\\star': '⋆',
+            '\\oplus': '⊕', '\\ominus': '⊖', '\\otimes': '⊗', '\\oslash': '⊘',
+            '\\sum': '∑', '\\prod': '∏', '\\coprod': '∐',
+            '\\iiint': '∭', '\\iint': '∬', '\\int': '∫', '\\oint': '∮',
+            '\\partial': '∂', '\\nabla': '∇', '\\infty': '∞',
+            '\\forall': '∀', '\\exists': '∃', '\\nexists': '∄', '\\neg': '¬',
+            '\\land': '∧', '\\lor': '∨', '\\therefore': '∴', '\\because': '∵',
+            '\\notin': '∉', '\\in': '∈', '\\ni': '∋',
+            '\\subseteq': '⊆', '\\supseteq': '⊇', '\\subset': '⊂', '\\supset': '⊃',
+            '\\cup': '∪', '\\cap': '∩', '\\setminus': '∖', '\\emptyset': '∅',
+            '\\ldots': '…', '\\cdots': '⋯', '\\vdots': '⋮', '\\ddots': '⋱',
+            '\\angle': '∠', '\\perp': '⊥', '\\parallel': '∥',
+            '\\alpha': 'α', '\\beta': 'β', '\\gamma': 'γ', '\\delta': 'δ',
+            '\\epsilon': 'ε', '\\varepsilon': 'ϵ', '\\zeta': 'ζ', '\\eta': 'η',
+            '\\theta': 'θ', '\\vartheta': 'ϑ', '\\iota': 'ι', '\\kappa': 'κ',
+            '\\lambda': 'λ', '\\mu': 'μ', '\\nu': 'ν', '\\xi': 'ξ',
+            '\\pi': 'π', '\\varpi': 'ϖ', '\\rho': 'ρ', '\\varrho': 'ϱ',
+            '\\sigma': 'σ', '\\varsigma': 'ς', '\\tau': 'τ', '\\upsilon': 'υ',
+            '\\phi': 'φ', '\\varphi': 'ϕ', '\\chi': 'χ', '\\psi': 'ψ', '\\omega': 'ω',
+            '\\Gamma': 'Γ', '\\Delta': 'Δ', '\\Theta': 'Θ', '\\Lambda': 'Λ',
+            '\\Xi': 'Ξ', '\\Pi': 'Π', '\\Sigma': 'Σ', '\\Upsilon': 'Υ',
+            '\\Phi': 'Φ', '\\Psi': 'Ψ', '\\Omega': 'Ω',
+            '\\Re': 'ℜ', '\\Im': 'ℑ', '\\ell': 'ℓ', '\\hbar': 'ℏ',
+            '\\degree': '°'
+        };
+
+        Object.keys(symbolMap)
+            .sort(function (a, b) { return b.length - a.length; })
+            .forEach(function (command) {
+                const escaped = command.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                text = text.replace(new RegExp(escaped + '(?![A-Za-z])', 'g'), symbolMap[command]);
+            });
+
+        text = text.replace(/\\sqrt\s*([A-Za-z0-9Α-ω])/g, '√$1');
+
+        const superscriptMap = {
+            '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+            '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+            '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+            'n': 'ⁿ', 'i': 'ⁱ'
+        };
+        const subscriptMap = {
+            '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+            '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+            '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+            'a': 'ₐ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ', 'k': 'ₖ',
+            'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'o': 'ₒ', 'p': 'ₚ', 'r': 'ᵣ',
+            's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ', 'v': 'ᵥ', 'x': 'ₓ'
+        };
+
+        function scriptText(value, map, marker) {
+            const source = compact(value);
+            const converted = Array.from(source).map(function (char) {
+                return Object.prototype.hasOwnProperty.call(map, char) ? map[char] : '';
+            }).join('');
+            return converted.length === source.length ? converted : marker + '(' + source + ')';
+        }
+
+        for (let pass = 0; pass < 8; pass += 1) {
+            const before = text;
+            text = text
+                .replace(/\^\s*\{([^{}]*)\}/g, function (_, body) {
+                    return scriptText(body, superscriptMap, '^');
+                })
+                .replace(/_\s*\{([^{}]*)\}/g, function (_, body) {
+                    return scriptText(body, subscriptMap, '_');
+                })
+                .replace(/\^\s*([A-Za-z0-9+\-=()])/g, function (_, body) {
+                    return scriptText(body, superscriptMap, '^');
+                })
+                .replace(/_\s*([A-Za-z0-9+\-=()])/g, function (_, body) {
+                    return scriptText(body, subscriptMap, '_');
+                });
+            if (text === before) break;
+        }
+
+        text = text
+            .replace(/\\(?:quad|qquad|enspace|hspace\*?(?:\{[^{}]*\})?)/g, ' ')
+            .replace(/\\[,;:!>]/g, ' ')
+            .replace(/\\(?:,|;|:|!)/g, ' ')
+            .replace(/\\begin\{[^{}]+\}|\\end\{[^{}]+\}/g, ' ')
+            .replace(/\\\\/g, '; ')
+            .replace(/&/g, ' ')
+            .replace(/\\([{}_%#$&])/g, '$1')
+            .replace(/\\([A-Za-z]+)\b/g, '$1')
+            .replace(/[{}]/g, '')
+            .replace(/~/g, ' ')
+            .replace(/\s+([,.;:)\]])/g, '$1')
+            .replace(/([(［])\s+/g, '$1')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\s*\n\s*/g, '; ')
+            .replace(/(?:;\s*){2,}/g, '; ')
+            .trim();
+
+        return text;
+    }
+
     function getRenderedMathSource(node) {
         if (!node) return '';
         const annotation = node.querySelector
@@ -149,16 +325,29 @@
             if (node.parentElement && node.parentElement.closest('.katex-display, .katex')) return;
             mathNodes.push(node);
         });
+        Array.from(doc.querySelectorAll('math')).forEach(function (node) {
+            if (node.parentElement && node.parentElement.closest('mjx-container, .katex-display, .katex')) return;
+            mathNodes.push(node);
+        });
 
-        mathNodes.forEach(function (node, index) {
+        const orderedMathNodes = Array.from(new Set(mathNodes)).sort(function (a, b) {
+            if (a === b || !a.compareDocumentPosition) return 0;
+            const position = a.compareDocumentPosition(b);
+            if (position & 4) return -1;
+            if (position & 2) return 1;
+            return 0;
+        });
+
+        orderedMathNodes.forEach(function (node, index) {
             const source = sources[index] || {};
             const tex = String(source.tex || getRenderedMathSource(node) || '수식').replace(/\s+/g, ' ').trim();
+            const plainText = convertMathToPlainText(tex) || '수식';
             const display = source.display === true
                 || (node.hasAttribute && node.hasAttribute('display'))
                 || (node.classList && node.classList.contains('katex-display'));
             const replacement = doc.createElement(display ? 'p' : 'span');
             replacement.setAttribute('data-naver-math', display ? 'display' : 'inline');
-            replacement.textContent = display ? '수식: ' + tex : '［수식: ' + tex + '］';
+            replacement.textContent = plainText;
             node.replaceWith(replacement);
         });
     }
@@ -258,10 +447,10 @@
             node.style.cssText = 'margin:0;min-height:1.55em;font-family:Consolas,Monaco,"Courier New",monospace;font-size:14px;line-height:1.55;color:#24292f;white-space:pre-wrap;overflow-wrap:anywhere;';
         });
         Array.from(doc.querySelectorAll('[data-naver-math="display"]')).forEach(function (node) {
-            node.style.cssText = 'margin:12px 0;padding:8px 10px;border-left:3px solid #94a3b8;background-color:#f8fafc;font-family:Consolas,Monaco,"Courier New",monospace;font-size:15px;line-height:1.6;color:#1f2937;white-space:pre-wrap;overflow-wrap:anywhere;';
+            node.style.cssText = 'margin:10px 0;padding:4px 0;font-family:Arial,"Noto Sans KR",sans-serif;font-size:16px;line-height:1.7;color:#1f2937;white-space:pre-wrap;overflow-wrap:anywhere;';
         });
         Array.from(doc.querySelectorAll('[data-naver-math="inline"]')).forEach(function (node) {
-            node.style.cssText = 'font-family:Consolas,Monaco,"Courier New",monospace;color:#1f2937;';
+            node.style.cssText = 'font-family:Arial,"Noto Sans KR",sans-serif;color:#1f2937;';
         });
         Array.from(doc.querySelectorAll('blockquote')).forEach(function (node) {
             node.style.cssText = 'margin:14px 0;padding:8px 14px;border-left:4px solid #cbd5e1;background-color:#f8fafc;color:#475569;';
@@ -1025,6 +1214,7 @@
         openShareDestination: openShareDestinationWithOptions,
         saveNaverBlogIdFromSettings,
         buildNaverClipboardContent,
+        mathToPlainTextForNaver: convertMathToPlainText,
         shouldShowInViewMode,
         resetShareSettingsUI,
         loadShareSettingsUI

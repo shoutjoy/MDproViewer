@@ -6808,6 +6808,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     'ss_ai_chat_enabled',
     'ss_ai_chat_provider',
     'ss_ai_chat_gemini_model',
+    'ss_ai_chat_writing_style',
     'ss_ai_chat_gemini_models_v1',
     'ss_ai_chat_response_mode',
     'ss_ai_chat_layout'

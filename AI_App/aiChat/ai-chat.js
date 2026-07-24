@@ -5,6 +5,7 @@
   var ENABLED_KEY = 'ss_ai_chat_enabled';
   var PROVIDER_KEY = 'ss_ai_chat_provider';
   var GEMINI_MODEL_KEY = 'ss_ai_chat_gemini_model';
+  var WRITING_STYLE_KEY = 'ss_ai_chat_writing_style';
   var RESPONSE_MODE_KEY = 'ss_ai_chat_response_mode';
   var SHOW_REASONING_KEY = 'ss_ai_chat_show_reasoning';
   var ACADEMIC_SEARCH_KEY = 'ss_ai_chat_academic_search_enabled';
@@ -42,6 +43,7 @@
     running: false,
     provider: 'lmstudio',
     providerControlsOpen: false,
+    writingStyle: 'polite',
     responseMode: 'quick',
     showReasoning: false,
     academicSearchEnabled: false,
@@ -80,6 +82,34 @@
 
   function storageSet(key, value) {
     try { localStorage.setItem(key, value); } catch (e) {}
+  }
+
+  function normalizeWritingStyle(value) {
+    return value === 'academic' ? 'academic' : 'polite';
+  }
+
+  function writingStyleLabel(value) {
+    return normalizeWritingStyle(value) === 'academic'
+      ? '전문적 학술체(-이다/-한다)'
+      : '기본 존댓말(-습니다/-입니다)';
+  }
+
+  function writingStyleInstruction(options) {
+    var academicContext = !!(options && options.academic);
+    if (state.writingStyle === 'academic') {
+      return [
+        '선택된 답변 문체: 전문적 한국어 학술 평서체이다.',
+        '문장 종결은 문맥에 맞게 -이다, -한다, -로 나타났다, -를 시사한다 등을 사용하고 존댓말 종결(-습니다/-입니다)은 사용하지 않는다.',
+        academicContext ? '전문용어를 정확하게 사용하고 주장, 근거, 해석을 명확하게 구분한다.' : '과장된 표현을 피하고 논리적이며 객관적으로 서술한다.',
+        '단, 사용자가 이번 요청에서 특정 언어 또는 다른 문체를 명시하면 그 요청을 우선한다.'
+      ].join(' ');
+    }
+    return [
+      '선택된 답변 문체: 자연스럽고 정중한 한국어 존댓말이다.',
+      '문장 종결은 문맥에 맞게 -습니다, -입니다, -하세요 등을 사용하고 반말이나 -이다/-한다 식의 건조한 종결은 사용하지 않는다.',
+      academicContext ? '학술적 정확성과 전문성은 유지하되 독자에게 설명하는 정중한 문장으로 작성한다.' : '친절하고 명확하게 설명하되 불필요하게 장황하거나 과장하지 않는다.',
+      '단, 사용자가 이번 요청에서 특정 언어 또는 다른 문체를 명시하면 그 요청을 우선한다.'
+    ].join(' ');
   }
 
   function getBridge() {
@@ -359,6 +389,10 @@
       + '        <label>모델<select id="ai-chat-model"></select></label>'
       + '        <button type="button" id="ai-chat-refresh-model" title="현재 모델 새로고침">↻</button>'
       + '      </div>'
+      + '      <div class="ai-chat-writing-style-row">'
+      + '        <label>답변 문체<select id="ai-chat-writing-style"><option value="polite">기본 존댓말 (-습니다/-입니다)</option><option value="academic">전문적 학술체 (-이다/-한다)</option></select></label>'
+      + '        <small id="ai-chat-writing-style-help">모든 새 AI 요청의 사전 프롬프트에 적용됩니다.</small>'
+      + '      </div>'
       + '    </div>'
       + '    <div id="ai-chat-status" class="ai-chat-status" role="status" aria-live="polite"></div>'
       + '    <div id="ai-chat-messages" class="ai-chat-messages"></div>'
@@ -472,6 +506,9 @@
       updateHeaderModel();
       updateModelModeUI();
       saveHistory();
+    });
+    document.getElementById('ai-chat-writing-style').addEventListener('change', function (event) {
+      setWritingStyle(event.target.value, true);
     });
     document.getElementById('ai-chat-input').addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
@@ -1271,6 +1308,21 @@
     saveHistory();
   }
 
+  function setWritingStyle(style, announce) {
+    state.writingStyle = normalizeWritingStyle(style);
+    storageSet(WRITING_STYLE_KEY, state.writingStyle);
+    var select = document.getElementById('ai-chat-writing-style');
+    var help = document.getElementById('ai-chat-writing-style-help');
+    if (select) select.value = state.writingStyle;
+    if (help) {
+      help.textContent = state.writingStyle === 'academic'
+        ? '객관적인 -이다/-한다 형식으로 사전 프롬프팅합니다.'
+        : '정중한 -습니다/-입니다 형식으로 사전 프롬프팅합니다.';
+    }
+    updateHeaderModel();
+    if (announce) setStatus('답변 문체를 ' + writingStyleLabel(state.writingStyle) + '로 설정했습니다.', 'ok');
+  }
+
   function setShowReasoning(show) {
     state.showReasoning = !!show;
     storageSet(SHOW_REASONING_KEY, state.showReasoning ? '1' : '0');
@@ -1312,6 +1364,7 @@
     var input = document.getElementById('ai-chat-input');
     var provider = document.getElementById('ai-chat-provider');
     var model = document.getElementById('ai-chat-model');
+    var writingStyle = document.getElementById('ai-chat-writing-style');
     var refresh = document.getElementById('ai-chat-refresh-model');
     var importSelection = document.getElementById('ai-chat-import-selection');
     var academicToggle = document.getElementById('ai-chat-academic-toggle');
@@ -1324,6 +1377,7 @@
     if (input) input.disabled = state.running || state.storageInitializing;
     if (provider) provider.disabled = state.running;
     if (model) model.disabled = state.running || state.provider === 'lmstudio';
+    if (writingStyle) writingStyle.disabled = state.running;
     if (refresh) refresh.disabled = state.running;
     if (importSelection) importSelection.disabled = state.running || state.storageInitializing;
     var imageModel = state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel);
@@ -2054,6 +2108,7 @@
         systemInstruction: academicSearch
           ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0, continuationEvidenceProfile)
           : [
+              writingStyleInstruction({ academic: false }),
               '원래 사용자 요청과 직전 assistant 답변 전체를 대화 문맥으로 읽고, 직전 답변 바로 다음 내용만 한국어로 이어서 작성한다.',
               '이미 작성한 내용, 제목, 문장, 문단을 반복하거나 요약하지 않는다.',
               '내부 추론, 계획, 작업 설명, 체크리스트, "The user wants" 같은 메타 문장을 출력하지 않는다.',
@@ -2759,6 +2814,7 @@
       '- 저장 시각: ' + new Date().toLocaleString('ko-KR'),
       '- AI 공급자: ' + (state.provider === 'lmstudio' ? 'LM Studio' : 'AI Studio (Gemini)'),
       '- 모델: ' + (state.provider === 'lmstudio' ? (state.lmModel || '확인되지 않음') : state.geminiModel),
+      '- 답변 문체: ' + writingStyleLabel(state.writingStyle),
       '- 응답 모드: ' + (state.responseMode === 'reasoning' ? '추론' : '즉시응답'),
       '- 추론 내용 표시: ' + (state.showReasoning ? '함' : '안 함'),
       ''
@@ -2918,7 +2974,7 @@
     ].join('\n');
     return [
       '역할: 아래 검증 학술검색 논문을 주장 중심으로 요약하는 연구자이다.',
-      '문체: 한국어 학술적 평서체(-이다/-한다/-로 나타났다/-를 시사한다)만 사용한다.',
+      writingStyleInstruction({ academic: true }),
       '요약: 논문별 나열이 아니라 핵심 주장마다 근거, 연구 간 비교·조건, 제한적인 해석이나 함의를 연결한다. 관련성을 인과로 확대하지 않는다.',
       '근거: 아래 레코드의 인용(C), 제목(T), 공개 초록(X) 또는 같은 의미의 전체 필드만 사용한다. X가 없으면 결과 근거로 쓰지 않는다. 없는 사실·인용은 만들지 않는다.',
       '전체성: 제공된 ' + (Number(profile.count) || '전체') + '건의 레코드를 처음부터 끝까지 모두 검토한다. 상위 일부 레코드만 보고 결론을 내리지 않는다. 답변에서 모든 논문을 나열할 필요는 없지만 관련 연구를 빠뜨리지 않고 주제별 종합에 반영한다.',
@@ -2941,7 +2997,8 @@
     if (splitPart) {
       return [
         '검증 논문 요약의 미완료 파트만 이어 쓴다.',
-        '한국어 학술체(-이다/-한다)로 근거와 제한적인 해석을 연결한다.',
+        writingStyleInstruction({ academic: true }),
+        '선택된 문체로 근거와 제한적인 해석을 연결한다.',
         '아래 C/T/X 레코드 ' + recordCount + '건을 모두 검토하며 X 밖의 결과, 없는 저자·연도·인용을 만들지 않는다.',
         '연구 결과를 담은 모든 새 주장·요약 문장에는 C의 실제 (연구자, 연도) 인용을 붙인다. S1, S2, SOURCE 번호는 절대 쓰지 않는다.',
         '완료된 문장과 파트는 반복하지 않고 사용자 지시에 지정된 현재 파트만 작성한다.',
@@ -2952,7 +3009,8 @@
       ].join('\n');
     }
     return [
-      '검증 논문 요약에서 아직 작성하지 않은 내용만 한국어 학술체(-이다/-한다)로 이어 쓴다.',
+      '검증 논문 요약에서 아직 작성하지 않은 내용만 이어 쓴다.',
+      writingStyleInstruction({ academic: true }),
       '아래 검색 근거 ' + recordCount + '건을 모두 검토하고 완료된 문장·체크리스트·질문을 반복하지 않는다.',
       '없는 저자·연도·인용을 만들지 않으며 추론이나 계획을 출력하지 않는다.',
       '연구 결과를 담은 모든 새 주장·요약 문장에는 C의 실제 (연구자, 연도) 인용을 붙인다. S1, S2, SOURCE 번호는 절대 쓰지 않는다.',
@@ -3108,6 +3166,7 @@
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0, academicProfile)
           : [
               'You are a capable conversational assistant. Answer in Korean unless the user requests another language.',
+              writingStyleInstruction({ academic: false }),
               'This is a continuous multi-turn conversation. Use the previous conversation as context for every new message.',
               'Resolve follow-up references such as "위 질문", "그것", "그중", "두 번째", "더 자세히", and "계속" from the previous user and assistant messages instead of asking the user to repeat them.',
               'When the latest request changes or corrects an earlier request, follow the latest request while preserving still-relevant context.',
@@ -3201,6 +3260,7 @@
     createUI();
     state.provider = storageGet(PROVIDER_KEY, 'lmstudio') === 'aistudio' ? 'aistudio' : 'lmstudio';
     state.providerControlsOpen = storageGet(PROVIDER_CONTROLS_KEY, '0') === '1';
+    state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, 'polite'));
     state.responseMode = storageGet(RESPONSE_MODE_KEY, 'quick') === 'reasoning' ? 'reasoning' : 'quick';
     state.showReasoning = storageGet(SHOW_REASONING_KEY, '0') === '1';
     state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, '0') === '1';
@@ -3211,6 +3271,7 @@
     state.enabled = storageGet(ENABLED_KEY, '0') === '1';
     updateProviderUI();
     setProviderControlsOpen(state.providerControlsOpen);
+    setWritingStyle(state.writingStyle, false);
     setResponseMode(state.responseMode);
     setShowReasoning(state.showReasoning);
     updateAcademicSearchUI();
