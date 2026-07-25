@@ -14,3 +14,7 @@ push.py
 trt/wysiwyg-layer-proposal.md
 restore/index1.html
 restore/temp/index.html
+
+# npm / vite
+node_modules/
+dist/
