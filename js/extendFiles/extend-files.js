@@ -211,6 +211,7 @@
   function showExportTypeDialog() {
     var choices = [
       { key: 'md', label: 'MD file' },
+      { key: 'docx', label: 'MS Word (.docx)' },
       { key: 'mdd', label: 'MDD file (bundle)' },
       { key: 'zip', label: 'ZIP file' },
       { key: 'html', label: 'HTML file' }
@@ -224,7 +225,7 @@
 
     return showChoiceDialog(
       'Export Format',
-      'MD: text only / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document',
+      'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document',
       choices,
       'cancel'
     );

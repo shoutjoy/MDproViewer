@@ -1674,8 +1674,13 @@ function downloadBlobFile(blob, fileName) {
     const a = document.createElement('a');
     a.href = url;
     a.download = String(fileName || 'download.bin');
+    a.style.display = 'none';
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(function () {
+        if (a.parentNode) a.parentNode.removeChild(a);
+        URL.revokeObjectURL(url);
+    }, 1000);
 }
 
 function getZipSaveFileName() {
@@ -1686,6 +1691,11 @@ function getZipSaveFileName() {
 function getMddSaveFileName() {
     const base = String(getSaveCandidateFileName() || 'document.md').replace(/\.md$/i, '');
     return base + '.mdd';
+}
+
+function getDocxSaveFileName() {
+    const base = String(getSaveCandidateFileName() || 'document.md').replace(/\.(md|markdown|mdown|txt|html|htm|json|mdd|mpv|docx)$/i, '');
+    return base + '.docx';
 }
 
 async function exportCurrentDocumentAsZipWithInternalImages() {
@@ -1704,10 +1714,33 @@ async function exportCurrentDocumentAsMdd() {
     downloadBlobFile(out.blob, out.fileName || getMddSaveFileName());
 }
 
+function getRenderedHtmlForDocxExport() {
+    try {
+        if (!viewer) return '';
+        return String(viewer.innerHTML || '');
+    } catch (_) {
+        return '';
+    }
+}
+
+async function exportCurrentDocumentAsDocx() {
+    syncCurrentMarkdownFromEditor();
+    if (!window.DocxExport || typeof window.DocxExport.createBlob !== 'function') {
+        throw new Error('DOCX export is not available.');
+    }
+    const blob = await window.DocxExport.createBlob({
+        content: String(currentMarkdown || ''),
+        html: getRenderedHtmlForDocxExport()
+    });
+    downloadBlobFile(blob, getDocxSaveFileName());
+    return true;
+}
+
 function showExportTypeDialogFallback() {
     return new Promise(function (resolve) {
         const choices = [
             { key: 'md', label: 'MD file' },
+            { key: 'docx', label: 'MS Word (.docx)' },
             { key: 'mdd', label: 'MDD file (bundle)' },
             { key: 'zip', label: 'ZIP file' },
             { key: 'html', label: 'HTML file' }
@@ -1731,7 +1764,7 @@ function showExportTypeDialogFallback() {
         card.appendChild(title);
 
         const desc = document.createElement('p');
-        desc.textContent = 'Choose export format.';
+        desc.textContent = 'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document';
         desc.style.cssText = 'margin:0 0 14px;font-size:13px;line-height:1.5;color:#cbd5e1;';
         card.appendChild(desc);
 
@@ -1788,11 +1821,19 @@ async function exportCurrentDocumentByChoice() {
         markPersistedState();
         return true;
     }
-        if (choice === 'html') {
-            if (typeof HtmlExport !== 'undefined' && HtmlExport.exportToHTML) await HtmlExport.exportToHTML();
+    if (choice === 'docx') {
+        const ok = await exportCurrentDocumentAsDocx();
+        if (ok) {
+            showToast('DOCX exported.');
             markPersistedState();
-            return true;
         }
+        return !!ok;
+    }
+    if (choice === 'html') {
+        if (typeof HtmlExport !== 'undefined' && HtmlExport.exportToHTML) await HtmlExport.exportToHTML();
+        markPersistedState();
+        return true;
+    }
     const hasInternalImages = !!(window.ImageDB
         && typeof window.ImageDB.hasInternalImages === 'function'
         && window.ImageDB.hasInternalImages(String(currentMarkdown || '')));
