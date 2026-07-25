@@ -1,0 +1,7 @@
+@import "tailwindcss";
+
+/* Match previous CDN config: darkMode: 'class' */
+@custom-variant dark (&:where(.dark, .dark *));
+button {
+    @apply cursor-pointer;
+}

@@ -5,28 +5,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MDproViewer</title>
-    <!-- Tailwind CSS for Styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = { darkMode: 'class' }
-    </script>
-    <!-- Marked.js for MD Rendering -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- JSZip for backup zip -->
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <!-- Tailwind + npm vendor globals (marked, JSZip, lucide, katex, MathJax) -->
+    <link rel="stylesheet" href="./css/tailwind.css">
+    <script type="module" src="./js/vendor.js"></script>
     <!-- Markdown Bold: **텍스트** 특수문자 포함 시 <b> 선변환 (marked 파싱 실패 방지) -->
     <script src="./js/Markdown_bold.js" charset="utf-8"></script>
     <script src="./js/md_numeric_range.js" charset="utf-8"></script>
     <script src="./js/md_long_equals.js" charset="utf-8"></script>
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="./css/style.css?v=20260722-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260724-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
     <style>
         #settings-modal-panel {
             position: relative;
@@ -1752,8 +1743,6 @@
 
     <script src="./js/math_render/math_render.js?v=20260722-1" charset="utf-8" defer></script>
     <script src="./js/math_render/latex_render.js?v=20260415-1" charset="utf-8" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous" defer></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js" defer></script>
     <script src="./trt/special_trt.js?v=20260415-3" charset="utf-8" defer></script>
     <script src="./js/mermaid/mermaid_render.js?v=20260626-10000" charset="utf-8" defer></script>
     <script src="./Setting/user.js" charset="utf-8" defer></script>
