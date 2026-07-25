@@ -148,12 +148,20 @@ npm run preview
 python run.py
 ```
 
-### Windows 원클릭
+### Windows 원클릭 (npm)
 
 ```bash
 run.bat
 ```
+### Windows 원클릭 (Bun)
+
+Bun을 쓰면 라이브러리 설치와 빌드가 npm보다 10배 이상 빠릅니다. npm보단 이쪽을 더 추천합니다.
+`run-bun.bat`으로 한 번에 실행할 수 있습니다.
+
+```bash
+run-bun.bat
+```
 
 ### 배포 설정
 
-Build = `npm run build`, Serve 폴더 = `dist`
+Build = `npm run build`, Build 완료 폴더 = `dist`
