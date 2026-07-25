@@ -1539,10 +1539,71 @@ function toggleMode(mode) {
     }
 }
 
+const DEDICATED_LOCAL_VIEWER_EXTENSIONS = new Set([
+    '.pdf',
+    '.doc', '.docx',
+    '.hwp', '.hwpx',
+    '.xls', '.xlsx',
+    '.ppt', '.pptx', '.pps', '.ppsx',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif'
+]);
+const LOCAL_IMAGE_VIEWER_EXTENSIONS = new Set([
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif'
+]);
+
+function getSelectedFileExtension(file) {
+    const match = String(file && file.name || '').toLowerCase().match(/(\.[^.\\/]+)$/);
+    return match ? match[1] : '';
+}
+
+function openSelectedFileInBrowserViewer(file, extension) {
+    if (LOCAL_IMAGE_VIEWER_EXTENSIONS.has(extension)) {
+        if (!window.InternalImageApp || typeof window.InternalImageApp.openFiles !== 'function') {
+            showToast('내부 이미지 앱을 불러오지 못했습니다.');
+            return true;
+        }
+        window.InternalImageApp.openFiles([file], file.name || '이미지');
+        return true;
+    }
+    if (extension === '.pdf') {
+        const objectUrl = URL.createObjectURL(file);
+        const viewerUrl = new URL('./pdf-viewer.html', window.location.href);
+        viewerUrl.searchParams.set('file', objectUrl);
+        viewerUrl.searchParams.set('title', file.name || 'PDF Preview');
+        const popup = window.open(viewerUrl.toString(), '_blank');
+        if (!popup) {
+            URL.revokeObjectURL(objectUrl);
+            showToast('PDF 보기 창을 열 수 없습니다. 팝업 허용 여부를 확인하세요.');
+        } else {
+            window.setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 10 * 60 * 1000);
+        }
+        return true;
+    }
+    return false;
+}
+
 async function handleFileSelect(event) {
     const input = event && event.target ? event.target : null;
     const file = input && input.files ? input.files[0] : null;
-    if (file) await readFile(file);
+    if (file) {
+        const extension = getSelectedFileExtension(file);
+        let nativePath = String(file.path || '').trim();
+        if (!nativePath
+            && window.web2electron
+            && typeof window.web2electron.getPathForFile === 'function') {
+            try { nativePath = String(window.web2electron.getPathForFile(file) || '').trim(); } catch (_) {}
+        }
+        if (DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)
+            && nativePath
+            && window.web2electron
+            && typeof window.web2electron.openLocalFile === 'function') {
+            const result = await window.web2electron.openLocalFile({ filePath: nativePath });
+            if (result && result.error) showToast('파일을 열 수 없습니다: ' + result.error);
+        } else if (!DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)
+            || !openSelectedFileInBrowserViewer(file, extension)) {
+            await readFile(file);
+        }
+    }
     if (input) input.value = '';
 }
 

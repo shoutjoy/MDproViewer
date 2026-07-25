@@ -168,8 +168,20 @@
       fitCanvasToWrap(false);
     });
 
+    function getHostWindow() {
+      if (window.opener && !window.opener.closed) return window.opener;
+      if (window.parent && window.parent !== window) return window.parent;
+      return null;
+    }
+
+    function postToHost(payload) {
+      const host = getHostWindow();
+      if (host) host.postMessage(payload, '*');
+      return !!host;
+    }
+
     function requestImage() {
-      if (window.opener && !window.opener.closed) window.opener.postMessage({ type: 'crop-ready' }, '*');
+      postToHost({ type: 'crop-ready' });
     }
     requestImage();
     var retryCount = 0;
@@ -206,7 +218,11 @@
     canvas.addEventListener('mouseleave', function() { dragging = false; });
 
     document.getElementById('btn-apply').addEventListener('click', function() {
-      if (!img || rect.w < 5 || rect.h < 5) { window.close(); return; }
+      if (!img || rect.w < 5 || rect.h < 5) {
+        postToHost({ type: 'crop-cancel' });
+        if (window.opener) window.close();
+        return;
+      }
       const tc = document.createElement('canvas');
       tc.width = Math.round(rect.w * scale.w);
       tc.height = Math.round(rect.h * scale.h);
@@ -214,18 +230,23 @@
       tctx.drawImage(img, rect.x * scale.w, rect.y * scale.h, tc.width, tc.height, 0, 0, tc.width, tc.height);
       var dataUrl = tc.toDataURL('image/png');
       if (dataUrl.length > 4000000) dataUrl = tc.toDataURL('image/jpeg', 0.92);
-      if (!window.opener) { window.close(); return; }
-      window.opener.postMessage({ type: 'aiimg-cropped', dataUrl: dataUrl }, '*');
+      if (!postToHost({ type: 'aiimg-cropped', dataUrl: dataUrl })) {
+        if (window.opener) window.close();
+        return;
+      }
       window.addEventListener('message', function onAck(e) {
         if (e.data && e.data.type === 'crop-applied') {
           window.removeEventListener('message', onAck);
           window.close();
         }
       });
-      setTimeout(function() { window.close(); }, 500);
+      if (window.opener) setTimeout(function() { window.close(); }, 500);
     });
 
-    document.getElementById('btn-cancel').addEventListener('click', function() { window.close(); });
+    document.getElementById('btn-cancel').addEventListener('click', function() {
+      postToHost({ type: 'crop-cancel' });
+      if (window.opener) window.close();
+    });
   </script>
 </body>
 </html>

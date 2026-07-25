@@ -12,8 +12,8 @@
     </script>
     <!-- Marked.js for MD Rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- JSZip for backup zip -->
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <!-- JSZip for backup zip (오프라인/Electron 번들) -->
+    <script src="./vendor/jszip/jszip.min.js"></script>
     <!-- Markdown Bold: **텍스트** 특수문자 포함 시 <b> 선변환 (marked 파싱 실패 방지) -->
     <script src="./js/Markdown_bold.js" charset="utf-8"></script>
     <script src="./js/md_numeric_range.js" charset="utf-8"></script>
@@ -113,7 +113,7 @@
                 <i data-lucide="folder-open" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
                 <span class="hidden xl:inline text-sm font-medium">열기</span>
             </button>
-            <input type="file" id="file-input" class="hidden" accept=".md,.txt,.csv,.html,.htm,.mpv,.mpp,.json,.zip,.mdd" onchange="handleFileSelect(event)">
+            <input type="file" id="file-input" class="hidden" accept=".md,.markdown,.mdown,.txt,.csv,.html,.htm,.mpv,.mpp,.json,.zip,.mdd,.doc,.docx,.pdf,.xls,.xlsx,.ppt,.pptx,.pps,.ppsx,.hwp,.hwpx,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.ico,.avif" onchange="handleFileSelect(event)">
 
             <button onclick="saveFile()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0"
@@ -1749,7 +1749,7 @@
             class="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize opacity-70 hover:opacity-100 select-none"
             style="background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);"></div>
     </div>
-
+<!-- 
     <script src="./js/math_render/math_render.js?v=20260722-1" charset="utf-8" defer></script>
     <script src="./js/math_render/latex_render.js?v=20260415-1" charset="utf-8" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous" defer></script>
@@ -1793,7 +1793,391 @@
     <script src="./js/UI_PV/editpv.js?v=20260628-4" charset="utf-8" defer></script>
     <script src="./js/MergeDoc/merge.js?v=20260603-3" charset="utf-8" defer></script>
     <script src="https://apis.google.com/js/api.js" defer onload="onGoogleApiJsLoaded()"></script>
-    <script src="https://accounts.google.com/gsi/client" defer onload="onGoogleGisLoaded()"></script>
+    <script src="https://accounts.google.com/gsi/client" defer onload="onGoogleGisLoaded()"></script> -->
+
+
+    <!-- =========================================================
+     1. 외부 렌더링 라이브러리
+     로컬 렌더링 모듈보다 먼저 실행되어야 함
+========================================================= -->
+
+<!-- KaTeX -->
+<script
+    src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
+    crossorigin="anonymous"
+    defer>
+</script>
+
+<!-- MathJax -->
+<script
+    src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     2. 수식·특수 콘텐츠 렌더링
+========================================================= -->
+
+<!-- LaTeX 세부 렌더러 -->
+<script
+    src="./js/math_render/latex_render.js?v=20260415-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 통합 수식 렌더링 관리자 -->
+<script
+    src="./js/math_render/math_render.js?v=20260722-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 특수 텍스트 렌더링 -->
+<script
+    src="./trt/special_trt.js?v=20260415-3"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- Mermaid 렌더링 -->
+<script
+    src="./js/mermaid/mermaid_render.js?v=20260626-10000"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     3. 사용자·환경·기본 설정
+========================================================= -->
+
+<!-- 사용자 정보 및 기본 설정 -->
+<script
+    src="./Setting/user.js"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 파일 형식 판별 및 입출력 기반 -->
+<script
+    src="./file_format/file_format.js?v=20260408-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 문서 템플릿 -->
+<script
+    src="./js/templates/templates.js"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- GitHub 환경 설정 -->
+<script
+    src="./js/GithubData/github-settings.js?v=20260428-2"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     4. 데이터 저장소
+========================================================= -->
+
+<!-- 이미지 데이터베이스 -->
+<script
+    src="./imageDB/imageDB.js"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 이미지 편집기 삽입 -->
+<script
+    src="./imageDB/image_insert.js"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     5. 편집기 규칙·매크로
+========================================================= -->
+
+<!-- 편집기 규칙 -->
+<script
+    src="./trt/editorRule.js"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 편집기 매크로 -->
+<script
+    src="./trt/macro.js?v=20260408-1"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     6. 학술 참고문헌·논문 검색
+========================================================= -->
+
+<!-- 참고문헌 데이터 처리 -->
+<script
+    src="./js/Scholarref/scholarref.js?v=20260402-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 학술검색 통합 셸 -->
+<script
+    src="./js/Scholarref/scholarsearch-shell.js?v=20260424-1"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     7. AI 공통 기반
+========================================================= -->
+
+<!-- 학술 AI 프롬프트 -->
+<script
+    src="./sidebarAI/Scholarai_prompt.js?v=20260406-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 로컬 AI 연결 -->
+<script
+    src="./AI_App/ai_local/local-ai.js?v=20260723-2"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 학술 AI 제공자 -->
+<script
+    src="./AI_App/ai_local/scholar-ai-provider.js?v=20260721-3"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- AI 결과 편집기 삽입 -->
+<script
+    src="./sidebarAI/insert.js?v=20260407-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- AI 스케치패드 -->
+<script
+    src="./sidebarAI/sketchpad/ai-sketch-pad.js?v=20260604-1"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     8. 파일 가져오기·내보내기
+========================================================= -->
+
+<!-- 확장 파일 처리 -->
+<script
+    src="./js/extendFiles/extend-files.js?v=20260725-docx-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- DOCX 내보내기 -->
+<script
+    src="./js/extendFiles/docx-export.js?v=20260725-table-2"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- HTML 내보내기 -->
+<script
+    src="./js/export/html-export.js"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     9. 공유 기능
+     Google API 로딩 전에 콜백 함수가 정의되어야 함
+========================================================= -->
+
+<!-- 통합 공유 기능 -->
+<script
+    src="./ShareSites/Share/share.js?v=20260723-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- Google Docs 연동 -->
+<script
+    src="./ShareSites/googleDocs.js?v=20260330-2"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 공유 사이트 표시 -->
+<script
+    src="./ShareSites/sitesshow/sitesshow.js?v=20260603-1"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     10. UI 구성 요소
+========================================================= -->
+
+<!-- 설정 UI -->
+<script
+    src="./Setting/settings-ui.js?v=20260603-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 왼쪽 사이드바 -->
+<script
+    src="./sidebar_left/sidebar-left.js?v=20260723-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 이미지 링크 삽입 모달 -->
+<script
+    src="./js/Imagetool/link-image-modal.js?v=20260604-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 문서 정리 기능 -->
+<script
+    src="./js/Tidy/tidy-actions.js?v=20260628-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 미니 미리보기 -->
+<script
+    src="./js/UI_PV/minipv.js?v=20260603-3"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- AI 패널과 편집기 겹침 방지 -->
+<script
+    src="./trt/ai-panel-avoid.js?v=20260604-1"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     11. 단축키
+     관련 기능과 UI가 정의된 다음 등록
+========================================================= -->
+
+<script
+    src="./hotkey/hotkey.js"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     12. 메인 애플리케이션
+========================================================= -->
+
+<script
+    src="./js/app.js?v=20260725-image-internal-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/internal-image-app.js?v=20260725-1"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     13. app.js 기반 확장 기능
+========================================================= -->
+
+<!-- @ 명령 메뉴 -->
+<script
+    src="./js/command/at-command-menu.js?v=20260725-2"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- AI 채팅 학술검색 -->
+<script
+    src="./AI_App/aiChat/academic-search.js?v=20260724-2"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- AI 채팅 -->
+<script
+    src="./AI_App/aiChat/ai-chat.js?v=20260724-4"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- GitHub 실제 기능 -->
+<script
+    src="./js/GithubData/github-app.js?v=20260603-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 보기 모드 편집 -->
+<script
+    src="./js/viewmode/viewmode-edit-input.js?v=20260602-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 편집기·미리보기 연동 -->
+<script
+    src="./js/UI_PV/editpv.js?v=20260628-4"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- 문서 병합 -->
+<script
+    src="./js/MergeDoc/merge.js?v=20260603-3"
+    charset="utf-8"
+    defer>
+</script>
+
+
+<!-- =========================================================
+     14. Google 외부 API
+     onGoogleApiJsLoaded와 onGoogleGisLoaded 정의 후 로드
+========================================================= -->
+
+<!-- Google API Client -->
+<script
+    src="https://apis.google.com/js/api.js"
+    defer
+    onload="onGoogleApiJsLoaded()">
+</script>
+
+<!-- Google Identity Services -->
+<script
+    src="https://accounts.google.com/gsi/client"
+    defer
+    onload="onGoogleGisLoaded()">
+</script>
 </body>
 
 </html>
