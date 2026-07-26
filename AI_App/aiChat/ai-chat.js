@@ -295,6 +295,9 @@
     state.messages = record && Array.isArray(record.messages) ? record.messages.slice(-MAX_STORED_MESSAGES) : [];
     state.messages.forEach(function (message, messageIndex) {
       if (!message || message.role !== 'assistant' || message.error) return;
+      var separatedResponse = separateResponseReasoning(message.content, message.reasoning);
+      message.content = separatedResponse.answer;
+      message.reasoning = separatedResponse.reasoning;
       sanitizeAssistantMessage(message);
       if (!message.checklist && !message.academicTotalParts) {
         var sections = parseAssistantSections(message.content);
@@ -476,7 +479,7 @@
       + '        <span>응답 모드</span>'
       + '        <button type="button" data-ai-chat-mode="quick">⚡ 즉시응답</button>'
       + '        <button type="button" data-ai-chat-mode="reasoning">🧠 추론</button>'
-      + '        <label class="ai-chat-reasoning-toggle" title="모델은 그대로 추론하며, 이 설정은 반환된 추론 내용을 채팅에 표시·저장할지만 결정합니다."><input type="checkbox" id="ai-chat-show-reasoning"><span>추론 내용 표시</span></label>'
+      + '        <label class="ai-chat-reasoning-toggle" title="모델이 별도 필드나 응답 본문으로 반환한 추론 내용을 채팅에서 표시할지 결정합니다."><input type="checkbox" id="ai-chat-show-reasoning"><span>추론 내용 표시</span></label>'
       + '        <button type="button" id="ai-chat-academic-toggle" class="ai-chat-academic-toggle" aria-pressed="false">🔎 학술검색</button>'
       + '        <label id="ai-chat-academic-count-wrap" class="ai-chat-academic-count-wrap" title="목록에서 선택하거나 더블클릭하여 1~50 사이 숫자를 직접 입력하세요.">결과 <select id="ai-chat-academic-count" aria-label="학술검색 결과 수"><option value="5">5개</option><option value="10">10개</option><option value="20">20개</option><option value="30">30개</option><option value="50">50개</option></select><input id="ai-chat-academic-count-input" type="number" min="1" max="50" step="1" inputmode="numeric" aria-label="학술검색 결과 수 직접 입력" hidden></label>'
       + '        <small id="ai-chat-mode-help"></small>'
@@ -1855,6 +1858,16 @@
     }
   }
 
+  function separateResponseReasoning(answer, reasoning) {
+    if (root.AIChatResponseSeparator && typeof root.AIChatResponseSeparator.split === 'function') {
+      return root.AIChatResponseSeparator.split(answer, reasoning);
+    }
+    return {
+      answer: String(answer == null ? '' : answer).trim(),
+      reasoning: String(reasoning == null ? '' : reasoning).trim()
+    };
+  }
+
   function parseAssistantSections(rawText) {
     var raw = String(rawText || '').trim();
     var checklist = '';
@@ -2412,6 +2425,8 @@
             ].join(' ')
       });
       var continuedRaw = result && result.text != null ? String(result.text) : '';
+      var separatedContinuation = separateResponseReasoning(continuedRaw, result && result.reasoning);
+      continuedRaw = separatedContinuation.answer;
       var continuedStatus = extractModelStatus(continuedRaw);
       var continued = continuedStatus.answer ? parseAssistantSections(continuedStatus.answer).answer.trim() : '';
       var continuationBody = extractContinuationBody(continued);
@@ -2427,7 +2442,7 @@
         role: 'assistant',
         content: continued,
         checklist: '',
-        reasoning: '',
+        reasoning: separatedContinuation.reasoning,
         notice: continuedStatus.notice,
         isContinuation: true,
         continuationCount: (Number(target.continuationCount) || 0) + 1,
@@ -3494,8 +3509,10 @@
             ].join(' ')
       });
       var answer = result && result.text != null ? String(result.text) : '';
+      var separatedResult = separateResponseReasoning(answer, result && result.reasoning);
+      answer = separatedResult.answer;
       var responseStatus = extractModelStatus(answer);
-      var reasoningStatus = extractModelStatus(result && result.reasoning ? String(result.reasoning) : '');
+      var reasoningStatus = extractModelStatus(separatedResult.reasoning);
       if (reasoningStatus.notice && !responseStatus.notice) responseStatus.notice = reasoningStatus.notice;
       var reasoningText = reasoningStatus.answer;
       if (!responseStatus.answer && !responseStatus.notice && !reasoningText) throw new Error('AI 응답이 비어 있습니다.');
@@ -3525,7 +3542,7 @@
         role: 'assistant',
         content: sections.answer,
         checklist: sections.checklist,
-        reasoning: state.showReasoning ? reasoningText : '',
+        reasoning: reasoningText,
         notice: responseStatus.notice,
         images: result && Array.isArray(result.images) ? result.images : [],
         createdAt: Date.now(),
