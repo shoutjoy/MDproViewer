@@ -11,6 +11,7 @@
         toolTitle: null,
         pendingOpen: null,
         pendingTool: null,
+        objectUrls: [],
         maximized: false,
         restoreStyle: '',
         dragBound: false
@@ -136,6 +137,7 @@
     function viewerUrl(title) {
         const url = new URL('./Apps/fmaviewer/index.html', document.baseURI || global.location.href);
         url.searchParams.set('embedded', '1');
+        url.searchParams.set('v', '20260725-edit-result-2');
         if (title) url.searchParams.set('title', title);
         return url.href;
     }
@@ -176,6 +178,7 @@
     function openPath(filePath, title) {
         const path = String(filePath || '');
         if (!path) return;
+        releaseObjectUrls();
         state.pendingOpen = { path: path, selectedName: title || '' };
         show(title || path.split(/[\\/]/).pop() || '이미지');
         state.frame.src = viewerUrl(title || path.split(/[\\/]/).pop() || '');
@@ -184,9 +187,28 @@
     function openFiles(files, selectedName) {
         const list = Array.from(files || []);
         if (!list.length) return;
+        releaseObjectUrls();
         state.pendingOpen = { files: list, selectedName: selectedName || list[0].name || '' };
         show(selectedName || list[0].name || '이미지');
         state.frame.src = viewerUrl(selectedName || list[0].name || '');
+    }
+
+    function releaseObjectUrls() {
+        const urls = state.objectUrls.splice(0);
+        urls.forEach(function (url) {
+            try { URL.revokeObjectURL(url); } catch (_) {}
+        });
+    }
+
+    function openFrame(url, title, options) {
+        const targetUrl = String(url || '');
+        if (!targetUrl) return;
+        releaseObjectUrls();
+        const opts = options || {};
+        state.objectUrls = Array.isArray(opts.objectUrls) ? opts.objectUrls.slice() : [];
+        state.pendingOpen = null;
+        show(title || '파일 보기');
+        state.frame.src = targetUrl;
     }
 
     function closeTool() {
@@ -202,6 +224,7 @@
         state.shell.style.display = 'none';
         state.frame.removeAttribute('src');
         state.pendingOpen = null;
+        global.setTimeout(releaseObjectUrls, 0);
     }
 
     async function imageToDataUrl(image) {
@@ -232,7 +255,7 @@
         state.pendingTool = { kind: 'crop', dataUrl: dataUrl, image: image };
         state.toolTitle.textContent = 'Crop · ' + (image.name || '이미지');
         state.toolLayer.style.display = 'flex';
-        state.toolFrame.src = new URL('./js/crop/crop.html?embedded=1', document.baseURI || global.location.href).href;
+        state.toolFrame.src = new URL('./js/crop/crop.html?embedded=1&v=20260725-edit-result-2', document.baseURI || global.location.href).href;
     }
 
     async function openBackgroundRemover(image) {
@@ -244,6 +267,7 @@
         const url = new URL('./Apps/bgremover_react/bgremoverV2.html', document.baseURI || global.location.href);
         url.searchParams.set('mode', 'mdviewer-image');
         url.searchParams.set('targetId', targetId);
+        url.searchParams.set('v', '20260725-edit-result-2');
         state.toolFrame.src = url.href;
     }
 
@@ -300,9 +324,9 @@
         showStatus('imgBB 업로드 주소를 문서에 삽입했습니다.', false);
     }
 
-    function applyEditedImage(dataUrl, sourceName) {
+    function applyEditedImage(dataUrl, sourceName, action) {
         postToViewer({
-            type: 'fmaviewer-apply-image',
+            type: action === 'new' ? 'fmaviewer-add-image' : 'fmaviewer-apply-image',
             dataUrl: dataUrl,
             name: sourceName || ('edited_' + Date.now() + '.png')
         });
@@ -337,10 +361,13 @@
             return;
         }
         if (data.type === 'aiimg-cropped' && data.dataUrl && state.pendingTool.kind === 'crop') {
-            applyEditedImage(data.dataUrl, 'cropped_' + (state.pendingTool.image.name || 'image.png'));
+            const action = data.action === 'new' ? 'new' : 'replace';
+            applyEditedImage(data.dataUrl, 'cropped_' + (state.pendingTool.image.name || 'image.png'), action);
             state.toolFrame.contentWindow.postMessage({ type: 'crop-applied' }, '*');
             closeTool();
-            showStatus('Crop 결과를 이미지 뷰어에 적용했습니다.', false);
+            showStatus(action === 'new'
+                ? 'Crop 결과를 새 파일로 추가했습니다.'
+                : 'Crop 결과를 현재 파일에 적용했습니다.', false);
             return;
         }
         if (data.type === 'crop-cancel') {
@@ -358,9 +385,12 @@
             return;
         }
         if (data.type === 'bgremover-commit' && data.dataUrl && state.pendingTool.kind === 'background') {
-            applyEditedImage(data.dataUrl, 'nobg_' + (state.pendingTool.image.name || 'image.png'));
+            const action = data.action === 'new' ? 'new' : 'replace';
+            applyEditedImage(data.dataUrl, 'nobg_' + (state.pendingTool.image.name || 'image.png'), action);
             closeTool();
-            showStatus('배경 제거 결과를 이미지 뷰어에 적용했습니다.', false);
+            showStatus(action === 'new'
+                ? '배경 제거 결과를 새 파일로 추가했습니다.'
+                : '배경 제거 결과를 현재 파일에 적용했습니다.', false);
             return;
         }
         if (data.type === 'bgremover-cancel') closeTool();
@@ -378,6 +408,7 @@
     global.InternalImageApp = Object.freeze({
         openPath: openPath,
         openFiles: openFiles,
+        openFrame: openFrame,
         close: close
     });
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindElectronOpen);

@@ -1,10 +1,12 @@
-/* AI Chat - persistent floating multi-turn chat for LM Studio and AI Studio. */
+/* AI Chat - persistent floating multi-turn chat for LM Studio, AI Studio, Ollama, and DeepSeek. */
 (function (root) {
   'use strict';
 
   var ENABLED_KEY = 'ss_ai_chat_enabled';
   var PROVIDER_KEY = 'ss_ai_chat_provider';
   var GEMINI_MODEL_KEY = 'ss_ai_chat_gemini_model';
+  var DEEPSEEK_MODEL_KEY = 'ss_ai_chat_deepseek_model';
+  var OLLAMA_MODEL_KEY = 'ss_ai_chat_ollama_model';
   var WRITING_STYLE_KEY = 'ss_ai_chat_writing_style';
   var RESPONSE_MODE_KEY = 'ss_ai_chat_response_mode';
   var SHOW_REASONING_KEY = 'ss_ai_chat_show_reasoning';
@@ -12,8 +14,10 @@
   var ACADEMIC_COUNT_KEY = 'ss_ai_chat_academic_search_count';
   var PROVIDER_CONTROLS_KEY = 'ss_ai_chat_provider_controls_open';
   var HISTORY_KEY = 'ss_ai_chat_history_v1';
+  var HISTORY_SORT_KEY = 'ss_ai_chat_history_sort';
   var LAYOUT_KEY = 'ss_ai_chat_layout';
   var POPUP_RECT_KEY = 'ss_ai_chat_popup_rect';
+  var POPUP_SIZE_REVISION_KEY = 'ss_ai_chat_popup_size_revision';
   var DOCK_WIDTH_KEY = 'ss_ai_chat_dock_width';
   var LAUNCHER_POSITION_KEY = 'ss_ai_chat_launcher_position';
   var CURRENT_CONVERSATION_KEY = 'ss_ai_chat_current_conversation_id';
@@ -23,19 +27,37 @@
   var CONVERSATION_STORE = 'conversations';
   var MAX_STORED_MESSAGES = 100;
   var MAX_CONTEXT_MESSAGES = 100;
-  var DOCK_HISTORY_MIN_WIDTH = 680;
+  var DOCK_HISTORY_MIN_WIDTH = 550;
+  var DEFAULT_POPUP_HEIGHT = 585;
   var DEFAULT_GEMINI_MODELS = [
+    'gemini-3.6-flash',
     'gemini-3.5-flash',
-    'gemini-3.1-pro-preview',
-    'gemini-3-flash-preview',
     'gemini-2.5-flash',
     'gemini-2.5-pro',
+    'gemini-3.1-pro',
+    // 'gemini-3.1-pro-preview',
+    // 'gemini-3-flash-preview',
+    'gemini-3.5-live-translate',
+    'gemini-2.5-flash-tts',
+    'gemini-2.5-pro-tts',
+    'gemini-deep-research-pro-preview',
+    'gemini-2.5-flash-native-audio-dialog',
+    'gemini-3-flash-live',
+    'lyria-3-clip',
+    'lyria-3-pro',
+    'veo-3-fast-generate',
     'gemini-2.5-flash-lite',
     'gemini-3.1-flash-lite-image',
     'gemini-3.1-flash-image',
     'gemini-3-pro-image',
     'gemini-2.5-flash-image'
   ];
+  var DEFAULT_DEEPSEEK_MODELS = [
+    'deepseek-v4-flash',
+    'deepseek-v4-pro'
+  ];
+// https://aistudio.google.com/rate-limit?timeRange=last-28-days
+
 
   var state = {
     enabled: false,
@@ -49,15 +71,21 @@
     academicSearchEnabled: false,
     academicSearchCount: 10,
     geminiModel: 'gemini-3.5-flash',
+    ollamaModel: '',
+    deepseekModel: 'deepseek-v4-flash',
     lmModel: '',
     lmContextLength: 0,
     messages: [],
     layout: 'popup',
     conversationId: '',
     conversationTitle: '새 대화',
+    conversationTitleCustomized: false,
+    conversationPinned: false,
     conversationCreatedAt: 0,
     conversations: [],
+    historySort: 'newest',
     historyVisibilityOverride: null,
+    conversationDirty: false,
     db: null,
     dbReady: false,
     storageInitializing: true
@@ -107,7 +135,7 @@
     return [
       '선택된 답변 문체: 자연스럽고 정중한 한국어 존댓말이다.',
       '문장 종결은 문맥에 맞게 -습니다, -입니다, -하세요 등을 사용하고 반말이나 -이다/-한다 식의 건조한 종결은 사용하지 않는다.',
-      academicContext ? '학술적 정확성과 전문성은 유지하되 독자에게 설명하는 정중한 문장으로 작성한다.' : '친절하고 명확하게 설명하되 불필요하게 장황하거나 과장하지 않는다.',
+      academicContext ? '학술적 정확성과 전문성은 유지하되 독자에게 설명하는 정중한 문장으로 작성한다.' : '친절하고 명확하게 설명하되 불필요하게 장황하거나 과장하지 않는다. -이다/-한다 식의 전문적 어조로 작성한다.',
       '단, 사용자가 이번 요청에서 특정 언어 또는 다른 문체를 명시하면 그 요청을 우선한다.'
     ].join(' ');
   }
@@ -138,6 +166,7 @@
   }
 
   function saveHistory() {
+    state.conversationDirty = true;
     scheduleConversationSave();
   }
 
@@ -180,14 +209,39 @@
     return value.length > 34 ? value.slice(0, 34) + '…' : value;
   }
 
+  function normalizeHistorySort(value) {
+    return value === 'oldest' ? 'oldest' : 'newest';
+  }
+
+  function sortConversationRecords(records) {
+    var direction = state.historySort === 'oldest' ? 1 : -1;
+    return (Array.isArray(records) ? records.slice() : []).sort(function (a, b) {
+      var aPinned = a && a.pinned === true ? 1 : 0;
+      var bPinned = b && b.pinned === true ? 1 : 0;
+      if (aPinned !== bPinned) return bPinned - aPinned;
+      if (aPinned && bPinned) {
+        var pinDifference = Number(b.pinnedAt || 0) - Number(a.pinnedAt || 0);
+        if (pinDifference) return pinDifference;
+      }
+      var aTime = Number(a && (a.updatedAt || a.createdAt) || 0);
+      var bTime = Number(b && (b.updatedAt || b.createdAt) || 0);
+      if (aTime !== bTime) return direction * (aTime - bTime);
+      return String(a && a.id || '').localeCompare(String(b && b.id || ''));
+    });
+  }
+
   function currentConversationRecord() {
     var now = Date.now();
     if (!state.conversationId) state.conversationId = newId();
     if (!state.conversationCreatedAt) state.conversationCreatedAt = now;
-    state.conversationTitle = titleFromMessages(state.messages);
+    if (!state.conversationTitleCustomized) state.conversationTitle = titleFromMessages(state.messages);
+    var existing = state.conversations.find(function (item) { return item.id === state.conversationId; });
     return {
       id: state.conversationId,
       title: state.conversationTitle,
+      titleCustomized: state.conversationTitleCustomized,
+      pinned: state.conversationPinned,
+      pinnedAt: existing && existing.pinnedAt ? existing.pinnedAt : 0,
       createdAt: state.conversationCreatedAt,
       updatedAt: now,
       provider: state.provider,
@@ -196,19 +250,24 @@
       academicSearchEnabled: state.academicSearchEnabled,
       academicSearchCount: state.academicSearchCount,
       geminiModel: state.geminiModel,
+      ollamaModel: state.ollamaModel,
+      deepseekModel: state.deepseekModel,
       messages: state.messages.slice(-MAX_STORED_MESSAGES)
     };
   }
 
   async function saveConversationNow() {
-    if (!state.dbReady || !state.db || !state.conversationId) return;
+    if (!state.dbReady || !state.db || !state.conversationId || !state.conversationDirty) return;
     var record = currentConversationRecord();
     await requestPromise(conversationStore('readwrite').put(record));
+    state.conversationDirty = false;
     storageSet(CURRENT_CONVERSATION_KEY, record.id);
     var index = state.conversations.findIndex(function (item) { return item.id === record.id; });
     if (index >= 0) state.conversations[index] = record;
     else state.conversations.push(record);
-    state.conversations.sort(function (a, b) { return Number(b.updatedAt || 0) - Number(a.updatedAt || 0); });
+    if (typeof root.saveFeatureRecordToInDb === 'function') {
+      root.saveFeatureRecordToInDb('ai_chat', record).catch(function () {});
+    }
     renderConversationHistory();
   }
 
@@ -223,15 +282,16 @@
 
   async function loadAllConversations() {
     var records = await requestPromise(conversationStore('readonly').getAll());
-    return (Array.isArray(records) ? records : []).sort(function (a, b) {
-      return Number(b.updatedAt || 0) - Number(a.updatedAt || 0);
-    });
+    return Array.isArray(records) ? records : [];
   }
 
   function applyConversation(record) {
     state.conversationId = record && record.id ? record.id : newId();
     state.conversationCreatedAt = record && record.createdAt ? record.createdAt : Date.now();
     state.conversationTitle = record && record.title ? record.title : '새 대화';
+    state.conversationTitleCustomized = !!(record && record.titleCustomized);
+    state.conversationPinned = !!(record && record.pinned);
+    state.conversationDirty = false;
     state.messages = record && Array.isArray(record.messages) ? record.messages.slice(-MAX_STORED_MESSAGES) : [];
     state.messages.forEach(function (message, messageIndex) {
       if (!message || message.role !== 'assistant' || message.error) return;
@@ -262,12 +322,17 @@
         message.continuationAvailable = shouldOfferContinuation(message, null, academicMessage);
       }
     });
-    if (record && record.provider) state.provider = record.provider === 'aistudio' ? 'aistudio' : 'lmstudio';
+    if (record && record.provider) {
+      var nextProvider = String(record.provider || '').toLowerCase();
+      state.provider = nextProvider === 'aistudio' || nextProvider === 'ollama' || nextProvider === 'deepseek' ? nextProvider : 'lmstudio';
+    }
     if (record && record.responseMode) state.responseMode = record.responseMode === 'reasoning' ? 'reasoning' : 'quick';
     if (record && typeof record.showReasoning === 'boolean') state.showReasoning = record.showReasoning;
     if (record && typeof record.academicSearchEnabled === 'boolean') state.academicSearchEnabled = record.academicSearchEnabled;
     if (record && Number(record.academicSearchCount)) state.academicSearchCount = normalizeAcademicCount(record.academicSearchCount);
     if (record && record.geminiModel) state.geminiModel = record.geminiModel;
+    if (record && record.ollamaModel) state.ollamaModel = record.ollamaModel;
+    if (record && record.deepseekModel) state.deepseekModel = record.deepseekModel;
     storageSet(CURRENT_CONVERSATION_KEY, state.conversationId);
     storageSet(PROVIDER_KEY, state.provider);
     storageSet(RESPONSE_MODE_KEY, state.responseMode);
@@ -275,6 +340,8 @@
     storageSet(ACADEMIC_SEARCH_KEY, state.academicSearchEnabled ? '1' : '0');
     storageSet(ACADEMIC_COUNT_KEY, String(state.academicSearchCount));
     storageSet(GEMINI_MODEL_KEY, state.geminiModel);
+    storageSet(OLLAMA_MODEL_KEY, state.ollamaModel);
+    storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
     updateProviderUI();
     setResponseMode(state.responseMode);
     setShowReasoning(state.showReasoning);
@@ -285,6 +352,7 @@
 
   async function initializeConversationStore() {
     try {
+      state.historySort = normalizeHistorySort(storageGet(HISTORY_SORT_KEY, 'newest'));
       state.db = await openChatDb();
       state.dbReady = true;
       state.conversations = await loadAllConversations();
@@ -293,9 +361,10 @@
         if (legacy.length) {
           var migrated = {
             id: newId(), title: titleFromMessages(legacy), createdAt: Date.now(), updatedAt: Date.now(),
+            titleCustomized: false, pinned: false, pinnedAt: 0,
             provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
             academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-            geminiModel: state.geminiModel,
+            geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel,
             messages: legacy
           };
           await requestPromise(conversationStore('readwrite').put(migrated));
@@ -306,13 +375,15 @@
         try { localStorage.removeItem(HISTORY_KEY); } catch (e) {}
       }
       var currentId = storageGet(CURRENT_CONVERSATION_KEY, '');
-      var current = state.conversations.find(function (item) { return item.id === currentId; }) || state.conversations[0];
+      var current = state.conversations.find(function (item) { return item.id === currentId; })
+        || sortConversationRecords(state.conversations)[0];
       if (!current) {
         current = {
           id: newId(), title: '새 대화', createdAt: Date.now(), updatedAt: Date.now(),
+          titleCustomized: false, pinned: false, pinnedAt: 0,
           provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
           academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-          geminiModel: state.geminiModel, messages: []
+          geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, messages: []
         };
         state.conversations = [current];
         await requestPromise(conversationStore('readwrite').put(current));
@@ -376,7 +447,10 @@
       + '</header>'
       + '<div class="ai-chat-shell">'
       + '  <aside class="ai-chat-history-sidebar" aria-label="대화 기록">'
-      + '    <div class="ai-chat-history-head"><strong>대화 기록</strong><button type="button" id="ai-chat-history-new">＋</button></div>'
+      + '    <div class="ai-chat-history-head"><strong>대화 기록</strong><div class="ai-chat-history-head-tools">'
+      + '      <select id="ai-chat-history-sort" aria-label="대화 기록 정렬" title="대화 기록 정렬"><option value="newest">최신순</option><option value="oldest">오래된순</option></select>'
+      + '      <button type="button" id="ai-chat-history-new" title="새 대화" aria-label="새 대화">＋</button>'
+      + '    </div></div>'
       + '    <div id="ai-chat-history-list" class="ai-chat-history-list"></div>'
       + '  </aside>'
       + '  <div class="ai-chat-main">'
@@ -385,7 +459,7 @@
       + '    </button>'
       + '    <div id="ai-chat-provider-controls" class="ai-chat-provider-controls collapsed">'
       + '      <div class="ai-chat-provider-row">'
-      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option></select></label>'
+      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option></select></label>'
       + '        <label>모델<select id="ai-chat-model"></select></label>'
       + '        <button type="button" id="ai-chat-refresh-model" title="현재 모델 새로고침">↻</button>'
       + '      </div>'
@@ -436,6 +510,11 @@
     document.getElementById('ai-chat-history-toggle').addEventListener('click', toggleHistorySidebar);
     document.getElementById('ai-chat-new').addEventListener('click', startNewChat);
     document.getElementById('ai-chat-history-new').addEventListener('click', startNewChat);
+    document.getElementById('ai-chat-history-sort').addEventListener('change', function (event) {
+      state.historySort = normalizeHistorySort(event.target.value);
+      storageSet(HISTORY_SORT_KEY, state.historySort);
+      renderConversationHistory();
+    });
     document.getElementById('ai-chat-copy-all').addEventListener('click', copyConversation);
     document.getElementById('ai-chat-save-all').addEventListener('click', saveConversationMarkdown);
     document.getElementById('ai-chat-send').addEventListener('click', sendMessage);
@@ -493,14 +572,26 @@
       finishAcademicCountEdit(true);
     });
     document.getElementById('ai-chat-provider').addEventListener('change', function (event) {
-      state.provider = event.target.value === 'aistudio' ? 'aistudio' : 'lmstudio';
+      state.provider = (event.target.value === 'aistudio' || event.target.value === 'ollama' || event.target.value === 'deepseek') ? event.target.value : 'lmstudio';
       storageSet(PROVIDER_KEY, state.provider);
       updateProviderUI();
       refreshModels(false);
       saveHistory();
     });
     document.getElementById('ai-chat-model').addEventListener('change', function (event) {
-      if (state.provider !== 'aistudio') return;
+      if (state.provider === 'lmstudio') return;
+      if (state.provider === 'deepseek') {
+        state.deepseekModel = event.target.value || DEFAULT_DEEPSEEK_MODELS[0];
+        storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
+        return;
+      }
+      if (state.provider === 'ollama') {
+        state.ollamaModel = event.target.value || '';
+        storageSet(OLLAMA_MODEL_KEY, state.ollamaModel);
+        updateHeaderModel();
+        saveHistory();
+        return;
+      }
       state.geminiModel = event.target.value || DEFAULT_GEMINI_MODELS[0];
       storageSet(GEMINI_MODEL_KEY, state.geminiModel);
       updateHeaderModel();
@@ -981,14 +1072,15 @@
   function handleStreamEvent(event) {
     if (!liveStream || !event || !event.type) return;
     var type = String(event.type);
+    var providerLabel = event.provider === 'ollama' || state.provider === 'ollama' ? 'Ollama' : 'LM Studio';
     if (type === 'request.start') {
       liveStream.contextLength = Math.max(0, Number(event.context_length) || 0);
       liveStream.maxOutputTokens = Math.max(0, Number(event.max_output_tokens) || 0);
       liveStream.estimatedInputTokens = Math.max(0, Number(event.estimated_input_tokens) || 0);
-      liveStream.stage = 'LM Studio에 요청을 전송하는 중';
+      liveStream.stage = providerLabel + '에 요청을 전송하는 중';
       liveStream.progress = 2;
     } else if (type === 'transport.start') {
-      liveStream.stage = 'LM Studio 실시간 스트림에 연결하는 중';
+      liveStream.stage = providerLabel + ' 실시간 스트림에 연결하는 중';
       liveStream.progress = Math.max(liveStream.progress, 3);
     } else if (type === 'chat.start') {
       liveStream.stage = '모델 연결 완료 · 문맥 처리 대기';
@@ -1042,14 +1134,14 @@
       liveStream.progress = 100;
       liveStream.phase = 'complete';
     } else if (type === 'error') {
-      liveStream.stage = 'LM Studio 스트리밍 오류 확인 중';
+      liveStream.stage = providerLabel + ' 스트리밍 오류 확인 중';
     }
     scheduleLiveStreamRender(type !== 'reasoning.delta' && type !== 'message.delta');
   }
 
   function updateThinkingProgress() {
     if (!state.running) return;
-    if (liveStream && liveStream.stage === 'LM Studio 연결 중') {
+    if (liveStream && /연결 중$/.test(liveStream.stage)) {
       liveStream.stage = getThinkingStage(Math.max(0, (Date.now() - thinkingStartedAt) / 1000));
     }
     updateLiveStreamDom();
@@ -1061,7 +1153,7 @@
     thinkingProgress = 2;
     liveStream = {
       phase: 'connecting',
-      stage: 'LM Studio 연결 중',
+      stage: (state.provider === 'ollama' ? 'Ollama' : 'LM Studio') + ' 연결 중',
       progress: 2,
       contextLength: state.lmContextLength || 0,
       maxOutputTokens: 0,
@@ -1119,6 +1211,10 @@
     if (!summary) return;
     if (state.provider === 'lmstudio') {
       summary.textContent = 'AI 공급자 · LM Studio · ' + (state.lmModel || '로드 모델 확인 필요');
+    } else if (state.provider === 'ollama') {
+      summary.textContent = 'AI 공급자 · Ollama · ' + (state.ollamaModel || '모델 확인 필요');
+    } else if (state.provider === 'deepseek') {
+      summary.textContent = 'AI 공급자 · DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
     } else {
       summary.textContent = 'AI 공급자 · AI Studio · ' + geminiModelLabel(state.geminiModel);
     }
@@ -1391,9 +1487,17 @@
   function updateHeaderModel() {
     var header = document.getElementById('ai-chat-header-model');
     if (!header) return;
-    header.textContent = state.provider === 'lmstudio'
-      ? (state.lmModel ? 'LM Studio · ' + state.lmModel : 'LM Studio · 로드 모델 확인 필요')
-      : 'AI Studio · ' + state.geminiModel;
+    if (state.provider === 'lmstudio') {
+      header.textContent = state.lmModel
+        ? 'LM Studio · ' + state.lmModel
+        : 'LM Studio · 로드 모델 확인 필요';
+    } else if (state.provider === 'ollama') {
+      header.textContent = 'Ollama · ' + (state.ollamaModel || '모델 확인 필요');
+    } else if (state.provider === 'deepseek') {
+      header.textContent = 'DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
+    } else {
+      header.textContent = 'AI Studio · ' + geminiModelLabel(state.geminiModel);
+    }
     header.textContent += state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel)
       ? ' · 이미지 생성'
       : (state.responseMode === 'reasoning' ? ' · 추론' : ' · 즉시응답');
@@ -1410,11 +1514,32 @@
     return /(?:^|-)image(?:-|$)/i.test(String(model || ''));
   }
 
+  function deepseekModelLabel(model) {
+    var labels = {
+      'deepseek-v4-flash': 'DeepSeek V4 Flash',
+      'deepseek-v4-pro': 'DeepSeek V4 Pro',
+      'deepseek-chat': 'DeepSeek Chat',
+      'deepseek-reasoner': 'DeepSeek Reasoner',
+      'deepseek-coder': 'DeepSeek Coder'
+    };
+    return labels[model] ? labels[model] + ' · ' + model : 'DeepSeek · ' + model;
+  }
+
   function geminiModelLabel(model) {
     var labels = {
       'gemini-3.5-flash': 'Gemini 3.5 Flash',
       'gemini-3.1-pro-preview': 'Gemini 3.1 Pro Preview',
       'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+      'gemini-3.6-flash': 'Gemini 3.6 Flash',
+      'gemini-deep-research-pro-preview': 'Deep Research Pro Preview',
+      'gemini-2.5-flash-tts': 'Gemini 2.5 Flash TTS',
+      'gemini-2.5-pro-tts': 'Gemini 2.5 Pro TTS',
+      'gemini-2.5-flash-native-audio-dialog': 'Gemini 2.5 Flash Native Audio Dialog',
+      'gemini-3-flash-live': 'Gemini 3 Flash Live',
+      'gemini-3.5-live-translate': 'Gemini 3.5 Live Translate',
+      'lyria-3-clip': 'Lyria 3 Clip',
+      'lyria-3-pro': 'Lyria 3 Pro',
+      'veo-3-fast-generate': 'Veo 3 Fast Generate',
       'gemini-2.5-flash': 'Gemini 2.5 Flash',
       'gemini-2.5-pro': 'Gemini 2.5 Pro',
       'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
@@ -1423,7 +1548,7 @@
       'gemini-3-pro-image': '🍌 Nano Banana Pro · 이미지',
       'gemini-2.5-flash-image': '🍌 Nano Banana · 이미지'
     };
-    return labels[model] ? labels[model] + ' · ' + model : model;
+    return labels[model] || model;
   }
 
   function updateModelModeUI() {
@@ -1455,7 +1580,9 @@
       values.forEach(function (model, index) {
         var option = document.createElement('option');
         option.value = model;
-        option.textContent = disabled && index === 0 ? model + ' (자동 사용)' : geminiModelLabel(model);
+        if (state.provider === 'deepseek') option.textContent = deepseekModelLabel(model);
+        else if (state.provider === 'aistudio') option.textContent = geminiModelLabel(model);
+        else option.textContent = model;
         select.appendChild(option);
       });
       select.value = values.indexOf(selected) >= 0 ? selected : values[0];
@@ -1468,6 +1595,21 @@
     if (provider) provider.value = state.provider;
     if (state.provider === 'lmstudio') {
       setModelOptions(state.lmModel ? [state.lmModel] : [], state.lmModel, true);
+    } else if (state.provider === 'ollama') {
+      var cachedOllamaModels = [];
+      try { cachedOllamaModels = getBridge().getCachedOllamaModels(); } catch (ollamaCacheError) {}
+      setModelOptions(cachedOllamaModels, state.ollamaModel, false);
+      var ollamaModelSelect = document.getElementById('ai-chat-model');
+      if (ollamaModelSelect && ollamaModelSelect.value) state.ollamaModel = ollamaModelSelect.value;
+      storageSet(OLLAMA_MODEL_KEY, state.ollamaModel || '');
+    } else if (state.provider === 'deepseek') {
+      var cachedDeepseekModels = [];
+      try { cachedDeepseekModels = getBridge().getCachedDeepseekModels(); } catch (e) {}
+      if (!cachedDeepseekModels.length) cachedDeepseekModels = DEFAULT_DEEPSEEK_MODELS;
+      setModelOptions(cachedDeepseekModels, state.deepseekModel, false);
+      var modelSelect = document.getElementById('ai-chat-model');
+      if (modelSelect && modelSelect.value) state.deepseekModel = modelSelect.value;
+      storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
     } else {
       var cached = DEFAULT_GEMINI_MODELS;
       try { cached = getBridge().getCachedGeminiModels(); } catch (e) {}
@@ -1496,6 +1638,31 @@
         state.lmContextLength = Math.max(0, Number(lm && lm.contextLength) || 0);
         setModelOptions(lm && lm.models ? lm.models : [], state.lmModel, true);
         setStatus(state.lmModel ? '현재 LM Studio 로드 모델을 자동으로 사용합니다.' : 'LM Studio에 로드된 LLM이 없습니다.', state.lmModel ? 'ok' : 'error');
+      } else if (state.provider === 'ollama') {
+        var ollamaModels = silent ? bridge.getCachedOllamaModels() : await bridge.refreshOllamaModels();
+        if (state.provider !== requestedProvider) return;
+        setModelOptions(ollamaModels || [], state.ollamaModel, false);
+        var ollamaSelect = document.getElementById('ai-chat-model');
+        state.ollamaModel = ollamaSelect && ollamaSelect.value ? ollamaSelect.value : '';
+        storageSet(OLLAMA_MODEL_KEY, state.ollamaModel);
+        setStatus(state.ollamaModel
+          ? 'Ollama 모델을 사용합니다: ' + state.ollamaModel
+          : 'Ollama 모델이 없습니다. 로컬 서버와 설정 주소를 확인하세요.',
+          state.ollamaModel ? 'ok' : 'error');
+      } else if (state.provider === 'deepseek') {
+        var deepseekModels = silent ? bridge.getCachedDeepseekModels() : await bridge.refreshDeepseekModels();
+        if (state.provider !== requestedProvider) return;
+        if (!deepseekModels || !deepseekModels.length) deepseekModels = DEFAULT_DEEPSEEK_MODELS;
+        setModelOptions(deepseekModels, state.deepseekModel, false);
+        var deepseekModelSelect = document.getElementById('ai-chat-model');
+        if (deepseekModelSelect && deepseekModelSelect.value) state.deepseekModel = deepseekModelSelect.value;
+        storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
+        setStatus(
+          state.deepseekModel
+            ? 'DeepSeek를 사용합니다: ' + deepseekModelLabel(state.deepseekModel)
+            : 'DeepSeek 모델이 없습니다.',
+          state.deepseekModel ? 'ok' : 'error'
+        );
       } else {
         var models = silent ? bridge.getCachedGeminiModels() : await bridge.refreshGeminiModels();
         if (state.provider !== requestedProvider) return;
@@ -1515,6 +1682,12 @@
         state.lmModel = '';
         state.lmContextLength = 0;
         setModelOptions([], '', true);
+      } else if (state.provider === 'ollama') {
+        state.ollamaModel = '';
+        setModelOptions([], '', false);
+      } else if (state.provider === 'deepseek') {
+        state.deepseekModel = '';
+        setModelOptions([], '', false);
       }
       setStatus(error && error.message ? error.message : String(error), 'error');
       updateHeaderModel();
@@ -1527,9 +1700,64 @@
     } catch (e) { return ''; }
   }
 
+  async function updateConversationMetadata(id, changes) {
+    if (!state.dbReady || state.running) return null;
+    var index = state.conversations.findIndex(function (item) { return item.id === id; });
+    if (index < 0) return null;
+    var updated = Object.assign({}, state.conversations[index], changes || {});
+    await requestPromise(conversationStore('readwrite').put(updated));
+    state.conversations[index] = updated;
+    if (state.conversationId === id) {
+      state.conversationTitle = updated.title || '새 대화';
+      state.conversationTitleCustomized = !!updated.titleCustomized;
+      state.conversationPinned = !!updated.pinned;
+    }
+    if (typeof root.saveFeatureRecordToInDb === 'function') {
+      root.saveFeatureRecordToInDb('ai_chat', updated).catch(function () {});
+    }
+    renderConversationHistory();
+    return updated;
+  }
+
+  async function toggleConversationPinned(id) {
+    var target = state.conversations.find(function (item) { return item.id === id; });
+    if (!target) return;
+    try {
+      var nextPinned = target.pinned !== true;
+      await updateConversationMetadata(id, {
+        pinned: nextPinned,
+        pinnedAt: nextPinned ? Date.now() : 0
+      });
+      setStatus(nextPinned ? '대화를 상단에 고정했습니다.' : '대화 고정을 해제했습니다.', 'ok');
+    } catch (error) {
+      setStatus('대화 고정 상태를 저장하지 못했습니다.', 'error');
+    }
+  }
+
+  async function renameConversation(id) {
+    if (state.running) return setStatus('응답이 끝난 뒤 대화 이름을 바꿔 주세요.', 'error');
+    var target = state.conversations.find(function (item) { return item.id === id; });
+    if (!target) return;
+    var nextTitle = root.prompt('새 대화 이름을 입력하세요.', target.title || '새 대화');
+    if (nextTitle == null) return;
+    nextTitle = String(nextTitle).replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (!nextTitle) return setStatus('대화 이름은 비워 둘 수 없습니다.', 'error');
+    try {
+      await updateConversationMetadata(id, {
+        title: nextTitle,
+        titleCustomized: true
+      });
+      setStatus('대화 이름을 변경했습니다.', 'ok');
+    } catch (error) {
+      setStatus('대화 이름을 저장하지 못했습니다.', 'error');
+    }
+  }
+
   function renderConversationHistory() {
     var list = document.getElementById('ai-chat-history-list');
     if (!list) return;
+    var sortSelect = document.getElementById('ai-chat-history-sort');
+    if (sortSelect) sortSelect.value = normalizeHistorySort(state.historySort);
     list.innerHTML = '';
     if (!state.conversations.length) {
       var empty = document.createElement('p');
@@ -1538,24 +1766,45 @@
       list.appendChild(empty);
       return;
     }
-    state.conversations.forEach(function (conversation) {
+    sortConversationRecords(state.conversations).forEach(function (conversation) {
       var item = document.createElement('div');
       item.setAttribute('role', 'button');
       item.tabIndex = 0;
-      item.className = 'ai-chat-history-item' + (conversation.id === state.conversationId ? ' active' : '');
-      item.innerHTML = '<span class="ai-chat-history-title"></span><small></small><button type="button" class="ai-chat-history-delete" aria-label="대화 삭제" title="대화 삭제">×</button>';
+      item.className = 'ai-chat-history-item'
+        + (conversation.id === state.conversationId ? ' active' : '')
+        + (conversation.pinned === true ? ' pinned' : '');
+      item.innerHTML = '<span class="ai-chat-history-title"></span><small></small>'
+        + '<span class="ai-chat-history-actions">'
+        + '<button type="button" class="ai-chat-history-action ai-chat-history-pin" aria-label="상단 고정" title="상단 고정"></button>'
+        + '<button type="button" class="ai-chat-history-action ai-chat-history-rename" aria-label="이름 바꾸기" title="이름 바꾸기">✎</button>'
+        + '<button type="button" class="ai-chat-history-action ai-chat-history-delete" aria-label="대화 삭제" title="대화 삭제">×</button>'
+        + '</span>';
       item.querySelector('.ai-chat-history-title').textContent = conversation.title || '새 대화';
-      item.querySelector('small').textContent = formatConversationDate(conversation.updatedAt || conversation.createdAt);
+      item.querySelector('small').textContent = (conversation.pinned === true ? '고정 · ' : '')
+        + formatConversationDate(conversation.updatedAt || conversation.createdAt);
+      var pinButton = item.querySelector('.ai-chat-history-pin');
+      pinButton.textContent = conversation.pinned === true ? '★' : '☆';
+      pinButton.classList.toggle('active', conversation.pinned === true);
+      pinButton.setAttribute('aria-label', conversation.pinned === true ? '상단 고정 해제' : '상단 고정');
+      pinButton.title = conversation.pinned === true ? '상단 고정 해제' : '상단 고정';
+      pinButton.addEventListener('click', function (event) {
+        event.stopPropagation();
+        toggleConversationPinned(conversation.id);
+      });
+      item.querySelector('.ai-chat-history-rename').addEventListener('click', function (event) {
+        event.stopPropagation();
+        renameConversation(conversation.id);
+      });
+      item.querySelector('.ai-chat-history-delete').addEventListener('click', function (event) {
+        event.stopPropagation();
+        deleteConversation(conversation.id);
+      });
       item.addEventListener('click', function (event) {
-        if (event.target.closest('.ai-chat-history-delete')) {
-          event.stopPropagation();
-          deleteConversation(conversation.id);
-          return;
-        }
+        if (event.target.closest('.ai-chat-history-action')) return;
         selectConversation(conversation.id);
       });
       item.addEventListener('keydown', function (event) {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (event.target === item && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault();
           selectConversation(conversation.id);
         }
@@ -1584,6 +1833,9 @@
     if (!target || !root.confirm('“' + (target.title || '새 대화') + '” 기록을 삭제할까요?')) return;
     try {
       await requestPromise(conversationStore('readwrite').delete(id));
+      if (typeof root.deleteFeatureRecordFromInDb === 'function') {
+        root.deleteFeatureRecordFromInDb('ai_chat', id).catch(function () {});
+      }
       state.conversations = state.conversations.filter(function (item) { return item.id !== id; });
       if (state.conversationId === id) {
         if (state.conversations.length) applyConversation(state.conversations[0]);
@@ -2097,14 +2349,20 @@
     try {
       var result = await getBridge().complete({
         provider: state.provider,
-        model: state.provider === 'aistudio' ? state.geminiModel : null,
+        model: state.provider === 'aistudio'
+          ? state.geminiModel
+          : state.provider === 'ollama'
+            ? state.ollamaModel
+          : state.provider === 'deepseek'
+            ? state.deepseekModel
+            : null,
         mode: 'quick',
         academicSearch: academicSearch,
         continuation: true,
         splitAcademicResponse: splitAcademic,
         previousResponseId: null,
         messages: continuationMessages,
-        onStreamEvent: state.provider === 'lmstudio' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' ? handleStreamEvent : undefined,
         systemInstruction: academicSearch
           ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0, continuationEvidenceProfile)
           : [
@@ -2807,13 +3065,27 @@
 
   function conversationMarkdown() {
     var currentTitle = titleFromMessages(state.messages);
+    var providerLabel = state.provider === 'lmstudio'
+      ? 'LM Studio'
+      : state.provider === 'ollama'
+      ? 'Ollama'
+      : state.provider === 'deepseek'
+      ? 'DeepSeek'
+      : 'AI Studio (Gemini)';
+    var modelLabel = state.provider === 'lmstudio'
+      ? (state.lmModel || '확인되지 않음')
+      : state.provider === 'ollama'
+      ? (state.ollamaModel || '확인되지 않음')
+      : state.provider === 'deepseek'
+      ? (state.deepseekModel || '확인되지 않음')
+      : state.geminiModel;
     var lines = [
       '# AI Chat 대화',
       '',
       '- 대화 제목: ' + currentTitle,
       '- 저장 시각: ' + new Date().toLocaleString('ko-KR'),
-      '- AI 공급자: ' + (state.provider === 'lmstudio' ? 'LM Studio' : 'AI Studio (Gemini)'),
-      '- 모델: ' + (state.provider === 'lmstudio' ? (state.lmModel || '확인되지 않음') : state.geminiModel),
+      '- AI 공급자: ' + providerLabel,
+      '- 모델: ' + modelLabel,
       '- 답변 문체: ' + writingStyleLabel(state.writingStyle),
       '- 응답 모드: ' + (state.responseMode === 'reasoning' ? '추론' : '즉시응답'),
       '- 추론 내용 표시: ' + (state.showReasoning ? '함' : '안 함'),
@@ -2875,7 +3147,7 @@
       id: newId(), title: '새 대화', createdAt: Date.now(), updatedAt: Date.now(),
       provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
       academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-      geminiModel: state.geminiModel, messages: []
+      geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, messages: []
     };
     if (state.dbReady) {
       await requestPromise(conversationStore('readwrite').put(record));
@@ -3151,7 +3423,13 @@
       }
       var result = await getBridge().complete({
         provider: state.provider,
-        model: state.provider === 'aistudio' ? state.geminiModel : null,
+        model: state.provider === 'aistudio'
+          ? state.geminiModel
+          : state.provider === 'ollama'
+            ? state.ollamaModel
+          : state.provider === 'deepseek'
+            ? state.deepseekModel
+            : null,
         mode: academicSearchActive ? 'quick' : state.responseMode,
         academicSearch: academicSearchActive,
         splitAcademicResponse: splitAcademicResponse,
@@ -3161,7 +3439,7 @@
         messages: academicSearchActive
           ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic, academicProfile) }]
           : contextMessages(),
-        onStreamEvent: state.provider === 'lmstudio' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' ? handleStreamEvent : undefined,
         systemInstruction: academicSearchActive
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0, academicProfile)
           : [
@@ -3258,7 +3536,10 @@
 
   function init() {
     createUI();
-    state.provider = storageGet(PROVIDER_KEY, 'lmstudio') === 'aistudio' ? 'aistudio' : 'lmstudio';
+    var savedProvider = storageGet(PROVIDER_KEY, 'lmstudio');
+    state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'deepseek'
+      ? savedProvider
+      : (savedProvider === 'lmstudio' ? 'lmstudio' : 'lmstudio');
     state.providerControlsOpen = storageGet(PROVIDER_CONTROLS_KEY, '0') === '1';
     state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, 'polite'));
     state.responseMode = storageGet(RESPONSE_MODE_KEY, 'quick') === 'reasoning' ? 'reasoning' : 'quick';
@@ -3266,6 +3547,8 @@
     state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, '0') === '1';
     state.academicSearchCount = normalizeAcademicCount(storageGet(ACADEMIC_COUNT_KEY, '10'));
     state.geminiModel = storageGet(GEMINI_MODEL_KEY, DEFAULT_GEMINI_MODELS[0]);
+    state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, '');
+    state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, DEFAULT_DEEPSEEK_MODELS[0]);
     state.layout = storageGet(LAYOUT_KEY, 'popup');
     if (state.layout !== 'dock' && state.layout !== 'fullscreen') state.layout = 'popup';
     state.enabled = storageGet(ENABLED_KEY, '0') === '1';

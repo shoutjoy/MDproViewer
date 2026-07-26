@@ -11,8 +11,11 @@
 
   var PROVIDER_KEY = 'ss_scholar_ai_provider';
   var AISTUDIO_MODEL_KEY = 'ss_scholar_ai_model';
+  var DEEPSEEK_MODEL_KEY = 'ss_scholar_ai_deepseek_model';
+  var OLLAMA_MODEL_KEY = 'ss_scholar_ai_ollama_model';
   var DEFAULT_PROVIDER = 'auto';
   var DEFAULT_AISTUDIO_MODEL = 'gemini-2.5-pro';
+  var DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
 
   function storageOrDefault(storage) {
     var target = storage || (root && root.localStorage);
@@ -24,7 +27,7 @@
 
   function normalizeProvider(value) {
     var provider = String(value || '').toLowerCase();
-    if (provider === 'lmstudio' || provider === 'aistudio' || provider === 'auto') return provider;
+    if (provider === 'lmstudio' || provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'auto') return provider;
     return DEFAULT_PROVIDER;
   }
 
@@ -55,6 +58,17 @@
         return new Error('선택한 LM Studio 모델을 사용할 수 없습니다. 모델을 로드한 뒤 목록을 새로고침하세요.');
       }
     }
+    if (provider === 'deepseek') {
+      if (/402|insufficient balance|잔액.*부족/i.test(message)) {
+        return new Error('DeepSeek API는 연결되었지만 잔액이 부족합니다. DeepSeek 잔액을 충전한 뒤 다시 시도하세요.');
+      }
+      if (/401|authentication|unauthorized/i.test(message)) {
+        return new Error('DeepSeek 인증에 실패했습니다. 설정에 저장한 API 키를 확인하세요.');
+      }
+      if (/429|rate limit/i.test(message)) {
+        return new Error('DeepSeek 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.');
+      }
+    }
     return error instanceof Error ? error : new Error(message);
   }
 
@@ -62,6 +76,8 @@
     options = options || {};
     var storage = storageOrDefault(options.storage);
     var callAIStudio = options.callAIStudio;
+    var callDeepseek = options.callDeepseek;
+    var callOllama = options.callOllama;
     var activeController = null;
 
     function getProvider() {
@@ -88,6 +104,9 @@
       var selectedProvider = normalizeProvider(provider || getProvider());
       if (selectedProvider === 'auto') selectedProvider = isLMStudioConfigured() ? 'lmstudio' : 'aistudio';
       if (selectedProvider === 'lmstudio') return getLMStudioConfig().model || '';
+      if (selectedProvider === 'aistudio') return storage.getItem(AISTUDIO_MODEL_KEY) || DEFAULT_AISTUDIO_MODEL;
+      if (selectedProvider === 'ollama') return storage.getItem(OLLAMA_MODEL_KEY) || '';
+      if (selectedProvider === 'deepseek') return storage.getItem(DEEPSEEK_MODEL_KEY) || DEFAULT_DEEPSEEK_MODEL;
       return storage.getItem(AISTUDIO_MODEL_KEY) || DEFAULT_AISTUDIO_MODEL;
     }
 
@@ -97,6 +116,12 @@
       var value = String(model || '').trim();
       if (selectedProvider === 'lmstudio') {
         saveLMStudioConfig({ model: value });
+      } else if (selectedProvider === 'aistudio') {
+        storage.setItem(AISTUDIO_MODEL_KEY, value || DEFAULT_AISTUDIO_MODEL);
+      } else if (selectedProvider === 'ollama') {
+        storage.setItem(OLLAMA_MODEL_KEY, value);
+      } else if (selectedProvider === 'deepseek') {
+        storage.setItem(DEEPSEEK_MODEL_KEY, value || DEFAULT_DEEPSEEK_MODEL);
       } else {
         storage.setItem(AISTUDIO_MODEL_KEY, value || DEFAULT_AISTUDIO_MODEL);
       }
@@ -120,9 +145,17 @@
       }
     }
 
-    function isAIStudioConfigured() {
-      return !!String(storage.getItem('ss_gemini_api_key') || '').trim();
-    }
+  function isAIStudioConfigured() {
+    return !!String(storage.getItem('ss_gemini_api_key') || '').trim();
+  }
+
+  function isDeepSeekConfigured() {
+    return !!String(storage.getItem('ss_deepseek_api_key') || '').trim();
+  }
+
+  function isOllamaConfigured() {
+    return !!String(storage.getItem('ss_ollama_base_url') || 'http://127.0.0.1:11434').trim();
+  }
 
     async function listLMStudioModels(configPatch) {
       try {
@@ -149,6 +182,37 @@
       if (!model) throw new Error('LM Studio에서 로드된 모델 ID를 확인할 수 없습니다.');
       saveLMStudioConfig({ model: model });
       return { model: model, models: loaded };
+    }
+
+    async function callDeepSeekAPI(endpoint, options) {
+      var key = String(storage.getItem('ss_deepseek_api_key') || '').trim();
+      var urlBase = String(storage.getItem('ss_deepseek_base_url') || 'https://api.deepseek.com').replace(/\/+$/, '');
+      var url = urlBase + endpoint;
+      var headers = Object.assign({}, options && options.headers ? options.headers : {});
+      if (key) headers.Authorization = 'Bearer ' + key;
+      if (!headers.Accept) headers.Accept = 'application/json';
+      var response = await fetch(url, Object.assign({}, options || {}, { headers: headers }));
+      if (!response || !response.ok) {
+        let message = 'DeepSeek API Error: ' + (response ? response.status : 'network');
+        try {
+          var errorPayload = await response.json();
+          if (errorPayload && errorPayload.error && errorPayload.error.message) message = errorPayload.error.message;
+        } catch (_) {}
+        throw new Error(message);
+      }
+      return response;
+    }
+
+    async function listDeepSeekModels() {
+      var response = await callDeepSeekAPI('/models', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      var data = await response.json().catch(function () { return {}; });
+      var models = (Array.isArray(data && data.data) ? data.data : []).concat(Array.isArray(data && data.models) ? data.models : []);
+      return models.map(function (item) {
+        return String(item && (item.id || item.model || item.name || '')).trim();
+      }).filter(Boolean);
     }
 
     async function testLMStudio(configPatch) {
@@ -197,8 +261,35 @@
           };
         }
 
+        async function runDeepSeek(modelOverride) {
+          var model = String(modelOverride || getModel('deepseek') || DEFAULT_DEEPSEEK_MODEL).trim();
+          if (typeof callDeepseek !== 'function') throw new Error('DeepSeek 호출 함수를 사용할 수 없습니다.');
+          var key = String(storage.getItem('ss_deepseek_api_key') || '').trim();
+          if (!key) throw new Error('DeepSeek API Key가 없습니다. 설정에서 키를 저장하세요.');
+          var result = await callDeepseek(request.prompt, request.systemInstruction, request.useSearch, model, controller.signal, key);
+          return {
+            provider: 'deepseek',
+            model: model,
+            text: result && result.text != null ? result.text : String(result || '')
+          };
+        }
+
+        async function runOllama(modelOverride) {
+          var model = String(modelOverride || getModel('ollama') || '').trim();
+          if (typeof callOllama !== 'function') throw new Error('Ollama 호출 함수를 사용할 수 없습니다.');
+          if (!model) throw new Error('Ollama 모델을 선택하세요. 설정에서 모델 확인을 먼저 실행할 수 있습니다.');
+          var result = await callOllama(request.prompt, request.systemInstruction, request.useSearch, model, controller.signal);
+          return {
+            provider: 'ollama',
+            model: (result && result.model) || model,
+            text: result && result.text != null ? result.text : String(result || '')
+          };
+        }
+
         if (provider === 'lmstudio') return await runLMStudio();
         if (provider === 'aistudio') return await runAIStudio(request.model);
+        if (provider === 'ollama') return await runOllama(request.model);
+        if (provider === 'deepseek') return await runDeepSeek(request.model);
 
         var lmError = null;
         if (isLMStudioConfigured()) {
@@ -217,8 +308,14 @@
           }
           return fallbackResult;
         }
+        if (isOllamaConfigured() && getModel('ollama')) {
+          return await runOllama();
+        }
         if (lmError) throw lmError;
-        throw new Error('LM Studio 또는 AI Studio 설정이 필요합니다.');
+        if (isDeepSeekConfigured()) {
+          return await runDeepSeek();
+        }
+        throw new Error('LM Studio, AI Studio 또는 Ollama 설정이 필요합니다.');
       } catch (error) {
         throw friendlyError(error, provider);
       } finally {
@@ -235,12 +332,31 @@
       setProvider: setProvider,
       getModel: getModel,
       setModel: setModel,
+      getDeepSeekConfig: function () {
+        return {
+          baseUrl: String(storage.getItem('ss_deepseek_base_url') || 'https://api.deepseek.com'),
+          model: storage.getItem(DEEPSEEK_MODEL_KEY) || getModel('deepseek')
+        };
+      },
+      setDeepSeekConfig: function (patch) {
+        if (patch && typeof patch === 'object') {
+          if (patch.baseUrl) storage.setItem('ss_deepseek_base_url', String(patch.baseUrl));
+          if (patch.model) storage.setItem(DEEPSEEK_MODEL_KEY, String(patch.model));
+        }
+        return {
+          baseUrl: String(storage.getItem('ss_deepseek_base_url') || 'https://api.deepseek.com'),
+          model: storage.getItem(DEEPSEEK_MODEL_KEY) || DEFAULT_DEEPSEEK_MODEL
+        };
+      },
       isLMStudioConfigured: isLMStudioConfigured,
       isAIStudioConfigured: isAIStudioConfigured,
+      isOllamaConfigured: isOllamaConfigured,
+      isDeepSeekConfigured: isDeepSeekConfigured,
       getLMStudioConfig: getLMStudioConfig,
       saveLMStudioConfig: saveLMStudioConfig,
       listLMStudioModels: listLMStudioModels,
       listLMStudioLoadedModels: listLMStudioLoadedModels,
+      listDeepSeekModels: listDeepSeekModels,
       syncLMStudioLoadedModel: syncLMStudioLoadedModel,
       testLMStudio: testLMStudio,
       complete: complete,

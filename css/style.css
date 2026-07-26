@@ -157,6 +157,17 @@
         .markdown-body .katex { font-size: 1.05em; }
         .dark .markdown-body .katex { color: #e2e8f0; }
 
+        /* MathJax: 긴 블록 수식은 본문 폭 안에서 가로 스크롤 */
+        .markdown-body mjx-container {
+            max-width: 100%;
+            color: inherit;
+        }
+        .markdown-body mjx-container[display="true"] {
+            overflow-x: auto;
+            overflow-y: hidden;
+            padding: 0.2rem 0;
+        }
+
         /* Dark mode markdown */
         .dark .markdown-body h1 {
             color: #bfdbfe;

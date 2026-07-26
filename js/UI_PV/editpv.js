@@ -155,7 +155,7 @@ function escapeHtmlForPreview(text) {
 function getPreviewPopupDocumentHtml() {
     const mathHead = (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.getHeadTags === 'function')
         ? MathRender.getHeadTags({
-            scriptUrl: new URL('./js/math_render/math_render.js?v=20260415-3', window.location.href).href
+            scriptUrl: new URL('./js/math_render/math_render.js?v=20260725-stable-math-1', window.location.href).href
         })
         : '';
     return '<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MDproViewer Preview</title>'

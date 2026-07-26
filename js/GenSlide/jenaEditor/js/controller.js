@@ -195,7 +195,7 @@
     "./js/Export/pptExport.js",
     "./js/main.js"
   ];
-  const ASSET_VERSION = "20260603-scholar-3";
+  const ASSET_VERSION = "20260725-indb-sync-1";
 
   const loadedScripts = new Set();
   let booted = false;

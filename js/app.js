@@ -1,8 +1,9 @@
 ﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 let db;
 
+const FEATURE_DATA_STORE_NAMES = ['ai_chat', 'scholar_ai', 'ssp_image_ai', 'highlights', 'genslides'];
 const AI_SETTINGS_KEY = 'ai_settings';
 const AI_SETTINGS_FALLBACK_KEY = 'md_viewer_ai_settings_fallback';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
@@ -176,6 +177,7 @@ let lastAutoSavedContent = '';
 let lastAutoSavedTitle = '';
 let pauseMainRenderWhileEditing = true;
 let mainRenderDirty = true;
+let mainRenderToken = 0;
 
 // Sidebar states
 let isSidebarHidden = false;
@@ -468,6 +470,11 @@ function initDB() {
             if (!db.objectStoreNames.contains('scholar_refs')) {
                 db.createObjectStore('scholar_refs', { keyPath: 'id' });
             }
+            FEATURE_DATA_STORE_NAMES.forEach(function (storeName) {
+                if (!db.objectStoreNames.contains(storeName)) {
+                    db.createObjectStore(storeName, { keyPath: 'id' });
+                }
+            });
         };
     });
 }
@@ -536,6 +543,8 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     const card = document.getElementById('ai-link-settings-block');
     const slot = document.getElementById('ai-integration-settings-slot');
     if (!card || !slot) return;
+    const deepseek = document.getElementById('deepseek-settings-card');
+    if (deepseek && deepseek.parentElement === card) card.appendChild(deepseek);
     if (card.parentElement !== slot) slot.appendChild(card);
 }
 
@@ -573,6 +582,9 @@ window.onload = async () => {
         toggleMode('edit');
 
         await initDB();
+        await syncKnownFeatureDataToInDb().catch(function (error) {
+            console.warn('Feature data startup sync failed:', error);
+        });
         loadFolderCollapseState();
         currentStorageSourceTab = getStorageSourceTabFromLocal();
         updateStorageSourceTabsUI();
@@ -1323,8 +1335,17 @@ function bindFootnoteLinkNavigation() {
     });
 }
 
-function renderMarkdown(options) {
+function escapeMarkdownRenderFallback(value) {
+    return '<p>' + String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>') + '</p>';
+}
+
+async function renderMarkdown(options) {
     if (!viewer) return;
+    const renderToken = ++mainRenderToken;
     const opts = options || {};
     const force = !!opts.force;
     const popupAlive = !!(typeof isPreviewPopupAlive === 'function' && isPreviewPopupAlive());
@@ -1334,8 +1355,11 @@ function renderMarkdown(options) {
     }
     mainRenderDirty = false;
     const raw = String(currentMarkdown ?? '');
-    let preprocessed = raw;
+    const isCurrentRender = function () {
+        return renderToken === mainRenderToken && !!viewer;
+    };
     function runPostRenderHooks() {
+        if (!isCurrentRender()) return;
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
         try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
         try { hydrateInternalImagesInElement(viewer, registerViewerInternalObjectUrl); } catch (e) {}
@@ -1348,56 +1372,47 @@ function renderMarkdown(options) {
         try { scheduleMiniPreviewRender(120); } catch (e) {}
     }
     revokeObjectUrls(viewerInternalImageObjectUrls);
-    resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
+
     try {
-        preprocessed = preprocessMarkdownForView(resolvedRaw);
+        const resolvedRaw = await resolveInternalMarkdownImagesForViewer(raw);
+        if (!isCurrentRender()) return;
+        const preprocessed = preprocessMarkdownForView(resolvedRaw);
+        let html = '';
         if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
-            MathRender.renderMarkdownSafe(
+            html = await MathRender.renderMarkdownSafe(
                 (typeof marked !== 'undefined' && marked.parse) ? marked : null,
                 preprocessed,
                 { fallbackText: resolvedRaw }
-            ).then(function (html) {
-                viewer.innerHTML = html || '';
-                try { if (MathRender && typeof MathRender.typesetElement === 'function') MathRender.typesetElement(viewer); } catch (e) {}
-                runPostRenderHooks();
-            }).catch(function () {
-                viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-                runPostRenderHooks();
+            );
+        } else if (typeof marked !== 'undefined' && marked.parse) {
+            html = String(marked.parse(preprocessed) || '');
+        } else {
+            html = escapeMarkdownRenderFallback(resolvedRaw);
+        }
+        if (!isCurrentRender()) return;
+        viewer.innerHTML = String(html || '');
+        if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
+            await MathRender.typesetElement(viewer, {
+                silent: true,
+                retries: 20,
+                delay: 80
             });
-            return;
         }
-        if (typeof marked === 'undefined' || !marked.parse) {
-            viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-            return;
-        }
-        viewer.innerHTML = String(marked.parse(preprocessed) || '');
         runPostRenderHooks();
-    } catch (e) {
+    } catch (error) {
+        if (!isCurrentRender()) return;
+        viewer.innerHTML = escapeMarkdownRenderFallback(raw);
         try {
-            if (typeof marked !== 'undefined' && marked.parse) {
-                const fallbackSource = preprocessMarkdownForView(resolvedRaw);
-                if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
-                    MathRender.renderMarkdownSafe(marked, fallbackSource, { fallbackText: resolvedRaw }).then(function (html) {
-                        viewer.innerHTML = html || '';
-                        try { if (MathRender && typeof MathRender.typesetElement === 'function') MathRender.typesetElement(viewer); } catch (err) {}
-                        runPostRenderHooks();
-                    }).catch(function () {
-                        viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-                        runPostRenderHooks();
-                    });
-                    return;
-                }
-                viewer.innerHTML = String(marked.parse(fallbackSource) || '');
-                runPostRenderHooks();
-                return;
+            if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
+                await MathRender.typesetElement(viewer, {
+                    silent: true,
+                    retries: 10,
+                    delay: 80
+                });
             }
-        } catch (innerErr) {}
-        viewer.innerHTML = '<p>' + resolvedRaw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
+        } catch (_) {}
         runPostRenderHooks();
     }
-    }).catch(function () {
-        viewer.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
-    });
 }
 
 function clamp01(v) {
@@ -1566,21 +1581,137 @@ function openSelectedFileInBrowserViewer(file, extension) {
         return true;
     }
     if (extension === '.pdf') {
+        if (!window.InternalImageApp || typeof window.InternalImageApp.openFrame !== 'function') {
+            showToast('내부 PDF 뷰어를 불러오지 못했습니다.');
+            return true;
+        }
         const objectUrl = URL.createObjectURL(file);
         const viewerUrl = new URL('./pdf-viewer.html', window.location.href);
         viewerUrl.searchParams.set('file', objectUrl);
         viewerUrl.searchParams.set('title', file.name || 'PDF Preview');
-        const popup = window.open(viewerUrl.toString(), '_blank');
-        if (!popup) {
-            URL.revokeObjectURL(objectUrl);
-            showToast('PDF 보기 창을 열 수 없습니다. 팝업 허용 여부를 확인하세요.');
-        } else {
-            window.setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 10 * 60 * 1000);
-        }
+        window.InternalImageApp.openFrame(viewerUrl.toString(), file.name || 'PDF Preview', {
+            objectUrls: [objectUrl]
+        });
         return true;
     }
     return false;
 }
+
+async function openDocxInEditor(file) {
+    if (!file) return false;
+    if (!window.mammoth || typeof window.mammoth.convertToHtml !== 'function') {
+        showToast('DOCX 가져오기 모듈을 불러오지 못했습니다.');
+        return false;
+    }
+    const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+    if (!canProceed) {
+        showToast('Open canceled.');
+        return true;
+    }
+    showToast('DOCX 문서를 변환하는 중입니다...');
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const options = {};
+        if (window.mammoth.images && typeof window.mammoth.images.imgElement === 'function') {
+            options.convertImage = window.mammoth.images.imgElement(async function (image) {
+                const base64 = await image.read('base64');
+                return { src: 'data:' + (image.contentType || 'image/png') + ';base64,' + base64 };
+            });
+        }
+        const result = await window.mammoth.convertToHtml({ arrayBuffer: arrayBuffer }, options);
+        const html = String(result && result.value || '').trim();
+        setCurrentDocumentInfo(file.name || 'document.docx', null);
+        updateContent(html || '<p></p>');
+        markPersistedState();
+        const warnings = Array.isArray(result && result.messages) ? result.messages.length : 0;
+        showToast(warnings
+            ? 'DOCX를 열었습니다. 변환 경고 ' + warnings + '건이 있습니다.'
+            : 'DOCX를 문서 내부에서 열었습니다.');
+        return true;
+    } catch (error) {
+        showToast('DOCX를 열 수 없습니다: ' + (error && error.message ? error.message : error));
+        return true;
+    }
+}
+
+function handleImageFolderSelect(event) {
+    const input = event && event.target ? event.target : null;
+    const files = Array.from(input && input.files ? input.files : []);
+    const images = files.filter(function (file) {
+        return LOCAL_IMAGE_VIEWER_EXTENSIONS.has(getSelectedFileExtension(file))
+            || String(file && file.type || '').toLowerCase().startsWith('image/');
+    });
+    if (!images.length) {
+        showToast('선택한 폴더에 지원되는 이미지가 없습니다.');
+        if (input) input.value = '';
+        return;
+    }
+    if (!window.InternalImageApp || typeof window.InternalImageApp.openFiles !== 'function') {
+        showToast('내부 이미지 앱을 불러오지 못했습니다.');
+        if (input) input.value = '';
+        return;
+    }
+    const relativePath = String(images[0].webkitRelativePath || '');
+    const folderName = relativePath.split('/').filter(Boolean)[0] || '이미지 폴더';
+    window.InternalImageApp.openFiles(images, folderName);
+    if (input) input.value = '';
+}
+
+function setOpenSourceMenuVisible(visible) {
+    const menu = document.getElementById('open-source-menu');
+    const button = document.getElementById('open-source-menu-button');
+    if (!menu || !button) return;
+    const shouldShow = !!visible;
+    menu.classList.toggle('hidden', !shouldShow);
+    button.setAttribute('aria-expanded', shouldShow ? 'true' : 'false');
+}
+
+function toggleOpenSourceMenu(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('open-source-menu');
+    if (!menu) return;
+    setOpenSourceMenuVisible(menu.classList.contains('hidden'));
+}
+
+function openFilePickerFromMenu(event) {
+    if (event) event.stopPropagation();
+    setOpenSourceMenuVisible(false);
+    const input = document.getElementById('file-input');
+    if (input) input.click();
+}
+
+function openImageFolderPickerFromMenu(event) {
+    if (event) event.stopPropagation();
+    setOpenSourceMenuVisible(false);
+    const input = document.getElementById('image-folder-input');
+    if (input) input.click();
+}
+
+function openFmaViewer() {
+    if (!window.InternalImageApp || typeof window.InternalImageApp.openFrame !== 'function') {
+        showToast('내부 FMA Viewer를 불러오지 못했습니다.');
+        return false;
+    }
+    const viewerUrl = new URL('./Apps/fmaviewer/index.html', document.baseURI || window.location.href);
+    viewerUrl.searchParams.set('embedded', '1');
+    viewerUrl.searchParams.set('v', '20260725-fma-viewer-1');
+    window.InternalImageApp.openFrame(viewerUrl.href, 'FMA Viewer');
+    return true;
+}
+
+function openFmaViewerFromMenu(event) {
+    if (event) event.stopPropagation();
+    setOpenSourceMenuVisible(false);
+    openFmaViewer();
+}
+
+document.addEventListener('click', function (event) {
+    const wrap = document.getElementById('open-source-menu-wrap');
+    if (wrap && !wrap.contains(event.target)) setOpenSourceMenuVisible(false);
+});
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') setOpenSourceMenuVisible(false);
+});
 
 async function handleFileSelect(event) {
     const input = event && event.target ? event.target : null;
@@ -1599,6 +1730,8 @@ async function handleFileSelect(event) {
             && typeof window.web2electron.openLocalFile === 'function') {
             const result = await window.web2electron.openLocalFile({ filePath: nativePath });
             if (result && result.error) showToast('파일을 열 수 없습니다: ' + result.error);
+        } else if (extension === '.docx') {
+            await openDocxInEditor(file);
         } else if (!DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)
             || !openSelectedFileInBrowserViewer(file, extension)) {
             await readFile(file);
@@ -4792,6 +4925,79 @@ function isValidGoogleAiApiKey(key) {
     return /^AIza[0-9A-Za-z_-]{35,120}$/.test(k);
 }
 
+function isValidDeepseekAiKey(key) {
+    const k = (key || '').trim();
+    return /^sk-[0-9A-Za-z_-]{16,}$/.test(k);
+}
+
+function normalizeDeepseekBaseUrl(value) {
+    const raw = String(value || '').trim() || 'https://api.deepseek.com';
+    let parsed;
+    try {
+        parsed = new URL(raw);
+    } catch (_) {
+        throw new Error('DeepSeek Base URL 형식이 올바르지 않습니다.');
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error('DeepSeek Base URL은 http:// 또는 https:// 주소여야 합니다.');
+    }
+    parsed.hash = '';
+    parsed.search = '';
+    let normalized = parsed.toString().replace(/\/+$/, '');
+    if (/\/v1$/i.test(normalized)) normalized = normalized.slice(0, -3);
+    return normalized || 'https://api.deepseek.com';
+}
+
+function getDeepseekVerifiedToken(key, baseUrl) {
+    return credentialFingerprint(key) + '@' + normalizeDeepseekBaseUrl(baseUrl);
+}
+
+function validateDeepseekBaseUrlInputUI() {
+    const input = document.getElementById('deepseek-base-url');
+    const feedback = document.getElementById('deepseek-base-url-feedback');
+    if (!input || !feedback) return false;
+    try {
+        const normalized = normalizeDeepseekBaseUrl(input.value);
+        feedback.textContent = normalized === String(input.value || '').trim().replace(/\/+$/, '')
+            ? '공식 OpenAI 호환 API 주소입니다.'
+            : '저장 시 ' + normalized + ' 주소로 정규화됩니다.';
+        feedback.className = 'text-xs mt-1 min-h-[1.25rem] text-slate-500 dark:text-slate-400';
+        return true;
+    } catch (error) {
+        feedback.textContent = error.message;
+        feedback.className = 'text-xs mt-1 min-h-[1.25rem] text-red-600 dark:text-red-400';
+        return false;
+    }
+}
+
+function validateDeepseekApiKeyInputUI() {
+    const input = document.getElementById('deepseek-api-key');
+    const key = String(input && input.value || '').trim();
+    if (!input) return false;
+    if (!key) {
+        setCredentialConnectionVisual('deepseek-api-key', 'deepseek-api-key-feedback', 'neutral', '');
+        return false;
+    }
+    if (!isValidDeepseekAiKey(key)) {
+        setCredentialConnectionVisual('deepseek-api-key', 'deepseek-api-key-feedback', 'error', 'DeepSeek 키는 sk-로 시작해야 합니다.');
+        return false;
+    }
+    let baseUrl = 'https://api.deepseek.com';
+    try {
+        const baseInput = document.getElementById('deepseek-base-url');
+        baseUrl = normalizeDeepseekBaseUrl(baseInput && baseInput.value);
+    } catch (_) {}
+    const verified = localStorage.getItem('ss_deepseek_api_key') === key
+        && localStorage.getItem('ss_deepseek_api_key_verified') === getDeepseekVerifiedToken(key, baseUrl);
+    setCredentialConnectionVisual(
+        'deepseek-api-key',
+        'deepseek-api-key-feedback',
+        verified ? 'connected' : 'neutral',
+        verified ? '연결됨: DeepSeek API Key 확인 완료' : '키 형식이 올바릅니다. DeepSeek 키 저장을 눌러 연결을 확인하세요.'
+    );
+    return true;
+}
+
 function credentialFingerprint(value) {
     const text = String(value || '').trim();
     return text ? text.length + ':' + text.slice(-10) : '';
@@ -4875,6 +5081,8 @@ function validateApiKeyInputUI() {
 
 let aiStudioConnectionCheckKey = '';
 let aiStudioConnectionCheckPromise = null;
+let deepseekApiKeyCheckKey = '';
+let deepseekApiKeyCheckPromise = null;
 
 async function verifyAIStudioApiKeyConnection(apiKey) {
     const key = String(apiKey || '').trim();
@@ -4939,6 +5147,67 @@ async function saveApiKey() {
         showToast('AI Studio API key가 저장되고 연결되었습니다.');
     } catch (error) {
         showToast('API key는 저장했지만 AI Studio 연결을 확인하지 못했습니다.');
+    }
+}
+
+async function saveDeepseekApiKey() {
+    const input = document.getElementById('deepseek-api-key');
+    const baseInput = document.getElementById('deepseek-base-url');
+    const key = (input && input.value) ? input.value.trim() : '';
+    let baseUrl = 'https://api.deepseek.com';
+    try {
+        baseUrl = normalizeDeepseekBaseUrl(baseInput && baseInput.value);
+        if (baseInput) baseInput.value = baseUrl;
+        validateDeepseekBaseUrlInputUI();
+    } catch (error) {
+        validateDeepseekBaseUrlInputUI();
+        showToast(error.message);
+        return;
+    }
+    if (key && !isValidDeepseekAiKey(key)) {
+        setCredentialConnectionVisual('deepseek-api-key', 'deepseek-api-key-feedback', 'error', '저장되지 않음: DeepSeek 키는 sk-로 시작해야 합니다.');
+        showToast('Invalid DeepSeek API key format.');
+        return;
+    }
+    await setAiSettings({ deepseekApiKey: key, deepseekBaseUrl: baseUrl });
+    if (key) {
+        localStorage.setItem('ss_deepseek_api_key', key);
+        localStorage.setItem('ss_deepseek_base_url', baseUrl);
+    } else {
+        localStorage.removeItem('ss_deepseek_api_key');
+        localStorage.removeItem('ss_deepseek_api_key_verified');
+        localStorage.removeItem('ss_deepseek_base_url');
+        localStorage.removeItem('ss_deepseek_balance_available');
+        localStorage.removeItem('ss_deepseek_balance_summary');
+        setCredentialConnectionVisual('deepseek-api-key', 'deepseek-api-key-feedback', 'neutral', 'DeepSeek API key가 비워졌습니다.');
+        return;
+    }
+    try {
+        setCredentialConnectionVisual('deepseek-api-key', 'deepseek-api-key-feedback', 'checking', 'DeepSeek 연결을 확인하는 중...');
+        const verification = await verifyDeepseekApiKeyConnection(key, baseUrl);
+        const models = verification.models || [];
+        const balance = verification.balance;
+        const hasBalance = !balance || balance.isAvailable !== false;
+        const balanceText = balance && balance.summary ? ' · 잔액 ' + balance.summary : '';
+        setCredentialConnectionVisual(
+            'deepseek-api-key',
+            'deepseek-api-key-feedback',
+            'connected',
+            hasBalance
+                ? '연결됨: DeepSeek 모델 ' + models.length + '개 확인' + balanceText
+                : '연결됨 · 잔액 부족: 모델 ' + models.length + '개 확인 · 충전 후 생성할 수 있습니다.'
+        );
+        showToast(hasBalance
+            ? 'DeepSeek API key가 저장되고 연결되었습니다.'
+            : 'DeepSeek API는 연결되었지만 잔액이 부족합니다.');
+    } catch (error) {
+        setCredentialConnectionVisual(
+            'deepseek-api-key',
+            'deepseek-api-key-feedback',
+            'error',
+            '저장됨 · 연결 확인 실패: ' + (error && error.message ? error.message : error)
+        );
+        showToast('DeepSeek API key는 저장했지만 연결을 확인하지 못했습니다.');
     }
 }
 
@@ -5461,6 +5730,69 @@ function getTemplateVisibleFromSettings(settings) {
 function getHtml2pptVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.html2pptVisible === true;
+}
+
+function getDeepseekApiState() {
+    let baseUrl = 'https://api.deepseek.com';
+    try {
+        baseUrl = normalizeDeepseekBaseUrl(localStorage.getItem('ss_deepseek_base_url'));
+    } catch (_) {}
+    return {
+        key: String(localStorage.getItem('ss_deepseek_api_key') || '').trim(),
+        baseUrl: baseUrl,
+        verifiedFingerprint: String(localStorage.getItem('ss_deepseek_api_key_verified') || '')
+    };
+}
+
+async function verifyDeepseekApiKeyConnection(apiKey, baseUrl) {
+    const key = String(apiKey || '').trim();
+    const base = normalizeDeepseekBaseUrl(baseUrl);
+    if (!isValidDeepseekAiKey(key)) throw new Error('DeepSeek API Key 형식이 올바르지 않습니다.');
+    const token = key + '|' + base;
+    if (deepseekApiKeyCheckPromise && deepseekApiKeyCheckKey === token) return deepseekApiKeyCheckPromise;
+    deepseekApiKeyCheckKey = token;
+    const request = (async function () {
+        try {
+            const models = await listDeepseekChatModels(key, base);
+            let balance = null;
+            try {
+                balance = await getDeepseekUserBalance(key, base);
+            } catch (balanceError) {
+                console.warn('DeepSeek balance check failed:', balanceError);
+            }
+            saveStoredModelList('ss_scholar_ai_deepseek_models_v1', models);
+            localStorage.setItem('ss_deepseek_api_key', key);
+            localStorage.setItem('ss_deepseek_base_url', base);
+            localStorage.setItem('ss_deepseek_api_key_verified', getDeepseekVerifiedToken(key, base));
+            if (balance) {
+                localStorage.setItem('ss_deepseek_balance_available', balance.isAvailable ? '1' : '0');
+                localStorage.setItem('ss_deepseek_balance_summary', balance.summary || '');
+            } else {
+                localStorage.removeItem('ss_deepseek_balance_available');
+                localStorage.removeItem('ss_deepseek_balance_summary');
+            }
+            return { models: models, balance: balance };
+        } catch (error) {
+            localStorage.removeItem('ss_deepseek_api_key_verified');
+            localStorage.removeItem('ss_deepseek_balance_available');
+            localStorage.removeItem('ss_deepseek_balance_summary');
+            throw error;
+        }
+    })();
+    deepseekApiKeyCheckPromise = request;
+    try {
+        return await request;
+    } finally {
+        if (deepseekApiKeyCheckPromise === request) {
+            deepseekApiKeyCheckKey = '';
+            deepseekApiKeyCheckPromise = null;
+        }
+    }
+}
+
+function getFmaViewerVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.fmaViewerVisible === true;
 }
 
 function getMacroVisibleFromSettings(settings) {
@@ -6260,6 +6592,21 @@ async function toggleHtml2pptSection() {
     try { await setAiSettings({ html2pptVisible: enabled }); } catch (e) { console.error(e); }
 }
 
+function applyFmaViewerVisibility(settings) {
+    const enabled = getFmaViewerVisibleFromSettings(settings || {});
+    const btn = document.getElementById('btn-fma-viewer');
+    if (!btn) return;
+    btn.classList.toggle('hidden', !enabled);
+    btn.classList.toggle('flex', enabled);
+}
+
+async function toggleFmaViewerSection() {
+    const check = document.getElementById('fma-viewer-visible');
+    const enabled = !!(check && check.checked);
+    applyFmaViewerVisibility({ fmaViewerVisible: enabled });
+    try { await setAiSettings({ fmaViewerVisible: enabled }); } catch (e) { console.error(e); }
+}
+
 window.addEventListener('message', function (event) {
     const data = event && event.data ? event.data : null;
     if (!data || typeof data !== 'object') return;
@@ -6901,6 +7248,10 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     'md_viewer_code_bg',
     'md_viewer_code_text',
     'ss_imgbb_api_key',
+    'ss_ollama_base_url',
+    'ss_ollama_models_v1',
+    'ss_scholar_ai_ollama_model',
+    'ss_ai_chat_ollama_model',
     'local_ai_lmstudio_settings_v1',
     'ss_scholar_ai_provider',
     'ss_scholar_ai_model',
@@ -7005,7 +7356,236 @@ async function importSettingsMsetFile(event) {
     }
 }
 
-const INDB_STATUS_STORE_ORDER = ['documents', 'folders', 'images', 'autosave', 'ai_settings', 'scholar_refs'];
+const INDB_STATUS_STORE_ORDER = [
+    'documents',
+    'folders',
+    'images',
+    'autosave',
+    'ai_settings',
+    'scholar_refs',
+    'ai_chat',
+    'scholar_ai',
+    'ssp_image_ai',
+    'highlights',
+    'genslides'
+];
+let featureDataSyncPromise = null;
+
+function normalizeFeatureInDbRecord(storeName, record, index) {
+    const source = record && typeof record === 'object' ? record : { value: record };
+    const normalized = Object.assign({}, source);
+    const rawId = source.id != null && String(source.id).trim()
+        ? String(source.id)
+        : storeName + '-' + String(index + 1);
+    normalized.id = rawId;
+    normalized.syncedAt = new Date().toISOString();
+    return normalized;
+}
+
+function replaceFeatureStoreRecordsInDb(storeName, records) {
+    const store = String(storeName || '').trim();
+    if (!db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
+        return Promise.resolve(false);
+    }
+    const list = Array.isArray(records) ? records : [];
+    return new Promise(function (resolve, reject) {
+        try {
+            const tx = db.transaction(store, 'readwrite');
+            const objectStore = tx.objectStore(store);
+            objectStore.clear();
+            list.forEach(function (record, index) {
+                objectStore.put(normalizeFeatureInDbRecord(store, record, index));
+            });
+            tx.oncomplete = function () { resolve(true); };
+            tx.onerror = function () { reject(tx.error || new Error('Failed to synchronize ' + store)); };
+            tx.onabort = function () { reject(tx.error || new Error('Synchronization was aborted: ' + store)); };
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+function saveFeatureRecordToInDb(storeName, record) {
+    const store = String(storeName || '').trim();
+    if (!db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
+        return Promise.resolve(false);
+    }
+    return new Promise(function (resolve, reject) {
+        try {
+            const tx = db.transaction(store, 'readwrite');
+            tx.objectStore(store).put(normalizeFeatureInDbRecord(store, record, 0));
+            tx.oncomplete = function () { resolve(true); };
+            tx.onerror = function () { reject(tx.error || new Error('Failed to save ' + store)); };
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+function upsertFeatureStoreRecordsInDb(storeName, records) {
+    const store = String(storeName || '').trim();
+    if (!db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
+        return Promise.resolve(false);
+    }
+    const list = Array.isArray(records) ? records : [];
+    return new Promise(function (resolve, reject) {
+        try {
+            const tx = db.transaction(store, 'readwrite');
+            const objectStore = tx.objectStore(store);
+            list.forEach(function (record, index) {
+                objectStore.put(normalizeFeatureInDbRecord(store, record, index));
+            });
+            tx.oncomplete = function () { resolve(true); };
+            tx.onerror = function () { reject(tx.error || new Error('Failed to update ' + store)); };
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+function deleteFeatureRecordFromInDb(storeName, id) {
+    const store = String(storeName || '').trim();
+    const recordId = String(id == null ? '' : id).trim();
+    if (!db || !FEATURE_DATA_STORE_NAMES.includes(store) || !recordId || !db.objectStoreNames.contains(store)) {
+        return Promise.resolve(false);
+    }
+    return new Promise(function (resolve, reject) {
+        try {
+            const tx = db.transaction(store, 'readwrite');
+            tx.objectStore(store).delete(recordId);
+            tx.oncomplete = function () { resolve(true); };
+            tx.onerror = function () { reject(tx.error || new Error('Failed to delete ' + store)); };
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+async function getExistingIndexedDbNames() {
+    if (!window.indexedDB || typeof window.indexedDB.databases !== 'function') return null;
+    try {
+        const databases = await window.indexedDB.databases();
+        return new Set((databases || []).map(function (item) { return String(item && item.name || ''); }));
+    } catch (_) {
+        return null;
+    }
+}
+
+function readExternalIndexedDbStore(dbName, storeName, existingNames) {
+    if (!window.indexedDB) return Promise.resolve({ available: false, records: [] });
+    if (existingNames && !existingNames.has(dbName)) {
+        return Promise.resolve({ available: false, records: [] });
+    }
+    return new Promise(function (resolve) {
+        let settled = false;
+        let externalDb = null;
+        const finish = function (result) {
+            if (settled) return;
+            settled = true;
+            try { if (externalDb) externalDb.close(); } catch (_) {}
+            resolve(result);
+        };
+        try {
+            const request = window.indexedDB.open(dbName);
+            request.onerror = function () { finish({ available: false, records: [] }); };
+            request.onblocked = function () { finish({ available: false, records: [] }); };
+            request.onsuccess = function () {
+                externalDb = request.result;
+                if (!externalDb.objectStoreNames.contains(storeName)) {
+                    finish({ available: false, records: [] });
+                    return;
+                }
+                try {
+                    const tx = externalDb.transaction(storeName, 'readonly');
+                    const getAll = tx.objectStore(storeName).getAll();
+                    getAll.onsuccess = function () {
+                        finish({ available: true, records: Array.isArray(getAll.result) ? getAll.result : [] });
+                    };
+                    getAll.onerror = function () { finish({ available: false, records: [] }); };
+                } catch (_) {
+                    finish({ available: false, records: [] });
+                }
+            };
+        } catch (_) {
+            finish({ available: false, records: [] });
+        }
+    });
+}
+
+function readFeatureLocalStorageArray(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+        return [];
+    }
+}
+
+async function syncKnownFeatureDataToInDb() {
+    if (!db) return false;
+    if (featureDataSyncPromise) return featureDataSyncPromise;
+    featureDataSyncPromise = (async function () {
+        const existingNames = await getExistingIndexedDbNames();
+
+        const scholarHistory = readFeatureLocalStorageArray('ss_viewer_scholar_ai_history');
+        await replaceFeatureStoreRecordsInDb('scholar_ai', scholarHistory);
+
+        const sspHistory = readFeatureLocalStorageArray('ss_viewer_ssp_img_history');
+        await upsertFeatureStoreRecordsInDb('ssp_image_ai', sspHistory);
+
+        const aiChat = await readExternalIndexedDbStore('md_viewer_ai_chat', 'conversations', existingNames);
+        if (aiChat.available) {
+            await replaceFeatureStoreRecordsInDb('ai_chat', aiChat.records);
+        }
+
+        const highlightRecords = await readExternalIndexedDbStore('MDProViewer_Ultimate_DB', 'records', existingNames);
+        const highlightTags = await readExternalIndexedDbStore('MDProViewer_Ultimate_DB', 'tags', existingNames);
+        if (highlightRecords.available || highlightTags.available) {
+            const records = (highlightRecords.records || []).map(function (record, index) {
+                return Object.assign({}, record, {
+                    id: 'record:' + String(record && record.id != null ? record.id : index + 1),
+                    sourceId: record && record.id,
+                    recordType: 'highlight'
+                });
+            });
+            const tags = (highlightTags.records || []).map(function (record, index) {
+                return Object.assign({}, record, {
+                    id: 'tag:' + String(record && record.name || index + 1),
+                    recordType: 'tag'
+                });
+            });
+            await replaceFeatureStoreRecordsInDb('highlights', records.concat(tags));
+        }
+
+        const genSlides = await readExternalIndexedDbStore('GenSlideDB', 'autosave', existingNames);
+        const genSlideImages = await readExternalIndexedDbStore('GenSlideDB', 'images', existingNames);
+        if (genSlides.available || genSlideImages.available) {
+            const slides = (genSlides.records || []).map(function (record, index) {
+                return Object.assign({}, record, {
+                    id: 'slides:' + String(record && record.id != null ? record.id : index + 1),
+                    sourceId: record && record.id,
+                    recordType: 'slides'
+                });
+            });
+            const images = (genSlideImages.records || []).map(function (record, index) {
+                return Object.assign({}, record, {
+                    id: 'image:' + String(record && record.id != null ? record.id : index + 1),
+                    sourceId: record && record.id,
+                    recordType: 'image'
+                });
+            });
+            await upsertFeatureStoreRecordsInDb('genslides', slides.concat(images));
+        }
+        return true;
+    })();
+    try {
+        return await featureDataSyncPromise;
+    } finally {
+        featureDataSyncPromise = null;
+    }
+}
 
 function escapeInDbStatusHtml(value) {
     return String(value == null ? '' : value)
@@ -7037,6 +7617,14 @@ function getInDbStatusPrimaryText(storeName, item) {
     if (storeName === 'autosave') return String(rec.title || rec.id || '(autosave)');
     if (storeName === 'scholar_refs') return String(rec.title || rec.id || '(scholar ref)');
     if (storeName === 'ai_settings') return String(rec.id || 'ai_settings');
+    if (storeName === 'ai_chat') return String(rec.title || rec.id || '(AI chat)');
+    if (storeName === 'scholar_ai') return String(rec.prompt || rec.title || rec.id || '(ScholarAI)');
+    if (storeName === 'ssp_image_ai') return String(rec.prompt || rec.name || rec.id || '(sspimgAI image)');
+    if (storeName === 'highlights') {
+        if (rec.recordType === 'tag') return '#' + String(rec.name || rec.id || 'tag');
+        return String(rec.title || rec.contentData || rec.content || rec.id || '(highlight)').replace(/\s+/g, ' ').slice(0, 100);
+    }
+    if (storeName === 'genslides') return String(rec.name || rec.title || rec.sourceId || rec.id || '(GenSlide)');
     return String(rec.id || '(item)');
 }
 
@@ -7049,6 +7637,25 @@ function getInDbStatusSecondaryText(storeName, item) {
     if (storeName === 'images') {
         const size = rec.blob && typeof rec.blob.size === 'number' ? rec.blob.size : 0;
         return 'id=' + String(rec.id || '') + ' | bytes=' + size;
+    }
+    if (storeName === 'ai_chat') {
+        return 'id=' + String(rec.id || '') + ' | messages=' + (Array.isArray(rec.messages) ? rec.messages.length : 0);
+    }
+    if (storeName === 'scholar_ai') {
+        return 'id=' + String(rec.id || '') + ' | result chars=' + String(rec.result || '').length;
+    }
+    if (storeName === 'ssp_image_ai') {
+        return 'id=' + String(rec.id || '') + ' | image bytes≈' + Math.round(String(rec.dataURL || '').length * 0.75);
+    }
+    if (storeName === 'highlights') {
+        return 'id=' + String(rec.id || '') + ' | type=' + String(rec.recordType || 'highlight');
+    }
+    if (storeName === 'genslides') {
+        const count = Array.isArray(rec.slides) ? rec.slides.length : 0;
+        const size = rec.blob && typeof rec.blob.size === 'number' ? rec.blob.size : 0;
+        return 'id=' + String(rec.id || '') + ' | type=' + String(rec.recordType || 'slides')
+            + (count ? ' | slides=' + count : '')
+            + (size ? ' | bytes=' + size : '');
     }
     return 'id=' + String(rec.id || '');
 }
@@ -7064,6 +7671,437 @@ async function readAllInDbStoreItems(storeName) {
             resolve([]);
         }
     });
+}
+
+function sanitizeInDbZipSegment(value, fallback) {
+    const cleaned = String(value == null ? '' : value)
+        .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+        .replace(/\s+/g, ' ')
+        .replace(/^\.+|\.+$/g, '')
+        .trim();
+    return (cleaned || fallback || 'item').slice(0, 120);
+}
+
+function getInDbMimeExtension(mimeType) {
+    const mime = String(mimeType || '').toLowerCase().split(';')[0];
+    const extensions = {
+        'image/png': '.png',
+        'image/jpeg': '.jpg',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
+        'image/svg+xml': '.svg',
+        'image/bmp': '.bmp',
+        'image/avif': '.avif',
+        'image/x-icon': '.ico',
+        'image/vnd.microsoft.icon': '.ico',
+        'image/tiff': '.tif',
+        'application/pdf': '.pdf',
+        'application/zip': '.zip',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+        'text/plain': '.txt',
+        'text/markdown': '.md',
+        'text/html': '.html',
+        'text/csv': '.csv',
+        'application/json': '.json'
+    };
+    return extensions[mime] || '.bin';
+}
+
+function getInDbBlobExtension(blob, originalName) {
+    const nameMatch = String(originalName || '').match(/\.([a-z0-9]{1,10})$/i);
+    if (nameMatch) return '.' + nameMatch[1].toLowerCase();
+    return getInDbMimeExtension(blob && blob.type);
+}
+
+function makeUniqueInDbZipPath(path, usedPaths) {
+    const originalPath = String(path || 'file.bin');
+    if (!usedPaths) return originalPath;
+    let candidate = originalPath;
+    let suffix = 2;
+    const dotIndex = originalPath.lastIndexOf('.');
+    const base = dotIndex > originalPath.lastIndexOf('/') ? originalPath.slice(0, dotIndex) : originalPath;
+    const extension = dotIndex > originalPath.lastIndexOf('/') ? originalPath.slice(dotIndex) : '';
+    while (usedPaths.has(candidate.toLocaleLowerCase())) {
+        candidate = base + '-' + String(suffix) + extension;
+        suffix += 1;
+    }
+    usedPaths.add(candidate.toLocaleLowerCase());
+    return candidate;
+}
+
+function getInDbAttachmentPath(context, extension) {
+    const safeKeyPath = context.keyPath.map(function (part) {
+        return sanitizeInDbZipSegment(part, 'value');
+    }).join('-');
+    const baseFolder = String(context.attachmentBasePath || (
+        'inDB/_attachments/'
+        + sanitizeInDbZipSegment(context.storeName, 'store') + '/'
+        + sanitizeInDbZipSegment(context.recordToken, 'record')
+    )).replace(/\/+$/g, '');
+    return makeUniqueInDbZipPath(
+        baseFolder + '/' + (safeKeyPath || 'value') + String(extension || '.bin'),
+        context.usedPaths
+    );
+}
+
+function decodeInDbDataUrl(value) {
+    const text = String(value || '');
+    if (!/^data:/i.test(text)) return null;
+    const commaIndex = text.indexOf(',');
+    if (commaIndex < 5) return null;
+    const header = text.slice(5, commaIndex);
+    const payload = text.slice(commaIndex + 1);
+    const parts = header.split(';').filter(Boolean);
+    const mime = parts.length && parts[0].includes('/') ? parts.shift() : 'application/octet-stream';
+    const isBase64 = parts.some(function (part) { return part.toLowerCase() === 'base64'; });
+    try {
+        if (isBase64) {
+            const binary = atob(payload.replace(/\s+/g, ''));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            return { bytes: bytes, mime: mime };
+        }
+        return {
+            bytes: new TextEncoder().encode(decodeURIComponent(payload)),
+            mime: mime
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+async function serializeInDbValueForZip(value, context) {
+    if (typeof value === 'string') {
+        const decodedDataUrl = decodeInDbDataUrl(value);
+        if (decodedDataUrl) {
+            const path = getInDbAttachmentPath(context, getInDbMimeExtension(decodedDataUrl.mime));
+            context.zip.file(path, decodedDataUrl.bytes);
+            context.attachments.push({
+                store: context.storeName,
+                record: context.recordToken,
+                field: context.keyPath.join('.'),
+                path: path,
+                type: decodedDataUrl.mime,
+                size: decodedDataUrl.bytes.byteLength
+            });
+            return {
+                __indbType: 'DataURL',
+                path: path,
+                type: decodedDataUrl.mime,
+                size: decodedDataUrl.bytes.byteLength
+            };
+        }
+        return value;
+    }
+    if (value === null || typeof value === 'number' || typeof value === 'boolean') {
+        return value;
+    }
+    if (typeof value === 'undefined') return { __indbType: 'Undefined' };
+    if (typeof value === 'bigint') return { __indbType: 'BigInt', value: String(value) };
+    if (value instanceof Date) return { __indbType: 'Date', value: value.toISOString() };
+
+    if (typeof Blob !== 'undefined' && value instanceof Blob) {
+        const extension = getInDbBlobExtension(value, value.name || context.originalName);
+        const path = getInDbAttachmentPath(context, extension);
+        const bytes = new Uint8Array(await value.arrayBuffer());
+        context.zip.file(path, bytes);
+        context.attachments.push({
+            store: context.storeName,
+            record: context.recordToken,
+            field: context.keyPath.join('.'),
+            path: path,
+            type: value.type || 'application/octet-stream',
+            size: value.size
+        });
+        return {
+            __indbType: 'Blob',
+            path: path,
+            type: value.type || 'application/octet-stream',
+            size: value.size
+        };
+    }
+
+    if (value instanceof ArrayBuffer || (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView(value))) {
+        const bytes = value instanceof ArrayBuffer
+            ? new Uint8Array(value)
+            : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+        const path = getInDbAttachmentPath(context, '.bin');
+        context.zip.file(path, bytes);
+        context.attachments.push({
+            store: context.storeName,
+            record: context.recordToken,
+            field: context.keyPath.join('.'),
+            path: path,
+            type: 'application/octet-stream',
+            size: bytes.byteLength
+        });
+        return {
+            __indbType: 'Binary',
+            path: path,
+            size: bytes.byteLength
+        };
+    }
+
+    if (typeof value !== 'object') return String(value);
+    if (context.seen.has(value)) return { __indbType: 'CircularReference' };
+    context.seen.add(value);
+
+    let serialized;
+    if (Array.isArray(value)) {
+        serialized = [];
+        for (let i = 0; i < value.length; i++) {
+            serialized.push(await serializeInDbValueForZip(value[i], Object.assign({}, context, {
+                keyPath: context.keyPath.concat(String(i))
+            })));
+        }
+    } else {
+        serialized = {};
+        const keys = Object.keys(value);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            serialized[key] = await serializeInDbValueForZip(value[key], Object.assign({}, context, {
+                keyPath: context.keyPath.concat(key),
+                originalName: key === 'blob' && value.name ? value.name : context.originalName
+            }));
+        }
+    }
+    context.seen.delete(value);
+    return serialized;
+}
+
+function getInDbBackupFileName() {
+    const now = new Date();
+    const pad = function (value) { return String(value).padStart(2, '0'); };
+    return 'mdviewer-indb-folders-'
+        + now.getFullYear()
+        + pad(now.getMonth() + 1)
+        + pad(now.getDate())
+        + '-'
+        + pad(now.getHours())
+        + pad(now.getMinutes())
+        + pad(now.getSeconds())
+        + '.zip';
+}
+
+function getInDbExportStoreFolderName(storeName, storeIndex) {
+    return String(storeIndex + 1).padStart(2, '0')
+        + '_'
+        + sanitizeInDbZipSegment(storeName, 'store');
+}
+
+function getInDbExportRecordFolderName(storeName, record, recordIndex, usedNames) {
+    const number = String(recordIndex + 1).padStart(3, '0');
+    const primary = sanitizeInDbZipSegment(
+        getInDbStatusPrimaryText(storeName, record),
+        'record-' + String(recordIndex + 1)
+    ).slice(0, 72);
+    const id = sanitizeInDbZipSegment(
+        record && record.id != null ? record.id : '',
+        'id-' + String(recordIndex + 1)
+    ).slice(0, 36);
+    let name = number + '_' + primary;
+    let collisionIndex = 2;
+    while (usedNames.has(name.toLocaleLowerCase())) {
+        name = number + '_' + primary + '_' + id
+            + (collisionIndex > 2 ? '_' + String(collisionIndex) : '');
+        collisionIndex += 1;
+    }
+    usedNames.add(name.toLocaleLowerCase());
+    return name;
+}
+
+function getInDbConversationMarkdown(record) {
+    const item = record || {};
+    const lines = ['# ' + String(item.title || 'AI Chat'), ''];
+    const messages = Array.isArray(item.messages) ? item.messages : [];
+    messages.forEach(function (message) {
+        const role = String(message && message.role || 'message');
+        const heading = role === 'user' ? 'User' : (role === 'assistant' ? 'Assistant' : role);
+        const content = message && typeof message.content === 'string'
+            ? message.content
+            : JSON.stringify(message && message.content != null ? message.content : '', null, 2);
+        lines.push('## ' + heading, '', content, '');
+    });
+    return lines.join('\n');
+}
+
+function addInDbReadableFilesToRecordFolder(zip, storeName, record, folderPath) {
+    const item = record || {};
+    if (storeName === 'documents') {
+        zip.file(folderPath + '/document.md', String(item.content == null ? '' : item.content));
+        return;
+    }
+    if (storeName === 'autosave' && typeof item.content === 'string') {
+        zip.file(folderPath + '/autosave.md', item.content);
+        return;
+    }
+    if (storeName === 'ai_chat') {
+        zip.file(folderPath + '/conversation.md', getInDbConversationMarkdown(item));
+        return;
+    }
+    if (storeName === 'scholar_ai') {
+        if (item.prompt != null) zip.file(folderPath + '/prompt.txt', String(item.prompt));
+        if (item.result != null) zip.file(folderPath + '/result.md', String(item.result));
+        return;
+    }
+    if (storeName === 'ssp_image_ai' && item.prompt != null) {
+        zip.file(folderPath + '/prompt.txt', String(item.prompt));
+        return;
+    }
+    if (storeName === 'highlights') {
+        const highlightText = item.contentData != null ? item.contentData : item.content;
+        if (typeof highlightText === 'string' && highlightText) {
+            zip.file(folderPath + '/highlight.txt', highlightText);
+        }
+        return;
+    }
+    if (storeName === 'genslides' && Array.isArray(item.slides)) {
+        item.slides.forEach(function (slide, index) {
+            if (!slide || typeof slide.html !== 'string') return;
+            zip.file(
+                folderPath + '/slides/slide-' + String(index + 1).padStart(3, '0') + '.html',
+                slide.html
+            );
+        });
+    }
+}
+
+async function downloadAllInDbAsZip() {
+    if (!db) {
+        showToast('inDB가 아직 준비되지 않았습니다.');
+        return;
+    }
+    if (typeof JSZip === 'undefined') {
+        showToast('ZIP 모듈을 불러오지 못했습니다.');
+        return;
+    }
+
+    const button = document.getElementById('btn-download-all-indb');
+    const originalLabel = button ? button.textContent : '';
+    if (button) {
+        button.disabled = true;
+        button.textContent = '폴더 정리 중...';
+    }
+
+    try {
+        await syncKnownFeatureDataToInDb();
+        const zip = new JSZip();
+        const stores = getInDbStatusStores();
+        const attachments = [];
+        const usedPaths = new Set();
+        const manifest = {
+            format: 'md-viewer-indb-backup',
+            version: 2,
+            exportedAt: new Date().toISOString(),
+            databaseName: db.name || '',
+            databaseVersion: db.version || null,
+            rootFolder: 'inDB',
+            stores: {},
+            attachments: attachments
+        };
+
+        for (let storeIndex = 0; storeIndex < stores.length; storeIndex++) {
+            const storeName = stores[storeIndex];
+            const records = await readAllInDbStoreItems(storeName);
+            const storeFolderName = getInDbExportStoreFolderName(storeName, storeIndex);
+            const storeFolderPath = 'inDB/' + storeFolderName;
+            const recordFolderNames = new Set();
+            const storeManifest = {
+                folder: storeFolderPath,
+                recordCount: records.length,
+                records: []
+            };
+            zip.folder(storeFolderPath);
+            if (!records.length) {
+                zip.file(storeFolderPath + '/_EMPTY.txt', storeName + ' 저장소에 레코드가 없습니다.\n');
+            }
+
+            for (let recordIndex = 0; recordIndex < records.length; recordIndex++) {
+                const record = records[recordIndex];
+                const recordToken = sanitizeInDbZipSegment(
+                    record && record.id != null ? record.id : String(recordIndex + 1),
+                    'record-' + String(recordIndex + 1)
+                );
+                const recordFolderName = getInDbExportRecordFolderName(
+                    storeName,
+                    record,
+                    recordIndex,
+                    recordFolderNames
+                );
+                const recordFolderPath = storeFolderPath + '/' + recordFolderName;
+                const attachmentStartIndex = attachments.length;
+                zip.folder(recordFolderPath);
+                const serializedRecord = await serializeInDbValueForZip(record, {
+                    zip: zip,
+                    storeName: storeName,
+                    recordToken: recordToken,
+                    keyPath: [],
+                    originalName: record && record.name ? record.name : '',
+                    attachmentBasePath: recordFolderPath + '/files',
+                    attachments: attachments,
+                    seen: new WeakSet(),
+                    usedPaths: usedPaths
+                });
+                zip.file(recordFolderPath + '/record.json', JSON.stringify(serializedRecord, null, 2));
+                addInDbReadableFilesToRecordFolder(zip, storeName, record, recordFolderPath);
+                storeManifest.records.push({
+                    id: String(record && record.id != null ? record.id : ''),
+                    title: getInDbStatusPrimaryText(storeName, record),
+                    folder: recordFolderPath,
+                    recordFile: recordFolderPath + '/record.json',
+                    attachmentCount: attachments.length - attachmentStartIndex
+                });
+            }
+            zip.file(
+                storeFolderPath + '/_index.json',
+                JSON.stringify(storeManifest, null, 2)
+            );
+            manifest.stores[storeName] = storeManifest;
+        }
+
+        zip.file('inDB/_manifest.json', JSON.stringify(manifest, null, 2));
+        zip.file(
+            'inDB/README.txt',
+            'md-viewer inDB 전체 폴더 백업\n\n'
+            + '- 각 번호 폴더는 inDB Status 화면의 저장소입니다.\n'
+            + '- 각 저장소 안에는 화면에 보이는 레코드별 폴더가 있습니다.\n'
+            + '- record.json: 해당 레코드의 전체 데이터\n'
+            + '- files/: 해당 레코드에 포함된 이미지·Blob·Data URL·바이너리 원본\n'
+            + '- document.md, conversation.md, result.md 등: 바로 읽을 수 있는 보조 파일\n'
+            + '- _index.json: 저장소 내 레코드 목록\n'
+            + '- _manifest.json: 전체 백업 정보\n\n'
+            + '주의: ai_settings 폴더에는 저장된 API 키 등 민감한 설정이 포함될 수 있습니다.\n'
+        );
+
+        const backupBlob = await zip.generateAsync({
+            type: 'blob',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 6 }
+        });
+        const url = URL.createObjectURL(backupBlob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = getInDbBackupFileName();
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+
+        const totalRecords = Object.keys(manifest.stores).reduce(function (sum, name) {
+            return sum + manifest.stores[name].recordCount;
+        }, 0);
+        showToast('inDB 폴더형 전체 백업을 다운로드했습니다. (' + totalRecords + '개 레코드)');
+    } catch (error) {
+        console.error('Failed to download the full inDB backup:', error);
+        showToast('inDB 전체 다운로드에 실패했습니다: ' + (error && error.message ? error.message : error));
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalLabel || '전체 다운로드';
+        }
+    }
 }
 
 async function renderInDbStatusModal() {
@@ -7137,6 +8175,12 @@ async function openInDbStatusModal() {
             panel.focus();
         }
     } catch (_) {}
+    try {
+        await syncKnownFeatureDataToInDb();
+    } catch (error) {
+        console.warn('Feature data status sync failed:', error);
+        showToast('일부 앱 데이터 동기화에 실패했습니다.');
+    }
     await renderInDbStatusModal();
 }
 
@@ -7909,15 +8953,16 @@ async function listAIStudioTextModels(apiKeyOverride) {
         throw new Error(message);
     }
     const data = await res.json();
-    return (Array.isArray(data.models) ? data.models : []).filter(function (model) {
+    const filtered = (Array.isArray(data.models) ? data.models : []).filter(function (model) {
         const methods = Array.isArray(model.supportedGenerationMethods) ? model.supportedGenerationMethods : [];
         const id = String(model.name || '').replace(/^models\//, '');
         return /^gemini-/i.test(id)
             && methods.indexOf('generateContent') >= 0
-            && !/(embedding|image|tts|live|audio)/i.test(id);
+            && !/(embedding|image)/i.test(id);
     }).map(function (model) {
         return String(model.name || '').replace(/^models\//, '');
-    }).filter(Boolean).sort();
+    }).filter(Boolean);
+    return Array.from(new Set(SCHOLAR_AI_TEXT_MODELS_FALLBACK.concat(filtered))).sort();
 }
 
 function getScholarAIProviderRuntime() {
@@ -7927,17 +8972,43 @@ function getScholarAIProviderRuntime() {
     }
     scholarAIProviderRuntime = window.ScholarAIProvider.create({
         storage: localStorage,
-        callAIStudio: callAIStudioText
+        callAIStudio: callAIStudioText,
+        callOllama: function (prompt, systemInstruction, useSearch, modelOverride, signal) {
+            return callOllamaChatText([{ role: 'user', content: String(prompt || '') }], systemInstruction, modelOverride, signal);
+        },
+        callDeepseek: function (prompt, systemInstruction, useSearch, modelOverride, signal, keyOverride, baseUrlOverride) {
+            return callDeepseekChatText(
+                [{ role: 'user', content: String(prompt || '') }],
+                systemInstruction,
+                modelOverride,
+                signal,
+                keyOverride,
+                baseUrlOverride
+            );
+        }
     });
     return scholarAIProviderRuntime;
 }
 
 let aiChatAbortController = null;
 const AI_CHAT_GEMINI_MODELS_KEY = 'ss_ai_chat_gemini_models_v1';
+const AI_CHAT_DEEPSEEK_MODELS_KEY = 'ss_ai_chat_deepseek_models_v1';
+const OLLAMA_MODELS_KEY = 'ss_ollama_models_v1';
+const OLLAMA_BASE_URL_KEY = 'ss_ollama_base_url';
 const AI_CHAT_GEMINI_DEFAULT_MODELS = [
     'gemini-3.5-flash',
     'gemini-3.1-pro-preview',
     'gemini-3-flash-preview',
+    'gemini-3.6-flash',
+    'gemini-deep-research-pro-preview',
+    'gemini-2.5-flash-tts',
+    'gemini-2.5-pro-tts',
+    'gemini-2.5-flash-native-audio-dialog',
+    'gemini-3-flash-live',
+    'gemini-3.5-live-translate',
+    'lyria-3-clip',
+    'lyria-3-pro',
+    'veo-3-fast-generate',
     'gemini-2.5-flash',
     'gemini-2.5-pro',
     'gemini-2.5-flash-lite',
@@ -7946,9 +9017,379 @@ const AI_CHAT_GEMINI_DEFAULT_MODELS = [
     'gemini-3-pro-image',
     'gemini-2.5-flash-image'
 ];
+const AI_CHAT_DEEPSEEK_DEFAULT_MODELS = [
+    'deepseek-v4-flash',
+    'deepseek-v4-pro'
+];
+const SCHOLAR_AI_TEXT_MODELS_FALLBACK = [
+    'gemini-3.5-flash',
+    'gemini-3.1-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-3.6-flash',
+    'gemini-deep-research-pro-preview',
+    'gemini-2.5-flash-tts',
+    'gemini-2.5-pro-tts',
+    'gemini-2.5-flash-native-audio-dialog',
+    'gemini-3-flash-live',
+    'gemini-3.5-live-translate',
+    'lyria-3-clip',
+    'lyria-3-pro',
+    'veo-3-fast-generate',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash-exp'
+];
 
 function mergeAIChatGeminiModels(models) {
     return Array.from(new Set(AI_CHAT_GEMINI_DEFAULT_MODELS.concat(Array.isArray(models) ? models : []).filter(Boolean)));
+}
+
+function mergeAIChatDeepseekModels(models) {
+    return Array.from(new Set(AI_CHAT_DEEPSEEK_DEFAULT_MODELS.concat(Array.isArray(models) ? models : []).filter(Boolean)));
+}
+
+function getOllamaSettings() {
+    const fallback = 'http://127.0.0.1:11434';
+    let storedBaseUrl = String(localStorage.getItem(OLLAMA_BASE_URL_KEY) || fallback).trim().replace(/\/+$/, '');
+    try {
+        const parsed = new URL(storedBaseUrl);
+        const localHost = /^(?:localhost|127\.0\.0\.1|\[?::1\]?)$/i.test(parsed.hostname);
+        if (localHost && parsed.port === '8080') storedBaseUrl = fallback;
+    } catch (_) {}
+    localStorage.removeItem('ss_ollama_connection_mode');
+    return { baseUrl: storedBaseUrl };
+}
+
+function normalizeOllamaBaseUrl(value) {
+    const fallback = 'http://127.0.0.1:11434';
+    let parsed;
+    try {
+        parsed = new URL(String(value || '').trim() || fallback);
+    } catch (_) {
+        throw new Error('Ollama Base URL 형식이 올바르지 않습니다.');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('Base URL은 http:// 또는 https:// 주소여야 합니다.');
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString()
+        .replace(/\/+$/, '')
+        .replace(/\/api\/(?:tags|chat)$/i, '')
+        .replace(/\/api$/i, '');
+}
+
+async function requestLocalAIJson(url, options) {
+    const request = options || {};
+    if (window.web2electron && typeof window.web2electron.localAIRequest === 'function') {
+        const result = await window.web2electron.localAIRequest({
+            url: String(url),
+            method: String(request.method || 'GET'),
+            headers: request.headers || {},
+            body: request.body || ''
+        });
+        if (!result || result.error) throw new Error(result && result.error ? result.error : '로컬 AI IPC 요청에 실패했습니다.');
+        if (!result.ok) {
+            const detail = result.data && (result.data.error || result.data.detail)
+                ? ((result.data.error && result.data.error.message) || result.data.error || result.data.detail)
+                : (result.text || '요청 실패');
+            const error = new Error('HTTP ' + result.status + ': ' + String(detail));
+            error.status = Number(result.status) || 0;
+            throw error;
+        }
+        return result.data || {};
+    }
+    let response;
+    try {
+        response = await fetch(url, request);
+    } catch (error) {
+        throw new Error('로컬 AI 서버에 연결할 수 없습니다. 서버 실행과 CORS 설정을 확인하세요. (' + (error && error.message ? error.message : error) + ')');
+    }
+    let data = {};
+    try { data = await response.json(); } catch (_) {}
+    if (!response.ok) {
+        const detail = data && (data.error || data.detail)
+            ? ((data.error && data.error.message) || data.error || data.detail)
+            : (response.statusText || '요청 실패');
+        const error = new Error('HTTP ' + response.status + ': ' + String(detail));
+        error.status = response.status;
+        throw error;
+    }
+    return data;
+}
+
+async function requestLocalAITextStream(url, options, onChunk) {
+    const request = options || {};
+    const handleChunk = typeof onChunk === 'function' ? onChunk : function () {};
+    if (window.web2electron && typeof window.web2electron.localAIStreamRequest === 'function') {
+        const requestId = 'ollama-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+        const abortHandler = function () {
+            if (window.web2electron && typeof window.web2electron.cancelLocalAIStream === 'function') {
+                window.web2electron.cancelLocalAIStream(requestId);
+            }
+        };
+        if (request.signal) {
+            if (request.signal.aborted) {
+                const abortError = new Error('Ollama request aborted');
+                abortError.name = 'AbortError';
+                throw abortError;
+            }
+            request.signal.addEventListener('abort', abortHandler, { once: true });
+        }
+        try {
+            const result = await window.web2electron.localAIStreamRequest({
+                requestId: requestId,
+                url: String(url),
+                body: request.body || ''
+            }, function (event) {
+                if (event && event.type === 'chunk' && event.content) handleChunk(String(event.content));
+            });
+            if (!result || !result.ok) {
+                const error = new Error(result && result.error ? result.error : 'Ollama 스트림 IPC 요청에 실패했습니다.');
+                if (result && result.aborted) error.name = 'AbortError';
+                error.status = Number(result && result.status) || 0;
+                throw error;
+            }
+            return;
+        } finally {
+            if (request.signal) request.signal.removeEventListener('abort', abortHandler);
+        }
+    }
+    let response;
+    try {
+        response = await fetch(url, request);
+    } catch (error) {
+        throw new Error('Ollama 스트림에 연결할 수 없습니다. 서버 실행과 CORS 설정을 확인하세요. (' + (error && error.message ? error.message : error) + ')');
+    }
+    if (!response.ok) {
+        const detail = await response.text();
+        const error = new Error('HTTP ' + response.status + ': ' + (detail || response.statusText || '요청 실패'));
+        error.status = response.status;
+        throw error;
+    }
+    if (!response.body) throw new Error('Ollama 스트림 응답 본문이 없습니다.');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        const text = decoder.decode(chunk.value, { stream: true });
+        if (text) handleChunk(text);
+    }
+    const tail = decoder.decode();
+    if (tail) handleChunk(tail);
+}
+
+async function listOllamaModels(settingsOverride) {
+    const settings = Object.assign({}, getOllamaSettings(), settingsOverride || {});
+    settings.baseUrl = normalizeOllamaBaseUrl(settings.baseUrl);
+    const data = await requestLocalAIJson(settings.baseUrl + '/api/tags', {
+        method: 'GET',
+        headers: { Accept: 'application/json' }
+    });
+
+    const rows = Array.isArray(data.models) ? data.models : [];
+    const models = rows.filter(function (item) {
+        const capabilities = item && Array.isArray(item.capabilities) ? item.capabilities : null;
+        return !capabilities || capabilities.indexOf('completion') >= 0;
+    }).map(function (item) {
+        return String(item && (item.id || item.model || item.name) || '').trim();
+    }).filter(Boolean);
+    if (!models.length) throw new Error('Ollama에서 사용 가능한 모델을 찾지 못했습니다.');
+    return Array.from(new Set(models));
+}
+
+async function callOllamaChatText(messages, systemInstruction, modelOverride, signal, responseMode, onStreamEvent, settingsOverride) {
+    const settings = Object.assign({}, getOllamaSettings(), settingsOverride || {});
+    settings.baseUrl = normalizeOllamaBaseUrl(settings.baseUrl);
+    const model = String(modelOverride || localStorage.getItem('ss_ai_chat_ollama_model') || localStorage.getItem('ss_scholar_ai_ollama_model') || '').trim();
+    if (!model) throw new Error('Ollama 모델을 먼저 선택하세요.');
+    const normalized = normalizeAIChatMessages(messages);
+    const payloadMessages = [];
+    if (systemInstruction) payloadMessages.push({ role: 'system', content: String(systemInstruction) });
+    normalized.forEach(function (item) {
+        payloadMessages.push({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') });
+    });
+    const emit = typeof onStreamEvent === 'function' ? onStreamEvent : function () {};
+    const reasoningMode = responseMode === 'reasoning';
+    const estimatedInputTokens = payloadMessages.reduce(function (sum, item) {
+        return sum + estimateAIChatTokens(item.content);
+    }, 0);
+    emit({
+        type: 'request.start',
+        provider: 'ollama',
+        estimated_input_tokens: estimatedInputTokens,
+        reasoning: reasoningMode ? 'on' : 'off'
+    });
+    emit({ type: 'transport.start', provider: 'ollama' });
+    const headers = { 'Content-Type': 'application/json', Accept: 'application/x-ndjson, application/json' };
+    const body = { model: model, messages: payloadMessages, stream: true, think: reasoningMode };
+    let lineBuffer = '';
+    let text = '';
+    let reasoning = '';
+    let lastData = null;
+    let streamError = null;
+    let chatStarted = false;
+    let reasoningStarted = false;
+    let reasoningEnded = false;
+    let messageStarted = false;
+    function processOllamaLine(line) {
+        const trimmed = String(line || '').trim();
+        if (!trimmed || streamError) return;
+        let data;
+        try {
+            data = JSON.parse(trimmed);
+        } catch (error) {
+            streamError = new Error('Ollama 스트림 JSON을 해석하지 못했습니다.');
+            return;
+        }
+        if (data.error) {
+            streamError = new Error(String(data.error));
+            return;
+        }
+        lastData = data;
+        if (!chatStarted) {
+            chatStarted = true;
+            emit({ type: 'chat.start', provider: 'ollama' });
+            emit({ type: 'prompt_processing.start', provider: 'ollama' });
+            emit({ type: 'prompt_processing.end', provider: 'ollama' });
+        }
+        const thinkingDelta = String(data && data.message && data.message.thinking || '');
+        const answerDelta = String(data && data.message && data.message.content || '');
+        if (thinkingDelta) {
+            if (!reasoningStarted) {
+                reasoningStarted = true;
+                emit({ type: 'reasoning.start', provider: 'ollama' });
+            }
+            reasoning += thinkingDelta;
+            emit({ type: 'reasoning.delta', provider: 'ollama', content: thinkingDelta });
+        }
+        if (answerDelta) {
+            if (reasoningStarted && !reasoningEnded) {
+                reasoningEnded = true;
+                emit({ type: 'reasoning.end', provider: 'ollama' });
+            }
+            if (!messageStarted) {
+                messageStarted = true;
+                emit({ type: 'message.start', provider: 'ollama' });
+            }
+            text += answerDelta;
+            emit({ type: 'message.delta', provider: 'ollama', content: answerDelta });
+        }
+    }
+    await requestLocalAITextStream(settings.baseUrl + '/api/chat', {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body),
+        signal: signal
+    }, function (chunk) {
+        lineBuffer += chunk;
+        const lines = lineBuffer.split(/\r?\n/);
+        lineBuffer = lines.pop() || '';
+        lines.forEach(processOllamaLine);
+    });
+    if (lineBuffer.trim()) processOllamaLine(lineBuffer);
+    if (streamError) throw streamError;
+    if (reasoningStarted && !reasoningEnded) emit({ type: 'reasoning.end', provider: 'ollama' });
+    if (messageStarted) emit({ type: 'message.end', provider: 'ollama' });
+    const promptTokens = Math.max(0, Number(lastData && lastData.prompt_eval_count) || 0);
+    const outputTokens = Math.max(0, Number(lastData && lastData.eval_count) || 0);
+    const estimatedReasoningTokens = Math.max(0, estimateAIChatTokens(reasoning) - 24);
+    const evalDurationSeconds = Math.max(0, Number(lastData && lastData.eval_duration) || 0) / 1000000000;
+    const tokensPerSecond = evalDurationSeconds > 0 ? outputTokens / evalDurationSeconds : 0;
+    emit({
+        type: 'chat.end',
+        provider: 'ollama',
+        result: {
+            stats: {
+                total_output_tokens: outputTokens,
+                reasoning_output_tokens: Math.min(outputTokens, estimatedReasoningTokens),
+                tokens_per_second: tokensPerSecond
+            }
+        }
+    });
+    if (!text.trim()) throw new Error('Ollama 응답이 비어 있습니다.');
+    return {
+        provider: 'ollama',
+        model: String(lastData && lastData.model || model),
+        text: text,
+        reasoning: reasoning,
+        finishReason: String(lastData && lastData.done_reason || ''),
+        usage: {
+            prompt_tokens: promptTokens,
+            completion_tokens: outputTokens,
+            total_tokens: promptTokens + outputTokens
+        },
+        raw: lastData
+    };
+}
+
+function updateOllamaSettingsModeUI() {
+    const baseEl = document.getElementById('settings-ollama-base-url');
+    if (baseEl) {
+        const current = String(baseEl.value || '');
+        if (!current || /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):8080(?:\/api)?\/?$/i.test(current)) {
+            baseEl.value = 'http://127.0.0.1:11434';
+        }
+    }
+}
+
+function loadOllamaSettingsToUI() {
+    const settings = getOllamaSettings();
+    const baseEl = document.getElementById('settings-ollama-base-url');
+    if (baseEl) baseEl.value = settings.baseUrl;
+    updateOllamaSettingsModeUI();
+}
+
+function saveOllamaSettings(showStatus) {
+    const baseEl = document.getElementById('settings-ollama-base-url');
+    const baseUrl = normalizeOllamaBaseUrl(baseEl && baseEl.value);
+    localStorage.setItem(OLLAMA_BASE_URL_KEY, baseUrl);
+    localStorage.removeItem('ss_ollama_connection_mode');
+    if (baseEl) baseEl.value = baseUrl;
+    if (showStatus) {
+        const statusEl = document.getElementById('settings-ollama-status');
+        if (statusEl) statusEl.textContent = 'Ollama 연결 설정을 저장했습니다.';
+        showToast('Ollama 설정을 저장했습니다.');
+    }
+    return { baseUrl: baseUrl };
+}
+
+async function loadSettingsOllamaModels() {
+    const status = document.getElementById('settings-ollama-status');
+    const state = document.getElementById('settings-ollama-loaded-state');
+    const list = document.getElementById('settings-ollama-loaded-models');
+    try {
+        if (status) status.textContent = 'Ollama 모델을 확인하는 중...';
+        const settings = saveOllamaSettings(false);
+        const models = await listOllamaModels(settings);
+        saveStoredModelList(OLLAMA_MODELS_KEY, models);
+        if (!localStorage.getItem('ss_scholar_ai_ollama_model')) localStorage.setItem('ss_scholar_ai_ollama_model', models[0]);
+        if (!localStorage.getItem('ss_ai_chat_ollama_model')) localStorage.setItem('ss_ai_chat_ollama_model', models[0]);
+        if (state) {
+            state.textContent = '연결됨 · ' + models.length + '개';
+            state.className = 'px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 text-[10px]';
+        }
+        if (list) list.textContent = models.join(' · ');
+        if (status) status.textContent = 'Ollama 연결 완료: ' + models[0];
+        return models;
+    } catch (error) {
+        const msg = error && error.message ? String(error.message) : String(error);
+        if (state) {
+            state.textContent = '연결 실패';
+            state.className = 'px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-300 text-[10px]';
+        }
+        if (list) list.textContent = msg;
+        try {
+            if (/failed to fetch/i.test(msg) || /networkerror/i.test(msg) || /cors|access-control-allow-origin/i.test(msg)) {
+                if (status) status.textContent = '연결 실패: 네트워크 또는 CORS 문제일 가능성이 높습니다. 브라우저 개발자 도구의 Network 탭에서 요청 URL과 응답 헤더(특히 Access-Control-Allow-Origin)를 확인하세요.';
+            } else {
+                if (status) status.textContent = '연결 실패: ' + msg;
+            }
+        } catch (_) {
+            if (status) status.textContent = '연결 실패: ' + msg;
+        }
+        throw error;
+    }
 }
 
 function isAIChatGeminiImageModel(model) {
@@ -8091,11 +9532,191 @@ async function listAIStudioChatModels(apiKeyOverride) {
         const id = String(model.name || '').replace(/^models\//, '');
         return /^gemini-/i.test(id)
             && methods.indexOf('generateContent') >= 0
-            && !/(embedding|tts|live|audio)/i.test(id);
+            && !/(embedding|image)/i.test(id);
     }).map(function (model) {
         return String(model.name || '').replace(/^models\//, '');
     }).filter(Boolean);
     return mergeAIChatGeminiModels(models);
+}
+
+async function createDeepseekApiError(response, fallbackLabel) {
+    const status = response ? Number(response.status || 0) : 0;
+    let providerMessage = '';
+    try {
+        const errorData = await response.json();
+        if (errorData && errorData.error && errorData.error.message) {
+            providerMessage = String(errorData.error.message);
+        }
+    } catch (_) {}
+
+    let message = providerMessage || String(fallbackLabel || 'DeepSeek API 오류') + (status ? ': ' + status : '');
+    let code = 'DEEPSEEK_API_ERROR';
+    if (status === 401) {
+        code = 'DEEPSEEK_AUTH_FAILED';
+        message = 'DeepSeek 인증에 실패했습니다. 설정에 저장한 API 키를 확인하세요.';
+    } else if (status === 402 || /insufficient balance/i.test(providerMessage)) {
+        code = 'DEEPSEEK_INSUFFICIENT_BALANCE';
+        message = 'DeepSeek API는 연결되었지만 잔액이 부족합니다. DeepSeek 잔액을 충전한 뒤 다시 시도하세요.';
+    } else if (status === 422) {
+        code = 'DEEPSEEK_INVALID_PARAMETERS';
+        message = 'DeepSeek 요청 매개변수가 올바르지 않습니다. 선택한 모델과 요청 내용을 확인하세요.';
+    } else if (status === 429) {
+        code = 'DEEPSEEK_RATE_LIMIT';
+        message = 'DeepSeek 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.';
+    } else if (status === 500 || status === 503) {
+        code = 'DEEPSEEK_SERVER_BUSY';
+        message = 'DeepSeek 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도하세요.';
+    }
+    const error = new Error(message);
+    error.name = 'DeepseekApiError';
+    error.code = code;
+    error.status = status;
+    error.providerMessage = providerMessage;
+    return error;
+}
+
+async function getDeepseekUserBalance(keyOverride, baseUrlOverride) {
+    const state = getDeepseekApiState();
+    const key = String(keyOverride || state.key || '').trim();
+    if (!key) throw new Error('DeepSeek API Key가 없습니다.');
+    const baseUrl = normalizeDeepseekBaseUrl(baseUrlOverride || state.baseUrl);
+    let response;
+    try {
+        response = await fetch(baseUrl + '/user/balance', {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + key,
+                'Accept': 'application/json'
+            }
+        });
+    } catch (error) {
+        throw new Error('DeepSeek 잔액 서버에 연결할 수 없습니다. (' + (error && error.message ? error.message : error) + ')');
+    }
+    if (!response.ok) throw await createDeepseekApiError(response, 'DeepSeek 잔액 조회 오류');
+    const data = await response.json();
+    const infos = Array.isArray(data.balance_infos) ? data.balance_infos.map(function (item) {
+        return {
+            currency: String(item && item.currency || '').trim(),
+            totalBalance: String(item && item.total_balance || '').trim(),
+            grantedBalance: String(item && item.granted_balance || '').trim(),
+            toppedUpBalance: String(item && item.topped_up_balance || '').trim()
+        };
+    }).filter(function (item) { return item.currency || item.totalBalance; }) : [];
+    const summary = infos.map(function (item) {
+        return [item.currency, item.totalBalance].filter(Boolean).join(' ');
+    }).join(', ');
+    return {
+        isAvailable: data.is_available === true,
+        infos: infos,
+        summary: summary,
+        raw: data
+    };
+}
+
+async function listDeepseekChatModels(keyOverride, baseUrlOverride) {
+    const state = getDeepseekApiState();
+    const key = String(keyOverride || state.key || '').trim();
+    const baseUrl = normalizeDeepseekBaseUrl(baseUrlOverride || state.baseUrl);
+    if (!key) throw new Error('DeepSeek API Key가 없습니다. 앱 설정에서 키를 저장하세요.');
+    const url = baseUrl + '/models';
+    let response;
+    try {
+        response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + key,
+                'Accept': 'application/json'
+            }
+        });
+    } catch (error) {
+        throw new Error('DeepSeek 서버에 연결할 수 없습니다. 네트워크와 Base URL을 확인하세요. (' + (error && error.message ? error.message : error) + ')');
+    }
+    if (!response.ok) {
+        throw await createDeepseekApiError(response, 'DeepSeek 모델 조회 오류');
+    }
+    const data = await response.json();
+    const models = (Array.isArray(data.data) ? data.data : []).map(function (model) {
+        return String((model && (model.id || model.model)) || '').trim();
+    }).filter(Boolean);
+    return mergeAIChatDeepseekModels(models);
+}
+
+function isDeepseekModel(model) {
+    return String(model || '').indexOf('deepseek-') === 0;
+}
+
+function isAIChatDeepseekModel(model) {
+    return isDeepseekModel(model);
+}
+
+function parseDeepseekTextFromResponse(data) {
+    if (!data) return '';
+    const choice = (Array.isArray(data.choices) ? data.choices[0] : null);
+    if (!choice) return '';
+    if (choice.message && typeof choice.message.content === 'string') return choice.message.content;
+    if (typeof choice.text === 'string') return choice.text;
+    if (typeof choice.delta?.content === 'string') return choice.delta.content;
+    if (typeof data.result === 'string') return data.result;
+    return '';
+}
+
+async function callDeepseekChatText(
+    messages,
+    systemInstruction,
+    modelOverride,
+    signal,
+    keyOverride,
+    baseUrlOverride
+) {
+    const state = getDeepseekApiState();
+    const key = String(keyOverride || state.key || '').trim();
+    if (!key) throw new Error('DeepSeek API Key가 없습니다. 앱 설정에서 키를 저장하세요.');
+    const baseUrl = normalizeDeepseekBaseUrl(baseUrlOverride || state.baseUrl);
+    const normalizedModel = String(modelOverride || 'deepseek-v4-flash').trim();
+    const normalized = normalizeAIChatMessages(messages);
+    if (!normalized.length) throw new Error('전송할 대화가 없습니다.');
+    const payloadMessages = [];
+    if (systemInstruction) payloadMessages.push({ role: 'system', content: String(systemInstruction) });
+    normalized.forEach(function (item) {
+        const role = item.role === 'assistant' ? 'assistant' : 'user';
+        payloadMessages.push({ role: role, content: String(item.content) });
+    });
+    if (!payloadMessages.length) throw new Error('전송할 대화가 없습니다.');
+
+    const url = baseUrl + '/chat/completions';
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Authorization': 'Bearer ' + key,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+            model: normalizedModel,
+            messages: payloadMessages,
+            stream: false
+        }),
+        signal: signal
+    });
+
+    if (!response.ok) {
+        throw await createDeepseekApiError(response, 'DeepSeek 생성 오류');
+    }
+    const data = await response.json();
+    const text = parseDeepseekTextFromResponse(data);
+    if (!text) throw new Error('DeepSeek 응답이 비어 있습니다.');
+    return {
+        provider: 'deepseek',
+        model: normalizedModel,
+        text: text,
+        usage: data.usage || null,
+        finishReason: data.choices && data.choices[0] ? data.choices[0].finish_reason : '',
+        raw: data
+    };
+}
+
+async function callDeepseekText(prompt, systemInstruction, useSearch, modelOverride, signal, keyOverride, baseUrlOverride) {
+    return callDeepseekChatText([{ role: 'user', content: String(prompt || '') }], systemInstruction, modelOverride, signal, keyOverride, baseUrlOverride);
 }
 
 async function callAIStudioChat(messages, systemInstruction, modelOverride, signal, responseMode, academicSearch, academicEvidenceCount) {
@@ -8302,6 +9923,22 @@ window.AIChatBridge = Object.freeze({
         saveStoredModelList(AI_CHAT_GEMINI_MODELS_KEY, models);
         return models;
     },
+    getCachedOllamaModels: function () {
+        return readStoredModelList(OLLAMA_MODELS_KEY);
+    },
+    refreshOllamaModels: async function () {
+        const models = await listOllamaModels();
+        saveStoredModelList(OLLAMA_MODELS_KEY, models);
+        return models;
+    },
+    getCachedDeepseekModels: function () {
+        return mergeAIChatDeepseekModels(readStoredModelList(AI_CHAT_DEEPSEEK_MODELS_KEY));
+    },
+    refreshDeepseekModels: async function () {
+        const models = await listDeepseekChatModels();
+        saveStoredModelList(AI_CHAT_DEEPSEEK_MODELS_KEY, models);
+        return models;
+    },
     refreshLMStudioModels: async function () {
         const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
         const models = result.models.map(function (item) { return item.id; }).filter(Boolean);
@@ -8325,6 +9962,46 @@ window.AIChatBridge = Object.freeze({
         try {
             if (request.provider === 'aistudio') {
                 return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch, request.academicEvidenceCount);
+            }
+            if (request.provider === 'ollama') {
+                const result = await callOllamaChatText(
+                    request.messages,
+                    request.systemInstruction,
+                    request.model,
+                    controller.signal,
+                    request.mode,
+                    typeof request.onStreamEvent === 'function' ? request.onStreamEvent : undefined
+                );
+                return {
+                    provider: 'ollama',
+                    model: result.model || request.model || '',
+                    text: result.text || '',
+                    reasoning: result.reasoning || '',
+                    finishReason: result.finishReason || '',
+                    usage: result.usage || null,
+                    contextLength: null,
+                    maxOutputTokens: null,
+                    responseId: null
+                };
+            }
+            if (request.provider === 'deepseek') {
+                const result = await callDeepseekChatText(
+                    request.messages,
+                    request.systemInstruction,
+                    request.model,
+                    controller.signal
+                );
+                return {
+                    provider: result.provider || 'deepseek',
+                    model: result.model || request.model || 'deepseek-v4-flash',
+                    text: result.text || '',
+                    reasoning: result.reasoning || '',
+                    finishReason: result.finishReason || result.raw?.choices?.[0]?.finish_reason || '',
+                    usage: result.usage || null,
+                    contextLength: null,
+                    maxOutputTokens: null,
+                    responseId: result.responseId || null
+                };
             }
             const synced = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
             if (controller.signal.aborted) {
@@ -8492,7 +10169,11 @@ function ensureSidebarAILoaded() {
                 });
             },
             listScholarAIGeminiModels: function () { return listAIStudioTextModels(); },
+            listScholarAIOllamaModels: function () { return listOllamaModels(); },
+            listDeepseekModels: function () { return listDeepseekChatModels(); },
             getCachedScholarAIGeminiModels: function () { return readStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY); },
+            getCachedScholarAIOllamaModels: function () { return readStoredModelList(OLLAMA_MODELS_KEY); },
+            getCachedScholarAIDeepseekModels: function () { return readStoredModelList(AI_CHAT_DEEPSEEK_MODELS_KEY); },
             getCachedScholarAILMStudioModels: function () { return readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY); },
             refreshScholarAILMStudioModels: async function () {
                 const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
@@ -8500,6 +10181,18 @@ function ensureSidebarAILoaded() {
                 saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
                 return ids;
             },
+            refreshOllamaModels: async function () {
+                const models = await listOllamaModels();
+                saveStoredModelList(OLLAMA_MODELS_KEY, models);
+                return models;
+            },
+            refreshDeepseekModels: async function () {
+                const models = await listDeepseekChatModels();
+                saveStoredModelList(AI_CHAT_DEEPSEEK_MODELS_KEY, models);
+                return models;
+            },
+            setScholarAIDeepseekConfig: function (config) { return getScholarAIProviderRuntime().setDeepSeekConfig(config); },
+            getScholarAIDeepseekConfig: function () { return getScholarAIProviderRuntime().getDeepSeekConfig(); },
             getScholarAIProvider: function () { return getScholarAIProviderRuntime().getProvider(); },
             setScholarAIProvider: function (provider) { return getScholarAIProviderRuntime().setProvider(provider); },
             getScholarAILMStudioConfig: function () { return getScholarAIProviderRuntime().getLMStudioConfig(); },
@@ -8667,7 +10360,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260721-7';
+    const aiSidebarScriptVersion = '20260725-stable-math-1';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -8860,6 +10553,7 @@ async function loadAiSettingsToUI() {
         await window.GithubDataSettings.ensureUiReady();
     }
     const settings = await getAiSettings();
+    loadOllamaSettingsToUI();
     const googleCalendarEnabled = settings && typeof settings.googleCalendarEnabled === 'boolean'
         ? settings.googleCalendarEnabled
         : getGoogleCalendarEnabledFromLocal();
@@ -8883,6 +10577,8 @@ async function loadAiSettingsToUI() {
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
         if (html2pptCheckEmpty) html2pptCheckEmpty.checked = false;
+        const fmaViewerCheckEmpty = document.getElementById('fma-viewer-visible');
+        if (fmaViewerCheckEmpty) fmaViewerCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
         const localEnterBr = getEnterButtonInsertBrFromLocal();
         if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
@@ -8928,6 +10624,7 @@ async function loadAiSettingsToUI() {
         applyMacroVisibility({ macroVisible: false });
         applyTemplateVisibility({ templateVisible: false });
         applyHtml2pptVisibility({ html2pptVisible: false });
+        applyFmaViewerVisibility({ fmaViewerVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
         applyShareSettingsFold(getShareSettingsFoldedFromLocal());
         applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
@@ -8947,6 +10644,11 @@ async function loadAiSettingsToUI() {
     if (settings.apiKey) localStorage.setItem('ss_gemini_api_key', settings.apiKey);
     if (settings.imgbbApiKey) localStorage.setItem('ss_imgbb_api_key', settings.imgbbApiKey);
     else localStorage.removeItem('ss_imgbb_api_key');
+    const deepseekInput = document.getElementById('deepseek-api-key');
+    const deepseekBaseInput = document.getElementById('deepseek-base-url');
+    const deepseekState = getDeepseekApiState();
+    if (deepseekInput) deepseekInput.value = settings.deepseekApiKey || deepseekState.key || '';
+    if (deepseekBaseInput) deepseekBaseInput.value = settings.deepseekBaseUrl || deepseekState.baseUrl || 'https://api.deepseek.com';
     const imageCheck = document.getElementById('image-upload-enabled');
     if (imageCheck) imageCheck.checked = settings.imageUploadEnabled === true;
     const scholarSearchCheck = document.getElementById('scholar-search-visible');
@@ -8961,6 +10663,8 @@ async function loadAiSettingsToUI() {
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
     const html2pptCheck = document.getElementById('html2ppt-visible');
     if (html2pptCheck) html2pptCheck.checked = settings.html2pptVisible === true;
+    const fmaViewerCheck = document.getElementById('fma-viewer-visible');
+    if (fmaViewerCheck) fmaViewerCheck.checked = settings.fmaViewerVisible === true;
     const enterBrCheck = document.getElementById('enter-button-insert-br');
     const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
     if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
@@ -8988,9 +10692,17 @@ async function loadAiSettingsToUI() {
     }
     syncImgbbApiKeyInputs(settings.imgbbApiKey || '');
     if (typeof validateApiKeyInputUI === 'function') validateApiKeyInputUI();
+    if (typeof validateDeepseekApiKeyInputUI === 'function') validateDeepseekApiKeyInputUI();
+    if (typeof validateDeepseekBaseUrlInputUI === 'function') validateDeepseekBaseUrlInputUI();
     if (settings.apiKey && isValidGoogleAiApiKey(settings.apiKey)
         && localStorage.getItem('ss_gemini_api_key_verified') !== credentialFingerprint(settings.apiKey)) {
         verifyAIStudioApiKeyConnection(settings.apiKey).catch(function () {});
+    }
+    const deepseekKey = settings.deepseekApiKey || getDeepseekApiState().key;
+    const deepseekBase = settings.deepseekBaseUrl || getDeepseekApiState().baseUrl;
+    if (deepseekKey && isValidDeepseekAiKey(deepseekKey)
+        && localStorage.getItem('ss_deepseek_api_key_verified') !== getDeepseekVerifiedToken(deepseekKey, deepseekBase)) {
+        verifyDeepseekApiKeyConnection(deepseekKey, deepseekBase).catch(function () {});
     }
     const useCheck = document.getElementById('ai-use-checkbox');
     const section = document.getElementById('ai-password-section');
@@ -9050,6 +10762,7 @@ async function loadAiSettingsToUI() {
     applyMacroVisibility(settings);
     applyTemplateVisibility(settings);
     applyHtml2pptVisibility(settings);
+    applyFmaViewerVisibility(settings);
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
@@ -9102,6 +10815,7 @@ async function initAiVisibility() {
     applyMacroVisibility(settings || { macroVisible: false });
     applyTemplateVisibility(settings || { templateVisible: false });
     applyHtml2pptVisibility(settings || { html2pptVisible: false });
+    applyFmaViewerVisibility(settings || { fmaViewerVisible: false });
     applyEditToolsVisibilityByMode();
     await applyGithubUiState(settings || { githubEnabled: false, githubCacheDocs: [] });
     await applyAiFeatureVisibility();
@@ -9370,6 +11084,7 @@ function ensureInDbStatusUi() {
             + '<div class="px-4 py-2 bg-indigo-600 text-white text-2xl text-center tracking-wide">inDB Status</div>'
             + '<div id="indb-status-list" class="flex-1 overflow-auto p-4 space-y-3 bg-slate-100 dark:bg-slate-800"></div>'
             + '<div class="border-t-2 border-slate-700 p-2 flex items-center justify-center gap-2 bg-white dark:bg-slate-900">'
+            + '<button type="button" id="btn-download-all-indb" onclick="downloadAllInDbAsZip()" class="px-4 py-1.5 bg-emerald-600 text-white font-bold rounded hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait">전체 다운로드</button>'
             + '<button type="button" onclick="deleteAllInDbStatusItems()" class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">전체지우기</button>'
             + '<button type="button" onclick="closeInDbStatusModal()" class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">닫기</button>'
             + '</div>'
@@ -9507,6 +11222,12 @@ window.updateContent = updateContent;
 window.renderMarkdown = renderMarkdown;
 window.toggleMode = toggleMode;
 window.handleFileSelect = handleFileSelect;
+window.handleImageFolderSelect = handleImageFolderSelect;
+window.toggleOpenSourceMenu = toggleOpenSourceMenu;
+window.openFilePickerFromMenu = openFilePickerFromMenu;
+window.openImageFolderPickerFromMenu = openImageFolderPickerFromMenu;
+window.openFmaViewerFromMenu = openFmaViewerFromMenu;
+window.openFmaViewer = openFmaViewer;
 window.readFile = readFile;
 window.saveFile = saveFile;
 window.saveCurrentFile = saveCurrentFile;
@@ -9587,6 +11308,7 @@ window.closeHtml2pptPanel = closeHtml2pptPanel;
 window.toggleHtml2pptDockRight = toggleHtml2pptDockRight;
 window.toggleHtml2pptPanelFullscreen = toggleHtml2pptPanelFullscreen;
 window.toggleHtml2pptSection = toggleHtml2pptSection;
+window.toggleFmaViewerSection = toggleFmaViewerSection;
 window.openHighlightPopup = openHighlightPopup;
 window.closeHighlightPopup = closeHighlightPopup;
 window.toggleHighlightPopupDockRight = toggleHighlightPopupDockRight;
@@ -9677,6 +11399,12 @@ window.openInDbStatusModal = openInDbStatusModal;
 window.closeInDbStatusModal = closeInDbStatusModal;
 window.deleteInDbStatusItem = deleteInDbStatusItem;
 window.deleteAllInDbStatusItems = deleteAllInDbStatusItems;
+window.downloadAllInDbAsZip = downloadAllInDbAsZip;
+window.saveFeatureRecordToInDb = saveFeatureRecordToInDb;
+window.upsertFeatureStoreRecordsInDb = upsertFeatureStoreRecordsInDb;
+window.replaceFeatureStoreRecordsInDb = replaceFeatureStoreRecordsInDb;
+window.deleteFeatureRecordFromInDb = deleteFeatureRecordFromInDb;
+window.syncKnownFeatureDataToInDb = syncKnownFeatureDataToInDb;
 window.applyCodeColorSettings = applyCodeColorSettings;
 window.resetCodeColorSettings = resetCodeColorSettings;
 window.clearUnusedCache = clearUnusedCache;

@@ -47,7 +47,8 @@
     <img id="crop-preview" alt="크롭 미리보기" />
   </div>
   <div class="btns">
-    <button class="primary" id="btn-apply">크롭 적용</button>
+    <button class="primary" id="btn-apply-new">새 파일 만들기</button>
+    <button id="btn-apply-current">현재 파일에 적용</button>
     <button id="btn-cancel">취소</button>
   </div>
   <script>
@@ -217,10 +218,9 @@
     canvas.addEventListener('mouseup', function() { dragging = false; });
     canvas.addEventListener('mouseleave', function() { dragging = false; });
 
-    document.getElementById('btn-apply').addEventListener('click', function() {
+    function submitCropResult(action) {
       if (!img || rect.w < 5 || rect.h < 5) {
-        postToHost({ type: 'crop-cancel' });
-        if (window.opener) window.close();
+        alert('먼저 자를 영역을 선택하세요.');
         return;
       }
       const tc = document.createElement('canvas');
@@ -230,7 +230,7 @@
       tctx.drawImage(img, rect.x * scale.w, rect.y * scale.h, tc.width, tc.height, 0, 0, tc.width, tc.height);
       var dataUrl = tc.toDataURL('image/png');
       if (dataUrl.length > 4000000) dataUrl = tc.toDataURL('image/jpeg', 0.92);
-      if (!postToHost({ type: 'aiimg-cropped', dataUrl: dataUrl })) {
+      if (!postToHost({ type: 'aiimg-cropped', dataUrl: dataUrl, action: action })) {
         if (window.opener) window.close();
         return;
       }
@@ -241,6 +241,13 @@
         }
       });
       if (window.opener) setTimeout(function() { window.close(); }, 500);
+    }
+
+    document.getElementById('btn-apply-new').addEventListener('click', function() {
+      submitCropResult('new');
+    });
+    document.getElementById('btn-apply-current').addEventListener('click', function() {
+      submitCropResult('replace');
     });
 
     document.getElementById('btn-cancel').addEventListener('click', function() {

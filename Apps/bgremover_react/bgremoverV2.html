@@ -606,14 +606,14 @@
         }
 
         function getEmbedApplyLabel(mode) {
-            if (mode === 'mdviewer-image') return '이미지 뷰어에 적용';
+            if (mode === 'mdviewer-image') return '현재 파일에 적용';
             if (mode === 'media-slide') return '타임라인에 적용';
             if (mode === 'media-layer') return '레이어에 적용';
             return 'CD 레이어에 적용';
         }
 
         function getEmbedBannerText(mode) {
-            if (mode === 'mdviewer-image') return '이미지 뷰어 배경 제거 — 분석 후 「이미지 뷰어에 적용」을 누르세요.';
+            if (mode === 'mdviewer-image') return '이미지 뷰어 배경 제거 — 분석 후 「새 파일 만들기」 또는 「현재 파일에 적용」을 선택하세요.';
             if (mode === 'media-slide') return '미디어 타임라인 배경 제거 — 분석 후 「타임라인에 적용」을 누르세요.';
             if (mode === 'media-layer') return '미디어 레이어 배경 제거 — 분석 후 「레이어에 적용」을 누르세요.';
             return 'CD 레이어 배경 제거 — 분석 후 「CD 레이어에 적용」을 누르세요.';
@@ -622,6 +622,8 @@
         function markEmbedApplyReady() {
             const applyBtn = document.getElementById('embedApplyBtn');
             if (applyBtn) applyBtn.disabled = false;
+            const newBtn = document.getElementById('embedNewFileBtn');
+            if (newBtn) newBtn.disabled = false;
         }
 
         async function importEmbedImage(payload) {
@@ -642,7 +644,7 @@
             showToast(`${modeLabel} 연동`, '이미지를 불러왔습니다. AI 분석 실행 후 적용하세요.', 'success');
         }
 
-        function commitEmbedCutout() {
+        function commitEmbedCutout(action) {
             if (!state.cleanCutoutCanvas || !state.appEmbed?.targetId) {
                 showToast('적용 불가', '먼저 AI 분석을 실행해 주세요.', 'error');
                 return;
@@ -653,9 +655,11 @@
                 mode: state.appEmbed.mode,
                 targetId: state.appEmbed.targetId,
                 dataUrl,
+                action: action === 'new' ? 'new' : 'replace',
             });
             const modeLabel = getEmbedModeLabel(state.appEmbed.mode);
-            showToast('적용 완료', `${modeLabel}로 결과를 전송했습니다.`, 'success');
+            const actionLabel = action === 'new' ? '새 파일 만들기' : '현재 파일에 적용';
+            showToast('적용 완료', `${modeLabel}로 결과를 전송했습니다. (${actionLabel})`, 'success');
             if (window.opener) window.setTimeout(() => window.close(), 350);
         }
 
@@ -693,8 +697,20 @@
                 applyBtn.disabled = true;
                 applyBtn.className = 'flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-[0_0_10px_rgba(16,185,129,0.25)] transition-all';
                 applyBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> ${applyLabel}`;
-                applyBtn.addEventListener('click', commitEmbedCutout);
+                applyBtn.addEventListener('click', () => commitEmbedCutout('replace'));
                 actionWrap.insertBefore(applyBtn, downloadCutoutBtn);
+
+                let newFileBtn = null;
+                if (embedMode === 'mdviewer-image') {
+                    newFileBtn = document.createElement('button');
+                    newFileBtn.id = 'embedNewFileBtn';
+                    newFileBtn.type = 'button';
+                    newFileBtn.disabled = true;
+                    newFileBtn.className = 'flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-[0_0_10px_rgba(79,70,229,0.25)] transition-all';
+                    newFileBtn.innerHTML = '<i data-lucide="copy-plus" class="w-4 h-4"></i> 새 파일 만들기';
+                    newFileBtn.addEventListener('click', () => commitEmbedCutout('new'));
+                    actionWrap.insertBefore(newFileBtn, applyBtn);
+                }
 
                 const cancelBtn = document.createElement('button');
                 cancelBtn.id = 'embedCancelBtn';
@@ -702,7 +718,7 @@
                 cancelBtn.className = 'flex items-center gap-1.5 px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-semibold rounded-xl border border-slate-800 transition-all';
                 cancelBtn.innerHTML = '<i data-lucide="x" class="w-4 h-4"></i> 취소';
                 cancelBtn.addEventListener('click', cancelAppEmbed);
-                actionWrap.insertBefore(cancelBtn, applyBtn);
+                actionWrap.insertBefore(cancelBtn, newFileBtn || applyBtn);
                 lucide.createIcons();
             }
 

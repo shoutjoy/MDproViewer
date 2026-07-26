@@ -5,7 +5,7 @@ import socketserver
 import webbrowser
 import os
 
-PORT = 8080
+PREFERRED_PORT = int(os.environ.get("MD_VIEWER_PORT", "8765"))
 DIR = os.path.dirname(os.path.abspath(__file__))
 
 os.chdir(DIR)
@@ -15,8 +15,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
         super().end_headers()
 
-with socketserver.TCPServer(("", PORT), Handler) as httpd:
-    url = f"http://localhost:{PORT}"
+class ReusableTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+try:
+    httpd = ReusableTCPServer(("", PREFERRED_PORT), Handler)
+except OSError:
+    httpd = ReusableTCPServer(("", 0), Handler)
+
+with httpd:
+    port = httpd.server_address[1]
+    url = f"http://localhost:{port}"
     print(f"서버 실행: {url}")
     print("종료: Ctrl+C")
     webbrowser.open(url)

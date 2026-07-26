@@ -793,6 +793,7 @@ function persistCurrent(html) {
   autoSidebarTimer = setTimeout(() => {
     renderSidebar();
   }, 180);
+  if (typeof scheduleGenSlideInDbMirror === "function") scheduleGenSlideInDbMirror();
 }
 
 function scheduleAutoSave(html) {

@@ -4,16 +4,28 @@
     var DEFAULT_CONFIG = {
         tex: {
             inlineMath: [['$', '$'], ['\\(', '\\)']],
-            displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            displayMath: [['$$', '$$'], ['\\[', '\\]']],
+            processEscapes: true,
+            processEnvironments: true
+        },
+        options: {
+            skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
         }
     };
 
     var DEFAULT_SCRIPT_URL = 'js/math_render/math_render.js';
     var DEFAULT_MATHJAX_URL = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js';
+    var TYPESET_QUEUES = typeof WeakMap === 'function' ? new WeakMap() : null;
+    var fallbackTypesetQueue = Promise.resolve();
 
     function clone(value) {
         if (value == null) return value;
-        return JSON.parse(JSON.stringify(value));
+        try {
+            var serialized = JSON.stringify(value);
+            return serialized === undefined ? value : JSON.parse(serialized);
+        } catch (_) {
+            return value;
+        }
     }
 
     function mergeDeep(base, extra) {
@@ -50,7 +62,18 @@
         if (!s) return false;
         if (/[가-힣]{2,}/.test(s)) return false;
         if (/^[A-Za-z]{2,}$/.test(s)) return false;
-        return /\\[A-Za-z]+|[_^=]|[+\-*/]|[{}]|[<>]|(?:^|[^A-Za-z])(?:Q|I|Y|v|w|k|n|p|x|y|z|mu|tau|sigma)(?:[^A-Za-z]|$)|\d/.test(s);
+        return /\\[A-Za-z]+|[_^=]|[+\-*/]|[{}]|[<>]/.test(s);
+    }
+
+    function enqueueTypeset(targetWindow, task) {
+        var win = targetWindow || global;
+        var previous = TYPESET_QUEUES ? TYPESET_QUEUES.get(win) : fallbackTypesetQueue;
+        if (!previous || typeof previous.then !== 'function') previous = Promise.resolve();
+        var next = previous.catch(function () { return false; }).then(task);
+        var settled = next.catch(function () { return false; });
+        if (TYPESET_QUEUES) TYPESET_QUEUES.set(win, settled);
+        else fallbackTypesetQueue = settled;
+        return next;
     }
 
     function looksLikeCitationText(text) {
@@ -136,6 +159,9 @@
         ensureWindowConfig: function (targetWindow, overrides) {
             var win = targetWindow || global;
             var current = (win && win.MathJax && typeof win.MathJax === 'object') ? win.MathJax : {};
+            if (current && (current.startup || typeof current.typesetPromise === 'function')) {
+                return current;
+            }
             var merged = mergeDeep(this.createMathJaxConfig(), current);
             if (overrides && typeof overrides === 'object') merged = mergeDeep(merged, overrides);
             if (win) win.MathJax = merged;
@@ -235,28 +261,30 @@
             var opts = options || {};
             var win = opts.targetWindow || global;
             var root = target || (win.document && win.document.body);
-            var mj = win && win.MathJax;
-            if (!root || !mj || typeof mj.typesetPromise !== 'function') {
-                return Promise.resolve(false);
-            }
-            try {
-                if (opts.clear !== false && typeof mj.typesetClear === 'function') {
-                    mj.typesetClear([root]);
+            return enqueueTypeset(win, function () {
+                var mj = win && win.MathJax;
+                if (!root || !mj || typeof mj.typesetPromise !== 'function') {
+                    return false;
                 }
-                return mj.typesetPromise([root]).then(function () {
-                    return true;
-                }).catch(function (err) {
+                try {
+                    if (opts.clear !== false && typeof mj.typesetClear === 'function') {
+                        mj.typesetClear([root]);
+                    }
+                    return mj.typesetPromise([root]).then(function () {
+                        return true;
+                    }).catch(function (err) {
+                        if (opts.silent !== true && win.console && typeof win.console.warn === 'function') {
+                            win.console.warn('[MathRender] typeset failed:', err);
+                        }
+                        return false;
+                    });
+                } catch (err) {
                     if (opts.silent !== true && win.console && typeof win.console.warn === 'function') {
                         win.console.warn('[MathRender] typeset failed:', err);
                     }
                     return false;
-                });
-            } catch (err) {
-                if (opts.silent !== true && win.console && typeof win.console.warn === 'function') {
-                    win.console.warn('[MathRender] typeset failed:', err);
                 }
-                return Promise.resolve(false);
-            }
+            });
         },
         typesetWhenReady: function (target, options) {
             var opts = options || {};

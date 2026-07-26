@@ -246,7 +246,7 @@ function renderMiniPreviewContent() {
         if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
 
         function finalizeMini(html) {
-            if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
+            if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return false;
             miniPreviewContent.innerHTML = String(html || '');
             applyMiniPreviewZoom();
             try { hydrateInternalImagesInElement(miniPreviewContent, registerPreviewInternalObjectUrl); } catch (_) {}
@@ -255,6 +255,7 @@ function renderMiniPreviewContent() {
                     window.MermaidTRT.renderIn(miniPreviewContent).catch(function () {});
                 }
             } catch (_) {}
+            return true;
         }
 
         try {
@@ -264,9 +265,17 @@ function renderMiniPreviewContent() {
                     (typeof marked !== 'undefined' && marked.parse) ? marked : null,
                     preprocessed,
                     { fallbackText: resolvedRaw }
-                ).then(function (html) {
-                    finalizeMini(html || '');
-                    try { if (MathRender && typeof MathRender.typesetElement === 'function') MathRender.typesetElement(miniPreviewContent); } catch (_) {}
+                ).then(async function (html) {
+                    if (!finalizeMini(html || '')) return;
+                    try {
+                        if (MathRender && typeof MathRender.typesetElement === 'function') {
+                            await MathRender.typesetElement(miniPreviewContent, {
+                                silent: true,
+                                retries: 20,
+                                delay: 80
+                            });
+                        }
+                    } catch (_) {}
                 });
                 return;
             }

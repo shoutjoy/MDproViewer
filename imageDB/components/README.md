@@ -25,7 +25,7 @@
 ## 옵션
 - `db`: 이미 열려있는 IndexedDB 인스턴스 주입(선택)
 - `dbName`: 기본값 `MarkdownProDB`
-- `dbVersion`: 기본값 `4`
+- `dbVersion`: 선택값. 생략하면 기존 DB의 현재 버전을 그대로 사용
 - `getImgbbApiKey()`: imgBB 키 반환 함수
 - `onInsertMarkdown(url, alt)`: Markdown 삽입 콜백
 - `onInsertHtml(url, alt)`: HTML 삽입 콜백

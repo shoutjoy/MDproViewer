@@ -130,7 +130,6 @@
     (function () {
       'use strict';
       var DB_NAME = 'MarkdownProDB';
-      var DB_VERSION = 4;
       var db = null;
       var objectUrls = [];
 
@@ -152,7 +151,7 @@
 
       function openDb() {
         return new Promise(function (resolve, reject) {
-          var req = indexedDB.open(DB_NAME, DB_VERSION);
+          var req = indexedDB.open(DB_NAME);
           req.onupgradeneeded = function (e) {
             var d = e.target.result;
             if (!d.objectStoreNames.contains('images')) d.createObjectStore('images', { keyPath: 'id' });

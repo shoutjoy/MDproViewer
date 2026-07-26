@@ -60,6 +60,27 @@ function makeInDbRecordName() {
   return `slides_${y}${m}${d}_${hh}${mm}`;
 }
 
+let genSlideInDbMirrorTimer = null;
+function scheduleGenSlideInDbMirror() {
+  clearTimeout(genSlideInDbMirrorTimer);
+  genSlideInDbMirrorTimer = setTimeout(() => {
+    genSlideInDbMirrorTimer = null;
+    try {
+      const host = window.parent && window.parent !== window ? window.parent : window;
+      if (typeof host.saveFeatureRecordToInDb !== "function") return;
+      host.saveFeatureRecordToInDb("genslides", {
+        id: "slides:live-autosave",
+        sourceId: "live-autosave",
+        recordType: "slides",
+        name: "GenSlide live autosave",
+        updatedAt: Date.now(),
+        currentIndex: cur,
+        slides: slides.map((s) => ({ html: String((s && s.html) || "") }))
+      }).catch(() => {});
+    } catch (_) {}
+  }, 900);
+}
+
 function saveSlidesToInDb(nameHint) {
   const name = String(nameHint || "").trim() || makeInDbRecordName();
   const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -73,7 +94,24 @@ function saveSlidesToInDb(nameHint) {
         currentIndex: cur,
         slides: slides.map((s) => ({ html: String((s && s.html) || "") }))
       });
-      tx.oncomplete = () => { try { db.close(); } catch (_) {} resolve(id); };
+      tx.oncomplete = () => {
+        try {
+          const host = window.parent && window.parent !== window ? window.parent : window;
+          if (typeof host.saveFeatureRecordToInDb === "function") {
+            host.saveFeatureRecordToInDb("genslides", {
+              id: `slides:${id}`,
+              sourceId: id,
+              recordType: "slides",
+              name,
+              updatedAt: Date.now(),
+              currentIndex: cur,
+              slides: slides.map((s) => ({ html: String((s && s.html) || "") }))
+            }).catch(() => {});
+          }
+        } catch (_) {}
+        try { db.close(); } catch (_) {}
+        resolve(id);
+      };
       tx.onerror = () => { try { db.close(); } catch (_) {} reject(tx.error || new Error("Failed inDB save.")); };
     } catch (e) {
       try { db.close(); } catch (_) {}

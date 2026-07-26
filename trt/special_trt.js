@@ -21,8 +21,8 @@
         }
     };
 
-    // \* \_ \[ \] \( \) \# \- \. \! 등 불필요 escape 해제
-    const ESCAPED_MD_TOKEN_RE = /\\([`*_{}\[\]()#+\-.!~>])/g;
+    // MathJax 구분자인 \(...\), \[...\]가 손상되지 않도록 괄호류는 해제 대상에서 제외한다.
+    const ESCAPED_MD_TOKEN_RE = /\\([`*_{}#+\-.!~>])/g;
     const NUMERIC_REFERENCE_RE = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
     const FENCE_RE = /^```/;
 

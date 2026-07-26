@@ -9,7 +9,8 @@
 
   function openDb(name, ver) {
     return new Promise(function (resolve, reject) {
-      var req = indexedDB.open(name || 'MarkdownProDB', ver || 4);
+      var dbName = name || 'MarkdownProDB';
+      var req = ver ? indexedDB.open(dbName, ver) : indexedDB.open(dbName);
       req.onupgradeneeded = function (e) {
         var db = e.target.result;
         if (!db.objectStoreNames.contains('images')) db.createObjectStore('images', { keyPath: 'id' });
@@ -257,7 +258,7 @@
   ImageUploadComponent.prototype.init = async function () {
     if (!global.ImageDB) throw new Error('imageDB.js가 필요합니다.');
     this.render();
-    this.db = this.opt.db || await openDb(this.opt.dbName || 'MarkdownProDB', this.opt.dbVersion || 4);
+    this.db = this.opt.db || await openDb(this.opt.dbName || 'MarkdownProDB', this.opt.dbVersion);
     this.setStatus('컴포넌트 준비 완료', false);
   };
 

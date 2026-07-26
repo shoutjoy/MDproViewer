@@ -56,7 +56,17 @@
           <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
           <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
           <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+          <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+          <option value="gemini-deep-research-pro-preview">Deep Research Pro Preview</option>
           <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+          <option value="gemini-2.5-flash-tts">Gemini 2.5 Flash TTS</option>
+          <option value="gemini-2.5-pro-tts">Gemini 2.5 Pro TTS</option>
+          <option value="gemini-2.5-flash-native-audio-dialog">Gemini 2.5 Flash Native Audio Dialog</option>
+          <option value="gemini-3-flash-live">Gemini 3 Flash Live</option>
+          <option value="gemini-3.5-live-translate">Gemini 3.5 Live Translate</option>
+          <option value="lyria-3-clip">Lyria 3 Clip</option>
+          <option value="lyria-3-pro">Lyria 3 Pro</option>
+          <option value="veo-3-fast-generate">Veo 3 Fast Generate</option>
           <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
           <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
@@ -290,7 +300,17 @@
           <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
           <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
           <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+          <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+          <option value="gemini-deep-research-pro-preview">Deep Research Pro Preview</option>
           <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+          <option value="gemini-2.5-flash-tts">Gemini 2.5 Flash TTS</option>
+          <option value="gemini-2.5-pro-tts">Gemini 2.5 Pro TTS</option>
+          <option value="gemini-2.5-flash-native-audio-dialog">Gemini 2.5 Flash Native Audio Dialog</option>
+          <option value="gemini-3-flash-live">Gemini 3 Flash Live</option>
+          <option value="gemini-3.5-live-translate">Gemini 3.5 Live Translate</option>
+          <option value="lyria-3-clip">Lyria 3 Clip</option>
+          <option value="lyria-3-pro">Lyria 3 Pro</option>
+          <option value="veo-3-fast-generate">Veo 3 Fast Generate</option>
           <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
           <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</option>
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp</option>
@@ -488,7 +508,7 @@
   var __scholarAITextFontSizes = {};
   var __scholarAILastSelectionTarget = null, __scholarAILastSelectionDoc = null;
   var __scholarAIActiveResultTab = 'insert';
-  var __scholarAIZoomPercent = 100, __scholarAIZoomMode = 'edit';
+  var __scholarAIZoomPercent = 100, __scholarAIZoomMode = 'edit', __scholarAIZoomRenderToken = 0;
   window.__scholarAIZoomMode = __scholarAIZoomMode;
   var __scholarAIRunning = false;
   var __scholarAIProgressTimer = null;
@@ -913,6 +933,9 @@
       uploadedAt: new Date().toISOString()
     };
     viewerSSPImgHistorySave();
+    if (typeof window.saveFeatureRecordToInDb === 'function') {
+      window.saveFeatureRecordToInDb('ssp_image_ai', entry).catch(function () {});
+    }
     viewerSSPImgHistoryRender();
     if (__viewerFsMetaDataUrl === dataURL) viewerSSPUpdateFullscreenInfo(dataURL);
   }
@@ -1523,7 +1546,7 @@
     var getter = getCallback('getScholarAIProvider');
     try {
       var provider = getter && getter();
-      return provider === 'aistudio' ? 'aistudio' : 'lmstudio';
+      return provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' ? provider : 'lmstudio';
     } catch (e) { return 'lmstudio'; }
   }
 
@@ -1533,21 +1556,31 @@
     var values = Array.isArray(models) ? models.slice() : [];
     var current = String(selected || '').trim();
     if (current && values.indexOf(current) < 0) values.unshift(current);
+    // Deduplicate while preserving order (current first if provided)
+    var seen = new Set();
+    var unique = [];
+    for (var i = 0; i < values.length; i++) {
+      var m = String(values[i] || '').trim();
+      if (!m) continue;
+      if (seen.has(m)) continue;
+      seen.add(m);
+      unique.push(m);
+    }
     sel.innerHTML = '';
-    if (!values.length) {
+    if (!unique.length) {
       var empty = document.createElement('option');
       empty.value = current;
       empty.textContent = current || '모델을 직접 입력하세요';
       sel.appendChild(empty);
     } else {
-      values.forEach(function (model) {
+      unique.forEach(function (model) {
         var option = document.createElement('option');
         option.value = model;
         option.textContent = model;
         sel.appendChild(option);
       });
     }
-    sel.value = current || values[0] || '';
+    sel.value = current || unique[0] || '';
   }
 
   function scholarAIEnsureProviderControls() {
@@ -1558,7 +1591,7 @@
     wrap.innerHTML = ''
       + '<label for="scholar-ai-provider-select" style="font-size:10px;margin-bottom:4px;display:block">AI 공급자</label>'
       + '<select id="scholar-ai-provider-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8;margin-bottom:8px">'
-      + '<option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option></select>'
+      + '<option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option></select>'
       + '<button type="button" id="scholar-ai-lm-model-refresh" class="sa-btn ghost" style="display:none;width:100%;margin:0 0 8px">LM Studio 현재 모델 다시 확인</button>'
       + '<div id="scholar-ai-provider-status" role="status" style="font-size:10px;color:#94a3b8;margin:-2px 0 8px;line-height:1.4">상세 연결 설정은 앱 설정 → AI 연동 설정에서 관리합니다.</div>';
     panel.insertBefore(wrap, panel.firstChild);
@@ -1598,6 +1631,42 @@
       : '로드된 LLM ' + values.length + '개: ' + values.join(', ') + ' · 첫 번째 모델을 자동 사용합니다.', false);
   }
 
+  function scholarAIApplyLoadedDeepseekModels(models) {
+    var sel = document.getElementById('scholar-ai-model-select');
+    if (!sel) return;
+    var values = Array.isArray(models) ? models.map(String).filter(Boolean) : [];
+    sel.innerHTML = '';
+    if (!values.length) {
+      var empty = document.createElement('option');
+      empty.value = '';
+      empty.textContent = '설정에서 DeepSeek 모델을 조회해 주세요';
+      sel.appendChild(empty);
+      scholarAISetProviderStatus('DeepSeek에서 모델 목록을 가져오지 못했습니다.', true);
+      return;
+    }
+    values.forEach(function (model, index) {
+      var option = document.createElement('option');
+      option.value = model;
+      option.textContent = index === 0 ? model + ' (자동 사용)' : model;
+      sel.appendChild(option);
+    });
+    sel.value = values[0];
+    scholarAISetProviderStatus('DeepSeek 모델 ' + values.length + '개를 확인했습니다.', false);
+  }
+
+  function scholarAIApplyLoadedOllamaModels(models) {
+    var values = Array.isArray(models) ? models.map(String).filter(Boolean) : [];
+    var getter = getCallback('getScholarAIModelId');
+    var selected = '';
+    try { selected = (getter && getter('ollama')) || ''; } catch (e) {}
+    scholarAISetModelOptions(values, selected || values[0] || '');
+    if (!values.length) {
+      scholarAISetProviderStatus('Ollama 모델이 없습니다. Ollama 서버 실행과 설정 주소를 확인하세요.', true);
+      return;
+    }
+    scholarAISetProviderStatus('Ollama 모델 ' + values.length + '개를 확인했습니다.', false);
+  }
+
   function scholarAIRefreshLMStudioModel(silent) {
     var refresh = getCallback('refreshScholarAILMStudioModels');
     if (typeof refresh !== 'function') return Promise.resolve([]);
@@ -1613,6 +1682,47 @@
       if (sel) {
         sel.innerHTML = '<option value="">LM Studio 확인 실패</option>';
       }
+      scholarAISetProviderStatus(error && error.message ? error.message : String(error), true);
+      return [];
+    }).finally(function () {
+      __scholarAILMRefreshPromise = null;
+    });
+    return __scholarAILMRefreshPromise;
+  }
+
+  function scholarAIRefreshDeepseekModels(silent) {
+    var refresh = getCallback('refreshDeepseekModels') || getCallback('listScholarAIDeepseekModels');
+    if (typeof refresh !== 'function') return Promise.resolve([]);
+    if (__scholarAILMRefreshPromise) return __scholarAILMRefreshPromise;
+    if (!silent) scholarAISetProviderStatus('DeepSeek 모델 목록을 확인하는 중...', false);
+    __scholarAILMRefreshPromise = Promise.resolve().then(function () {
+      return refresh();
+    }).then(function (models) {
+      scholarAIApplyLoadedDeepseekModels(models || []);
+      return models || [];
+    }).catch(function (error) {
+      var sel = document.getElementById('scholar-ai-model-select');
+      if (sel) {
+        sel.innerHTML = '<option value="">DeepSeek 모델 확인 실패</option>';
+      }
+      scholarAISetProviderStatus(error && error.message ? error.message : String(error), true);
+      return [];
+    }).finally(function () {
+      __scholarAILMRefreshPromise = null;
+    });
+    return __scholarAILMRefreshPromise;
+  }
+
+  function scholarAIRefreshOllamaModels(silent) {
+    var refresh = getCallback('refreshOllamaModels') || getCallback('listScholarAIOllamaModels');
+    if (typeof refresh !== 'function') return Promise.resolve([]);
+    if (__scholarAILMRefreshPromise) return __scholarAILMRefreshPromise;
+    if (!silent) scholarAISetProviderStatus('Ollama 모델 목록을 확인하는 중...', false);
+    __scholarAILMRefreshPromise = Promise.resolve(refresh()).then(function (models) {
+      scholarAIApplyLoadedOllamaModels(models || []);
+      return models || [];
+    }).catch(function (error) {
+      scholarAISetModelOptions([], '');
       scholarAISetProviderStatus(error && error.message ? error.message : String(error), true);
       return [];
     }).finally(function () {
@@ -1647,6 +1757,48 @@
       sel.onchange = null;
       return;
     }
+    if (provider === 'deepseek') {
+      sel.disabled = false;
+      sel.style.cursor = 'pointer';
+      sel.title = '모델 변경은 DeepSeek에서 수행하세요.';
+      scholarAISetProviderStatus('DeepSeek에서 사용할 모델을 선택하세요.', false);
+      var deepseekSelectedModel = '';
+      try { deepseekSelectedModel = (getter && typeof getter === 'function' ? getter(provider) : null) || ''; } catch (e) {}
+      var cachedDeepseekGetter = getCallback('getCachedScholarAIDeepseekModels');
+      var deepseekModels = [];
+      try { deepseekModels = typeof cachedDeepseekGetter === 'function' ? (cachedDeepseekGetter() || []) : []; } catch (e2) {}
+      if (!deepseekModels.length) {
+        deepseekModels = ['deepseek-v4-flash', 'deepseek-v4-pro'];
+      }
+      scholarAISetModelOptions(deepseekModels, deepseekSelectedModel || deepseekModels[0] || '');
+      scholarAIRefreshDeepseekModels(true);
+      sel.onchange = function () {
+        var setter = getCallback('setScholarAIModelId');
+        if (typeof setter === 'function') setter(sel.value, scholarAIGetProvider());
+      };
+      return;
+    }
+    if (provider === 'ollama') {
+      sel.disabled = false;
+      sel.style.cursor = 'pointer';
+      sel.title = 'Ollama에 설치된 모델입니다.';
+      if (sel.previousElementSibling && sel.previousElementSibling.tagName === 'LABEL') {
+        sel.previousElementSibling.textContent = 'Ollama 모델 선택';
+      }
+      scholarAISetProviderStatus('Ollama에서 사용할 모델을 선택하세요.', false);
+      var ollamaSelectedModel = '';
+      try { ollamaSelectedModel = (getter && getter(provider)) || ''; } catch (ollamaError) {}
+      var cachedOllamaGetter = getCallback('getCachedScholarAIOllamaModels');
+      var ollamaModels = [];
+      try { ollamaModels = typeof cachedOllamaGetter === 'function' ? (cachedOllamaGetter() || []) : []; } catch (cachedOllamaError) {}
+      scholarAISetModelOptions(ollamaModels, ollamaSelectedModel || ollamaModels[0] || '');
+      scholarAIRefreshOllamaModels(true);
+      sel.onchange = function () {
+        var setter = getCallback('setScholarAIModelId');
+        if (typeof setter === 'function') setter(sel.value, 'ollama');
+      };
+      return;
+    }
     sel.disabled = false;
     sel.style.cursor = 'pointer';
     sel.title = '';
@@ -1657,9 +1809,48 @@
     var models = [];
     try { models = typeof cachedGetter === 'function' ? (cachedGetter() || []) : []; } catch (e2) {}
     if (!models.length) {
-      models = ['gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+      models = [
+        'gemini-3.5-flash',
+        'gemini-3.1-pro-preview',
+        'gemini-3-flash-preview',
+        'gemini-3.6-flash',
+        'gemini-deep-research-pro-preview',
+        'gemini-2.5-flash-tts',
+        'gemini-2.5-pro-tts',
+        'gemini-2.5-flash-native-audio-dialog',
+        'gemini-3-flash-live',
+        'gemini-3.5-live-translate',
+        'lyria-3-clip',
+        'lyria-3-pro',
+        'veo-3-fast-generate',
+        'gemini-2.5-pro',
+        'gemini-2.5-flash',
+        'gemini-2.5-flash-lite'
+      ];
     }
     scholarAISetModelOptions(models, selectedModel || models[0] || '');
+    // Ensure there are no duplicate <option> entries (remove later duplicates by value)
+    (function dedupeSelectOptions() {
+      try {
+        var s = document.getElementById('scholar-ai-model-select');
+        if (!s) return;
+        var seen = new Set();
+        // iterate backwards so removal doesn't affect indices
+        for (var i = s.options.length - 1; i >= 0; i--) {
+          var val = String(s.options[i].value || '').trim();
+          if (!val) continue;
+          if (seen.has(val)) {
+            s.remove(i);
+          } else {
+            seen.add(val);
+          }
+        }
+      } catch (e) {
+        // swallow errors — dedupe is best-effort
+        console.debug('scholarAI dedupe failed', e);
+      }
+    })();
+
     sel.onchange = function () {
       var setter = getCallback('setScholarAIModelId');
       if (typeof setter === 'function') setter(sel.value, scholarAIGetProvider());
@@ -1718,6 +1909,9 @@
   }
   function scholarAIHistorySave() {
     try { localStorage.setItem('ss_viewer_scholar_ai_history', JSON.stringify(__scholarAIHistory)); } catch (e) {}
+    if (typeof window.replaceFeatureStoreRecordsInDb === 'function') {
+      window.replaceFeatureStoreRecordsInDb('scholar_ai', __scholarAIHistory).catch(function () {});
+    }
   }
   function scholarAIHistoryAdd(promptSnippet, resultText) {
     __scholarAIHistory.unshift({ id: Date.now(), prompt: promptSnippet || '', result: resultText || '', at: new Date().toISOString() });
@@ -2004,6 +2198,8 @@
       var res = await callScholarAI(fullPrompt, sys, false, modelId);
       if (res && res.fallbackFrom === 'lmstudio') {
         scholarAISetProviderStatus('LM Studio 실패로 AI Studio를 사용했습니다: ' + (res.fallbackReason || '연결 오류'), true);
+      } else if (res && res.provider === 'deepseek' && res.model) {
+        scholarAISetProviderStatus('DeepSeek 모델 ' + res.model + '로 응답을 생성했습니다.', false);
       } else if (res && res.provider === 'lmstudio' && res.model) {
         scholarAIApplyLoadedLMStudioModels([res.model]);
         scholarAISetProviderStatus('이번 요청에 사용된 LM Studio 모델: ' + res.model, false);
@@ -2020,6 +2216,11 @@
       if (resultEl) {
         if ((e && e.name === 'AbortError') || /aborted|abort/i.test(msg)) resultEl.value = 'Stopped by user.';
         else resultEl.value = 'Error: ' + msg;
+      }
+      if (/DeepSeek.*잔액|insufficient balance/i.test(msg)) {
+        scholarAISetProviderStatus('DeepSeek 연결 성공 · API 잔액 부족 · 설정의 “잔액 충전”에서 충전 후 다시 시도하세요.', true);
+      } else if (/DeepSeek.*인증|authentication|unauthorized/i.test(msg)) {
+        scholarAISetProviderStatus('DeepSeek 인증 실패 · 설정에 저장한 API 키를 확인하세요.', true);
       }
       if (insertEl) insertEl.value = '';
       scholarAISetResultTab('explanation');
@@ -2138,22 +2339,45 @@
     var view = document.getElementById('scholar-ai-result-zoom-view');
     if (!ta || !view) return;
     var raw = ta.value || '';
-    if (typeof marked !== 'undefined' && marked.parse) {
-      try {
-        var out = marked.parse(raw);
-        if (out && typeof out.then === 'function') {
-          out.then(function (html) { view.innerHTML = html || ''; }).catch(function () {
-            view.innerHTML = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(raw) + '</pre>';
-          });
-        } else {
-          view.innerHTML = out || '';
-        }
-      } catch (e) {
-        view.innerHTML = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(raw) + '</pre>';
+    var token = ++__scholarAIZoomRenderToken;
+    var fallback = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(raw) + '</pre>';
+    var prepared = raw;
+    try {
+      if (typeof preprocessMarkdownForView === 'function') prepared = preprocessMarkdownForView(raw);
+    } catch (_) {}
+
+    function applyRenderedHtml(html) {
+      if (token !== __scholarAIZoomRenderToken || !view.isConnected) return Promise.resolve(false);
+      view.innerHTML = html || fallback;
+      if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
+        return MathRender.typesetElement(view, {
+          silent: true,
+          retries: 20,
+          delay: 80
+        });
       }
-      return;
+      return Promise.resolve(false);
     }
-    view.innerHTML = '<pre style="white-space:pre-wrap;margin:0">' + escapeHtml(raw) + '</pre>';
+
+    try {
+      if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
+        MathRender.renderMarkdownSafe(
+          (typeof marked !== 'undefined' && marked.parse) ? marked : null,
+          prepared,
+          { fallbackHtml: fallback, fallbackText: raw }
+        ).then(applyRenderedHtml).catch(function () {
+          if (token === __scholarAIZoomRenderToken) view.innerHTML = fallback;
+        });
+        return;
+      }
+      if (typeof marked !== 'undefined' && marked.parse) {
+        Promise.resolve(marked.parse(prepared)).then(applyRenderedHtml).catch(function () {
+          if (token === __scholarAIZoomRenderToken) view.innerHTML = fallback;
+        });
+        return;
+      }
+    } catch (_) {}
+    if (token === __scholarAIZoomRenderToken) view.innerHTML = fallback;
   }
   function scholarAISetZoomMode(mode) {
     var ta = document.getElementById('scholar-ai-result-zoom-ta');
@@ -3327,6 +3551,9 @@ function viewerSSPFsUploadImgbb() {
       if (raw) __viewerSSPImgHistory = JSON.parse(raw);
       else __viewerSSPImgHistory = [];
     } catch (e) { __viewerSSPImgHistory = []; }
+    if (typeof window.upsertFeatureStoreRecordsInDb === 'function') {
+      window.upsertFeatureStoreRecordsInDb('ssp_image_ai', __viewerSSPImgHistory).catch(function () {});
+    }
   }
   function viewerSSPImgHistorySave() {
     try { localStorage.setItem(LS_SSP_IMG_HISTORY, JSON.stringify(__viewerSSPImgHistory)); } catch (e) {}
@@ -3337,11 +3564,17 @@ function viewerSSPFsUploadImgbb() {
     __viewerSSPImgHistory.unshift(entry);
     if (__viewerSSPImgHistory.length > SSP_IMG_HISTORY_MAX) __viewerSSPImgHistory = __viewerSSPImgHistory.slice(0, SSP_IMG_HISTORY_MAX);
     viewerSSPImgHistorySave();
+    if (typeof window.saveFeatureRecordToInDb === 'function') {
+      window.saveFeatureRecordToInDb('ssp_image_ai', entry).catch(function () {});
+    }
     viewerSSPImgHistoryRender();
   }
   function viewerSSPImgHistoryRemove(id) {
     __viewerSSPImgHistory = __viewerSSPImgHistory.filter(function (h) { return h.id !== id; });
     viewerSSPImgHistorySave();
+    if (typeof window.deleteFeatureRecordFromInDb === 'function') {
+      window.deleteFeatureRecordFromInDb('ssp_image_ai', id).catch(function () {});
+    }
     viewerSSPImgHistoryRender();
   }
   function viewerSSPImgHistoryRender() {
