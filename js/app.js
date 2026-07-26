@@ -9211,6 +9211,7 @@ async function callOllamaChatText(messages, systemInstruction, modelOverride, si
     });
     const emit = typeof onStreamEvent === 'function' ? onStreamEvent : function () {};
     const reasoningMode = responseMode === 'reasoning';
+    const maxOutputTokens = reasoningMode ? 8192 : 2048;
     const estimatedInputTokens = payloadMessages.reduce(function (sum, item) {
         return sum + estimateAIChatTokens(item.content);
     }, 0);
@@ -9218,11 +9219,18 @@ async function callOllamaChatText(messages, systemInstruction, modelOverride, si
         type: 'request.start',
         provider: 'ollama',
         estimated_input_tokens: estimatedInputTokens,
+        max_output_tokens: maxOutputTokens,
         reasoning: reasoningMode ? 'on' : 'off'
     });
     emit({ type: 'transport.start', provider: 'ollama' });
     const headers = { 'Content-Type': 'application/json', Accept: 'application/x-ndjson, application/json' };
-    const body = { model: model, messages: payloadMessages, stream: true, think: reasoningMode };
+    const body = {
+        model: model,
+        messages: payloadMessages,
+        stream: true,
+        think: reasoningMode,
+        options: { num_predict: maxOutputTokens }
+    };
     let lineBuffer = '';
     let text = '';
     let reasoning = '';
@@ -9319,6 +9327,7 @@ async function callOllamaChatText(messages, systemInstruction, modelOverride, si
             completion_tokens: outputTokens,
             total_tokens: promptTokens + outputTokens
         },
+        maxOutputTokens: maxOutputTokens,
         raw: lastData
     };
 }
@@ -9980,7 +9989,7 @@ window.AIChatBridge = Object.freeze({
                     finishReason: result.finishReason || '',
                     usage: result.usage || null,
                     contextLength: null,
-                    maxOutputTokens: null,
+                    maxOutputTokens: result.maxOutputTokens || null,
                     responseId: null
                 };
             }

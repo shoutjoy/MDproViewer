@@ -1035,8 +1035,8 @@
         + formatStreamNumber(answerTokens) + ' tok';
     }
     if (outputEl) {
-      outputEl.textContent = '전체 ' + (liveStream.hasExactStats ? '' : '≈') + formatStreamNumber(outputTokens)
-        + (liveStream.maxOutputTokens ? ' / ' + formatStreamNumber(liveStream.maxOutputTokens) : '') + ' tok';
+      outputEl.textContent = '생성 합계 ' + (liveStream.hasExactStats ? '' : '≈') + formatStreamNumber(outputTokens)
+        + (liveStream.maxOutputTokens ? ' / 최대 ' + formatStreamNumber(liveStream.maxOutputTokens) : '') + ' tok';
     }
     if (speedEl) speedEl.textContent = measuredTps ? measuredTps.toFixed(1) + ' tok/s' : '첫 토큰 대기';
     var showLiveReasoning = state.responseMode === 'reasoning' && state.showReasoning;
@@ -3015,7 +3015,7 @@
         + '  <span id="ai-chat-thinking-context">컨텍스트 확인 중</span>'
         + '  <span id="ai-chat-thinking-reasoning-tokens">추론 ≈0 tok</span>'
         + '  <span id="ai-chat-thinking-answer-tokens">응답 ≈0 tok</span>'
-        + '  <span id="ai-chat-thinking-output">전체 ≈0 tok</span>'
+        + '  <span id="ai-chat-thinking-output">생성 합계 ≈0 tok</span>'
         + '  <span id="ai-chat-thinking-speed">첫 토큰 대기</span>'
         + '</div>'
         + '<section id="ai-chat-live-reasoning" class="ai-chat-live-stream reasoning" hidden>'
