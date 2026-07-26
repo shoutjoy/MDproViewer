@@ -8992,8 +8992,10 @@ function getScholarAIProviderRuntime() {
 
 let aiChatAbortController = null;
 const AI_CHAT_GEMINI_MODELS_KEY = 'ss_ai_chat_gemini_models_v1';
+const aiChatGeminiModelLimits = Object.create(null);
 const AI_CHAT_DEEPSEEK_MODELS_KEY = 'ss_ai_chat_deepseek_models_v1';
 const OLLAMA_MODELS_KEY = 'ss_ollama_models_v1';
+const aiChatOllamaContextLengths = Object.create(null);
 const OLLAMA_BASE_URL_KEY = 'ss_ollama_base_url';
 const AI_CHAT_GEMINI_DEFAULT_MODELS = [
     'gemini-3.5-flash',
@@ -9198,26 +9200,87 @@ async function listOllamaModels(settingsOverride) {
     return Array.from(new Set(models));
 }
 
+function getOllamaContextLengthFromShow(data) {
+    const modelInfo = data && data.model_info || {};
+    const modelContextLength = Object.keys(modelInfo).reduce(function (largest, key) {
+        if (!/\.context_length$/i.test(key)) return largest;
+        return Math.max(largest, Number(modelInfo[key]) || 0);
+    }, 0);
+    const parameters = String(data && data.parameters || '');
+    const configuredMatch = parameters.match(/(?:^|\n)\s*num_ctx\s+(\d+)/i);
+    const configuredContextLength = configuredMatch ? Math.max(0, Number(configuredMatch[1]) || 0) : 0;
+    return configuredContextLength || modelContextLength;
+}
+
+async function getAIChatOllamaContextLength(baseUrl, model, signal) {
+    const cached = Math.max(0, Number(aiChatOllamaContextLengths[model]) || 0);
+    try {
+        const runningData = await requestLocalAIJson(baseUrl + '/api/ps', {
+            method: 'GET',
+            headers: { Accept: 'application/json' },
+            signal: signal
+        });
+        const runningModels = Array.isArray(runningData.models) ? runningData.models : [];
+        const running = runningModels.find(function (item) {
+            const name = String(item && (item.name || item.model) || '');
+            return name === model || name.replace(/:latest$/i, '') === model.replace(/:latest$/i, '');
+        });
+        const runningContextLength = Math.max(0, Number(running && running.context_length) || 0);
+        if (runningContextLength) {
+            aiChatOllamaContextLengths[model] = runningContextLength;
+            return runningContextLength;
+        }
+    } catch (error) {
+        if (signal && signal.aborted) throw error;
+    }
+    try {
+        const showData = await requestLocalAIJson(baseUrl + '/api/show', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ model: model }),
+            signal: signal
+        });
+        const shownContextLength = getOllamaContextLengthFromShow(showData);
+        if (shownContextLength) {
+            aiChatOllamaContextLengths[model] = shownContextLength;
+            return shownContextLength;
+        }
+    } catch (error) {
+        if (signal && signal.aborted) throw error;
+    }
+    return cached || 8192;
+}
+
 async function callOllamaChatText(messages, systemInstruction, modelOverride, signal, responseMode, onStreamEvent, settingsOverride) {
     const settings = Object.assign({}, getOllamaSettings(), settingsOverride || {});
     settings.baseUrl = normalizeOllamaBaseUrl(settings.baseUrl);
     const model = String(modelOverride || localStorage.getItem('ss_ai_chat_ollama_model') || localStorage.getItem('ss_scholar_ai_ollama_model') || '').trim();
     if (!model) throw new Error('Ollama 모델을 먼저 선택하세요.');
     const normalized = normalizeAIChatMessages(messages);
-    const payloadMessages = [];
-    if (systemInstruction) payloadMessages.push({ role: 'system', content: String(systemInstruction) });
-    normalized.forEach(function (item) {
-        payloadMessages.push({ role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') });
-    });
+    const lastUserIndex = normalized.map(function (item) { return item.role; }).lastIndexOf('user');
+    if (lastUserIndex < 0) throw new Error('전송할 사용자 질문이 없습니다.');
     const emit = typeof onStreamEvent === 'function' ? onStreamEvent : function () {};
     const reasoningMode = responseMode === 'reasoning';
-    const maxOutputTokens = reasoningMode ? 8192 : 2048;
+    const contextLength = await getAIChatOllamaContextLength(settings.baseUrl, model, signal);
+    const fixedInputTokens = estimateAIChatTokens(systemInstruction) + estimateAIChatTokens(normalized[lastUserIndex].content);
+    const outputReserve = Math.min(
+        Math.max(1, contextLength - fixedInputTokens - 256),
+        Math.max(1024, Math.floor(contextLength * (reasoningMode ? 0.4 : 0.32)))
+    );
+    const historyTokenBudget = Math.max(0, contextLength - fixedInputTokens - outputReserve - 256);
+    const historyMessages = retainAIChatHistory(normalized.slice(0, lastUserIndex), historyTokenBudget);
+    const payloadMessages = historyMessages.concat([normalized[lastUserIndex]]).map(function (item) {
+        return { role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content || '') };
+    });
+    if (systemInstruction) payloadMessages.unshift({ role: 'system', content: String(systemInstruction) });
     const estimatedInputTokens = payloadMessages.reduce(function (sum, item) {
         return sum + estimateAIChatTokens(item.content);
     }, 0);
+    const maxOutputTokens = Math.max(1, contextLength - estimatedInputTokens - 256);
     emit({
         type: 'request.start',
         provider: 'ollama',
+        context_length: contextLength,
         estimated_input_tokens: estimatedInputTokens,
         max_output_tokens: maxOutputTokens,
         reasoning: reasoningMode ? 'on' : 'off'
@@ -9229,7 +9292,10 @@ async function callOllamaChatText(messages, systemInstruction, modelOverride, si
         messages: payloadMessages,
         stream: true,
         think: reasoningMode,
-        options: { num_predict: maxOutputTokens }
+        options: {
+            num_ctx: contextLength,
+            num_predict: maxOutputTokens
+        }
     };
     let lineBuffer = '';
     let text = '';
@@ -9325,8 +9391,10 @@ async function callOllamaChatText(messages, systemInstruction, modelOverride, si
         usage: {
             prompt_tokens: promptTokens,
             completion_tokens: outputTokens,
+            total_output_tokens: outputTokens,
             total_tokens: promptTokens + outputTokens
         },
+        contextLength: contextLength,
         maxOutputTokens: maxOutputTokens,
         raw: lastData
     };
@@ -9543,9 +9611,38 @@ async function listAIStudioChatModels(apiKeyOverride) {
             && methods.indexOf('generateContent') >= 0
             && !/(embedding|image)/i.test(id);
     }).map(function (model) {
-        return String(model.name || '').replace(/^models\//, '');
+        const id = String(model.name || '').replace(/^models\//, '');
+        if (id) {
+            aiChatGeminiModelLimits[id] = {
+                inputTokenLimit: Math.max(0, Number(model.inputTokenLimit) || 0),
+                outputTokenLimit: Math.max(0, Number(model.outputTokenLimit) || 0)
+            };
+        }
+        return id;
     }).filter(Boolean);
     return mergeAIChatGeminiModels(models);
+}
+
+async function getAIChatGeminiModelLimits(model, key, signal) {
+    const cached = aiChatGeminiModelLimits[model];
+    if (cached && cached.outputTokenLimit) return cached;
+    try {
+        const response = await fetch(
+            'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + '?key=' + encodeURIComponent(key),
+            { headers: { Accept: 'application/json' }, signal: signal }
+        );
+        if (!response.ok) return cached || { inputTokenLimit: 0, outputTokenLimit: 8192 };
+        const data = await response.json();
+        const limits = {
+            inputTokenLimit: Math.max(0, Number(data.inputTokenLimit) || 0),
+            outputTokenLimit: Math.max(0, Number(data.outputTokenLimit) || 0)
+        };
+        aiChatGeminiModelLimits[model] = limits;
+        return limits;
+    } catch (error) {
+        if (signal && signal.aborted) throw error;
+        return cached || { inputTokenLimit: 0, outputTokenLimit: 8192 };
+    }
 }
 
 async function createDeepseekApiError(response, fallbackLabel) {
@@ -9747,9 +9844,13 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     if (!contents.length) throw new Error('전송할 대화가 없습니다.');
     const reasoningMode = responseMode === 'reasoning';
     const imageModel = isAIChatGeminiImageModel(model);
+    const modelLimits = imageModel
+        ? { inputTokenLimit: 0, outputTokenLimit: 0 }
+        : await getAIChatGeminiModelLimits(model, key, signal);
+    const maxOutputTokens = Math.max(1, Number(modelLimits.outputTokenLimit) || 8192);
     const generationConfig = imageModel
         ? { responseModalities: ['TEXT', 'IMAGE'] }
-        : { maxOutputTokens: reasoningMode ? 8192 : (academicSearch ? (Number(academicEvidenceCount) > 20 ? 4096 : 3072) : 1024) };
+        : { maxOutputTokens: maxOutputTokens };
     if (!imageModel && /^gemini-3/i.test(model)) {
         generationConfig.thinkingConfig = { thinkingLevel: reasoningMode ? 'high' : 'low' };
     } else if (!imageModel && /^gemini-2\.5/i.test(model)) {
@@ -9813,7 +9914,27 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     if (!text && !reasoning && !images.length) throw new Error('AI Studio 응답이 비어 있습니다.');
     if (!text && images.length) text = '요청한 이미지를 생성했습니다.';
     else if (!text) text = '모델이 추론 내용만 반환하고 최종 답변을 생성하지 못했습니다. 출력 토큰 설정을 확인하세요.';
-    return { provider: 'aistudio', model: model, text: text, reasoning: reasoning, images: images, finishReason: candidate.finishReason || '' };
+    const usageMetadata = data.usageMetadata || {};
+    const promptTokens = Math.max(0, Number(usageMetadata.promptTokenCount) || 0);
+    const completionTokens = Math.max(0, Number(usageMetadata.candidatesTokenCount) || 0);
+    const reasoningTokens = Math.max(0, Number(usageMetadata.thoughtsTokenCount) || 0);
+    return {
+        provider: 'aistudio',
+        model: model,
+        text: text,
+        reasoning: reasoning,
+        images: images,
+        finishReason: candidate.finishReason || '',
+        usage: {
+            promptTokens: promptTokens,
+            completionTokens: completionTokens,
+            reasoningTokens: reasoningTokens,
+            outputTokens: completionTokens + reasoningTokens,
+            totalTokens: Math.max(0, Number(usageMetadata.totalTokenCount) || (promptTokens + completionTokens + reasoningTokens))
+        },
+        contextLength: Number(modelLimits.inputTokenLimit) || null,
+        maxOutputTokens: imageModel ? null : maxOutputTokens
+    };
 }
 
 function insertAIChatTextIntoDocument(text, mode) {
@@ -9988,7 +10109,7 @@ window.AIChatBridge = Object.freeze({
                     reasoning: result.reasoning || '',
                     finishReason: result.finishReason || '',
                     usage: result.usage || null,
-                    contextLength: null,
+                    contextLength: result.contextLength || null,
                     maxOutputTokens: result.maxOutputTokens || null,
                     responseId: null
                 };
@@ -10041,17 +10162,8 @@ window.AIChatBridge = Object.freeze({
                     ? '설정된 추론 강도로 충분히 검토한 뒤 완성도 높은 최종 답변을 작성하세요. 사용자가 요청한 모든 항목·코드·설명을 누락하지 말고, 내부 계획이나 추론은 최종 답변에 섞지 마세요.'
                     : '핵심부터 바로 답하되 사용자가 요청한 코드, 설명, 형식과 분량을 완전하게 충족하세요. 인위적인 문장 수 제한을 두지 마세요.');
             const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 8192);
-            const quickMaxTokens = Math.max(1, Number(config.quickMaxTokens) || 4096);
-            const reasoningMaxTokens = Math.max(1, Number(config.reasoningMaxTokens) || 8192);
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
-            const academicMaxTokens = Math.min(Number(request.academicEvidenceCount) > 20 ? 4096 : 3072, configuredMaxTokens);
-            const requestedOutputTokens = splitAcademicMode
-                ? Math.min(2200, configuredMaxTokens)
-                : continuationMode
-                ? configuredMaxTokens
-                : request.academicSearch
-                ? academicMaxTokens
-                : Math.min(reasoningMode ? reasoningMaxTokens : quickMaxTokens, configuredMaxTokens);
+            const requestedOutputTokens = contextLength || configuredMaxTokens;
             const baseSystemPrompt = [request.systemInstruction || '', modeInstruction].filter(Boolean).join('\n\n');
             const fixedInputTokens = estimateAIChatTokens(baseSystemPrompt) + estimateAIChatTokens(messages[lastUserIndex].content);
             const historyOutputReserve = getAIChatHistoryOutputReserve(contextLength, requestedOutputTokens, reasoningMode);
@@ -10069,16 +10181,15 @@ window.AIChatBridge = Object.freeze({
             const contextOutputBudget = contextLength
                 ? Math.max(1, contextLength - estimatedInputTokens - 256)
                 : configuredMaxTokens;
-            const normalOutputBudget = Math.max(1, Math.min(configuredMaxTokens, contextOutputBudget));
-            const requestMaxTokens = splitAcademicMode
-                ? Math.min(2200, normalOutputBudget)
-                : continuationMode
-                ? normalOutputBudget
-                : reasoningMode
-                ? (request.academicSearch
-                    ? Math.min(academicMaxTokens, normalOutputBudget)
-                    : Math.min(reasoningMaxTokens, normalOutputBudget))
-                : (request.academicSearch ? Math.min(academicMaxTokens, normalOutputBudget) : Math.min(quickMaxTokens, normalOutputBudget));
+            const requestMaxTokens = Math.max(1, contextOutputBudget);
+            const minimumTimeout = continuationMode
+                ? 600000
+                : (reasoningMode ? 300000 : (request.academicSearch ? 240000 : 60000));
+            const requestTimeoutMs = Math.max(
+                minimumTimeout,
+                Number(config.timeoutMs) || 0,
+                Math.ceil((requestMaxTokens / 8) * 1000 + 120000)
+            );
             const streamEventHandler = typeof request.onStreamEvent === 'function'
                 ? request.onStreamEvent
                 : null;
@@ -10103,15 +10214,7 @@ window.AIChatBridge = Object.freeze({
                     : (reasoningMode ? (configuredReasoning === 'auto' ? undefined : configuredReasoning) : 'off'),
                 contextLength: contextLength || undefined,
                 maxTokens: requestMaxTokens,
-                timeoutMs: continuationMode
-                    ? Math.max(
-                        600000,
-                        Number(config.timeoutMs) || 0,
-                        Math.ceil((requestMaxTokens / 8) * 1000 + 120000)
-                    )
-                    : reasoningMode
-                    ? Math.max(300000, Number(config.timeoutMs) || 0)
-                    : (request.academicSearch ? Math.max(240000, Number(config.timeoutMs) || 0) : Math.min(60000, Number(config.timeoutMs) || 60000)),
+                timeoutMs: requestTimeoutMs,
                 store: splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),
                 previousResponseId: request.previousResponseId || undefined,
                 signal: controller.signal,

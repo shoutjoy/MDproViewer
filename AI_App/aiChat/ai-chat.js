@@ -996,6 +996,9 @@
     var tokenRatio = liveStream.maxOutputTokens ? Math.min(1, outputTokens / liveStream.maxOutputTokens) : 0;
     if (liveStream.phase === 'generating') {
       liveStream.progress = Math.max(liveStream.progress, 35 + tokenRatio * 64);
+      if (tokenRatio >= 0.92 && (state.provider === 'lmstudio' || state.provider === 'ollama')) {
+        liveStream.stage = '출력 한도 근접 · 이어쓰기 준비';
+      }
     }
     var measuredTps = liveStream.tokensPerSecond;
     if (!measuredTps && liveStream.firstTokenAt && outputTokens) {
@@ -1130,7 +1133,12 @@
       liveStream.exactReasoningTokens = Math.max(0, Number(stats.reasoning_output_tokens) || 0);
       liveStream.hasExactStats = true;
       liveStream.tokensPerSecond = Math.max(0, Number(stats.tokens_per_second) || 0);
-      liveStream.stage = '응답 완료';
+      var exactTokenRatio = liveStream.maxOutputTokens
+        ? liveStream.exactOutputTokens / liveStream.maxOutputTokens
+        : 0;
+      liveStream.stage = exactTokenRatio >= 0.92 && (state.provider === 'lmstudio' || state.provider === 'ollama')
+        ? '출력 한도 근접 · 이어쓰기 준비'
+        : '응답 완료';
       liveStream.progress = 100;
       liveStream.phase = 'complete';
     } else if (type === 'error') {
@@ -2219,12 +2227,42 @@
     return /(?:이다|한다|있다|없다|된다|보인다|제시한다|확인된다|요약된다|마친다|완료한다|입니다|합니다|습니다|됩니다|있습니다|없습니다)$/.test(tail);
   }
 
+  function responseOutputTokens(message, result) {
+    var usage = result && result.usage || message && message.usage || {};
+    var totalOutput = Number(usage.outputTokens || usage.total_output_tokens || 0);
+    if (totalOutput > 0) return totalOutput;
+    var completionTokens = Math.max(0, Number(
+      usage.completionTokens || usage.completion_tokens
+      || usage.candidatesTokenCount || usage.candidates_token_count || 0
+    ));
+    var reasoningTokens = Math.max(0, Number(
+      usage.reasoningTokens || usage.reasoning_output_tokens
+      || usage.thoughtsTokenCount || usage.thoughts_token_count || 0
+    ));
+    return completionTokens + reasoningTokens;
+  }
+
+  function responseNearOutputLimit(message, result) {
+    var maxOutputTokens = Math.max(0, Number(
+      result && result.maxOutputTokens || message && message.maxOutputTokens || 0
+    ));
+    var outputTokens = responseOutputTokens(message, result);
+    return maxOutputTokens >= 256 && outputTokens >= Math.floor(maxOutputTokens * 0.92);
+  }
+
   function shouldOfferContinuation(message, result, academicSearch) {
     if (!message || message.error || (Array.isArray(message.images) && message.images.length)) return false;
     var answer = String(message.content || '').trim();
     if (!answer) return !!message.notice;
     var finishReason = String(result && result.finishReason || '').toLowerCase();
     if (/length|max[_ -]?tokens?|token[_ -]?limit|context[_ -]?(?:length|limit)/.test(finishReason)) return true;
+    var provider = String(result && result.provider || message.provider || '').toLowerCase();
+    if (provider === 'aistudio') {
+      return responseNearOutputLimit(message, result) && answer.length >= 240 && !answerEndsCleanly(answer);
+    }
+    if (provider === 'lmstudio' || provider === 'ollama') {
+      return responseNearOutputLimit(message, result) && answer.length >= 240;
+    }
     if (academicSearch && /포함 여부:\s*아니오/.test(String(message.checklist || ''))) return true;
     return answer.length >= 240 && !answerEndsCleanly(answer);
   }
@@ -2890,16 +2928,19 @@
           item.appendChild(answerLabel);
         }
         if (String(message.content || '').trim()) item.appendChild(content);
-        if (message.role === 'assistant' && message.provider === 'lmstudio' && message.usage) {
+        if (message.role === 'assistant' && (message.provider === 'lmstudio' || message.provider === 'ollama') && message.usage) {
           var usage = message.usage || {};
           var responseStatsParts = [];
+          var inputTokenCount = Number(usage.input_tokens || usage.promptTokens || usage.prompt_tokens || 0);
+          var outputTokenCount = responseOutputTokens(message, null);
+          var reasoningTokenCount = Number(usage.reasoning_output_tokens || usage.reasoningTokens || 0);
           if (message.contextLength) {
-            responseStatsParts.push('컨텍스트 ' + formatStreamNumber(usage.input_tokens) + ' / ' + formatStreamNumber(message.contextLength));
+            responseStatsParts.push('컨텍스트 ' + formatStreamNumber(inputTokenCount) + ' / ' + formatStreamNumber(message.contextLength));
           }
-          if (usage.total_output_tokens || message.maxOutputTokens) {
-            responseStatsParts.push('출력 ' + formatStreamNumber(usage.total_output_tokens) + (message.maxOutputTokens ? ' / ' + formatStreamNumber(message.maxOutputTokens) : '') + ' tok');
+          if (outputTokenCount || message.maxOutputTokens) {
+            responseStatsParts.push('출력 ' + formatStreamNumber(outputTokenCount) + (message.maxOutputTokens ? ' / ' + formatStreamNumber(message.maxOutputTokens) : '') + ' tok');
           }
-          if (usage.reasoning_output_tokens) responseStatsParts.push('추론 ' + formatStreamNumber(usage.reasoning_output_tokens) + ' tok');
+          if (reasoningTokenCount) responseStatsParts.push('추론 ' + formatStreamNumber(reasoningTokenCount) + ' tok');
           if (usage.tokens_per_second) responseStatsParts.push(Number(usage.tokens_per_second).toFixed(1) + ' tok/s');
           if (usage.time_to_first_token_seconds) responseStatsParts.push('첫 토큰 ' + Number(usage.time_to_first_token_seconds).toFixed(2) + '초');
           if (responseStatsParts.length) {
@@ -3505,7 +3546,16 @@
         : shouldOfferContinuation(assistantMessage, result, academicSearchActive);
       state.messages.push(assistantMessage);
       if (result.provider === 'lmstudio' && result.model) state.lmModel = result.model;
-      setStatus((result.images && result.images.length ? '이미지 생성 완료 · ' + result.images.length + '개 · ' : '응답 완료 · ') + (result.model || result.provider || ''), 'ok');
+      var localContinuationReady = assistantMessage.continuationAvailable
+        && (result.provider === 'lmstudio' || result.provider === 'ollama')
+        && !splitAcademicResponse;
+      setStatus(
+        (localContinuationReady
+          ? '출력 한도에 가까워 이어서 작성할 수 있습니다 · '
+          : (result.images && result.images.length ? '이미지 생성 완료 · ' + result.images.length + '개 · ' : '응답 완료 · '))
+          + (result.model || result.provider || ''),
+        localContinuationReady ? '' : 'ok'
+      );
     } catch (error) {
       var message = error && error.message ? error.message : String(error);
       if ((error && error.name === 'AbortError') || /abort|중지/i.test(message)) {
