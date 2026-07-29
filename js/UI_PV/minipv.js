@@ -248,6 +248,9 @@ function renderMiniPreviewContent() {
         function finalizeMini(html) {
             if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return false;
             miniPreviewContent.innerHTML = String(html || '');
+            try {
+                if (typeof applyDoiLinkTargets === 'function') applyDoiLinkTargets(miniPreviewContent);
+            } catch (_) {}
             applyMiniPreviewZoom();
             try { hydrateInternalImagesInElement(miniPreviewContent, registerPreviewInternalObjectUrl); } catch (_) {}
             try {

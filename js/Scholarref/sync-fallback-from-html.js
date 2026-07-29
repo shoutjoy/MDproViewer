@@ -30,8 +30,9 @@ function replaceFunctionFallback(source, generatedBlock) {
   const fnStart = source.indexOf('  function getTemplateHtml() {');
   if (fnStart < 0) throw new Error('getTemplateHtml() not found in scholarsearch-shell.js');
 
-  const nextFn = source.indexOf('\n  function ensureModalMarkup()', fnStart);
-  if (nextFn < 0) throw new Error('ensureModalMarkup() not found after getTemplateHtml()');
+  let nextFn = source.indexOf('\n  function mountTemplateHtml(', fnStart);
+  if (nextFn < 0) nextFn = source.indexOf('\n  function ensureModalMarkup()', fnStart);
+  if (nextFn < 0) throw new Error('mountTemplateHtml()/ensureModalMarkup() not found after getTemplateHtml()');
 
   return source.slice(0, fnStart) + generatedBlock + source.slice(nextFn + 1);
 }
@@ -49,8 +50,9 @@ function replaceMarkerBlock(source, generatedBlock) {
 
   const fnStart = after.indexOf('  function getTemplateHtml() {');
   if (fnStart < 0) throw new Error('getTemplateHtml() not found after marker block');
-  const nextFn = after.indexOf('\n  function ensureModalMarkup()', fnStart);
-  if (nextFn < 0) throw new Error('ensureModalMarkup() not found after getTemplateHtml()');
+  let nextFn = after.indexOf('\n  function mountTemplateHtml(', fnStart);
+  if (nextFn < 0) nextFn = after.indexOf('\n  function ensureModalMarkup()', fnStart);
+  if (nextFn < 0) throw new Error('mountTemplateHtml()/ensureModalMarkup() not found after getTemplateHtml()');
 
   const tail = after.slice(nextFn + 1);
   return before + generatedBlock + tail;

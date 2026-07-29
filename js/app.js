@@ -1316,6 +1316,29 @@ function preprocessMarkdownForView(raw) {
     return s;
 }
 
+function applyDoiLinkTargets(root) {
+    if (!root || !root.querySelectorAll) return;
+    const doc = root.ownerDocument || document;
+    const baseUrl = (doc && doc.baseURI) || window.location.href;
+    root.querySelectorAll('a[href]').forEach(function (link) {
+        const href = String(link.getAttribute('href') || '').trim();
+        if (!href) return;
+        let parsed;
+        try {
+            parsed = new URL(href, baseUrl);
+        } catch (_) {
+            return;
+        }
+        const host = String(parsed.hostname || '').toLowerCase();
+        if (host !== 'doi.org' && host !== 'dx.doi.org') return;
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+        link.setAttribute('title', 'DOI를 새 탭에서 열기');
+    });
+}
+
+window.applyDoiLinkTargets = applyDoiLinkTargets;
+
 function bindFootnoteLinkNavigation() {
     if (!viewer || viewer.__footnoteLinkBound) return;
     viewer.__footnoteLinkBound = true;
@@ -1360,6 +1383,7 @@ async function renderMarkdown(options) {
     };
     function runPostRenderHooks() {
         if (!isCurrentRender()) return;
+        try { applyDoiLinkTargets(viewer); } catch (e) {}
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
         try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
         try { hydrateInternalImagesInElement(viewer, registerViewerInternalObjectUrl); } catch (e) {}

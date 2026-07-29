@@ -33,8 +33,80 @@
     return String(v || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   }
 
+  function plainReferenceText(v) {
+    return stripHtmlTags(v)
+      .replace(/\*([^*\n]+)\*/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function normalizeRefText(v) {
-    return safeText(v).replace(/\s+/g, ' ').toLowerCase();
+    return plainReferenceText(v).toLowerCase();
+  }
+
+  // APA 7: 학술지명과 권(volume)은 이탤릭, 괄호 안 호(issue)는 일반체이다.
+  // 저장된 문자열의 끝부분이 "... 학술지명, 12(3), 10-20. DOI" 형태일 때만
+  // 보수적으로 인식하여 제목이나 저자명에 잘못된 서식이 적용되지 않게 한다.
+  function parseApaJournalParts(text) {
+    var plain = plainReferenceText(text);
+    if (!plain) return null;
+
+    var suffix = '';
+    var suffixMatch = plain.match(/(\s+(?:https?:\/\/|doi:\s*)\S+)\s*$/i);
+    if (suffixMatch) {
+      suffix = suffixMatch[1];
+      plain = plain.slice(0, suffixMatch.index).trim();
+    }
+
+    var match = plain.match(/^(.*\.\s+)([^.\n]+?),\s*(\d+)(\s*\([^)]*\))?(\s*,\s*[^.\n]+)?\.\s*$/);
+    if (!match) return null;
+    return {
+      prefix: match[1],
+      journal: match[2].trim(),
+      volume: match[3],
+      issue: match[4] || '',
+      pages: match[5] || '',
+      suffix: suffix
+    };
+  }
+
+  function formatApaReferenceMarkdown(text) {
+    var plain = plainReferenceText(text);
+    var parts = parseApaJournalParts(plain);
+    if (!parts) return plain;
+    return parts.prefix
+      + '*' + parts.journal + ', ' + parts.volume + '*'
+      + parts.issue + parts.pages + '.'
+      + parts.suffix;
+  }
+
+  function formatDoiSuffixHtml(suffix) {
+    var raw = String(suffix || '');
+    var leading = (raw.match(/^\s+/) || [''])[0];
+    var value = raw.trim();
+    if (!value) return '';
+
+    var href = '';
+    if (/^https?:\/\/(?:dx\.)?doi\.org\//i.test(value)) {
+      href = value;
+    } else {
+      var doiMatch = value.match(/^doi:\s*(10\.\S+)$/i);
+      if (doiMatch) href = 'https://doi.org/' + doiMatch[1];
+    }
+    if (!href) return escapeHtml(raw);
+    return escapeHtml(leading)
+      + '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer"'
+      + ' title="DOI를 새 탭에서 열기">' + escapeHtml(value) + '</a>';
+  }
+
+  function formatApaReferenceHtml(text) {
+    var plain = plainReferenceText(text);
+    var parts = parseApaJournalParts(plain);
+    if (!parts) return escapeHtml(plain);
+    return escapeHtml(parts.prefix)
+      + '<em>' + escapeHtml(parts.journal + ', ' + parts.volume) + '</em>'
+      + escapeHtml(parts.issue + parts.pages + '.')
+      + formatDoiSuffixHtml(parts.suffix);
   }
 
   function anchorFromRefText(text) {
@@ -83,9 +155,9 @@
     if (!db || !db.objectStoreNames.contains('scholar_refs')) throw new Error('DB is not ready');
     if (!Array.isArray(items) || !items.length) return 0;
     var current = await readAllRefs();
-    var dedupe = new Set(current.map(function (x) { return safeText(x.text).toLowerCase(); }));
+    var dedupe = new Set(current.map(function (x) { return normalizeRefText(x.text); }));
     var toAdd = items.filter(function (t) {
-      var key = safeText(t).toLowerCase();
+      var key = normalizeRefText(t);
       if (!key) return false;
       if (dedupe.has(key)) return false;
       dedupe.add(key);
@@ -102,7 +174,7 @@
             id: 'ref_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
             author: ay.author,
             year: ay.year,
-            text: safeText(text),
+            text: plainReferenceText(text),
             createdAt: nowIso()
           });
         });
@@ -185,7 +257,7 @@
     refs.forEach(function (r) {
       html += '<div class="scholarref-item">';
       html += '<div><div class="scholarref-item-title">' + escapeHtml(buildLabel(r)) + '</div>';
-      html += '<div class="scholarref-item-text">' + escapeHtml(r.text) + '</div></div>';
+      html += '<div class="scholarref-item-text">' + formatApaReferenceHtml(r.text) + '</div></div>';
       html += '<div class="scholarref-item-actions">'
         + '<button type="button" class="scholarref-secondary" onclick="pushScholarRefItemToGithub(\'' + String(r.id).replace(/'/g, "\\'") + '\')">push</button>'
         + '<button type="button" class="scholarref-danger" onclick="deleteScholarRefItem(\'' + String(r.id).replace(/'/g, "\\'") + '\')">삭제</button>'
@@ -257,7 +329,7 @@
       html += '<label class="scholarref-item">';
       html += '<input type="checkbox" ' + checked + ' onchange="toggleScholarRefPick(\'' + String(r.id).replace(/'/g, "\\'") + '\', this.checked)">';
       html += '<div><div class="scholarref-item-title">' + escapeHtml(buildLabel(r)) + '</div>';
-      html += '<div class="scholarref-item-text">' + escapeHtml(r.text) + '</div></div>';
+      html += '<div class="scholarref-item-text">' + formatApaReferenceHtml(r.text) + '</div></div>';
       html += '</label>';
     });
     box.innerHTML = html;
@@ -269,9 +341,10 @@
     var withAnchors = !!(opts && opts.withAnchors);
     var blocks = texts.map(function (t) {
       var clean = safeText(t);
-      if (!withAnchors) return clean;
+      var formatted = formatApaReferenceMarkdown(clean);
+      if (!withAnchors) return formatted;
       var anchor = anchorFromRefText(clean);
-      return '<div id="' + anchor + '"></div>\n' + clean;
+      return '<div id="' + anchor + '"></div>\n' + formatted;
     }).join('\n\n');
     return '\n\n## References\n\n' + blocks + '\n';
   }
@@ -543,7 +616,7 @@
       box.innerHTML = top + remoteRefs.map(function (r) {
         var ref = normalizePulledReference(r);
         if (!ref) return '';
-        return '<div class="scholarref-item"><div><div class="scholarref-item-title">' + escapeHtml(buildLabel(ref)) + '</div><div class="scholarref-item-text">' + escapeHtml(ref.text) + '</div></div></div>';
+        return '<div class="scholarref-item"><div><div class="scholarref-item-title">' + escapeHtml(buildLabel(ref)) + '</div><div class="scholarref-item-text">' + formatApaReferenceHtml(ref.text) + '</div></div></div>';
       }).join('');
       if (status) status.textContent = 'GitHub Reference 폴더의 APA 참고문헌 목록입니다. (' + remoteRefs.length + '건)';
     } catch (e) {
@@ -979,7 +1052,7 @@
     }
     var itemsHtml = refs.map(function (r) {
       var label = escapeHtml(buildLabel(r));
-      var text = escapeHtml(r.text);
+      var text = formatApaReferenceHtml(r.text);
       return '<div class="item"><div class="label">' + label + '</div><div class="txt">' + text + '</div></div>';
     }).join('');
     var html = ''
@@ -1054,6 +1127,8 @@
     pushGithubSavedList: pushGithubSavedList,
     pullGithubSavedList: pullGithubSavedList,
     renderGithubSavedList: renderGithubSavedList,
+    formatApaReferenceMarkdown: formatApaReferenceMarkdown,
+    formatApaReferenceHtml: formatApaReferenceHtml,
     deleteOne: deleteOne,
     clearAll: clearAll
   };

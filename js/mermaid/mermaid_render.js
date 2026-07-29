@@ -46,7 +46,7 @@
         style.id = 'mdv-mermaid-controls-style';
         style.textContent = [
             '.trt-mermaid-wrapper{position:relative;display:block;overflow:hidden;border:1px solid rgba(148,163,184,.35);border-radius:8px;background:#fff;min-height:300px;height:450px;padding-right:118px;}',
-            '.dark .trt-mermaid-wrapper{background:#0f172a;border-color:rgba(51,65,85,.9);}',
+            '.dark .trt-mermaid-wrapper{background:#fff;border-color:rgba(148,163,184,.55);}',
             '.trt-mermaid-viewport{position:relative;overflow:hidden;min-height:300px;cursor:grab;touch-action:none;height:100%;}',
             '.trt-mermaid-viewport.dragging{cursor:grabbing;}',
             '.trt-mermaid-canvas{transform-origin:0 0;padding:24px;min-width:max-content;min-height:160px;}',
@@ -56,8 +56,8 @@
             '.trt-mermaid-control-pad{top:62px;grid-template-columns:repeat(3,34px);}',
             '.trt-mermaid-btn{width:34px;height:34px;border:1px solid #cbd5e1;border-radius:7px;background:#f8fafc;color:#334155;font-size:14px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.08);font-family:Arial,sans-serif;}',
             '.trt-mermaid-btn:hover{background:#eef2ff;border-color:#a5b4fc;color:#3730a3;}',
-            '.dark .trt-mermaid-btn{background:#172033;border-color:#475569;color:#e2e8f0;}',
-            '.dark .trt-mermaid-btn:hover{background:#1e293b;border-color:#818cf8;color:#c7d2fe;}',
+            '.dark .trt-mermaid-btn{background:#f8fafc;border-color:#cbd5e1;color:#334155;}',
+            '.dark .trt-mermaid-btn:hover{background:#eef2ff;border-color:#a5b4fc;color:#3730a3;}',
             '.trt-mermaid-pad-spacer{visibility:hidden;}',
             '.trt-mermaid-resize-handle{position:absolute;z-index:21;}',
             '.trt-mermaid-resize-e{top:0;right:0;bottom:0;width:10px;cursor:ew-resize;}',
@@ -294,9 +294,9 @@
     function polishMermaidSvg(node) {
         var svg = node && node.querySelector ? node.querySelector('svg') : null;
         if (!svg || svg.querySelector('style[data-mdv-mermaid-polish="1"]')) return;
-        var isDark = !!(document.documentElement && document.documentElement.classList && document.documentElement.classList.contains('dark'));
-        var lineColor = isDark ? '#cbd5e1' : '#64748b';
-        var textColor = isDark ? '#e5edf7' : '#334155';
+        // Mermaid diagrams use a light canvas independently of the application theme.
+        var lineColor = '#64748b';
+        var textColor = '#334155';
         svg.style.display = 'block';
         svg.style.marginLeft = 'auto';
         svg.style.marginRight = 'auto';

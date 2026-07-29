@@ -168,7 +168,14 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-toolbar .label{font-size:12px;color:#334155;min-width:48px;text-align:center;font-weight:700;}'
         + '#pv-viewport{height:100%;overflow:auto;padding:20px;padding-top:72px;box-sizing:border-box;}'
         + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;margin:0 auto;width:100%;max-width:56rem;}'
-        + '#pv-content .trt-mermaid-wrapper{display:flex;justify-content:center;}'
+        + '#pv-content .trt-mermaid-wrapper{position:relative;display:block;box-sizing:border-box;width:100%;min-height:240px;padding:52px 14px 14px;margin:1rem 0;overflow:hidden;border:1px solid #cbd5e1;border-radius:8px;background:#fff;}'
+        + '#pv-content .trt-pv-mermaid-viewport{width:100%;overflow:auto;background:#fff;}'
+        + '#pv-content .trt-pv-mermaid-canvas{display:block;width:100%;min-width:0;}'
+        + '#pv-content .trt-pv-mermaid-canvas svg{display:block;margin:0 auto;max-width:none!important;height:auto!important;transform-origin:top center;}'
+        + '#pv-content .trt-pv-mermaid-controls{position:absolute;top:10px;right:10px;z-index:20;display:flex;align-items:center;gap:5px;}'
+        + '#pv-content .trt-pv-mermaid-btn{min-width:32px;height:30px;padding:0 7px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#334155;font:700 13px/1 Arial,sans-serif;cursor:pointer;}'
+        + '#pv-content .trt-pv-mermaid-btn:hover{background:#eef2ff;border-color:#a5b4fc;color:#3730a3;}'
+        + '#pv-content .trt-pv-mermaid-scale{min-width:46px;text-align:center;color:#334155;font-size:12px;font-weight:700;}'
         + '#pv-content h1{font-size:2.25rem;font-weight:800;margin-top:1.5rem;margin-bottom:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:.5rem;}'
         + '#pv-content h2{font-size:1.875rem;font-weight:700;margin-top:1.25rem;margin-bottom:.75rem;border-bottom:1px solid #e2e8f0;padding-bottom:.3rem;}'
         + '#pv-content h3{font-size:1.5rem;font-weight:600;margin-top:1rem;margin-bottom:.5rem;}'
@@ -376,6 +383,67 @@ function polishPreviewPopupMermaidSvg(wrapper) {
     svg.insertBefore(style, svg.firstChild);
 }
 
+function getPreviewPopupMermaidScale(wrapper) {
+    const current = Number(wrapper && wrapper.getAttribute('data-pv-mermaid-scale'));
+    return Number.isFinite(current) && current > 0 ? current : 1;
+}
+
+function applyPreviewPopupMermaidScale(wrapper, nextScale) {
+    if (!wrapper || !wrapper.querySelector) return;
+    const svg = wrapper.querySelector('svg');
+    if (!svg) return;
+    const scale = Math.max(0.25, Math.min(3, Math.round((Number(nextScale) || 1) * 100) / 100));
+    wrapper.setAttribute('data-pv-mermaid-scale', String(scale));
+    svg.style.setProperty('width', Math.round(scale * 100) + '%', 'important');
+    svg.style.setProperty('height', 'auto', 'important');
+    svg.style.setProperty('max-width', 'none', 'important');
+    const label = wrapper.querySelector('.trt-pv-mermaid-scale');
+    if (label) label.textContent = Math.round(scale * 100) + '%';
+}
+
+function addPreviewPopupMermaidControls(wrapper) {
+    const doc = previewPopupWindow && previewPopupWindow.document;
+    if (!doc || !wrapper || wrapper.querySelector('.trt-pv-mermaid-controls')) return;
+    const controls = doc.createElement('div');
+    controls.className = 'trt-pv-mermaid-controls';
+
+    function addButton(text, title, action) {
+        const button = doc.createElement('button');
+        button.type = 'button';
+        button.className = 'trt-pv-mermaid-btn';
+        button.textContent = text;
+        button.title = title;
+        button.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            action();
+        });
+        controls.appendChild(button);
+    }
+
+    addButton('↔', 'PV 너비에 맞춤', function () {
+        applyPreviewPopupMermaidScale(wrapper, 1);
+    });
+    addButton('R', '도표 크기 초기화', function () {
+        applyPreviewPopupMermaidScale(wrapper, 1);
+    });
+    addButton('−', '도표 축소', function () {
+        applyPreviewPopupMermaidScale(wrapper, getPreviewPopupMermaidScale(wrapper) - 0.1);
+    });
+
+    const scaleLabel = doc.createElement('span');
+    scaleLabel.className = 'trt-pv-mermaid-scale';
+    scaleLabel.textContent = '100%';
+    controls.appendChild(scaleLabel);
+
+    addButton('+', '도표 확대', function () {
+        applyPreviewPopupMermaidScale(wrapper, getPreviewPopupMermaidScale(wrapper) + 0.1);
+    });
+
+    wrapper.appendChild(controls);
+    applyPreviewPopupMermaidScale(wrapper, 1);
+}
+
 async function renderMermaidInPreviewPopup(root) {
     if (!isPreviewPopupAlive() || !root) return;
     const win = previewPopupWindow;
@@ -393,13 +461,16 @@ async function renderMermaidInPreviewPopup(root) {
         if (!source) continue;
 
         const wrapper = doc.createElement('div');
-        wrapper.className = 'trt-mermaid-wrapper my-3 overflow-x-auto';
+        wrapper.className = 'trt-mermaid-wrapper my-3';
         wrapper.setAttribute('data-mermaid-source', source);
         if (prep && prep.labelMap) wrapper.setAttribute('data-sankey-label-map', JSON.stringify(prep.labelMap));
+        const viewport = doc.createElement('div');
+        viewport.className = 'trt-pv-mermaid-viewport';
         const block = doc.createElement('div');
-        block.className = 'mermaid';
+        block.className = 'mermaid trt-pv-mermaid-canvas';
         block.textContent = source;
-        wrapper.appendChild(block);
+        viewport.appendChild(block);
+        wrapper.appendChild(viewport);
         pre.replaceWith(wrapper);
         targets.push({ block, wrapper, source });
     }
@@ -413,6 +484,7 @@ async function renderMermaidInPreviewPopup(root) {
             await win.mermaid.run({ nodes: [item.block] });
             restorePreviewPopupSankeyLabels(item.wrapper);
             polishPreviewPopupMermaidSvg(item.wrapper);
+            addPreviewPopupMermaidControls(item.wrapper);
         } catch (e) {
             item.wrapper.innerHTML = '';
             const errPre = doc.createElement('pre');
@@ -518,6 +590,9 @@ async function updatePreviewPopupContent() {
         return;
     }
     target.innerHTML = html;
+    try {
+        if (typeof applyDoiLinkTargets === 'function') applyDoiLinkTargets(target);
+    } catch (_) {}
     try { await hydrateInternalImagesInElement(target, registerPreviewInternalObjectUrl); } catch (e) {}
     if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
         try { await MathRender.typesetElement(target); } catch (e) {}
