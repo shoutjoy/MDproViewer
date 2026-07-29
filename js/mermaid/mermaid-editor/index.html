@@ -165,6 +165,8 @@
         <option value="flowchart-lr">Flowchart (LR)</option>
         </select>
         <button onclick="openSyntaxTutorial()" class="btn">Syntax Tutorial</button>
+        <button id="auto-fix-mermaid-btn" onclick="autoFixMermaidCode()" class="btn"
+          title="괄호 등 특수문자가 들어간 노드와 연결 라벨을 안전한 문자열로 바꿉니다.">오류 자동수정</button>
         <button onclick="copyCode()" class="btn">&#xBCF5;&#xC0AC;</button>
                 <button onclick="downloadSVG()" class="btn">SVG</button>
            <button onclick="downloadPNG()" class="btn">PNG</button>
@@ -219,6 +221,7 @@
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <script src="../mermaid-label-sanitizer.js?v=20260729-2"></script>
+  <script src="app.js?v=20260729-label-2"></script>
 </body>
 </html>

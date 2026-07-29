@@ -255,6 +255,9 @@
         var src = normalizeMermaidDiagramType(source).trim();
         if (!src) return { source: src, labelMap: null };
         if (/^sankey-beta\b/i.test(src)) return preprocessSankeyBetaSource(src);
+        if (global.MermaidLabelSanitizer && typeof global.MermaidLabelSanitizer.preprocess === 'function') {
+            src = global.MermaidLabelSanitizer.preprocess(src);
+        }
         return { source: src, labelMap: null };
     }
 

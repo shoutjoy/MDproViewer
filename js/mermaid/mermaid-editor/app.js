@@ -660,7 +660,12 @@ function normalizeMermaidDiagramType(source) {
 }
 
 function preprocessMermaidSourceForRender(source) {
-  const src = normalizeMermaidDiagramType(source).trim();
+  let src = normalizeMermaidDiagramType(source).trim();
+  if (!/^sankey-beta\b/i.test(src) &&
+      window.MermaidLabelSanitizer &&
+      typeof window.MermaidLabelSanitizer.preprocess === 'function') {
+    src = window.MermaidLabelSanitizer.preprocess(src);
+  }
   if (!/^sankey-beta\b/i.test(src)) return { source: src, labelMap: null };
 
   const lines = src.split(/\r?\n/);
@@ -723,6 +728,50 @@ function preprocessMermaidSourceForRender(source) {
   }
 
   return { source: out.join('\n'), labelMap: Object.keys(labelMap).length ? labelMap : null };
+}
+
+let autoFixStatusTimer = null;
+
+function setAutoFixButtonStatus(message) {
+  const button = document.getElementById('auto-fix-mermaid-btn');
+  if (!button) return;
+  if (autoFixStatusTimer) clearTimeout(autoFixStatusTimer);
+  button.textContent = message;
+  autoFixStatusTimer = setTimeout(function () {
+    button.textContent = '오류 자동수정';
+    autoFixStatusTimer = null;
+  }, 1800);
+}
+
+async function autoFixMermaidCode() {
+  const original = String(editor.value || '');
+  let fixed = normalizeMermaidDiagramType(original);
+
+  if (window.MermaidLabelSanitizer &&
+      typeof window.MermaidLabelSanitizer.preprocess === 'function') {
+    fixed = window.MermaidLabelSanitizer.preprocess(fixed);
+  } else {
+    setAutoFixButtonStatus('수정 기능 로드 실패');
+    return;
+  }
+
+  if (fixed === original) {
+    setAutoFixButtonStatus('수정 사항 없음');
+    await render();
+    return;
+  }
+
+  pushEditorUndoState();
+  const selectionStart = editor.selectionStart;
+  const selectionEnd = editor.selectionEnd;
+  editor.value = fixed;
+  editor.setSelectionRange(
+    Math.min(selectionStart, fixed.length),
+    Math.min(selectionEnd, fixed.length)
+  );
+  setAutoFixButtonStatus('수정 완료');
+  await render();
+  editor.focus();
 }
 
 function restoreSankeyAliasLabels(labelMap) {

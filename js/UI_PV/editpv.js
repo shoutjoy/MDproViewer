@@ -235,7 +235,12 @@ function normalizePreviewPopupMermaidDiagramType(source) {
 }
 
 function preprocessPreviewPopupMermaidSource(source) {
-    const src = normalizePreviewPopupMermaidDiagramType(source).trim();
+    let src = normalizePreviewPopupMermaidDiagramType(source).trim();
+    if (!/^sankey-beta\b/i.test(src) &&
+        window.MermaidLabelSanitizer &&
+        typeof window.MermaidLabelSanitizer.preprocess === 'function') {
+        src = window.MermaidLabelSanitizer.preprocess(src);
+    }
     if (!/^sankey-beta\b/i.test(src)) return { source: src, labelMap: null };
 
     const lines = src.split(/\r?\n/);
