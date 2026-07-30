@@ -236,17 +236,29 @@ function renderMiniPreviewContent() {
     if (!miniPreviewEnabled || !isEditMode) {
         miniPreviewRenderToken += 1;
         revokeObjectUrls(previewInternalImageObjectUrls);
+        if (typeof setHtmlDocumentMode === 'function') setHtmlDocumentMode(miniPreviewContent, false);
         miniPreviewContent.innerHTML = '';
         return;
     }
     const token = ++miniPreviewRenderToken;
     const raw = String(currentMarkdown ?? '');
     revokeObjectUrls(previewInternalImageObjectUrls);
+    const htmlDocument = (typeof getRenderableHtmlDocument === 'function')
+        ? getRenderableHtmlDocument(raw)
+        : null;
+    if (htmlDocument !== null && typeof renderHtmlDocumentFrame === 'function') {
+        renderHtmlDocumentFrame(miniPreviewContent, htmlDocument, {
+            title: (typeof currentFileName !== 'undefined' && currentFileName) || 'HTML preview'
+        });
+        applyMiniPreviewZoom();
+        return;
+    }
     resolveInternalMarkdownImagesForViewer(raw).then(function (resolvedRaw) {
         if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
 
         function finalizeMini(html) {
             if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return false;
+            if (typeof setHtmlDocumentMode === 'function') setHtmlDocumentMode(miniPreviewContent, false);
             miniPreviewContent.innerHTML = String(html || '');
             try {
                 if (typeof applyDoiLinkTargets === 'function') applyDoiLinkTargets(miniPreviewContent);
@@ -292,6 +304,7 @@ function renderMiniPreviewContent() {
         }
     }).catch(function () {
         if (token !== miniPreviewRenderToken || !miniPreviewEnabled || !isEditMode || !miniPreviewContent) return;
+        if (typeof setHtmlDocumentMode === 'function') setHtmlDocumentMode(miniPreviewContent, false);
         miniPreviewContent.innerHTML = '<p>' + raw.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>') + '</p>';
     });
 }

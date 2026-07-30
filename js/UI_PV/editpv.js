@@ -560,22 +560,27 @@ async function updatePreviewPopupContent() {
     if (!isPreviewPopupAlive()) return;
     const token = ++previewPopupRenderToken;
     const raw = getPreviewPopupSourceMarkdown();
+    const htmlDocument = (typeof getRenderableHtmlDocument === 'function')
+        ? getRenderableHtmlDocument(raw)
+        : null;
     let html = '';
 
     try {
         revokeObjectUrls(previewInternalImageObjectUrls);
-        const resolvedRaw = await resolveInternalMarkdownImagesForPreview(raw);
-        const preprocessed = preprocessMarkdownForView(resolvedRaw);
-        if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
-            html = await MathRender.renderMarkdownSafe(
-                (typeof marked !== 'undefined' && marked.parse) ? marked : null,
-                preprocessed,
-                { fallbackText: resolvedRaw }
-            );
-        } else if (typeof marked === 'undefined' || !marked.parse) {
-            html = '<p>' + escapeHtmlForPreview(resolvedRaw).replace(/\n/g, '<br>') + '</p>';
-        } else {
-            html = marked.parse(preprocessed);
+        if (htmlDocument === null) {
+            const resolvedRaw = await resolveInternalMarkdownImagesForPreview(raw);
+            const preprocessed = preprocessMarkdownForView(resolvedRaw);
+            if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
+                html = await MathRender.renderMarkdownSafe(
+                    (typeof marked !== 'undefined' && marked.parse) ? marked : null,
+                    preprocessed,
+                    { fallbackText: resolvedRaw }
+                );
+            } else if (typeof marked === 'undefined' || !marked.parse) {
+                html = '<p>' + escapeHtmlForPreview(resolvedRaw).replace(/\n/g, '<br>') + '</p>';
+            } else {
+                html = marked.parse(preprocessed);
+            }
         }
     } catch (e) {
         html = '<p>' + escapeHtmlForPreview(raw).replace(/\n/g, '<br>') + '</p>';
@@ -589,6 +594,18 @@ async function updatePreviewPopupContent() {
         }, 60);
         return;
     }
+    if (htmlDocument !== null && typeof renderHtmlDocumentFrame === 'function') {
+        applyPreviewPopupViewport();
+        target.style.width = '100%';
+        target.style.maxWidth = 'none';
+        target.style.height = 'calc(100vh - 112px)';
+        renderHtmlDocumentFrame(target, htmlDocument, {
+            title: (typeof currentFileName !== 'undefined' && currentFileName) || 'HTML preview'
+        });
+        return;
+    }
+    target.style.height = '';
+    if (typeof setHtmlDocumentMode === 'function') setHtmlDocumentMode(target, false);
     target.innerHTML = html;
     try {
         if (typeof applyDoiLinkTargets === 'function') applyDoiLinkTargets(target);

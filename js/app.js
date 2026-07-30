@@ -1366,6 +1366,64 @@ function escapeMarkdownRenderFallback(value) {
         .replace(/\n/g, '<br>') + '</p>';
 }
 
+function getRenderableHtmlDocument(value, fileName) {
+    const raw = String(value == null ? '' : value).replace(/^\uFEFF/, '');
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+
+    if (/^(?:<!doctype\s+html\b|<html\b)/i.test(trimmed)) return trimmed;
+
+    const fenced = trimmed.match(/^```(?:html?)?\s*\r?\n([\s\S]*?)\r?\n```\s*$/i);
+    if (fenced && /^(?:<!doctype\s+html\b|<html\b)/i.test(fenced[1].trim())) {
+        return fenced[1].trim();
+    }
+
+    const name = String(fileName == null
+        ? (typeof currentFileName !== 'undefined' ? currentFileName : '')
+        : fileName);
+    if (/\.html?$/i.test(name.trim())) return trimmed;
+    return null;
+}
+
+function setHtmlDocumentMode(container, enabled) {
+    if (!container || !container.classList) return;
+    container.classList.toggle('html-document-preview', !!enabled);
+    if (container.id === 'viewer') {
+        const viewerContainer = document.getElementById('viewer-container');
+        if (viewerContainer) viewerContainer.classList.toggle('html-document-active', !!enabled);
+    }
+}
+
+function renderHtmlDocumentFrame(container, html, options) {
+    if (!container) return null;
+    const opts = options || {};
+    setHtmlDocumentMode(container, true);
+    container.innerHTML = '';
+    const doc = container.ownerDocument || document;
+    const frame = doc.createElement('iframe');
+    frame.className = 'html-document-frame';
+    frame.title = String(opts.title || 'HTML preview');
+    frame.setAttribute(
+        'sandbox',
+        'allow-scripts allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads'
+    );
+    frame.setAttribute('allow', 'clipboard-read; clipboard-write; fullscreen');
+    frame.referrerPolicy = 'no-referrer-when-downgrade';
+    frame.style.display = 'block';
+    frame.style.width = '100%';
+    frame.style.height = '100%';
+    frame.style.minHeight = '100%';
+    frame.style.border = '0';
+    frame.style.background = '#fff';
+    frame.srcdoc = String(html || '');
+    container.appendChild(frame);
+    return frame;
+}
+
+window.getRenderableHtmlDocument = getRenderableHtmlDocument;
+window.renderHtmlDocumentFrame = renderHtmlDocumentFrame;
+window.setHtmlDocumentMode = setHtmlDocumentMode;
+
 async function renderMarkdown(options) {
     if (!viewer) return;
     const renderToken = ++mainRenderToken;
@@ -1398,6 +1456,13 @@ async function renderMarkdown(options) {
     revokeObjectUrls(viewerInternalImageObjectUrls);
 
     try {
+        const htmlDocument = getRenderableHtmlDocument(raw);
+        if (htmlDocument !== null) {
+            if (!isCurrentRender()) return;
+            renderHtmlDocumentFrame(viewer, htmlDocument, { title: currentFileName || 'HTML preview' });
+            runPostRenderHooks();
+            return;
+        }
         const resolvedRaw = await resolveInternalMarkdownImagesForViewer(raw);
         if (!isCurrentRender()) return;
         const preprocessed = preprocessMarkdownForView(resolvedRaw);
@@ -1414,6 +1479,7 @@ async function renderMarkdown(options) {
             html = escapeMarkdownRenderFallback(resolvedRaw);
         }
         if (!isCurrentRender()) return;
+        setHtmlDocumentMode(viewer, false);
         viewer.innerHTML = String(html || '');
         if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
             await MathRender.typesetElement(viewer, {
@@ -1425,6 +1491,7 @@ async function renderMarkdown(options) {
         runPostRenderHooks();
     } catch (error) {
         if (!isCurrentRender()) return;
+        setHtmlDocumentMode(viewer, false);
         viewer.innerHTML = escapeMarkdownRenderFallback(raw);
         try {
             if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
@@ -2144,7 +2211,7 @@ async function readFile(file, options) {
             showToast('CSV loaded as text.');
         }
         if (kind === 'html') {
-            showToast('HTML loaded as text.');
+            showToast('HTML loaded in rendered preview mode.');
         }
         setCurrentDocumentInfo(file.name, file.path || null);
         updateContent(parsed && typeof parsed.text === 'string' ? parsed.text : raw);
