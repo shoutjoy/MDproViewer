@@ -68,16 +68,75 @@
         }
         #settings-modal-panel.settings-modal-fullscreen #settings-modal-body {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+            grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
             gap: 14px;
+            overflow: hidden;
+            align-items: stretch;
+            padding-right: 0;
+        }
+        .settings-dashboard-column {
+            min-width: 0;
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            background: rgba(248, 250, 252, 0.82);
+            padding: 12px;
+        }
+        .dark .settings-dashboard-column {
+            border-color: #334155;
+            background: rgba(15, 23, 42, 0.58);
+        }
+        .settings-dashboard-column > .settings-column-title {
+            position: sticky;
+            top: -12px;
+            z-index: 4;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: -12px -12px 12px;
+            padding: 11px 12px;
+            border-bottom: 1px solid #cbd5e1;
+            background: rgba(248, 250, 252, 0.97);
+            color: #334155;
+            font-size: 13px;
+            font-weight: 800;
+        }
+        .dark .settings-dashboard-column > .settings-column-title {
+            border-color: #334155;
+            background: rgba(15, 23, 42, 0.98);
+            color: #e2e8f0;
+        }
+        .settings-dashboard-column > :not(.settings-column-title) + :not(.settings-column-title) {
+            margin-top: 12px;
+        }
+        #settings-modal-panel.settings-modal-fullscreen .settings-dashboard-column {
+            height: 100%;
+            margin-top: 0 !important;
+            overflow-x: hidden;
+            overflow-y: auto;
+            scrollbar-gutter: stable;
         }
         #settings-modal-panel.settings-modal-fullscreen #settings-modal-resize-handle {
             display: none;
+        }
+        @media (max-width: 1180px) {
+            #settings-modal-panel.settings-modal-fullscreen #settings-modal-body {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                overflow-y: auto;
+            }
+            #settings-modal-panel.settings-modal-fullscreen .settings-dashboard-column {
+                height: min(72vh, 760px);
+            }
         }
         @media (max-width: 900px) {
             #settings-modal-panel.settings-modal-wide #settings-modal-body,
             #settings-modal-panel.settings-modal-fullscreen #settings-modal-body {
                 grid-template-columns: 1fr;
+                overflow-y: auto;
+            }
+            #settings-modal-panel.settings-modal-fullscreen .settings-dashboard-column {
+                height: auto;
+                max-height: none;
+                overflow: visible;
             }
         }
     </style>
@@ -209,7 +268,7 @@
             </button>
             <button type="button" id="btn-google-calendar" onclick="openGoogleCalendarWindow()"
                 class="hidden p-1.5 sm:p-2 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 rounded-md transition-colors text-indigo-600 dark:text-indigo-300 shrink-0"
-                title="Google 캘린더 새 창으로 열기">
+                title="Google 캘린더 열기">
                 <i data-lucide="calendar-days" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
             </button>
             <button onclick="openSettingsModal()"
@@ -1006,12 +1065,9 @@
             <h3 id="settings-modal-header" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0 select-none">
                 <i data-lucide="settings" class="w-5 h-5"></i> 환경 설정
                 <div class="ml-auto flex items-center gap-2">
-                    <button id="settings-google-calendar-jump-btn" type="button" onclick="focusGoogleCalendarSettings()"
-                        class="px-2 py-1 text-xs font-bold rounded border border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60"
-                        title="Google 캘린더 설정으로 이동">캘린더</button>
                     <button id="settings-modal-drag-handle" type="button" onclick="toggleSettingsModalCompact()"
                         class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
-                        title="우측 축소/복원">축소</button>
+                        title="우측 Dock/팝업">Dock</button>
                     <button id="settings-modal-fullscreen-btn" type="button" onclick="toggleSettingsModalFullscreen()"
                         class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                         title="전체화면 전환">전체화면</button>
@@ -1042,14 +1098,42 @@
                     </label>
                     <p class="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-300">
                         체크하면 우측 상단의 <strong>설정 버튼 바로 왼쪽</strong>에 달력 버튼이 나타납니다.
-                        버튼을 누르면
-                        <a href="https://calendar.google.com/calendar/u/0/r" target="_blank" rel="noopener noreferrer"
-                            class="font-semibold text-indigo-700 dark:text-indigo-300 hover:underline">Google 캘린더</a>가 새 창으로 열립니다.
+                        아래에서 선택한 방식으로 Google 캘린더를 엽니다.
                     </p>
+                    <div class="mt-3 space-y-3 rounded-md border border-indigo-200 dark:border-indigo-800 bg-white/75 dark:bg-slate-900/65 p-3">
+                        <label for="google-calendar-email" class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Gmail 주소 (선택)
+                            <input type="email" id="google-calendar-email" autocomplete="email" spellcheck="false"
+                                placeholder="example@gmail.com"
+                                class="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100">
+                        </label>
+                        <fieldset>
+                            <legend class="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-300">캘린더 열기 방식</legend>
+                            <div class="grid grid-cols-2 gap-2">
+                                <label class="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 p-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    <input type="radio" name="google-calendar-open-mode" value="internal"
+                                        class="border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                    <span>앱 내부 창</span>
+                                </label>
+                                <label class="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 dark:border-slate-600 p-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    <input type="radio" name="google-calendar-open-mode" value="external"
+                                        class="border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                    <span>브라우저 새 창</span>
+                                </label>
+                            </div>
+                        </fieldset>
+                        <div class="flex items-center justify-between gap-2">
+                            <p id="google-calendar-settings-status" class="min-h-[1rem] text-[11px] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+                            <button type="button" onclick="saveGoogleCalendarOptions(true)"
+                                class="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">
+                                캘린더 설정 저장
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Code Block Color Setting -->
-                <div
+                <div id="code-color-settings-card"
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
                     <h4
                         class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
@@ -1076,7 +1160,7 @@
                 </div>
 
                 <!-- Shortcuts Information -->
-                <div
+                <div id="shortcuts-settings-card"
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
                     <div class="flex items-center justify-between mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
                         <h4 class="text-sm font-bold text-slate-700 dark:text-slate-300">단축키 안내</h4>
@@ -1261,7 +1345,7 @@
                 </div>
 
                 <!-- AI API Key Settings (단축키 안내 아래) -->
-                <div
+                <div id="legacy-ai-settings-card"
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
                     <h4
                         class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
@@ -1434,7 +1518,7 @@
                             </label>
                             <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 모든 화면의 우측 하단에 Chat 버튼이 표시됩니다. 팝업·우측 Dock·전체화면을 지원하고 대화 기록은 IndexedDB에 저장됩니다. ScholarAI와 별도의 일반 멀티턴 대화이며, 위의 LM Studio 연결 설정과 AI Studio API Key를 공유합니다.</p>
                         </div>
-                        <div class="pt-1">
+                        <div id="sqlite-settings-tool" class="pt-1">
                             <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
                                 <input type="checkbox" id="sqlite-enabled"
                                     class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
@@ -1446,7 +1530,7 @@
                         <div id="github-settings-slot"></div>
 
                         <!-- 사용자 정보 (인공지능 사용과 무관, 항상 표시) -->
-                        <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                        <div id="ai-user-settings-card" class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
                             <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">사용자 정보 · 인증번호 요청 메일</p>
                             <p class="text-[11px] text-slate-500 dark:text-slate-500">편집창 userIn / Shift+Alt+A 삽입에도 사용됩니다.</p>
                             <div class="bg-slate-100 dark:bg-slate-800/80 rounded p-3 space-y-2">
@@ -1475,7 +1559,7 @@
                         </div>
 
                         <!-- 인공지능 사용: 비번 + ScholarAI/sspimgAI -->
-                        <div class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                        <div id="ai-master-settings-card" class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
                             <div class="flex items-center justify-between gap-2" role="group" aria-label="인공지능 사용">
                                 <div class="flex items-center gap-2">
                                     <input type="checkbox" id="ai-use-checkbox" onclick="setTimeout(toggleAiPasswordSection,0)"
@@ -1509,7 +1593,7 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                            <div id="feature-tools-settings" class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="scholar-search-visible" onclick="setTimeout(toggleScholarSearchSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
@@ -1596,6 +1680,46 @@
             </div>
             <div id="settings-modal-resize-handle" title="Resize"></div>
         </div>
+    </div>
+
+    <!-- Google Calendar internal window -->
+    <div id="google-calendar-internal-shell"
+        class="fixed inset-0 z-[2147483646] hidden items-center justify-center bg-slate-950/60 p-3 no-print backdrop-blur-sm"
+        onclick="if(event.target===this) closeGoogleCalendarInternalWindow()">
+        <section id="google-calendar-internal-panel"
+            class="relative flex h-[min(860px,92vh)] w-[min(1380px,96vw)] min-h-[420px] min-w-[560px] resize overflow-hidden rounded-xl border border-slate-500 bg-white shadow-2xl dark:bg-slate-900">
+            <div class="flex min-w-0 flex-1 flex-col">
+                <header id="google-calendar-internal-header"
+                    class="flex h-11 shrink-0 cursor-move select-none items-center gap-2 border-b border-slate-300 bg-slate-100 px-3 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100">
+                    <i data-lucide="calendar-days" class="h-4 w-4 text-indigo-500"></i>
+                    <strong class="min-w-0 flex-1 truncate text-sm">Google 캘린더 · 내부 창</strong>
+                    <span id="google-calendar-internal-account" class="max-w-[280px] truncate text-[11px] text-slate-500 dark:text-slate-400"></span>
+                    <button type="button" onclick="openGoogleCalendarExternalWindow()"
+                        class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-700"
+                        title="브라우저 새 창으로 열기">새 창</button>
+                    <button type="button" id="google-calendar-internal-maximize" onclick="toggleGoogleCalendarInternalMaximize()"
+                        class="h-7 w-8 rounded border border-slate-300 text-sm font-bold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-700"
+                        title="최대화/복원">□</button>
+                    <button type="button" onclick="closeGoogleCalendarInternalWindow()"
+                        class="h-7 w-8 rounded border border-red-300 text-base font-bold text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/50"
+                        title="닫기">×</button>
+                </header>
+                <div class="relative min-h-0 flex-1 bg-white dark:bg-slate-950">
+                    <div id="google-calendar-internal-loading"
+                        class="absolute inset-0 z-10 flex items-center justify-center bg-white/95 text-sm font-semibold text-slate-500 dark:bg-slate-950/95 dark:text-slate-300">
+                        Google 캘린더를 불러오는 중...
+                    </div>
+                    <iframe id="google-calendar-internal-frame" title="Google 캘린더 내부 창"
+                        class="h-full w-full border-0 bg-white"
+                        referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                </div>
+                <footer class="flex shrink-0 items-center justify-between gap-2 border-t border-slate-300 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                    <span>내부 창은 Google Calendar 임베드 화면을 사용합니다.</span>
+                    <button type="button" onclick="openGoogleCalendarSettingsFromInternal()"
+                        class="font-semibold text-indigo-600 hover:underline dark:text-indigo-300">계정·열기 방식 설정</button>
+                </footer>
+            </div>
+        </section>
     </div>
 
     <!-- inDB Status Modal -->
@@ -1733,7 +1857,8 @@
                 <button type="button" onclick="saveImageInsertToInternalDb()"
                     class="px-3 py-1.5 bg-sky-700 text-white font-bold rounded border border-sky-900 text-sm">문서내부저장</button>
                 <button type="button" onclick="toggleImageInsertGallery()" id="img-insert-gallery-toggle"
-                    class="px-3 py-1.5 bg-fuchsia-700 text-white font-bold rounded border border-fuchsia-900 text-sm">Gallery</button>
+                    title="inDB 이미지 갤러리를 새 창으로 열기"
+                    class="px-3 py-1.5 bg-fuchsia-700 text-white font-bold rounded border border-fuchsia-900 text-sm">Gallery 새창</button>
             </div>
 
             <div class="bg-slate-200/70 dark:bg-slate-700/70 p-3 rounded">
@@ -1960,7 +2085,7 @@
 
 <!-- 이미지 편집기 삽입 -->
 <script
-    src="./imageDB/image_insert.js"
+    src="./imageDB/image_insert.js?v=20260731-gallery-window-1"
     charset="utf-8"
     defer>
 </script>
@@ -2180,7 +2305,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260731-html-preview-1"
+    src="./js/app.js?v=20260731-calendar-internal-window-3"
     charset="utf-8"
     defer>
 </script>

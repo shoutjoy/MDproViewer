@@ -1,0 +1,2 @@
+# Large local segmentation model (keep outside GitHub)
+/image_model/u2net_human_seg.onnx

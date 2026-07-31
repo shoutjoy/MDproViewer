@@ -14,3 +14,6 @@ push.py
 trt/wysiwyg-layer-proposal.md
 restore/index1.html
 restore/temp/index.html
+
+# Large local FMA Viewer segmentation model
+/Apps/fmaviewer/image_model/u2net_human_seg.onnx

@@ -15,6 +15,8 @@ const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
 const GOOGLE_CALENDAR_ENABLED_KEY = 'md_viewer_google_calendar_enabled';
 const GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r';
+const GOOGLE_CALENDAR_OPEN_MODE_KEY = 'md_viewer_google_calendar_open_mode';
+const GOOGLE_CALENDAR_EMAIL_KEY = 'md_viewer_google_calendar_email';
 
 function enableTouchModalDrag(panel, handle, options) {
     const opts = options || {};
@@ -109,6 +111,7 @@ let imageInsertDragOffsetY = 0;
 let imageInsertGalleryOpen = false;
 let imageInsertGalleryObjectUrls = [];
 let imageInsertGalleryDataUrlCache = new Map();
+let imageInsertGalleryWindow = null;
 let highlightPopupDockRight = true;
 let highlightPopupShrink = false;
 let highlightPopupDragBound = false;
@@ -162,6 +165,9 @@ let settingsModalResizeStartY = 0;
 let settingsModalResizeStartW = 0;
 let settingsModalResizeStartH = 0;
 let settingsModalRestoreRect = null;
+let googleCalendarInternalMaximized = false;
+let googleCalendarInternalRestoreStyle = '';
+let googleCalendarInternalDragBound = false;
 let aiSidebarBootPromise = null;
 let aiSidebarLoadAttempts = 0;
 let viewClickMappedCaretPos = null;
@@ -545,7 +551,83 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     if (!card || !slot) return;
     const deepseek = document.getElementById('deepseek-settings-card');
     if (deepseek && deepseek.parentElement === card) card.appendChild(deepseek);
+    const aiChatSettings = document.getElementById('ai-chat-settings');
+    const scholarLmSettings = document.getElementById('scholar-ai-provider-settings');
+    if (aiChatSettings && scholarLmSettings) {
+        aiChatSettings.className = 'pb-3 border-b border-slate-200 dark:border-slate-700';
+        scholarLmSettings.insertBefore(aiChatSettings, scholarLmSettings.firstChild);
+    }
     if (card.parentElement !== slot) slot.appendChild(card);
+}
+
+function organizeSettingsDashboard() {
+    const body = document.getElementById('settings-modal-body');
+    if (!body || document.getElementById('settings-dashboard-general')) return;
+
+    function createColumn(id, title, icon) {
+        const column = document.createElement('section');
+        column.id = id;
+        column.className = 'settings-dashboard-column';
+        column.setAttribute('aria-label', title);
+
+        const heading = document.createElement('div');
+        heading.className = 'settings-column-title';
+        heading.innerHTML =
+            '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' +
+            '<span>' + title + '</span>';
+        column.appendChild(heading);
+        body.appendChild(column);
+        return column;
+    }
+
+    const generalColumn = createColumn(
+        'settings-dashboard-general',
+        '캘린더 · 코드 색상 · 단축키',
+        'layout-dashboard'
+    );
+    const githubColumn = createColumn(
+        'settings-dashboard-github',
+        'GitHub 사용 설정',
+        'github'
+    );
+    const toolsColumn = createColumn(
+        'settings-dashboard-tools',
+        '기능 표시 · 사용 도구',
+        'sliders-horizontal'
+    );
+    const aiColumn = createColumn(
+        'settings-dashboard-ai',
+        'AI 관련 설정',
+        'sparkles'
+    );
+
+    const googleCalendar = document.getElementById('google-calendar-settings-card');
+    const codeColors = document.getElementById('code-color-settings-card');
+    const shortcuts = document.getElementById('shortcuts-settings-card');
+    const aiUser = document.getElementById('ai-user-settings-card');
+    if (aiUser) {
+        aiUser.className = 'border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50 space-y-2';
+        generalColumn.appendChild(aiUser);
+    }
+    if (googleCalendar) generalColumn.appendChild(googleCalendar);
+    if (codeColors) generalColumn.appendChild(codeColors);
+    if (shortcuts) generalColumn.appendChild(shortcuts);
+
+    const githubSettings = document.getElementById('github-settings-slot');
+    if (githubSettings) githubColumn.appendChild(githubSettings);
+
+    const featureTools = document.getElementById('feature-tools-settings');
+    const sqliteTool = document.getElementById('sqlite-settings-tool');
+    if (featureTools) toolsColumn.appendChild(featureTools);
+    if (sqliteTool) toolsColumn.appendChild(sqliteTool);
+
+    const aiMaster = document.getElementById('ai-master-settings-card');
+    const aiIntegration = document.getElementById('ai-integration-settings-slot');
+    if (aiMaster) aiColumn.appendChild(aiMaster);
+    if (aiIntegration) aiColumn.appendChild(aiIntegration);
+
+    const legacyCard = document.getElementById('legacy-ai-settings-card');
+    if (legacyCard) legacyCard.classList.add('hidden');
 }
 
 function initUserSettingsModule() {
@@ -578,6 +660,7 @@ window.onload = async () => {
         initMacroFeature();
         initUserSettingsModule();
         relocateAiIntegrationSettingsIntoAiUse();
+        organizeSettingsDashboard();
         lucide.createIcons();
         toggleMode('edit');
 
@@ -4897,6 +4980,7 @@ function initSettings() {
     const calendarCheck = document.getElementById('google-calendar-enabled');
     if (calendarCheck) calendarCheck.checked = calendarEnabled;
     applyGoogleCalendarVisibility(calendarEnabled);
+    loadGoogleCalendarOptionsUI();
 }
 
 function getGoogleCalendarEnabledFromLocal() {
@@ -4919,6 +5003,104 @@ function applyGoogleCalendarVisibility(enabled) {
     if (button) button.classList.toggle('hidden', !enabled);
 }
 
+function getGoogleCalendarOpenModeFromLocal() {
+    try {
+        return localStorage.getItem(GOOGLE_CALENDAR_OPEN_MODE_KEY) === 'external' ? 'external' : 'internal';
+    } catch (_) {
+        return 'internal';
+    }
+}
+
+function getGoogleCalendarEmailFromLocal() {
+    try {
+        return String(localStorage.getItem(GOOGLE_CALENDAR_EMAIL_KEY) || '').trim();
+    } catch (_) {
+        return '';
+    }
+}
+
+function isValidGoogleCalendarEmail(email) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
+}
+
+function setGoogleCalendarOptionsToLocal(mode, email) {
+    const safeMode = mode === 'external' ? 'external' : 'internal';
+    const safeEmail = String(email || '').trim().toLowerCase();
+    try {
+        localStorage.setItem(GOOGLE_CALENDAR_OPEN_MODE_KEY, safeMode);
+        if (safeEmail) localStorage.setItem(GOOGLE_CALENDAR_EMAIL_KEY, safeEmail);
+        else localStorage.removeItem(GOOGLE_CALENDAR_EMAIL_KEY);
+    } catch (_) {}
+    return { mode: safeMode, email: safeEmail };
+}
+
+function setGoogleCalendarSettingsStatus(message, isError) {
+    const status = document.getElementById('google-calendar-settings-status');
+    if (!status) return;
+    status.textContent = String(message || '');
+    status.className = 'min-h-[1rem] text-[11px] ' +
+        (isError ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400');
+}
+
+function loadGoogleCalendarOptionsUI(settings) {
+    const storedMode = settings && settings.googleCalendarOpenMode
+        ? settings.googleCalendarOpenMode
+        : getGoogleCalendarOpenModeFromLocal();
+    const storedEmail = settings && typeof settings.googleCalendarEmail === 'string'
+        ? settings.googleCalendarEmail
+        : getGoogleCalendarEmailFromLocal();
+    const options = setGoogleCalendarOptionsToLocal(storedMode, storedEmail);
+    const emailInput = document.getElementById('google-calendar-email');
+    if (emailInput) emailInput.value = options.email;
+    document.querySelectorAll('input[name="google-calendar-open-mode"]').forEach(function (radio) {
+        radio.checked = radio.value === options.mode;
+    });
+    const button = document.getElementById('btn-google-calendar');
+    if (button) {
+        button.title = options.mode === 'external'
+            ? 'Google 캘린더 브라우저 새 창으로 열기'
+            : 'Google 캘린더 앱 내부 창으로 열기';
+    }
+    setGoogleCalendarSettingsStatus(
+        options.email
+            ? options.email + ' · ' + (options.mode === 'external' ? '브라우저 새 창' : '앱 내부 창')
+            : 'Gmail 주소 없이 기본 Google 캘린더를 엽니다.',
+        false
+    );
+    return options;
+}
+
+async function saveGoogleCalendarOptions(showFeedback) {
+    const emailInput = document.getElementById('google-calendar-email');
+    const checkedMode = document.querySelector('input[name="google-calendar-open-mode"]:checked');
+    const email = String(emailInput && emailInput.value || '').trim().toLowerCase();
+    const mode = checkedMode && checkedMode.value === 'external' ? 'external' : 'internal';
+    if (email && !isValidGoogleCalendarEmail(email)) {
+        setGoogleCalendarSettingsStatus('올바른 Gmail 주소 형식으로 입력해 주세요.', true);
+        if (showFeedback && emailInput) emailInput.focus();
+        return false;
+    }
+    const options = setGoogleCalendarOptionsToLocal(mode, email);
+    loadGoogleCalendarOptionsUI(options);
+    try {
+        await setAiSettings({
+            googleCalendarOpenMode: options.mode,
+            googleCalendarEmail: options.email
+        });
+    } catch (error) {
+        setGoogleCalendarSettingsStatus('캘린더 설정 저장 실패: ' + (error && error.message ? error.message : error), true);
+        return false;
+    }
+    if (showFeedback) {
+        setGoogleCalendarSettingsStatus(
+            '저장됨 · ' + (options.mode === 'external' ? '브라우저 새 창' : '앱 내부 창'),
+            false
+        );
+        showToast('Google 캘린더 설정을 저장했습니다.');
+    }
+    return true;
+}
+
 async function toggleGoogleCalendarSetting(enabled) {
     const value = !!enabled;
     setGoogleCalendarEnabledToLocal(value);
@@ -4931,6 +5113,133 @@ async function toggleGoogleCalendarSetting(enabled) {
     showToast(value ? 'Google 캘린더 버튼을 표시합니다.' : 'Google 캘린더 버튼을 숨겼습니다.');
 }
 
+function buildGoogleCalendarExternalUrl() {
+    const email = getGoogleCalendarEmailFromLocal();
+    const url = new URL(GOOGLE_CALENDAR_URL);
+    if (email) url.searchParams.set('authuser', email);
+    return url.href;
+}
+
+function buildGoogleCalendarEmbedUrl(email) {
+    const url = new URL('https://calendar.google.com/calendar/embed');
+    const safeEmail = String(email || '').trim();
+    if (safeEmail) url.searchParams.set('src', safeEmail);
+    let timezone = 'Asia/Seoul';
+    try { timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || timezone; } catch (_) {}
+    url.searchParams.set('ctz', timezone);
+    url.searchParams.set('mode', 'MONTH');
+    return url.href;
+}
+
+function openGoogleCalendarExternalWindow() {
+    const opened = window.open(buildGoogleCalendarExternalUrl(), '_blank');
+    if (!opened) {
+        showToast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.');
+        return false;
+    }
+    try { opened.opener = null; } catch (_) {}
+    return true;
+}
+
+function bindGoogleCalendarInternalDrag() {
+    if (googleCalendarInternalDragBound) return;
+    const panel = document.getElementById('google-calendar-internal-panel');
+    const header = document.getElementById('google-calendar-internal-header');
+    if (!panel || !header) return;
+    googleCalendarInternalDragBound = true;
+    header.addEventListener('pointerdown', function (event) {
+        if (event.target.closest('button') || googleCalendarInternalMaximized) return;
+        const rect = panel.getBoundingClientRect();
+        const offsetX = event.clientX - rect.left;
+        const offsetY = event.clientY - rect.top;
+        panel.style.position = 'fixed';
+        panel.style.left = rect.left + 'px';
+        panel.style.top = rect.top + 'px';
+        panel.style.margin = '0';
+        try { header.setPointerCapture(event.pointerId); } catch (_) {}
+
+        const move = function (moveEvent) {
+            const maxLeft = Math.max(0, window.innerWidth - panel.offsetWidth);
+            const maxTop = Math.max(0, window.innerHeight - panel.offsetHeight);
+            panel.style.left = Math.max(0, Math.min(maxLeft, moveEvent.clientX - offsetX)) + 'px';
+            panel.style.top = Math.max(0, Math.min(maxTop, moveEvent.clientY - offsetY)) + 'px';
+        };
+        const end = function (endEvent) {
+            header.removeEventListener('pointermove', move);
+            header.removeEventListener('pointerup', end);
+            header.removeEventListener('pointercancel', end);
+            try { header.releasePointerCapture(endEvent.pointerId); } catch (_) {}
+        };
+        header.addEventListener('pointermove', move);
+        header.addEventListener('pointerup', end);
+        header.addEventListener('pointercancel', end);
+        event.preventDefault();
+    });
+}
+
+function openGoogleCalendarInternalWindow() {
+    const email = getGoogleCalendarEmailFromLocal();
+    const shell = document.getElementById('google-calendar-internal-shell');
+    const frame = document.getElementById('google-calendar-internal-frame');
+    const loading = document.getElementById('google-calendar-internal-loading');
+    const account = document.getElementById('google-calendar-internal-account');
+    if (!shell || !frame) return false;
+    if (account) account.textContent = email || '기본 Google 캘린더';
+    if (loading) loading.classList.remove('hidden');
+    frame.onload = onGoogleCalendarInternalFrameLoad;
+    frame.src = buildGoogleCalendarEmbedUrl(email);
+    shell.classList.remove('hidden');
+    shell.classList.add('flex');
+    bindGoogleCalendarInternalDrag();
+    return true;
+}
+
+function onGoogleCalendarInternalFrameLoad() {
+    const loading = document.getElementById('google-calendar-internal-loading');
+    if (loading) loading.classList.add('hidden');
+}
+
+function closeGoogleCalendarInternalWindow() {
+    const shell = document.getElementById('google-calendar-internal-shell');
+    const frame = document.getElementById('google-calendar-internal-frame');
+    if (googleCalendarInternalMaximized) toggleGoogleCalendarInternalMaximize();
+    if (shell) {
+        shell.classList.add('hidden');
+        shell.classList.remove('flex');
+    }
+    if (frame) frame.removeAttribute('src');
+}
+
+function toggleGoogleCalendarInternalMaximize() {
+    const panel = document.getElementById('google-calendar-internal-panel');
+    const button = document.getElementById('google-calendar-internal-maximize');
+    if (!panel) return;
+    if (!googleCalendarInternalMaximized) {
+        googleCalendarInternalRestoreStyle = panel.getAttribute('style') || '';
+        panel.style.position = 'fixed';
+        panel.style.inset = '6px';
+        panel.style.left = '6px';
+        panel.style.top = '6px';
+        panel.style.width = 'calc(100vw - 12px)';
+        panel.style.height = 'calc(100vh - 12px)';
+        panel.style.maxWidth = 'none';
+        panel.style.maxHeight = 'none';
+        panel.style.resize = 'none';
+        if (button) button.textContent = '❐';
+    } else {
+        if (googleCalendarInternalRestoreStyle) panel.setAttribute('style', googleCalendarInternalRestoreStyle);
+        else panel.removeAttribute('style');
+        if (button) button.textContent = '□';
+    }
+    googleCalendarInternalMaximized = !googleCalendarInternalMaximized;
+}
+
+function openGoogleCalendarSettingsFromInternal() {
+    closeGoogleCalendarInternalWindow();
+    openSettingsModal();
+    setTimeout(focusGoogleCalendarSettings, 80);
+}
+
 function openGoogleCalendarWindow() {
     if (!getGoogleCalendarEnabledFromLocal()) {
         showToast('설정에서 Google 캘린더 사용을 먼저 켜 주세요.');
@@ -4938,13 +5247,9 @@ function openGoogleCalendarWindow() {
         setTimeout(focusGoogleCalendarSettings, 80);
         return false;
     }
-    const opened = window.open(GOOGLE_CALENDAR_URL, '_blank');
-    if (!opened) {
-        showToast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.');
-        return false;
-    }
-    try { opened.opener = null; } catch (_) {}
-    return true;
+    return getGoogleCalendarOpenModeFromLocal() === 'external'
+        ? openGoogleCalendarExternalWindow()
+        : openGoogleCalendarInternalWindow();
 }
 
 async function getAiSettings() {
@@ -7223,6 +7528,7 @@ async function onAiFeatureCheckboxChange() {
 }
 
 async function persistAiSettingsFromModal() {
+    await saveGoogleCalendarOptions(false);
     const googleCalendarEl = document.getElementById('google-calendar-enabled');
     const googleCalendarEnabled = !!(googleCalendarEl && googleCalendarEl.checked);
     setGoogleCalendarEnabledToLocal(googleCalendarEnabled);
@@ -7336,6 +7642,8 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     FOLDER_COLLAPSE_STATE_KEY,
     STORAGE_SOURCE_TAB_KEY,
     GOOGLE_CALENDAR_ENABLED_KEY,
+    GOOGLE_CALENDAR_OPEN_MODE_KEY,
+    GOOGLE_CALENDAR_EMAIL_KEY,
     'md_viewer_code_bg',
     'md_viewer_code_text',
     'ss_imgbb_api_key',
@@ -10764,6 +11072,7 @@ async function loadAiSettingsToUI() {
     const googleCalendarCheck = document.getElementById('google-calendar-enabled');
     if (googleCalendarCheck) googleCalendarCheck.checked = googleCalendarEnabled;
     applyGoogleCalendarVisibility(googleCalendarEnabled);
+    loadGoogleCalendarOptionsUI(settings);
     loadScholarAIProviderSettingsUI(settings);
     if (!settings) {
         const imageCheckEmpty = document.getElementById('image-upload-enabled');
@@ -11069,7 +11378,7 @@ function applySettingsModalCompactUI() {
     const btn = document.getElementById('settings-modal-drag-handle');
     if (!panel) return;
     if (settingsModalFullscreen) {
-        if (btn) btn.textContent = '\uCD95\uC18C';
+        if (btn) btn.textContent = 'Dock';
         return;
     }
     if (settingsModalCompact) {
@@ -11082,7 +11391,7 @@ function applySettingsModalCompactUI() {
         panel.style.height = '';
         panel.style.maxWidth = '92vw';
         panel.style.maxHeight = '68vh';
-        if (btn) btn.textContent = '\uBCF5\uC6D0';
+        if (btn) btn.textContent = '\uD31D\uC5C5';
     } else {
         panel.style.position = '';
         panel.style.left = '';
@@ -11093,7 +11402,7 @@ function applySettingsModalCompactUI() {
         panel.style.height = '';
         panel.style.maxWidth = '';
         panel.style.maxHeight = '90vh';
-        if (btn) btn.textContent = '\uCD95\uC18C';
+        if (btn) btn.textContent = 'Dock';
     }
 }
 function toggleSettingsModalCompact() {
@@ -11579,6 +11888,12 @@ window.openSettingsModal = openSettingsModal;
 window.focusGoogleCalendarSettings = focusGoogleCalendarSettings;
 window.toggleGoogleCalendarSetting = toggleGoogleCalendarSetting;
 window.openGoogleCalendarWindow = openGoogleCalendarWindow;
+window.saveGoogleCalendarOptions = saveGoogleCalendarOptions;
+window.openGoogleCalendarExternalWindow = openGoogleCalendarExternalWindow;
+window.closeGoogleCalendarInternalWindow = closeGoogleCalendarInternalWindow;
+window.toggleGoogleCalendarInternalMaximize = toggleGoogleCalendarInternalMaximize;
+window.onGoogleCalendarInternalFrameLoad = onGoogleCalendarInternalFrameLoad;
+window.openGoogleCalendarSettingsFromInternal = openGoogleCalendarSettingsFromInternal;
 window.getAtCommandTemplates = function () {
     return getTemplateLibrary().map(function (item) {
         return { id: item.id, name: item.name, desc: item.desc, isCustom: item.isCustom };

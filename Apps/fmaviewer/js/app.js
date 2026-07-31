@@ -2,178 +2,75 @@
    Main App Core
    ======================================================= */
 
-async function init() {
+function init() {
     initGrid();
+    initImportPanel();
     initPanelResize();
     initDB();
     setupEventListeners();
     updateModeButtons();
     updateStepButtons();
-    await loadViewerLaunchImages();
 }
 
-const FMA_IMAGE_EXTENSIONS = new Set([
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.ico', '.avif'
-]);
-
-function getFileExtension(value) {
-    const match = String(value || '').toLowerCase().match(/(\.[^.\\/]+)$/);
-    return match ? match[1] : '';
+function initImportPanel() {
+    if (!dom.importSection || !dom.btnToggleImportPanel) return;
+    const collapsed = localStorage.getItem("fma_import_panel_collapsed") === "true";
+    setImportPanelCollapsed(collapsed);
 }
 
-function isImageFile(file) {
-    return !!file && (
-        String(file.type || '').toLowerCase().startsWith('image/')
-        || FMA_IMAGE_EXTENSIONS.has(getFileExtension(file.name))
-    );
-}
-
-function selectLaunchImage(selectedName, selectedPath) {
-    const wantedName = String(selectedName || '').toLowerCase();
-    const wantedPath = String(selectedPath || '').toLowerCase();
-    let index = images.findIndex((image) => {
-        const imagePath = String(image.path || '').toLowerCase();
-        return (wantedPath && imagePath === wantedPath)
-            || (wantedName && (imagePath.endsWith('/' + wantedName) || imagePath.endsWith('\\' + wantedName) || imagePath === wantedName));
-    });
-    if (index < 0) index = 0;
-    if (images.length) showImage(index);
-}
-
-function loadImageRecords(records, selectedPath) {
-    const rows = Array.isArray(records) ? records : [];
-    images = rows
-        .filter((item) => item && item.src)
-        .map((item) => ({
-            src: String(item.src),
-            path: String(item.path || item.filePath || item.name || ''),
-            group: String(item.group || item.folder || 'folder'),
-            date: Number(item.date || item.mtimeMs || Date.now()),
-            size: Number(item.size || 0),
-            isFav: false
-        }));
-
-    renderGallery();
-    renderFavorites();
-    if (dom.imageCount) dom.imageCount.innerText = "Images: " + images.length;
-    selectLaunchImage('', selectedPath);
-}
-
-function currentImagePayload() {
-    const item = images[currentIndex];
-    if (!item) return null;
-    const path = String(item.path || '');
-    const name = path.split(/[\\/]/).pop() || ('image_' + (currentIndex + 1) + '.png');
-    return {
-        index: currentIndex,
-        src: String(item.src || ''),
-        path: path,
-        name: name,
-        size: Number(item.size || 0)
-    };
-}
-
-function sendViewerAction(type) {
-    const image = currentImagePayload();
-    if (!image) {
-        alert('먼저 이미지를 선택하세요.');
-        return;
+function setImportPanelCollapsed(collapsed) {
+    if (!dom.importSection || !dom.btnToggleImportPanel) return;
+    dom.importSection.classList.toggle("collapsed", collapsed);
+    dom.btnToggleImportPanel.setAttribute("aria-expanded", String(!collapsed));
+    dom.btnToggleImportPanel.title = collapsed ? "파일 추가 영역 펼치기" : "파일 추가 영역 접기";
+    const icon = dom.btnToggleImportPanel.querySelector(".import-collapse-icon");
+    const title = dom.btnToggleImportPanel.querySelector(".import-collapse-label strong");
+    const description = dom.btnToggleImportPanel.querySelector(".import-collapse-label small");
+    if (icon) icon.innerText = collapsed ? "⌄" : "⌃";
+    if (title) title.innerText = collapsed ? "＋ 이미지 파일 추가 열기" : "파일 열기 · 이미지 추가";
+    if (description) {
+        description.innerText = collapsed
+            ? "이미지, ZIP, 붙여넣기"
+            : "FMA, 이미지, ZIP, 클립보드";
     }
-    if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: type, image: image }, '*');
-    }
-}
-
-function applyEditedImage(dataUrl, name) {
-    if (!images[currentIndex] || !/^data:image\//i.test(String(dataUrl || ''))) return;
-    const old = images[currentIndex];
-    images[currentIndex] = {
-        ...old,
-        src: String(dataUrl),
-        path: String(name || old.path || ('edited_' + Date.now() + '.png')),
-        date: Date.now(),
-        size: String(dataUrl).length
-    };
-    renderGallery();
-    renderFavorites();
-    showImage(currentIndex);
-}
-
-function addEditedImage(dataUrl, name) {
-    if (!/^data:image\//i.test(String(dataUrl || ''))) return;
-    const source = images[currentIndex] || {};
-    const nextIndex = images.length;
-    images.push({
-        src: String(dataUrl),
-        path: String(name || ('edited_' + Date.now() + '.png')),
-        group: 'edited',
-        date: Date.now(),
-        size: String(dataUrl).length,
-        isFav: false,
-        sourcePath: String(source.path || '')
-    });
-    currentIndex = nextIndex;
-    renderGallery();
-    renderFavorites();
-    if (dom.imageCount) dom.imageCount.innerText = "Images: " + images.length;
-    showImage(currentIndex);
-}
-
-async function loadViewerFiles(files, selectedName) {
-    const imageFiles = Array.from(files || []).filter(isImageFile);
-    if (!imageFiles.length) return false;
-    images = [];
-    await handleAddImages(imageFiles, { persist: false });
-    selectLaunchImage(selectedName, '');
-    return true;
-}
-
-async function loadViewerLaunchImages() {
-    const params = new URLSearchParams(window.location.search);
-    const selectedPath = params.get('path') || '';
-    const selectedName = params.get('title') || selectedPath.split(/[\\/]/).pop() || '';
-    if (selectedName) document.title = selectedName + ' - 이미지 보기';
-
-    if (selectedPath && window.web2electron && typeof window.web2electron.getImageFolder === 'function') {
-        try {
-            const result = await window.web2electron.getImageFolder({ filePath: selectedPath });
-            if (result && !result.error && Array.isArray(result.images) && result.images.length) {
-                loadImageRecords(result.images, result.selectedPath || selectedPath);
-                return true;
-            }
-        } catch (error) {
-            console.warn('이미지 폴더를 불러오지 못했습니다.', error);
-        }
-    }
-
-    const directUrl = params.get('file') || '';
-    if (directUrl) {
-        loadImageRecords([{
-            src: directUrl,
-            path: selectedPath || selectedName,
-            name: selectedName,
-            group: 'folder'
-        }], selectedPath);
-        return true;
-    }
-    return false;
+    localStorage.setItem("fma_import_panel_collapsed", String(collapsed));
 }
 
 function initGrid() {
-    const savedCols = localStorage.getItem('fma_grid_cols') || 2;
-    changeGrid(parseInt(savedCols));
+    const savedCols = Number(localStorage.getItem("fma_grid_cols")) || 2;
+    changeGrid([2, 3, 4].includes(savedCols) ? savedCols : 2);
 }
 
 function changeGrid(cols) {
+    cols = [2, 3, 4].includes(Number(cols)) ? Number(cols) : 2;
     document.documentElement.style.setProperty('--grid-cols', cols);
     localStorage.setItem('fma_grid_cols', cols);
-    document.querySelectorAll('.btnGrid').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.getAttribute('data-cols')) === cols);
-    });
+    if (dom.btnGridCycle) {
+        dom.btnGridCycle.dataset.cols = String(cols);
+        dom.btnGridCycle.innerText = `Grid ${cols} ▦`;
+        dom.btnGridCycle.title = `현재 ${cols}열 · 클릭하여 ${cols === 4 ? 2 : cols + 1}열로 전환`;
+    }
+}
+
+function closeFileMenu() {
+    if (!dom.fileMenuDropdown) return;
+    dom.fileMenuDropdown.style.display = "none";
+    dom.btnFileMenu.setAttribute("aria-expanded", "false");
 }
 
 function setupEventListeners() {
     // Top Bar Actions
+    dom.btnFileMenu.onclick = event => {
+        event.stopPropagation();
+        const opening = dom.fileMenuDropdown.style.display === "none";
+        dom.fileMenuDropdown.style.display = opening ? "flex" : "none";
+        dom.btnFileMenu.setAttribute("aria-expanded", String(opening));
+    };
+    dom.fileMenuDropdown.onclick = event => event.stopPropagation();
+    document.addEventListener("click", closeFileMenu);
+    dom.btnToggleImportPanel.onclick = () => {
+        setImportPanelCollapsed(!dom.importSection.classList.contains("collapsed"));
+    };
     dom.btnOpen.onclick = () => dom.input.click();
     dom.dropzone.onclick = () => dom.input.click();
     dom.input.onchange = (e) => {
@@ -182,21 +79,44 @@ function setupEventListeners() {
     };
 
     dom.btnAddImg.onclick = () => dom.addImgInput.click();
-    dom.addImgInput.onchange = (e) => handleAddImages(Array.from(e.target.files));
-    if (dom.btnCropImage) dom.btnCropImage.onclick = () => sendViewerAction('fmaviewer-crop-image');
-    if (dom.btnRemoveBackground) dom.btnRemoveBackground.onclick = () => sendViewerAction('fmaviewer-remove-background');
-    if (dom.btnInsertInternal) dom.btnInsertInternal.onclick = () => sendViewerAction('fmaviewer-insert-internal');
-    if (dom.btnUploadImgbb) dom.btnUploadImgbb.onclick = () => sendViewerAction('fmaviewer-upload-imgbb');
+    dom.btnImportImages.onclick = () => dom.addImgInput.click();
+    dom.btnImportZip.onclick = () => dom.zipImgInput.click();
+    dom.btnPasteImg.onclick = importClipboardImages;
+    dom.addImgInput.onchange = async (e) => {
+        await handleAddImages(Array.from(e.target.files));
+        e.target.value = "";
+    };
+    dom.zipImgInput.onchange = async (e) => {
+        await handleImportFiles(Array.from(e.target.files));
+        e.target.value = "";
+    };
     dom.btnSave.onclick = saveFMA;
     dom.btnClear.onclick = resetProject;
     dom.btnZip.onclick = downloadAllAsZIP;
     dom.btnRestoreRemove.onclick = restoreLastDeleted;
     dom.btnRestore.onclick = restoreLastSession;
+    [dom.btnOpen, dom.btnSave, dom.btnZip].forEach(button => {
+        button.addEventListener("click", closeFileMenu);
+    });
+    dom.btnGridCycle.onclick = () => {
+        const current = Number(dom.btnGridCycle.dataset.cols) || 2;
+        changeGrid(current === 4 ? 2 : current + 1);
+    };
 
     // Sort & Fav & Orientation
     dom.sortSelect.onchange = (e) => {
         sortMode = e.target.value;
         renderGallery();
+        if (images.length > 0) {
+            currentIndex = getImageIndexAtDisplayPosition(0);
+            if (orientation === "vert") {
+                renderVerticalPreview();
+            } else {
+                showImage(currentIndex);
+            }
+        } else {
+            updatePreviewPageText();
+        }
     };
 
     dom.btnToggleFavs.onclick = () => {
@@ -206,9 +126,8 @@ function setupEventListeners() {
 
     dom.btnOrientation.onclick = toggleOrientation;
 
-    // View Modes
-    dom.btnModeSingle.onclick = () => switchViewMode(1);
-    dom.btnModeTwo.onclick = () => switchViewMode(2);
+    // View mode cycle: Single ↔ Two
+    dom.btnViewModeCycle.onclick = () => switchViewMode(viewMode === 1 ? 2 : 1);
 
     // Zoom Buttons
     dom.btnZoomIn.onclick = () => { zoom *= 1.2; updateZoom(); };
@@ -216,19 +135,29 @@ function setupEventListeners() {
     dom.btnResetZoom.onclick = resetZoom;
 
     // Navigation
-    dom.btnPrev.onclick = () => showImage(currentIndex - navStep);
-    dom.btnNext.onclick = () => showImage(currentIndex + navStep);
-    dom.btnPrevMenu.onclick = () => showImage(currentIndex - navStep);
-    dom.btnNextMenu.onclick = () => showImage(currentIndex + navStep);
+    dom.btnPrev.onclick = () => navigateSortedImages(-navStep);
+    dom.btnNext.onclick = () => navigateSortedImages(navStep);
+    dom.btnPrevMenu.onclick = () => navigateSortedImages(-navStep);
+    dom.btnNextMenu.onclick = () => navigateSortedImages(navStep);
 
-    // Skip/Step Buttons
-    dom.btnStep1.onclick = () => { navStep = 1; updateStepButtons(); };
-    dom.btnStep2.onclick = () => { navStep = 2; updateStepButtons(); };
+    // Navigation step cycle: 1 ↔ 2
+    dom.btnStepCycle.onclick = () => {
+        navStep = navStep === 1 ? 2 : 1;
+        updateStepButtons();
+    };
 
     // Keyboard
     document.addEventListener("keydown", e => {
-        if (e.key === "ArrowRight") showImage(currentIndex + navStep);
-        if (e.key === "ArrowLeft") showImage(currentIndex - navStep);
+        if (dom.cropModal && dom.cropModal.style.display !== "none") return;
+        if (dom.upscaleModal && dom.upscaleModal.style.display !== "none") return;
+        if (dom.bgRemoveModal && dom.bgRemoveModal.style.display !== "none") return;
+        if (dom.bgMaskEditorModal && dom.bgMaskEditorModal.style.display !== "none") return;
+        if (dom.imageEditorModal && dom.imageEditorModal.style.display !== "none") return;
+        if (dom.externalAppModal && dom.externalAppModal.style.display !== "none") return;
+        if (dom.imageMetadataModal && dom.imageMetadataModal.style.display !== "none") return;
+        if (dom.settingsModal && dom.settingsModal.style.display !== "none") return;
+        if (e.key === "ArrowRight") navigateSortedImages(navStep);
+        if (e.key === "ArrowLeft") navigateSortedImages(-navStep);
     });
 
     // Mouse Interactions (Zoom & Pan)
@@ -250,68 +179,50 @@ function setupEventListeners() {
         const file = items[0];
         if (file.name.toLowerCase().endsWith('.fma') || file.type === 'application/json') {
             loadFMA(file);
-        } else if (file.type.startsWith('image/')) {
-            handleAddImages(items);
+        } else {
+            handleImportFiles(items);
         }
     };
 
     if (dom.dropzoneImg) {
-        dom.dropzoneImg.ondragover = e => e.preventDefault();
+        dom.dropzoneImg.ondragover = e => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+        };
         dom.dropzoneImg.ondragenter = () => dom.dropzoneImg.classList.add('drag-over');
         dom.dropzoneImg.ondragleave = () => dom.dropzoneImg.classList.remove('drag-over');
         dom.dropzoneImg.ondrop = e => {
             e.preventDefault();
             dom.dropzoneImg.classList.remove('drag-over');
             const files = Array.from(e.dataTransfer.files);
-            if (files.length > 0) handleAddImages(files);
+            if (files.length > 0) handleImportFiles(files);
         };
-        // Option: Can also click to add images
-        dom.dropzoneImg.onclick = () => dom.addImgInput.click();
     }
 
-    window.addEventListener('message', async (event) => {
-        const data = event && event.data;
-        if (!data) return;
-        if (data.type === 'fmaviewer-open-files') {
-            await loadViewerFiles(data.files, data.selectedName || '');
-            return;
-        }
-        if (data.type === 'fmaviewer-open-records') {
-            loadImageRecords(data.records, data.selectedPath || '');
-            return;
-        }
-        if (data.type === 'fmaviewer-apply-image') {
-            applyEditedImage(data.dataUrl, data.name);
-            return;
-        }
-        if (data.type === 'fmaviewer-add-image') {
-            addEditedImage(data.dataUrl, data.name);
-        }
-    });
-
-    if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: 'fmaviewer-ready' }, '*');
-    }
+    document.addEventListener("paste", handlePasteEvent);
 }
 
 function updateModeButtons() {
-    if (!dom.btnModeSingle) return;
-    dom.btnModeSingle.classList.toggle('active', viewMode === 1);
-    dom.btnModeTwo.classList.toggle('active', viewMode === 2);
+    if (!dom.btnViewModeCycle) return;
+    const isTwo = viewMode === 2;
+    dom.btnViewModeCycle.innerText = `View: ${isTwo ? "Two" : "Single"}`;
+    dom.btnViewModeCycle.classList.toggle('active', isTwo);
+    dom.btnViewModeCycle.title = `현재 ${isTwo ? "Two" : "Single"} · 클릭하여 ${isTwo ? "Single" : "Two"}로 전환`;
 }
 
 function updateStepButtons() {
-    if (!dom.btnStep1) return;
-    dom.btnStep1.classList.toggle('active', navStep === 1);
-    dom.btnStep2.classList.toggle('active', navStep === 2);
+    if (!dom.btnStepCycle) return;
+    dom.btnStepCycle.innerText = `Skip: ${navStep}`;
+    dom.btnStepCycle.classList.toggle('active', navStep === 2);
+    dom.btnStepCycle.title = `현재 ${navStep}장씩 이동 · 클릭하여 ${navStep === 1 ? 2 : 1}장씩 이동`;
 
     // Header navigation/step visibility
     const isHorz = (orientation === 'horz');
-    if (dom.stepOption) dom.stepOption.style.display = isHorz ? 'flex' : 'none';
+    dom.btnStepCycle.style.display = isHorz ? 'inline-flex' : 'none';
     if (dom.navMenu) dom.navMenu.style.display = 'flex'; // Always visible
 
     // Page count update
-    if (dom.pageText) dom.pageText.innerText = `${currentIndex + 1} / ${images.length}`;
+    if (typeof updatePreviewPageText === "function") updatePreviewPageText();
 }
 
 // Run Initialization

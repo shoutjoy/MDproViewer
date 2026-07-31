@@ -88,7 +88,7 @@
             { id: 'template-current', label: '선택된 양식 삽입', detail: '양식 패널에서 선택한 양식 사용', category: '양식', icon: 'file-input', keywords: 'template insert 불러오기', run: function () { return callGlobal('insertSelectedTemplateToDocument'); } },
             { id: 'template-new', label: '양식으로 새 문서', detail: '선택된 양식으로 새 파일 시작', category: '양식', icon: 'file-plus-2', keywords: 'template new 새파일', run: function () { return callGlobal('insertSelectedTemplateAsNewFile'); } },
 
-            { id: 'connect-calendar', label: 'Google 캘린더 열기', detail: 'Google Calendar를 새 창으로 열기', category: '연결', icon: 'calendar-days', keywords: 'google calendar 일정 캘린더', immediate: true, run: function () { return callGlobal('openGoogleCalendarWindow'); } },
+            { id: 'connect-calendar', label: 'Google 캘린더 열기', detail: '설정한 방식으로 Google Calendar 열기', category: '연결', icon: 'calendar-days', keywords: 'google calendar 일정 캘린더', immediate: true, run: function () { return callGlobal('openGoogleCalendarWindow'); } },
             { id: 'connect-calendar-settings', label: 'Google 캘린더 설정', detail: '캘린더 사용 설정으로 이동', category: '연결', icon: 'calendar-cog', keywords: 'google calendar 설정 연결', run: function () { return callGlobal('focusGoogleCalendarSettings'); } },
             { id: 'connect-google-docs', label: 'Google 문서로 보내기', detail: '현재 문서를 Google Docs로 내보내기', category: '연결', icon: 'file-up', keywords: 'google docs 문서 내보내기', immediate: true, run: function () { return callGlobal('exportCurrentToGoogleDocs'); } },
             { id: 'connect-google-docs-settings', label: 'Google Docs 연결 설정', detail: 'Google Docs 인증 및 동기화 설정', category: '연결', icon: 'plug-zap', keywords: 'google docs oauth plugin 설정', run: function () { openSettingsAt('gdocs-settings'); } },

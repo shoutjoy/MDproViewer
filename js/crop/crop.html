@@ -25,6 +25,7 @@
     #crop-canvas {
       display: block;
       cursor: crosshair;
+      touch-action: none;
       border: 1px solid #3a3a50;
       border-radius: 6px;
       background: #0d0d14;
@@ -38,7 +39,7 @@
   </style>
 </head>
 <body>
-  <h3>영역을 드래그하여 선택 후 [크롭 적용] 클릭</h3>
+  <h3>영역을 드래그해 선택하고, 선택 영역 안을 드래그해 이동하세요.</h3>
   <div class="crop-canvas-wrap">
     <canvas id="crop-canvas"></canvas>
   </div>
@@ -56,7 +57,9 @@
     let scale = { w: 1, h: 1 };
     let rect = { x: 0, y: 0, w: 0, h: 0 };
     let dragging = false;
+    let dragMode = 'select';
     let start = { x: 0, y: 0 };
+    let dragStartRect = { x: 0, y: 0, w: 0, h: 0 };
 
     const canvas = document.getElementById('crop-canvas');
     const ctx = canvas.getContext('2d');
@@ -192,31 +195,93 @@
       requestImage();
     }, 400);
 
-    canvas.addEventListener('mousedown', function(e) {
+    function getCanvasPoint(e) {
       const r = canvas.getBoundingClientRect();
-      const x = (e.clientX - r.left) * (canvas.width / r.width);
-      const y = (e.clientY - r.top) * (canvas.height / r.height);
-      dragging = true;
-      start = { x: x, y: y };
-      rect = { x: x, y: y, w: 0, h: 0 };
-    });
-
-    canvas.addEventListener('mousemove', function(e) {
-      if (!dragging) return;
-      const r = canvas.getBoundingClientRect();
-      const x = (e.clientX - r.left) * (canvas.width / r.width);
-      const y = (e.clientY - r.top) * (canvas.height / r.height);
-      rect = {
-        x: Math.min(start.x, x),
-        y: Math.min(start.y, y),
-        w: Math.abs(x - start.x),
-        h: Math.abs(y - start.y)
+      return {
+        x: Math.max(0, Math.min(canvas.width, (e.clientX - r.left) * (canvas.width / r.width))),
+        y: Math.max(0, Math.min(canvas.height, (e.clientY - r.top) * (canvas.height / r.height)))
       };
-      draw();
+    }
+
+    function isPointInSelection(point) {
+      return rect.w >= 5 && rect.h >= 5 &&
+        point.x >= rect.x && point.x <= rect.x + rect.w &&
+        point.y >= rect.y && point.y <= rect.y + rect.h;
+    }
+
+    function canMoveSelection(point) {
+      const isInitialFullSelection =
+        rect.x <= 1 && rect.y <= 1 &&
+        rect.x + rect.w >= canvas.width - 1 &&
+        rect.y + rect.h >= canvas.height - 1;
+      return !isInitialFullSelection && isPointInSelection(point);
+    }
+
+    function updateCanvasCursor(point) {
+      if (dragging) {
+        canvas.style.cursor = dragMode === 'move' ? 'grabbing' : 'crosshair';
+      } else {
+        canvas.style.cursor = canMoveSelection(point) ? 'move' : 'crosshair';
+      }
+    }
+
+    canvas.addEventListener('pointerdown', function(e) {
+      if (e.button !== 0) return;
+      const point = getCanvasPoint(e);
+      dragging = true;
+      start = point;
+
+      if (canMoveSelection(point)) {
+        dragMode = 'move';
+        dragStartRect = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+      } else {
+        dragMode = 'select';
+        rect = { x: point.x, y: point.y, w: 0, h: 0 };
+      }
+
+      canvas.setPointerCapture(e.pointerId);
+      updateCanvasCursor(point);
+      e.preventDefault();
     });
 
-    canvas.addEventListener('mouseup', function() { dragging = false; });
-    canvas.addEventListener('mouseleave', function() { dragging = false; });
+    canvas.addEventListener('pointermove', function(e) {
+      const point = getCanvasPoint(e);
+      if (!dragging) {
+        updateCanvasCursor(point);
+        return;
+      }
+
+      if (dragMode === 'move') {
+        const maxX = Math.max(0, canvas.width - dragStartRect.w);
+        const maxY = Math.max(0, canvas.height - dragStartRect.h);
+        rect.x = Math.max(0, Math.min(maxX, dragStartRect.x + point.x - start.x));
+        rect.y = Math.max(0, Math.min(maxY, dragStartRect.y + point.y - start.y));
+      } else {
+        rect = {
+          x: Math.min(start.x, point.x),
+          y: Math.min(start.y, point.y),
+          w: Math.abs(point.x - start.x),
+          h: Math.abs(point.y - start.y)
+        };
+      }
+
+      draw();
+      updateCanvasCursor(point);
+      e.preventDefault();
+    });
+
+    function finishPointerDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      updateCanvasCursor(getCanvasPoint(e));
+    }
+
+    canvas.addEventListener('pointerup', finishPointerDrag);
+    canvas.addEventListener('pointercancel', finishPointerDrag);
+    canvas.addEventListener('pointerleave', function(e) {
+      if (!dragging) canvas.style.cursor = 'crosshair';
+    });
 
     function submitCropResult(action) {
       if (!img || rect.w < 5 || rect.h < 5) {

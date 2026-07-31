@@ -301,8 +301,11 @@ async function loadImageInsertGallery() {
 }
 
 function refreshImageInsertGallery() {
-    if (!imageInsertGalleryOpen) return;
-    loadImageInsertGallery();
+    if (imageInsertGalleryWindow && !imageInsertGalleryWindow.closed) {
+        imageInsertGalleryWindow.postMessage({ type: 'image-gallery-refresh' }, '*');
+        return;
+    }
+    if (imageInsertGalleryOpen) loadImageInsertGallery();
 }
 
 async function downloadImageInsertGalleryZip() {
@@ -370,14 +373,141 @@ async function downloadImageInsertGalleryZip() {
 }
 
 function toggleImageInsertGallery() {
-    const panel = document.getElementById('img-insert-gallery-panel');
-    if (!panel) return;
-    imageInsertGalleryOpen = !imageInsertGalleryOpen;
-    panel.classList.toggle('hidden', !imageInsertGalleryOpen);
-    setImageInsertGalleryToggleActive(imageInsertGalleryOpen);
-    if (imageInsertGalleryOpen) loadImageInsertGallery();
-    else revokeImageInsertGalleryObjectUrls();
+    if (imageInsertGalleryWindow && !imageInsertGalleryWindow.closed) {
+        imageInsertGalleryWindow.focus();
+        imageInsertGalleryWindow.postMessage({ type: 'image-gallery-refresh' }, '*');
+        return;
+    }
+
+    const galleryUrl = new URL('./imageDB/image-gallery.html?v=20260731-gallery-window-1', document.baseURI || window.location.href);
+    const width = Math.max(900, Math.min(1440, Math.round((window.screen && window.screen.availWidth || 1400) * 0.86)));
+    const height = Math.max(620, Math.min(960, Math.round((window.screen && window.screen.availHeight || 900) * 0.86)));
+    const left = Math.max(0, Math.round(((window.screen && window.screen.availWidth || width) - width) / 2));
+    const top = Math.max(0, Math.round(((window.screen && window.screen.availHeight || height) - height) / 2));
+    imageInsertGalleryWindow = window.open(
+        galleryUrl.href,
+        'mdviewer-indb-image-gallery',
+        'popup=yes,width=' + width + ',height=' + height + ',left=' + left + ',top=' + top + ',resizable=yes,scrollbars=no'
+    );
+
+    if (!imageInsertGalleryWindow) {
+        setImageInsertGalleryToggleActive(false);
+        setImageInsertStatus('갤러리 새 창이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.', true);
+        return;
+    }
+
+    setImageInsertGalleryToggleActive(true);
+    imageInsertGalleryWindow.focus();
 }
+
+async function applyImageInsertGalleryPopupSelection(id) {
+    const safeId = String(id || '').trim();
+    if (!safeId || !db || !window.ImageDB || typeof window.ImageDB.getImage !== 'function') return;
+
+    try {
+        const record = await window.ImageDB.getImage(db, safeId);
+        if (!record || !record.blob) throw new Error('선택한 이미지를 inDB에서 찾지 못했습니다.');
+        const internalUrl = typeof window.ImageDB.internalUrlFromId === 'function'
+            ? window.ImageDB.internalUrlFromId(safeId)
+            : ('internal://' + encodeURIComponent(safeId));
+        const dataUrl = await getImageInsertGalleryDataUrl(safeId, record.blob);
+
+        imageInsertSavedInternalId = safeId;
+        imageInsertSavedInternalUrl = internalUrl;
+        imageInsertSavedFingerprint = '';
+        imageInsertCurrentDataUrl = dataUrl;
+        imageInsertCurrentFileName = record.name || ('gallery_' + safeId + '.png');
+
+        const input = document.getElementById('img-insert-url');
+        if (input) {
+            input.value = internalUrl;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        setImageInsertPreview(dataUrl);
+        renderImageInsertInternalInfo();
+        setImageInsertStatus('새 창 갤러리에서 선택됨: ' + (record.name || internalUrl), false);
+    } catch (error) {
+        setImageInsertStatus('갤러리 이미지 선택 실패: ' + (error && error.message ? error.message : error), true);
+    }
+}
+
+function getImageInsertGalleryRecords() {
+    if (!db) return Promise.reject(new Error('내부 데이터베이스가 준비되지 않았습니다.'));
+    return new Promise(function (resolve, reject) {
+        try {
+            const tx = db.transaction('images', 'readonly');
+            const request = tx.objectStore('images').getAll();
+            request.onsuccess = function () {
+                resolve((Array.isArray(request.result) ? request.result : []).filter(function (record) {
+                    return record && record.blob && String(record.id || '').trim();
+                }));
+            };
+            request.onerror = function () {
+                reject(request.error || new Error('inDB 이미지를 읽지 못했습니다.'));
+            };
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+async function sendImageInsertGalleryRecords(targetWindow) {
+    if (!targetWindow || targetWindow.closed) return;
+    try {
+        const records = await getImageInsertGalleryRecords();
+        targetWindow.postMessage({ type: 'image-gallery-records', records: records }, '*');
+    } catch (error) {
+        targetWindow.postMessage({
+            type: 'image-gallery-error',
+            message: error && error.message ? error.message : String(error)
+        }, '*');
+    }
+}
+
+async function openImageInsertGalleryInFma(selectedId) {
+    try {
+        const records = await getImageInsertGalleryRecords();
+        const safeId = String(selectedId || '');
+        const selected = records.find(function (record) { return String(record.id) === safeId; }) || records[0];
+        if (!selected) throw new Error('FMA Viewer에서 볼 이미지가 없습니다.');
+        if (!window.InternalImageApp || typeof window.InternalImageApp.openFiles !== 'function') {
+            throw new Error('FMA Viewer를 불러오지 못했습니다.');
+        }
+        const ordered = [selected].concat(records.filter(function (record) {
+            return String(record.id) !== String(selected.id);
+        }));
+        const files = ordered.map(function (record) {
+            return new File([record.blob], String(record.name || ('image_' + record.id + '.png')), {
+                type: record.mime || record.blob.type || 'application/octet-stream',
+                lastModified: Number(record.createdAt || Date.now())
+            });
+        });
+        window.InternalImageApp.openFiles(files, String(selected.name || selected.id));
+    } catch (error) {
+        setImageInsertStatus('FMA Viewer 열기 실패: ' + (error && error.message ? error.message : error), true);
+    }
+}
+
+window.addEventListener('message', function (event) {
+    if (!event || !event.data || !imageInsertGalleryWindow || event.source !== imageInsertGalleryWindow) return;
+    if (event.data.type === 'image-gallery-ready' || event.data.type === 'image-gallery-request-records') {
+        sendImageInsertGalleryRecords(event.source);
+        return;
+    }
+    if (event.data.type === 'image-gallery-select') {
+        applyImageInsertGalleryPopupSelection(event.data.id);
+        return;
+    }
+    if (event.data.type === 'image-gallery-open-fma') {
+        openImageInsertGalleryInFma(event.data.id);
+        return;
+    }
+    if (event.data.type === 'image-gallery-closed') {
+        imageInsertGalleryWindow = null;
+        setImageInsertGalleryToggleActive(false);
+    }
+});
 function openImageInsertModal() {
     const modal = document.getElementById('image-insert-modal');
     if (!modal) return;
@@ -414,7 +544,9 @@ function openImageInsertModal() {
     if (galleryPanel) {
         galleryPanel.classList.toggle('hidden', !imageInsertGalleryOpen);
     }
-    setImageInsertGalleryToggleActive(imageInsertGalleryOpen);
+    setImageInsertGalleryToggleActive(
+        imageInsertGalleryOpen || (imageInsertGalleryWindow && !imageInsertGalleryWindow.closed)
+    );
     if (imageInsertGalleryOpen) {
         loadImageInsertGallery();
     }
@@ -442,7 +574,7 @@ function closeImageInsertModal() {
     if (galleryPanel) {
         galleryPanel.classList.add('hidden');
     }
-    setImageInsertGalleryToggleActive(false);
+    setImageInsertGalleryToggleActive(!!(imageInsertGalleryWindow && !imageInsertGalleryWindow.closed));
     revokeImageInsertGalleryObjectUrls();
     imageInsertGalleryDataUrlCache.clear();
 
@@ -707,7 +839,7 @@ async function saveImageInsertToInternalDb() {
         imageInsertChangedByCrop = false;
         renderImageInsertInternalInfo();
         setImageInsertStatus('Saved to internal image DB. Insert with Markdown/HTML buttons.', false);
-        if (imageInsertGalleryOpen) loadImageInsertGallery();
+        refreshImageInsertGallery();
         showToast('Image saved to internal DB.');
     } catch (e) {
         setImageInsertStatus('Failed to save image internally: ' + (e && e.message ? e.message : e), true);
@@ -728,7 +860,7 @@ async function deleteSavedInternalImage() {
         const input = document.getElementById('img-insert-url');
         if (input && String(input.value || '').trim().startsWith('internal://')) input.value = '';
         renderImageInsertInternalInfo();
-        if (imageInsertGalleryOpen) loadImageInsertGallery();
+        refreshImageInsertGallery();
         setImageInsertStatus('Deleted saved internal image. You can save a new internal image now.', false);
     } catch (e) {
         setImageInsertStatus('Failed to delete saved internal image: ' + (e && e.message ? e.message : e), true);
