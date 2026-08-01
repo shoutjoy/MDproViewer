@@ -27,6 +27,7 @@
         { name: 'GeoGebra Calculator', url: 'https://www.geogebra.org/calculator' },
         { name: 'Napkin', url: 'https://app.napkin.ai/' },
         { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
+        { name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' },
         { name: 'colab.new', url: 'http://colab.new' }
     ];
 
@@ -55,7 +56,11 @@
                     '<label class="flex items-center gap-2 cursor-pointer select-none">',
                     '  <input type="checkbox" id="sites-visible" onclick="setTimeout(toggleSitesSection,0)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">',
                     '  <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Sites 보이기</span>',
-                    '</label>'
+                    '</label>',
+                    '<div class="mt-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 overflow-hidden">',
+                    '  <div class="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200">Sites 목록</div>',
+                    '  <div id="sites-preferences-list" class="max-h-64 overflow-auto divide-y divide-slate-200 dark:divide-slate-700"></div>',
+                    '</div>'
                 ].join('');
                 injected = true;
             }
@@ -175,27 +180,69 @@
             return u === 'https://edwardkim.github.io/rhwp' || u === 'http://edwardkim.github.io/rhwp';
         });
         if (!hasRhwp) base.push({ name: 'rHWP', url: 'https://edwardkim.github.io/rhwp/' });
+        const hasPhotopea = base.some(function (item) {
+            const u = normalizeUrl(item && item.url ? item.url : '');
+            return u === 'https://www.photopea.com' || u === 'https://photopea.com';
+        });
+        if (!hasPhotopea) base.push({ name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' });
         return base;
     }
 
     function renderSitesPanel() {
         const listEl = document.getElementById('sites-list');
+        if (listEl) {
+            listEl.innerHTML = '';
+            sitesList.forEach(function (site) {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                if (sitesPanelCompact) {
+                    btn.className = 'inline-flex items-center px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs whitespace-nowrap w-auto shrink-0';
+                } else {
+                    btn.className = 'w-full text-left px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs';
+                }
+                btn.textContent = site.name || site.url;
+                btn.title = site.url;
+                btn.onclick = function () { openSiteInNewWindow(site.url); };
+                listEl.appendChild(btn);
+            });
+        }
+        renderSitesSettingsList();
+        renderSitesPreferencesList();
+    }
+
+    function renderSitesPreferencesList() {
+        const listEl = document.getElementById('sites-preferences-list');
         if (!listEl) return;
         listEl.innerHTML = '';
-        sitesList.forEach(function (site, idx) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            if (sitesPanelCompact) {
-                btn.className = 'inline-flex items-center px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs whitespace-nowrap w-auto shrink-0';
-            } else {
-                btn.className = 'w-full text-left px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs';
-            }
-            btn.textContent = site.name || site.url;
-            btn.title = site.url;
-            btn.onclick = function () { openSiteInNewWindow(site.url); };
-            listEl.appendChild(btn);
+        sitesList.forEach(function (site) {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2 px-3 py-2';
+
+            const info = document.createElement('div');
+            info.className = 'min-w-0 flex-1';
+
+            const name = document.createElement('div');
+            name.className = 'text-xs font-medium text-slate-700 dark:text-slate-200 truncate';
+            name.textContent = site.name || site.url;
+            info.appendChild(name);
+
+            const url = document.createElement('div');
+            url.className = 'text-[10px] text-slate-500 dark:text-slate-400 truncate';
+            url.textContent = site.url;
+            url.title = site.url;
+            info.appendChild(url);
+            row.appendChild(info);
+
+            const open = document.createElement('button');
+            open.type = 'button';
+            open.className = 'shrink-0 px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800';
+            open.textContent = '열기';
+            open.title = site.url;
+            open.onclick = function () { openSiteInNewWindow(site.url); };
+            row.appendChild(open);
+
+            listEl.appendChild(row);
         });
-        renderSitesSettingsList();
     }
 
     function renderSitesSettingsList() {
