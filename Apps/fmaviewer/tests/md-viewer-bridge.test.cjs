@@ -78,5 +78,18 @@ assert.equal(window.currentIndex, 2);
 assert.equal(window.FMAMdViewerBridge.sendAction('fmaviewer-crop-image'), true);
 assert.equal(posted.at(-1).type, 'fmaviewer-crop-image');
 assert.equal(posted.at(-1).image.name, 'edited.png');
+assert.equal(window.FMAMdViewerBridge.getImageCount(), 3);
+
+assert.equal(window.FMAMdViewerBridge.sendAction('fmaviewer-open-image-insert', 0), true);
+assert.equal(posted.at(-1).type, 'fmaviewer-open-image-insert');
+assert.equal(posted.at(-1).image.name, 'a.png');
+
+listeners.message({
+    source: parent,
+    data: { type: 'fmaviewer-get-image-count', requestId: 'count-test-1' }
+});
+assert.equal(posted.at(-1).type, 'fmaviewer-image-count');
+assert.equal(posted.at(-1).requestId, 'count-test-1');
+assert.equal(posted.at(-1).imageCount, 3);
 
 console.log('md-viewer-bridge.test.cjs: MD Viewer iframe 호환 계약 검증 통과');

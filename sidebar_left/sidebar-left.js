@@ -37,12 +37,14 @@
             '  </div>',
             '  <div id="storage-source-tabs" class="hidden items-center gap-1">',
             '    <button type="button" id="tab-storage-indb" onclick="switchStorageSourceTab(\'indb\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">inDB</button>',
+            '    <button type="button" id="tab-storage-sqlite" onclick="switchStorageSourceTab(\'sqlite\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="로컬 SQLite 저장소">SQLite</button>',
             '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">github</button>',
-            '    <a id="tab-storage-github-link" href="#" target="_blank" rel="noopener noreferrer" class="hidden px-1.5 py-1 text-[10px] font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" title="GitHub 저장소 열기">↗</a>',
+            '    <a id="tab-storage-github-link" href="#" target="_blank" rel="noopener noreferrer" onclick="return openGithubRepositoryLink(event)" class="hidden px-1.5 py-1 text-[10px] font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" title="GitHub 로그인 후 저장소 열기">↗</a>',
             '  </div>',
+            '  <div id="storage-sync-status" class="hidden text-[10px] px-2 py-1 rounded border" role="status" aria-live="polite"></div>',
             '  <div class="relative search-container" id="search-container">',
             '    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 search-icon-only"></i>',
-            '    <input type="text" id="db-search" oninput="renderDBList()" placeholder="문서 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
+            '    <input type="text" id="db-search" oninput="scheduleStorageSearch()" placeholder="문서 제목·본문 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
             '  </div>',
             '</div>',
             '<div id="db-list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>',
@@ -256,30 +258,39 @@
         headers[fallbackIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    function renderInDbList(ctx) {
+    async function renderStorageList(ctx) {
         const listEl = ctx.listEl;
         const db = ctx.db;
         const searchTerm = String(ctx.searchTerm || '').toLowerCase();
+        const documentsAlreadyFiltered = !!ctx.documentsAlreadyFiltered;
         const githubReady = !!ctx.githubReady;
+        const storageMode = ctx.storageMode === 'sqlite' ? 'sqlite' : 'indb';
         const rootFolderName = ctx.rootFolderName || 'ROOT';
         const isSidebarCollapsed = !!ctx.isSidebarCollapsed;
-        if (!listEl || !db) return Promise.resolve();
+        if (!listEl) return;
 
-        const txFolders = db.transaction('folders', 'readonly');
-        return new Promise(function (resolve) {
-            const folderReq = txFolders.objectStore('folders').getAll();
-            folderReq.onsuccess = async function () {
-                const folders = Array.isArray(folderReq.result) ? folderReq.result : [];
+        let folders = Array.isArray(ctx.folders) ? ctx.folders : null;
+        let docs = Array.isArray(ctx.documents) ? ctx.documents : null;
+        if ((!folders || !docs) && db) {
+            folders = await new Promise(function (resolve) {
+                const req = db.transaction('folders', 'readonly').objectStore('folders').getAll();
+                req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+                req.onerror = function () { resolve([]); };
+            });
+            docs = await new Promise(function (resolve) {
                 const txDocs = db.transaction('documents', 'readonly');
-                const docs = await new Promise(function (r) {
-                    const req = txDocs.objectStore('documents').getAll();
-                    req.onsuccess = function () { r(Array.isArray(req.result) ? req.result : []); };
-                    req.onerror = function () { r([]); };
-                });
+                const req = txDocs.objectStore('documents').getAll();
+                req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+                req.onerror = function () { resolve([]); };
+            });
+        }
+        folders = folders || [];
+        docs = docs || [];
 
                 folders.forEach(function (folder) {
                     const folderDocs = docs.filter(function (d) {
-                        return d.folderId === folder.id && String(d.title || '').toLowerCase().includes(searchTerm);
+                        return d.folderId === folder.id && (documentsAlreadyFiltered
+                            || String(d.title || '').toLowerCase().includes(searchTerm));
                     });
                     const folderDisplayName = folder.id === 'root' ? rootFolderName : String(folder.name || 'Folder');
                     const isCollapsedFolder = !searchTerm && !!(ctx.isFolderCollapsed && ctx.isFolderCollapsed(folder.id));
@@ -302,7 +313,9 @@
 
                     folderDocs.forEach(function (doc) {
                         const docItem = document.createElement('div');
-                        docItem.dataset.indbDocId = String(doc.id || '');
+                        docItem.dataset.storageDocId = String(doc.id || '');
+                        docItem.dataset.storageMode = storageMode;
+                        if (storageMode === 'indb') docItem.dataset.indbDocId = String(doc.id || '');
                         docItem.className = isSidebarCollapsed
                             ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
                             : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
@@ -310,7 +323,7 @@
                         docItem.onclick = function () { if (typeof window.loadFromDB === 'function') window.loadFromDB(doc.id); };
 
                         const pushBtn = githubReady
-                            ? '<button onclick="event.stopPropagation(); pushDocToGithub(\'' + esc(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">github</button>'
+                            ? '<button onclick="event.stopPropagation(); pushDocToGithub(\'' + esc(doc.id) + '\', \'' + esc(storageMode) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600" title="' + (storageMode === 'sqlite' ? 'SQLite 문서를 GitHub로 전송' : 'inDB 문서를 GitHub로 전송') + '">github</button>'
                             : '';
 
                         docItem.innerHTML = '<div class="flex flex-col gap-1 doc-item-inner"><div class="flex items-center gap-2"><i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i><span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">' + esc(isSidebarCollapsed ? shortText(doc.title, 3) : doc.title) + '</span></div><div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns"><button onclick="event.stopPropagation(); loadFromDB(\'' + esc(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button><button onclick="event.stopPropagation(); openMoveModal(\'' + esc(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">이동</button>' + pushBtn + '<button onclick="event.stopPropagation(); deleteFromDB(\'' + esc(doc.id) + '\')" class="text-[10px] bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 font-bold hover:bg-red-600 hover:text-white ml-auto">X</button></div></div>';
@@ -322,10 +335,11 @@
                         listEl.appendChild(folderDiv);
                     }
                 });
-                resolve();
-            };
-            folderReq.onerror = function () { resolve(); };
-        });
+        return undefined;
+    }
+
+    function renderInDbList(ctx) {
+        return renderStorageList(ctx);
     }
 
     window.SidebarLeft = {
@@ -337,6 +351,7 @@
         parseTocItemsFromMarkdown,
         renderTOC,
         scrollToLine,
+        renderStorageList,
         renderInDbList
     };
 })();

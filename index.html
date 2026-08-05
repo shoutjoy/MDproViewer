@@ -181,13 +181,13 @@
                         <i data-lucide="file-up" class="w-4 h-4"></i>
                         <span>파일 열기</span>
                     </button>
-                    <button type="button" role="menuitem" onclick="openImageFolderPickerFromMenu(event)"
-                        class="w-full px-3 py-2 rounded-md flex items-center gap-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <button type="button" role="menuitem" id="open-image-folder-menu-item" onclick="openImageFolderPickerFromMenu(event)"
+                        class="hidden w-full px-3 py-2 rounded-md items-center gap-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
                         <i data-lucide="folder-open" class="w-4 h-4"></i>
                         <span>이미지 폴더 열기</span>
                     </button>
-                    <button type="button" role="menuitem" onclick="openFmaViewerFromMenu(event)"
-                        class="w-full px-3 py-2 rounded-md flex items-center gap-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <button type="button" role="menuitem" id="open-fma-viewer-menu-item" onclick="openFmaViewerFromMenu(event)"
+                        class="hidden w-full px-3 py-2 rounded-md items-center gap-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
                         <i data-lucide="images" class="w-4 h-4"></i>
                         <span>FMA Viewer 열기</span>
                     </button>
@@ -1052,6 +1052,43 @@
         </div>
     </div>
 
+    <!-- SQLite Version Conflict Resolver -->
+    <div id="sqlite-conflict-modal" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-[2147483646] no-print">
+        <div class="bg-white dark:bg-slate-900 rounded-xl shadow-2xl w-[min(96vw,1100px)] max-h-[92vh] p-5 flex flex-col gap-4 mx-3">
+            <div class="flex items-start gap-3">
+                <div class="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 flex items-center justify-center shrink-0"><i data-lucide="git-compare-arrows" class="w-5 h-5"></i></div>
+                <div class="min-w-0">
+                    <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">SQLite 문서 충돌 비교</h3>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">자동으로 덮어쓰지 않습니다. 두 내용을 확인한 뒤 사용할 버전을 선택하세요.</p>
+                    <p class="text-[10px] text-slate-400 mt-1"><span id="sqlite-conflict-count">0 / 0</span> · <span id="sqlite-conflict-document-id"></span></p>
+                </div>
+                <button type="button" onclick="closeSqliteConflictResolver()" class="ml-auto px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300">닫기</button>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 min-h-0 overflow-y-auto">
+                <section class="border border-slate-200 dark:border-slate-700 rounded-lg p-3 min-w-0">
+                    <p class="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 mb-1">SQLite 서버본</p>
+                    <h4 id="sqlite-conflict-server-title" class="font-semibold text-slate-800 dark:text-slate-100 break-all"></h4>
+                    <p id="sqlite-conflict-server-meta" class="text-[10px] text-slate-400 mb-2"></p>
+                    <pre id="sqlite-conflict-server-content" class="whitespace-pre-wrap break-words text-xs leading-relaxed bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded p-3 max-h-[48vh] overflow-auto"></pre>
+                </section>
+                <section class="border border-amber-200 dark:border-amber-800 rounded-lg p-3 min-w-0">
+                    <p class="text-[11px] font-bold text-amber-600 dark:text-amber-400 mb-1">로컬 복구본</p>
+                    <h4 id="sqlite-conflict-local-title" class="font-semibold text-slate-800 dark:text-slate-100 break-all"></h4>
+                    <p id="sqlite-conflict-local-meta" class="text-[10px] text-slate-400 mb-2"></p>
+                    <pre id="sqlite-conflict-local-content" class="whitespace-pre-wrap break-words text-xs leading-relaxed bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded p-3 max-h-[48vh] overflow-auto"></pre>
+                </section>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <button id="sqlite-conflict-prev" type="button" onclick="moveSqliteConflict(-1)" class="px-3 py-2 rounded border border-slate-300 dark:border-slate-600 text-xs disabled:opacity-40">이전</button>
+                <button id="sqlite-conflict-next" type="button" onclick="moveSqliteConflict(1)" class="px-3 py-2 rounded border border-slate-300 dark:border-slate-600 text-xs disabled:opacity-40">다음</button>
+                <div class="flex-1"></div>
+                <button type="button" data-conflict-resolution onclick="resolveSqliteConflict('server')" class="px-3 py-2 rounded border border-indigo-300 dark:border-indigo-700 text-xs text-indigo-700 dark:text-indigo-300 disabled:opacity-40">서버본 사용</button>
+                <button type="button" data-conflict-resolution onclick="resolveSqliteConflict('copy')" class="px-3 py-2 rounded border border-amber-300 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-300 disabled:opacity-40">복구 문서로 만들기</button>
+                <button type="button" data-conflict-resolution onclick="resolveSqliteConflict('local')" class="px-3 py-2 rounded bg-red-600 hover:bg-red-700 text-white text-xs disabled:opacity-40">로컬본으로 새 버전 저장</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast"
         class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white px-4 py-2 rounded-full shadow-lg text-sm opacity-0 transition-opacity pointer-events-none z-50">
@@ -1414,6 +1451,38 @@
                             </div>
                             </div>
                         </details>
+                        <details id="openai-settings-card" class="rounded-lg border border-emerald-300/70 dark:border-emerald-900/70 bg-emerald-50/60 dark:bg-emerald-950/20">
+                            <summary class="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
+                                OpenAI 유료 API · ChatGPT 모델 설정 (선택)
+                            </summary>
+                            <div class="px-3 pb-3">
+                                <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">OpenAI API Key</label>
+                                <div class="settings-credential-field">
+                                    <input type="password" id="openai-api-key" placeholder="OpenAI API 키를 입력하세요..." autocomplete="off"
+                                        oninput="validateOpenAIApiKeyInputUI()"
+                                        class="settings-credential-input w-full px-3 py-1.5 border rounded-md focus:outline-none text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors">
+                                    <button type="button" class="settings-credential-visibility" onclick="toggleCredentialVisibility('openai-api-key', this)"
+                                        aria-label="OpenAI API 키 보기" aria-pressed="false" title="API 키 보기">
+                                        <svg class="settings-eye-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"></path><circle cx="12" cy="12" r="2.8"></circle></svg>
+                                        <svg class="settings-eye-closed" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"></path><path d="M10.7 6.1A10.8 10.8 0 0 1 12 6c6 0 9.5 6 9.5 6a15 15 0 0 1-2.1 2.8M6.2 6.2C3.8 7.8 2.5 12 2.5 12s3.5 6 9.5 6c1.5 0 2.8-.4 4-1"></path></svg>
+                                    </button>
+                                </div>
+                                <p id="openai-api-key-feedback" class="text-xs mt-1 min-h-[1.25rem]" aria-live="polite"></p>
+                                <p class="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                                    ChatGPT Plus/Pro 구독과 API 결제는 별도입니다. OpenAI Platform에서 API 결제를 활성화한 키가 필요합니다.
+                                </p>
+                                <div class="flex flex-wrap items-center justify-end gap-2 mt-2">
+                                    <a href="https://platform.openai.com/settings/organization/api-keys" target="_blank" rel="noopener noreferrer"
+                                        class="text-xs text-emerald-700 dark:text-emerald-400 hover:underline">API 키 발급</a>
+                                    <a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener noreferrer"
+                                        class="text-xs text-amber-600 dark:text-amber-400 hover:underline">API 결제 설정</a>
+                                    <button type="button" onclick="saveOpenAIApiKey()"
+                                        class="px-3 py-1.5 bg-emerald-700 rounded-md text-xs font-medium text-white hover:bg-emerald-800 transition-colors shadow-sm">
+                                        OpenAI 키 저장
+                                    </button>
+                                </div>
+                            </div>
+                        </details>
                         <div id="scholar-ai-provider-settings" class="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
                             <div>
                                 <p class="text-xs font-semibold text-slate-700 dark:text-slate-300">ScholarAI : LM Studio 설정</p>
@@ -1511,11 +1580,17 @@
                         </div>
                         </div>
                         <div id="ai-chat-settings" class="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700">
-                            <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                                <input type="checkbox" id="ai-chat-enabled"
-                                    class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                <span>AI Jena 사용</span>
-                            </label>
+                            <div class="flex items-center justify-between gap-2">
+                                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                                    <input type="checkbox" id="ai-chat-enabled"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span>AI Jena 사용</span>
+                                </label>
+                                <button type="button" id="ai-chat-settings-fold-btn" onclick="toggleAiChatSettingsFold()"
+                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                    aria-expanded="true" aria-controls="ai-chat-provider-settings-body"
+                                    title="AI Jena 관련 설정 접기/펼치기">접기</button>
+                            </div>
                             <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 모든 화면의 우측 하단에 AI Jena 버튼이 표시됩니다. 팝업·우측 Dock·전체화면을 지원하고 대화 기록은 IndexedDB에 저장됩니다. ScholarAI와 별도의 일반 멀티턴 대화이며, 위의 LM Studio 연결 설정과 AI Studio API Key를 공유합니다.</p>
                         </div>
                         <div id="sqlite-settings-tool" class="pt-1">
@@ -1531,7 +1606,7 @@
 
                         <!-- 사용자 정보 (인공지능 사용과 무관, 항상 표시) -->
                         <div id="ai-user-settings-card" class="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-2">
-                            <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">사용자 정보 · 인증번호 요청 메일</p>
+                            <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">사용자 정보</p>
                             <p class="text-[11px] text-slate-500 dark:text-slate-500">편집창 userIn / Shift+Alt+A 삽입에도 사용됩니다.</p>
                             <div class="bg-slate-100 dark:bg-slate-800/80 rounded p-3 space-y-2">
                                 <input type="text" id="ai-user-name" placeholder="이름" class="w-full px-2 py-1 text-xs border border-slate-200 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
@@ -1544,16 +1619,10 @@
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span>[ v ] prefix set</span>
                                 </label>
-                                <div class="flex flex-col sm:flex-row gap-2">
-                                    <button type="button" onclick="saveAiUserInfo()"
-                                        class="flex-1 px-2 py-1.5 border border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 rounded text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
-                                        사용자 정보 저장
-                                    </button>
-                                    <button type="button" onclick="sendAuthRequestMail()"
-                                        class="flex-1 px-2 py-1.5 bg-slate-600 dark:bg-slate-700 text-white rounded text-xs font-medium hover:bg-slate-700 dark:hover:bg-slate-600">
-                                        인증번호 요청 메일 보내기
-                                    </button>
-                                </div>
+                                <button type="button" onclick="saveAiUserInfo()"
+                                    class="w-full px-2 py-1.5 border border-indigo-300 dark:border-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-200 rounded text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
+                                    사용자 정보 저장
+                                </button>
                                 <p id="ai-user-info-feedback" class="text-xs min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                             </div>
                         </div>
@@ -1579,6 +1648,10 @@
                                         class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700">저장</button>
                                 </div>
                                 <p id="ai-password-feedback" class="text-xs min-h-[1.25rem]" aria-live="polite"></p>
+                                <button type="button" id="ai-auth-request-mail-button" onclick="sendAuthRequestMail()"
+                                    class="w-full px-3 py-2 bg-slate-600 dark:bg-slate-700 text-white rounded-md text-xs font-semibold hover:bg-slate-700 dark:hover:bg-slate-600">
+                                    인증번호 요청 메일 보내기
+                                </button>
                                 <p id="ai-scholar-sspimg-hint" class="text-xs text-amber-600 dark:text-amber-400"></p>
                                 <div class="space-y-2 pt-2">
                                     <label class="flex items-center gap-2 cursor-pointer ai-scholar-sspimg-label select-none">
@@ -1673,6 +1746,11 @@
                 </button>
                 <input type="file" id="settings-import-file" accept=".mset,application/json,.json" class="hidden"
                     onchange="importSettingsMsetFile(event)">
+                <button type="button" id="settings-reset-button" onclick="resetSettingsMset()"
+                    class="ml-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-amber-500 bg-white text-amber-700 hover:bg-amber-50 dark:bg-slate-800 dark:text-amber-300 dark:hover:bg-slate-700"
+                    title="설정을 기본값으로 초기화" aria-label="설정을 기본값으로 초기화">
+                    <i data-lucide="rotate-ccw" class="h-4 w-4" aria-hidden="true"></i>
+                </button>
                 <button type="button" onclick="closeSettingsModal()"
                     class="flex-1 min-w-[72px] px-4 py-2 bg-indigo-600 rounded-md text-sm font-medium text-white hover:bg-indigo-700 transition-colors shadow-sm">
                     닫기
@@ -2085,7 +2163,7 @@
 
 <!-- 이미지 편집기 삽입 -->
 <script
-    src="./imageDB/image_insert.js?v=20260731-gallery-window-1"
+    src="./imageDB/image_insert.js?v=20260806-fma-choice-3"
     charset="utf-8"
     defer>
 </script>
@@ -2156,7 +2234,7 @@
 
 <!-- 학술 AI 제공자 -->
 <script
-    src="./AI_App/ai_local/scholar-ai-provider.js?v=20260721-3"
+    src="./AI_App/ai_local/scholar-ai-provider.js?v=20260806-openai-1"
     charset="utf-8"
     defer>
 </script>
@@ -2230,7 +2308,7 @@
 
 <!-- 공유 사이트 표시 -->
 <script
-    src="./ShareSites/sitesshow/sitesshow.js?v=20260801-1"
+    src="./ShareSites/sitesshow/sitesshow.js?v=20260806-1"
     charset="utf-8"
     defer>
 </script>
@@ -2240,16 +2318,44 @@
      10. UI 구성 요소
 ========================================================= -->
 
+<!-- 선택형 저장소 파사드: 기존 IndexedDB를 유지하며 SQLite 준비 상태를 검사 -->
+<script
+    src="./js/storage/indexeddb-adapter.js?v=20260806-phase2-2"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/storage/sqlite-api-adapter.js?v=20260806-migration-preview-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/storage/recovery-buffer.js?v=20260806-phase3b-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/storage/storage-service.js?v=20260806-migration-preview-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<script
+    src="./js/storage/indexeddb-migration.js?v=20260806-migration-preview-1"
+    charset="utf-8"
+    defer>
+</script>
+
 <!-- 설정 UI -->
 <script
-    src="./Setting/settings-ui.js?v=20260603-1"
+    src="./Setting/settings-ui.js?v=20260806-migration-preview-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 왼쪽 사이드바 -->
 <script
-    src="./sidebar_left/sidebar-left.js?v=20260723-1"
+    src="./sidebar_left/sidebar-left.js?v=20260806-sqlite-github-push-1"
     charset="utf-8"
     defer>
 </script>
@@ -2305,12 +2411,12 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260731-calendar-internal-window-3"
+    src="./js/app.js?v=20260806-openai-1"
     charset="utf-8"
     defer>
 </script>
 <script
-    src="./js/internal-image-app.js?v=20260725-edit-result-2"
+    src="./js/internal-image-app.js?v=20260806-import-choice-2"
     charset="utf-8"
     defer>
 </script>
@@ -2343,14 +2449,14 @@
 
 <!-- AI Jena -->
 <script
-    src="./AI_App/aiChat/ai-chat.js?v=20260806-ai-jena-1"
+    src="./AI_App/aiChat/ai-chat.js?v=20260806-openai-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- GitHub 실제 기능 -->
 <script
-    src="./js/GithubData/github-app.js?v=20260603-1"
+    src="./js/GithubData/github-app.js?v=20260806-sqlite-github-push-1"
     charset="utf-8"
     defer>
 </script>
@@ -2364,7 +2470,7 @@
 
 <!-- 편집기·미리보기 연동 -->
 <script
-    src="./js/UI_PV/editpv.js?v=20260731-html-preview-1"
+    src="./js/UI_PV/editpv.js?v=20260806-image-open-1"
     charset="utf-8"
     defer>
 </script>

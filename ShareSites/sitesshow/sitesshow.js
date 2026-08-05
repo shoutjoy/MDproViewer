@@ -1,5 +1,6 @@
 ﻿'use strict';
 
+    const SITES_SETTINGS_FOLD_KEY = 'md_viewer_sites_settings_folded';
     let sitesPanelOpen = false;
     let sitesList = [];
     let sitesPanelCompact = false;
@@ -53,11 +54,14 @@
             } else {
                 // Fallback for environments where fragment fetch can fail.
                 settingsSlot.innerHTML = [
-                    '<label class="flex items-center gap-2 cursor-pointer select-none">',
-                    '  <input type="checkbox" id="sites-visible" onclick="setTimeout(toggleSitesSection,0)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">',
-                    '  <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Sites 보이기</span>',
-                    '</label>',
-                    '<div class="mt-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 overflow-hidden">',
+                    '<div class="flex items-center justify-between gap-2">',
+                    '  <label class="flex items-center gap-2 cursor-pointer select-none">',
+                    '    <input type="checkbox" id="sites-visible" onclick="setTimeout(toggleSitesSection,0)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">',
+                    '    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">Sites 보이기</span>',
+                    '  </label>',
+                    '  <button type="button" id="sites-settings-fold-btn" onclick="toggleSitesSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" title="Sites 설정 접기/펼치기" aria-controls="sites-settings-body" aria-expanded="true">접기</button>',
+                    '</div>',
+                    '<div id="sites-settings-body" class="mt-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 overflow-hidden">',
                     '  <div class="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200">Sites 목록</div>',
                     '  <div id="sites-preferences-list" class="max-h-64 overflow-auto divide-y divide-slate-200 dark:divide-slate-700"></div>',
                     '</div>'
@@ -105,6 +109,7 @@
 
         if (injected) {
             renderSitesPanel();
+            applySitesSettingsFold(getSitesSettingsFoldedFromLocal());
             if (typeof getAiSettings === 'function') {
                 const settings = await getAiSettings();
                 const check = document.getElementById('sites-visible');
@@ -124,6 +129,31 @@
     function getSitesVisibleFromSettings(settings) {
         if (!settings) return false;
         return settings.sitesVisible === true;
+    }
+
+    function getSitesSettingsFoldedFromLocal() {
+        const value = localStorage.getItem(SITES_SETTINGS_FOLD_KEY);
+        return value == null ? true : value === '1';
+    }
+
+    function setSitesSettingsFoldedToLocal(folded) {
+        localStorage.setItem(SITES_SETTINGS_FOLD_KEY, folded ? '1' : '0');
+    }
+
+    function applySitesSettingsFold(folded) {
+        const btn = document.getElementById('sites-settings-fold-btn');
+        const body = document.getElementById('sites-settings-body');
+        if (btn) {
+            btn.textContent = folded ? '펼치기' : '접기';
+            btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+        }
+        if (body) body.classList.toggle('hidden', !!folded);
+    }
+
+    function toggleSitesSettingsFold() {
+        const next = !getSitesSettingsFoldedFromLocal();
+        setSitesSettingsFoldedToLocal(next);
+        applySitesSettingsFold(next);
     }
 
     function normalizeSitesList(rawList) {
@@ -601,6 +631,9 @@ window.closeSitesPanel = closeSitesPanel;
 window.addSiteFromInput = addSiteFromInput;
 window.cancelEditSite = cancelEditSite;
 window.toggleSitesSection = toggleSitesSection;
+window.toggleSitesSettingsFold = toggleSitesSettingsFold;
+window.applySitesSettingsFold = applySitesSettingsFold;
+window.getSitesSettingsFoldedFromLocal = getSitesSettingsFoldedFromLocal;
 window.toggleSitesCompactMode = toggleSitesCompactMode;
 window.toggleSitesSettingsPanel = toggleSitesSettingsPanel;
 window.getSitesList = getSitesList;

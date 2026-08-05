@@ -52,6 +52,26 @@
         return fallback;
     }
 
+    function getGithubLoginUrlForRepoPath(linkPath) {
+        const normalized = String(linkPath || '').trim().replace(/^\/+|\/+$/g, '');
+        if (!normalized) return 'https://github.com/login';
+        return 'https://github.com/login?return_to=' + encodeURIComponent('/' + normalized);
+    }
+
+    function openGithubRepositoryLink(event) {
+        const link = event && event.currentTarget ? event.currentTarget : document.getElementById('tab-storage-github-link');
+        const linkPath = String(link && link.dataset ? link.dataset.githubRepoPath || '' : '').trim();
+        if (!linkPath) {
+            if (event && typeof event.preventDefault === 'function') event.preventDefault();
+            return false;
+        }
+        // GitHub의 웹 로그인 세션은 앱에서 사용하는 PAT와 별개다. 저장소를
+        // 직접 열지 않고 로그인 화면을 거치면 비공개 저장소의 익명 404를 피하고
+        // 로그인 완료 후 return_to에 지정된 저장소로 이동할 수 있다.
+        link.href = getGithubLoginUrlForRepoPath(linkPath);
+        return true;
+    }
+
     function setGithubFeedback(message, kind) {
         const api = window.GithubDataSettings;
         if (api && typeof api.setGithubFeedback === 'function') {
@@ -93,18 +113,30 @@
 
     function updateStorageSourceTabsUI() {
         const indbBtn = document.getElementById('tab-storage-indb');
+        const sqliteBtn = document.getElementById('tab-storage-sqlite');
         const ghBtn = document.getElementById('tab-storage-github');
-        if (!indbBtn || !ghBtn) return;
+        if (!indbBtn || !sqliteBtn || !ghBtn) return;
         const active = 'px-2 py-1 text-xs font-semibold border border-indigo-500 rounded bg-indigo-600 text-white';
         const inactive = 'px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200';
         indbBtn.className = currentStorageSourceTab === 'indb' ? active : inactive;
+        sqliteBtn.className = currentStorageSourceTab === 'sqlite' ? active : inactive;
         ghBtn.className = currentStorageSourceTab === 'github' ? active : inactive;
+        const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
+        const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
+        syncStorageSourceTabsVisibility(!!(githubEnabled && githubToken));
     }
 
     function syncStorageSourceTabsVisibility(githubConfigured) {
         const tabsWrap = document.getElementById('storage-source-tabs');
         if (!tabsWrap) return;
-        const shouldShow = !!githubConfigured && !isSidebarCollapsed;
+        const storageState = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
+            ? window.MDPStorage.getStatus()
+            : null;
+        const sqliteAvailable = !!(storageState && storageState.sqliteHealth
+            && storageState.sqliteHealth.capabilities
+            && storageState.sqliteHealth.capabilities.documents === true
+            && storageState.sqliteHealth.capabilities.folders === true);
+        const shouldShow = (!!githubConfigured || sqliteAvailable) && !isSidebarCollapsed;
         tabsWrap.classList.toggle('hidden', !shouldShow);
         tabsWrap.classList.toggle('flex', shouldShow);
     }
@@ -132,11 +164,13 @@
             const hasRepo = !!linkPath;
             repoLink.classList.toggle('hidden', !(githubConfigured && hasRepo));
             if (githubConfigured && hasRepo) {
-                repoLink.href = 'https://github.com/' + linkPath;
-                repoLink.title = 'GitHub 저장소 열기: ' + linkPath;
+                repoLink.dataset.githubRepoPath = linkPath;
+                repoLink.href = getGithubLoginUrlForRepoPath(linkPath);
+                repoLink.title = 'GitHub 로그인 후 저장소 열기: ' + linkPath;
             } else {
+                delete repoLink.dataset.githubRepoPath;
                 repoLink.href = '#';
-                repoLink.title = 'GitHub 저장소 열기';
+                repoLink.title = 'GitHub 로그인 후 저장소 열기';
             }
         }
 
@@ -155,8 +189,9 @@
         if (activeSidebarTab === 'files') renderDBList();
     }
 
-    function switchStorageSourceTab(tab) {
-        const next = String(tab || '').toLowerCase() === 'github' ? 'github' : 'indb';
+    async function switchStorageSourceTab(tab) {
+        const requested = String(tab || '').toLowerCase();
+        const next = requested === 'github' || requested === 'sqlite' ? requested : 'indb';
         const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
         const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
         const githubConfigured = !!(githubEnabled && githubToken);
@@ -167,10 +202,27 @@
             renderDBList();
             return;
         }
-        currentStorageSourceTab = next;
-        setStorageSourceTabToLocal(next);
+        if (next !== 'github') {
+            if (!window.MDPStorage || typeof window.MDPStorage.requestMode !== 'function') return;
+            try {
+                const state = await window.MDPStorage.requestMode(next);
+                currentStorageSourceTab = state.activeMode === 'sqlite' ? 'sqlite' : 'indb';
+            } catch (error) {
+                if (typeof showToast === 'function') {
+                    showToast(error && error.message ? error.message : '저장소를 전환할 수 없습니다.');
+                }
+                updateStorageSourceTabsUI();
+                return;
+            }
+        } else {
+            currentStorageSourceTab = 'github';
+        }
+        setStorageSourceTabToLocal(currentStorageSourceTab);
         updateStorageSourceTabsUI();
-        renderDBList();
+        if (window.SettingUI && typeof window.SettingUI.syncSqliteCheckbox === 'function') {
+            window.SettingUI.syncSqliteCheckbox();
+        }
+        await renderDBList();
     }
 
     function githubApiHeaders(token) {
@@ -513,14 +565,38 @@
         if (window.innerWidth < 1024 && !isSidebarHidden) toggleSidebarVisibility();
     }
 
-    async function pushDocToGithub(docId) {
+    async function getGithubPushSource(docId, storageMode) {
         const id = String(docId || '').trim();
-        if (!id) return;
-        const settings = await getAiSettings() || {};
-        const cfg = getGithubConfigFromSettings(settings);
-        if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
-            showToast('Set GitHub token/repo/branch first.');
-            return false;
+        if (!id) return { doc: null, folder: null, storageMode: 'indb' };
+        const storageState = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
+            ? window.MDPStorage.getStatus()
+            : null;
+        const activeMode = storageState && storageState.activeMode === 'sqlite' ? 'sqlite' : 'indb';
+        const requestedMode = storageMode === 'sqlite' || storageMode === 'indb'
+            ? storageMode
+            : activeMode;
+
+        if (requestedMode === 'sqlite') {
+            if (activeMode !== 'sqlite'
+                || !window.MDPStorage
+                || typeof window.MDPStorage.getDocument !== 'function'
+                || typeof window.MDPStorage.listFolders !== 'function') {
+                const unavailable = new Error('SQLite 저장소가 현재 활성화되어 있지 않습니다.');
+                unavailable.code = 'SQLITE_STORAGE_NOT_ACTIVE';
+                throw unavailable;
+            }
+            const results = await Promise.all([
+                window.MDPStorage.getDocument(id),
+                window.MDPStorage.listFolders()
+            ]);
+            const doc = results[0] || null;
+            const folders = Array.isArray(results[1]) ? results[1] : [];
+            const folder = doc
+                ? folders.find(function (item) {
+                    return String(item && item.id || '') === String(doc.folderId || 'root');
+                }) || null
+                : null;
+            return { doc: doc, folder: folder, storageMode: 'sqlite' };
         }
 
         const tx = db.transaction(['documents', 'folders'], 'readonly');
@@ -531,16 +607,41 @@
             req.onsuccess = function () { resolve(req.result || null); };
             req.onerror = function () { resolve(null); };
         });
-        if (!doc) {
-            showToast('Document not found.');
-            return false;
-        }
-
         const folder = await new Promise(function (resolve) {
+            if (!doc) {
+                resolve(null);
+                return;
+            }
             const req = foldersStore.get(String(doc.folderId || 'root'));
             req.onsuccess = function () { resolve(req.result || null); };
             req.onerror = function () { resolve(null); };
         });
+        return { doc: doc, folder: folder, storageMode: 'indb' };
+    }
+
+    async function pushDocToGithub(docId, storageMode) {
+        const id = String(docId || '').trim();
+        if (!id) return;
+        const settings = await getAiSettings() || {};
+        const cfg = getGithubConfigFromSettings(settings);
+        if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
+            showToast('Set GitHub token/repo/branch first.');
+            return false;
+        }
+
+        let source;
+        try {
+            source = await getGithubPushSource(id, storageMode);
+        } catch (error) {
+            showToast('Document load failed: ' + String(error && error.message ? error.message : error));
+            return false;
+        }
+        const doc = source && source.doc;
+        const folder = source && source.folder;
+        if (!doc) {
+            showToast('Document not found.');
+            return false;
+        }
         const folderName = folder && String(folder.id || '') !== 'root'
             ? String(folder.name || '').trim().replace(/[\\/:*?"<>|]+/g, '_')
             : '';
@@ -628,7 +729,10 @@
             return false;
         }
         if (currentDbDocId) {
-            return !!(await pushDocToGithub(currentDbDocId));
+            const sourceMode = currentDocumentRef && currentDocumentRef.id === currentDbDocId
+                ? currentDocumentRef.storageMode
+                : undefined;
+            return !!(await pushDocToGithub(currentDbDocId, sourceMode));
         }
 
         let fileName = String(currentFileName || 'untitled.md').trim().replace(/[/\\:*?"<>|]+/g, '_');
@@ -769,6 +873,8 @@
         parseGithubRepoInput: parseGithubRepoInput,
         getGithubConfigFromSettings: getGithubConfigFromSettings,
         getGithubLinkPathFromConfig: getGithubLinkPathFromConfig,
+        getGithubLoginUrlForRepoPath: getGithubLoginUrlForRepoPath,
+        openGithubRepositoryLink: openGithubRepositoryLink,
         setGithubFeedback: setGithubFeedback,
         getGithubSettingsFoldedFromLocal: getGithubSettingsFoldedFromLocal,
         setGithubSettingsFoldedToLocal: setGithubSettingsFoldedToLocal,
@@ -787,6 +893,7 @@
         saveGithubSettingsFromModal: saveGithubSettingsFromModal,
         checkGithubConnectionFromModal: checkGithubConnectionFromModal,
         loadFromGithubCache: loadFromGithubCache,
+        getGithubPushSource: getGithubPushSource,
         pushDocToGithub: pushDocToGithub,
         pushCurrentContentToGithub: pushCurrentContentToGithub,
         isGithubExportEnabled: isGithubExportEnabled,
@@ -796,6 +903,8 @@
     window.parseGithubRepoInput = parseGithubRepoInput;
     window.getGithubConfigFromSettings = getGithubConfigFromSettings;
     window.getGithubLinkPathFromConfig = getGithubLinkPathFromConfig;
+    window.getGithubLoginUrlForRepoPath = getGithubLoginUrlForRepoPath;
+    window.openGithubRepositoryLink = openGithubRepositoryLink;
     window.setGithubFeedback = setGithubFeedback;
     window.getGithubSettingsFoldedFromLocal = getGithubSettingsFoldedFromLocal;
     window.setGithubSettingsFoldedToLocal = setGithubSettingsFoldedToLocal;

@@ -1,5 +1,5 @@
 /*
- * ScholarAIProvider - AI Studio / LM Studio text provider adapter.
+ * ScholarAIProvider - AI Studio / LM Studio / Ollama / DeepSeek / OpenAI text provider adapter.
  * Requires AI_App/ai_local/local-ai.js when LM Studio is used.
  */
 (function (root, factory) {
@@ -12,10 +12,12 @@
   var PROVIDER_KEY = 'ss_scholar_ai_provider';
   var AISTUDIO_MODEL_KEY = 'ss_scholar_ai_model';
   var DEEPSEEK_MODEL_KEY = 'ss_scholar_ai_deepseek_model';
+  var OPENAI_MODEL_KEY = 'ss_scholar_ai_openai_model';
   var OLLAMA_MODEL_KEY = 'ss_scholar_ai_ollama_model';
   var DEFAULT_PROVIDER = 'auto';
   var DEFAULT_AISTUDIO_MODEL = 'gemini-2.5-pro';
   var DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
+  var DEFAULT_OPENAI_MODEL = 'gpt-5.6-sol';
 
   function storageOrDefault(storage) {
     var target = storage || (root && root.localStorage);
@@ -27,7 +29,7 @@
 
   function normalizeProvider(value) {
     var provider = String(value || '').toLowerCase();
-    if (provider === 'lmstudio' || provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'auto') return provider;
+    if (provider === 'lmstudio' || provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'openai' || provider === 'auto') return provider;
     return DEFAULT_PROVIDER;
   }
 
@@ -69,6 +71,17 @@
         return new Error('DeepSeek 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.');
       }
     }
+    if (provider === 'openai') {
+      if (/401|authentication|unauthorized|invalid.*api.*key/i.test(message)) {
+        return new Error('OpenAI 인증에 실패했습니다. 설정에 저장한 API 키를 확인하세요.');
+      }
+      if (/429.*(?:quota|billing)|insufficient_quota|사용 한도|결제 잔액/i.test(message)) {
+        return new Error('OpenAI API 사용 한도 또는 결제 잔액이 부족합니다. Platform의 API 결제 설정을 확인하세요.');
+      }
+      if (/429|rate limit/i.test(message)) {
+        return new Error('OpenAI 요청 한도를 초과했습니다. 잠시 후 다시 시도하세요.');
+      }
+    }
     return error instanceof Error ? error : new Error(message);
   }
 
@@ -77,6 +90,7 @@
     var storage = storageOrDefault(options.storage);
     var callAIStudio = options.callAIStudio;
     var callDeepseek = options.callDeepseek;
+    var callOpenAI = options.callOpenAI;
     var callOllama = options.callOllama;
     var activeController = null;
 
@@ -107,6 +121,7 @@
       if (selectedProvider === 'aistudio') return storage.getItem(AISTUDIO_MODEL_KEY) || DEFAULT_AISTUDIO_MODEL;
       if (selectedProvider === 'ollama') return storage.getItem(OLLAMA_MODEL_KEY) || '';
       if (selectedProvider === 'deepseek') return storage.getItem(DEEPSEEK_MODEL_KEY) || DEFAULT_DEEPSEEK_MODEL;
+      if (selectedProvider === 'openai') return storage.getItem(OPENAI_MODEL_KEY) || DEFAULT_OPENAI_MODEL;
       return storage.getItem(AISTUDIO_MODEL_KEY) || DEFAULT_AISTUDIO_MODEL;
     }
 
@@ -122,6 +137,8 @@
         storage.setItem(OLLAMA_MODEL_KEY, value);
       } else if (selectedProvider === 'deepseek') {
         storage.setItem(DEEPSEEK_MODEL_KEY, value || DEFAULT_DEEPSEEK_MODEL);
+      } else if (selectedProvider === 'openai') {
+        storage.setItem(OPENAI_MODEL_KEY, value || DEFAULT_OPENAI_MODEL);
       } else {
         storage.setItem(AISTUDIO_MODEL_KEY, value || DEFAULT_AISTUDIO_MODEL);
       }
@@ -151,6 +168,10 @@
 
   function isDeepSeekConfigured() {
     return !!String(storage.getItem('ss_deepseek_api_key') || '').trim();
+  }
+
+  function isOpenAIConfigured() {
+    return !!String(storage.getItem('ss_openai_api_key') || '').trim();
   }
 
   function isOllamaConfigured() {
@@ -274,6 +295,19 @@
           };
         }
 
+        async function runOpenAI(modelOverride) {
+          var model = String(modelOverride || getModel('openai') || DEFAULT_OPENAI_MODEL).trim();
+          if (typeof callOpenAI !== 'function') throw new Error('OpenAI 호출 함수를 사용할 수 없습니다.');
+          var key = String(storage.getItem('ss_openai_api_key') || '').trim();
+          if (!key) throw new Error('OpenAI API Key가 없습니다. 설정에서 키를 저장하세요.');
+          var result = await callOpenAI(request.prompt, request.systemInstruction, request.useSearch, model, controller.signal, key);
+          return {
+            provider: 'openai',
+            model: model,
+            text: result && result.text != null ? result.text : String(result || '')
+          };
+        }
+
         async function runOllama(modelOverride) {
           var model = String(modelOverride || getModel('ollama') || '').trim();
           if (typeof callOllama !== 'function') throw new Error('Ollama 호출 함수를 사용할 수 없습니다.');
@@ -290,6 +324,7 @@
         if (provider === 'aistudio') return await runAIStudio(request.model);
         if (provider === 'ollama') return await runOllama(request.model);
         if (provider === 'deepseek') return await runDeepSeek(request.model);
+        if (provider === 'openai') return await runOpenAI(request.model);
 
         var lmError = null;
         if (isLMStudioConfigured()) {
@@ -315,7 +350,10 @@
         if (isDeepSeekConfigured()) {
           return await runDeepSeek();
         }
-        throw new Error('LM Studio, AI Studio 또는 Ollama 설정이 필요합니다.');
+        if (isOpenAIConfigured()) {
+          return await runOpenAI();
+        }
+        throw new Error('LM Studio, AI Studio, Ollama, DeepSeek 또는 OpenAI 설정이 필요합니다.');
       } catch (error) {
         throw friendlyError(error, provider);
       } finally {
@@ -352,6 +390,7 @@
       isAIStudioConfigured: isAIStudioConfigured,
       isOllamaConfigured: isOllamaConfigured,
       isDeepSeekConfigured: isDeepSeekConfigured,
+      isOpenAIConfigured: isOpenAIConfigured,
       getLMStudioConfig: getLMStudioConfig,
       saveLMStudioConfig: saveLMStudioConfig,
       listLMStudioModels: listLMStudioModels,
@@ -368,8 +407,10 @@
     version: '1.0.0',
     providerStorageKey: PROVIDER_KEY,
     aiStudioModelStorageKey: AISTUDIO_MODEL_KEY,
+    openAIModelStorageKey: OPENAI_MODEL_KEY,
     defaultProvider: DEFAULT_PROVIDER,
     defaultAIStudioModel: DEFAULT_AISTUDIO_MODEL,
+    defaultOpenAIModel: DEFAULT_OPENAI_MODEL,
     normalizeProvider: normalizeProvider,
     create: create
   });

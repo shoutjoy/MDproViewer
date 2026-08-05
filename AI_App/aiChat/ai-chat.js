@@ -1,4 +1,4 @@
-/* AI Jena - persistent floating multi-turn chat for LM Studio, AI Studio, Ollama, and DeepSeek. */
+/* AI Jena - persistent floating multi-turn chat for LM Studio, AI Studio, Ollama, DeepSeek, and OpenAI. */
 (function (root) {
   'use strict';
 
@@ -6,6 +6,7 @@
   var PROVIDER_KEY = 'ss_ai_chat_provider';
   var GEMINI_MODEL_KEY = 'ss_ai_chat_gemini_model';
   var DEEPSEEK_MODEL_KEY = 'ss_ai_chat_deepseek_model';
+  var OPENAI_MODEL_KEY = 'ss_ai_chat_openai_model';
   var OLLAMA_MODEL_KEY = 'ss_ai_chat_ollama_model';
   var WRITING_STYLE_KEY = 'ss_ai_chat_writing_style';
   var WRITING_STYLE_DEFAULT_REVISION_KEY = 'ss_ai_chat_writing_style_default_revision';
@@ -64,6 +65,11 @@
     'deepseek-v4-flash',
     'deepseek-v4-pro'
   ];
+  var DEFAULT_OPENAI_MODELS = [
+    'gpt-5.6-sol',
+    'gpt-5.6-terra',
+    'gpt-5.6-luna'
+  ];
 // https://aistudio.google.com/rate-limit?timeRange=last-28-days
 
 
@@ -82,6 +88,7 @@
     geminiModel: 'gemini-3.5-flash',
     ollamaModel: '',
     deepseekModel: 'deepseek-v4-flash',
+    openaiModel: 'gpt-5.6-sol',
     lmModel: '',
     lmContextLength: 0,
     messages: [],
@@ -264,6 +271,7 @@
       geminiModel: state.geminiModel,
       ollamaModel: state.ollamaModel,
       deepseekModel: state.deepseekModel,
+      openaiModel: state.openaiModel,
       messages: state.messages.slice(-MAX_STORED_MESSAGES)
     };
   }
@@ -336,7 +344,7 @@
     });
     if (record && record.provider) {
       var nextProvider = String(record.provider || '').toLowerCase();
-      state.provider = nextProvider === 'aistudio' || nextProvider === 'ollama' || nextProvider === 'deepseek' ? nextProvider : 'lmstudio';
+      state.provider = nextProvider === 'aistudio' || nextProvider === 'ollama' || nextProvider === 'deepseek' || nextProvider === 'openai' ? nextProvider : 'lmstudio';
     }
     if (record && record.responseMode) state.responseMode = record.responseMode === 'reasoning' ? 'reasoning' : 'quick';
     if (record && typeof record.showReasoning === 'boolean') state.showReasoning = record.showReasoning;
@@ -345,6 +353,7 @@
     if (record && record.geminiModel) state.geminiModel = record.geminiModel;
     if (record && record.ollamaModel) state.ollamaModel = record.ollamaModel;
     if (record && record.deepseekModel) state.deepseekModel = record.deepseekModel;
+    if (record && record.openaiModel) state.openaiModel = record.openaiModel;
     storageSet(CURRENT_CONVERSATION_KEY, state.conversationId);
     storageSet(PROVIDER_KEY, state.provider);
     storageSet(RESPONSE_MODE_KEY, state.responseMode);
@@ -354,6 +363,7 @@
     storageSet(GEMINI_MODEL_KEY, state.geminiModel);
     storageSet(OLLAMA_MODEL_KEY, state.ollamaModel);
     storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
+    storageSet(OPENAI_MODEL_KEY, state.openaiModel);
     updateProviderUI();
     setResponseMode(state.responseMode);
     setShowReasoning(state.showReasoning);
@@ -376,7 +386,7 @@
             titleCustomized: false, pinned: false, pinnedAt: 0,
             provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
             academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-            geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel,
+            geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel,
             messages: legacy
           };
           await requestPromise(conversationStore('readwrite').put(migrated));
@@ -395,7 +405,7 @@
           titleCustomized: false, pinned: false, pinnedAt: 0,
           provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
           academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-          geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, messages: []
+          geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel, messages: []
         };
         state.conversations = [current];
         await requestPromise(conversationStore('readwrite').put(current));
@@ -474,7 +484,7 @@
       + '    </button>'
       + '    <div id="ai-chat-provider-controls" class="ai-chat-provider-controls collapsed">'
       + '      <div class="ai-chat-provider-row">'
-      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option></select></label>'
+      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select></label>'
       + '        <label>모델<select id="ai-chat-model"></select></label>'
       + '        <button type="button" id="ai-chat-refresh-model" title="현재 모델 새로고침">↻</button>'
       + '      </div>'
@@ -600,7 +610,7 @@
       finishAcademicCountEdit(true);
     });
     document.getElementById('ai-chat-provider').addEventListener('change', function (event) {
-      state.provider = (event.target.value === 'aistudio' || event.target.value === 'ollama' || event.target.value === 'deepseek') ? event.target.value : 'lmstudio';
+      state.provider = (event.target.value === 'aistudio' || event.target.value === 'ollama' || event.target.value === 'deepseek' || event.target.value === 'openai') ? event.target.value : 'lmstudio';
       storageSet(PROVIDER_KEY, state.provider);
       updateProviderUI();
       refreshModels(false);
@@ -611,6 +621,13 @@
       if (state.provider === 'deepseek') {
         state.deepseekModel = event.target.value || DEFAULT_DEEPSEEK_MODELS[0];
         storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
+        return;
+      }
+      if (state.provider === 'openai') {
+        state.openaiModel = event.target.value || DEFAULT_OPENAI_MODELS[0];
+        storageSet(OPENAI_MODEL_KEY, state.openaiModel);
+        updateHeaderModel();
+        saveHistory();
         return;
       }
       if (state.provider === 'ollama') {
@@ -1450,6 +1467,8 @@
       summary.textContent = 'AI 공급자 · Ollama · ' + (state.ollamaModel || '모델 확인 필요');
     } else if (state.provider === 'deepseek') {
       summary.textContent = 'AI 공급자 · DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
+    } else if (state.provider === 'openai') {
+      summary.textContent = 'AI 공급자 · OpenAI · ' + openaiModelLabel(state.openaiModel || DEFAULT_OPENAI_MODELS[0]);
     } else {
       summary.textContent = 'AI 공급자 · AI Studio · ' + geminiModelLabel(state.geminiModel);
     }
@@ -1785,6 +1804,8 @@
       header.textContent = 'Ollama · ' + (state.ollamaModel || '모델 확인 필요');
     } else if (state.provider === 'deepseek') {
       header.textContent = 'DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
+    } else if (state.provider === 'openai') {
+      header.textContent = 'OpenAI · ' + openaiModelLabel(state.openaiModel || DEFAULT_OPENAI_MODELS[0]);
     } else {
       header.textContent = 'AI Studio · ' + geminiModelLabel(state.geminiModel);
     }
@@ -1804,6 +1825,14 @@
     return /(?:^|-)image(?:-|$)/i.test(String(model || ''));
   }
 
+  function activeProviderModel() {
+    if (state.provider === 'aistudio') return state.geminiModel;
+    if (state.provider === 'ollama') return state.ollamaModel;
+    if (state.provider === 'deepseek') return state.deepseekModel;
+    if (state.provider === 'openai') return state.openaiModel;
+    return null;
+  }
+
   function deepseekModelLabel(model) {
     var labels = {
       'deepseek-v4-flash': 'DeepSeek V4 Flash',
@@ -1813,6 +1842,15 @@
       'deepseek-coder': 'DeepSeek Coder'
     };
     return labels[model] ? labels[model] + ' · ' + model : 'DeepSeek · ' + model;
+  }
+
+  function openaiModelLabel(model) {
+    var labels = {
+      'gpt-5.6-sol': 'GPT-5.6 Sol',
+      'gpt-5.6-terra': 'GPT-5.6 Terra',
+      'gpt-5.6-luna': 'GPT-5.6 Luna'
+    };
+    return labels[model] ? labels[model] + ' · ' + model : model;
   }
 
   function geminiModelLabel(model) {
@@ -1877,6 +1915,7 @@
         var option = document.createElement('option');
         option.value = model;
         if (state.provider === 'deepseek') option.textContent = deepseekModelLabel(model);
+        else if (state.provider === 'openai') option.textContent = openaiModelLabel(model);
         else if (state.provider === 'aistudio') option.textContent = geminiModelLabel(model);
         else option.textContent = model;
         select.appendChild(option);
@@ -1906,6 +1945,14 @@
       var modelSelect = document.getElementById('ai-chat-model');
       if (modelSelect && modelSelect.value) state.deepseekModel = modelSelect.value;
       storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
+    } else if (state.provider === 'openai') {
+      var cachedOpenAIModels = [];
+      try { cachedOpenAIModels = getBridge().getCachedOpenAIModels(); } catch (openaiCacheError) {}
+      if (!cachedOpenAIModels.length) cachedOpenAIModels = DEFAULT_OPENAI_MODELS;
+      setModelOptions(cachedOpenAIModels, state.openaiModel, false);
+      var openaiModelSelect = document.getElementById('ai-chat-model');
+      if (openaiModelSelect && openaiModelSelect.value) state.openaiModel = openaiModelSelect.value;
+      storageSet(OPENAI_MODEL_KEY, state.openaiModel || DEFAULT_OPENAI_MODELS[0]);
     } else {
       var cached = DEFAULT_GEMINI_MODELS;
       try { cached = getBridge().getCachedGeminiModels(); } catch (e) {}
@@ -1959,6 +2006,18 @@
             : 'DeepSeek 모델이 없습니다.',
           state.deepseekModel ? 'ok' : 'error'
         );
+      } else if (state.provider === 'openai') {
+        var openaiModels = silent ? bridge.getCachedOpenAIModels() : await bridge.refreshOpenAIModels();
+        if (state.provider !== requestedProvider) return;
+        if (!openaiModels || !openaiModels.length) openaiModels = DEFAULT_OPENAI_MODELS;
+        setModelOptions(openaiModels, state.openaiModel, false);
+        var openaiSelect = document.getElementById('ai-chat-model');
+        if (openaiSelect && openaiSelect.value) state.openaiModel = openaiSelect.value;
+        storageSet(OPENAI_MODEL_KEY, state.openaiModel || DEFAULT_OPENAI_MODELS[0]);
+        setStatus(
+          state.openaiModel ? 'OpenAI Responses API를 사용합니다: ' + openaiModelLabel(state.openaiModel) : 'OpenAI 모델이 없습니다.',
+          state.openaiModel ? 'ok' : 'error'
+        );
       } else {
         var models = silent ? bridge.getCachedGeminiModels() : await bridge.refreshGeminiModels();
         if (state.provider !== requestedProvider) return;
@@ -1983,6 +2042,9 @@
         setModelOptions([], '', false);
       } else if (state.provider === 'deepseek') {
         state.deepseekModel = '';
+        setModelOptions([], '', false);
+      } else if (state.provider === 'openai') {
+        state.openaiModel = '';
         setModelOptions([], '', false);
       }
       setStatus(error && error.message ? error.message : String(error), 'error');
@@ -2763,13 +2825,7 @@
     try {
       var result = await getBridge().complete({
         provider: state.provider,
-        model: state.provider === 'aistudio'
-          ? state.geminiModel
-          : state.provider === 'ollama'
-            ? state.ollamaModel
-          : state.provider === 'deepseek'
-            ? state.deepseekModel
-            : null,
+        model: activeProviderModel(),
         mode: 'quick',
         academicSearch: academicSearch,
         continuation: true,
@@ -3548,6 +3604,8 @@
       ? 'Ollama'
       : state.provider === 'deepseek'
       ? 'DeepSeek'
+      : state.provider === 'openai'
+      ? 'OpenAI'
       : 'AI Studio (Gemini)';
     var modelLabel = state.provider === 'lmstudio'
       ? (state.lmModel || '확인되지 않음')
@@ -3555,6 +3613,8 @@
       ? (state.ollamaModel || '확인되지 않음')
       : state.provider === 'deepseek'
       ? (state.deepseekModel || '확인되지 않음')
+      : state.provider === 'openai'
+      ? (state.openaiModel || '확인되지 않음')
       : state.geminiModel;
     var lines = [
       '# AI Jena 대화',
@@ -3624,7 +3684,7 @@
       id: newId(), title: '새 대화', createdAt: Date.now(), updatedAt: Date.now(),
       provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
       academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-      geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, messages: []
+      geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel, messages: []
     };
     if (state.dbReady) {
       await requestPromise(conversationStore('readwrite').put(record));
@@ -3773,7 +3833,7 @@
   async function translateAcademicSearchQuery(query) {
     var result = await getBridge().complete({
       provider: state.provider,
-      model: state.provider === 'aistudio' ? state.geminiModel : null,
+      model: activeProviderModel(),
       mode: 'quick',
       academicSearch: false,
       messages: [{ role: 'user', content: String(query || '') }],
@@ -3901,13 +3961,7 @@
       }
       var result = await getBridge().complete({
         provider: state.provider,
-        model: state.provider === 'aistudio'
-          ? state.geminiModel
-          : state.provider === 'ollama'
-            ? state.ollamaModel
-          : state.provider === 'deepseek'
-            ? state.deepseekModel
-            : null,
+        model: activeProviderModel(),
         mode: academicSearchActive ? 'quick' : state.responseMode,
         academicSearch: academicSearchActive,
         splitAcademicResponse: splitAcademicResponse,
@@ -4032,7 +4086,7 @@
     createUI();
     bindPreserveEditorSelectionOnPanel();
     var savedProvider = storageGet(PROVIDER_KEY, 'lmstudio');
-    state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'deepseek'
+    state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'deepseek' || savedProvider === 'openai'
       ? savedProvider
       : (savedProvider === 'lmstudio' ? 'lmstudio' : 'lmstudio');
     state.providerControlsOpen = storageGet(PROVIDER_CONTROLS_KEY, '0') === '1';
@@ -4055,6 +4109,7 @@
     state.geminiModel = storageGet(GEMINI_MODEL_KEY, DEFAULT_GEMINI_MODELS[0]);
     state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, '');
     state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, DEFAULT_DEEPSEEK_MODELS[0]);
+    state.openaiModel = storageGet(OPENAI_MODEL_KEY, DEFAULT_OPENAI_MODELS[0]);
     // AI Jena starts from the user-selected start layout. Popup/fullscreen
     // positions are restored from the last saved coordinates.
     state.startLayout = normalizeLayout(storageGet(START_LAYOUT_KEY, 'dock'));
@@ -4091,6 +4146,7 @@
       state.geminiModel = storageGet(GEMINI_MODEL_KEY, state.geminiModel);
       state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, state.ollamaModel);
       state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
+      state.openaiModel = storageGet(OPENAI_MODEL_KEY, state.openaiModel);
       updateProviderUI();
     },
     open: function () { openAtStartLayout(); },

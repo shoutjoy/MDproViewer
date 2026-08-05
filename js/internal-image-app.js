@@ -5,6 +5,7 @@
         shell: null,
         panel: null,
         frame: null,
+        previewFrame: null,
         title: null,
         toolLayer: null,
         toolFrame: null,
@@ -14,7 +15,11 @@
         objectUrls: [],
         maximized: false,
         restoreStyle: '',
-        dragBound: false
+        dragBound: false,
+        viewerReady: false,
+        activeKind: '',
+        imageCountRequestSequence: 0,
+        imageCountWaiters: new Map()
     };
 
     function bridge() {
@@ -48,6 +53,7 @@
             '<button type="button" data-action="close" title="닫기" style="width:32px;height:28px;border:1px solid #7f1d1d;border-radius:6px;background:#450a0a;color:#fecaca;cursor:pointer;">×</button>',
             '</header>',
             '<iframe id="internal-image-app-frame" title="FMA 이미지 뷰어" style="width:100%;height:100%;flex:1;border:0;background:#0b0d12;"></iframe>',
+            '<iframe id="internal-image-preview-frame" title="파일 미리보기" style="display:none;width:100%;height:100%;flex:1;border:0;background:#0b0d12;"></iframe>',
             '<div id="internal-image-tool-layer" style="position:absolute;inset:42px 0 0;z-index:4;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(2,6,23,.72);">',
             '<section style="width:min(1120px,96%);height:min(780px,96%);display:flex;flex-direction:column;overflow:hidden;border:1px solid #64748b;border-radius:10px;background:#111827;box-shadow:0 20px 60px rgba(0,0,0,.65);">',
             '<header style="height:38px;flex:0 0 38px;display:flex;align-items:center;padding:0 9px;border-bottom:1px solid #334155;color:#e2e8f0;">',
@@ -63,6 +69,7 @@
         state.shell = shell;
         state.panel = shell.querySelector('#internal-image-app-panel');
         state.frame = shell.querySelector('#internal-image-app-frame');
+        state.previewFrame = shell.querySelector('#internal-image-preview-frame');
         state.title = shell.querySelector('#internal-image-app-title');
         state.toolLayer = shell.querySelector('#internal-image-tool-layer');
         state.toolFrame = shell.querySelector('#internal-image-tool-frame');
@@ -137,7 +144,7 @@
     function viewerUrl(title) {
         const url = new URL('./Apps/fmaviewer/index.html', document.baseURI || global.location.href);
         url.searchParams.set('embedded', '1');
-        url.searchParams.set('v', '20260806-ultra-1');
+        url.searchParams.set('v', '20260806-import-choice-2');
         if (title) url.searchParams.set('title', title);
         return url.href;
     }
@@ -153,6 +160,39 @@
         state.frame.contentWindow.postMessage(payload, '*');
     }
 
+    function isFmaViewerUrl(url) {
+        try {
+            const parsed = new URL(String(url || ''), document.baseURI || global.location.href);
+            return /\/Apps\/fmaviewer\/index\.html$/i.test(parsed.pathname);
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function showViewerFrame(title) {
+        ensureShell();
+        closePreviewFrame();
+        state.activeKind = 'viewer';
+        state.frame.style.display = 'block';
+        state.previewFrame.style.display = 'none';
+        loadViewerFrame(title);
+    }
+
+    function showPreviewFrame(url) {
+        ensureShell();
+        state.activeKind = 'preview';
+        state.frame.style.display = 'none';
+        state.previewFrame.style.display = 'block';
+        state.previewFrame.src = url;
+    }
+
+    function closePreviewFrame() {
+        if (!state.previewFrame) return;
+        state.previewFrame.style.display = 'none';
+        state.previewFrame.removeAttribute('src');
+        global.setTimeout(releaseObjectUrls, 0);
+    }
+
     async function sendPendingOpen() {
         const pending = state.pendingOpen;
         if (!pending) return;
@@ -160,8 +200,10 @@
             postToViewer({
                 type: 'fmaviewer-open-files',
                 files: pending.files,
-                selectedName: pending.selectedName || ''
+                selectedName: pending.selectedName || '',
+                importMode: pending.importMode || 'replace'
             });
+            if (state.pendingOpen === pending) state.pendingOpen = null;
             return;
         }
         if (pending.path && bridge() && typeof bridge().getImageFolder === 'function') {
@@ -172,6 +214,7 @@
                 records: result.images || [],
                 selectedPath: result.selectedPath || pending.path
             });
+            if (state.pendingOpen === pending) state.pendingOpen = null;
         }
     }
 
@@ -181,16 +224,118 @@
         releaseObjectUrls();
         state.pendingOpen = { path: path, selectedName: title || '' };
         show(title || path.split(/[\\/]/).pop() || '이미지');
-        state.frame.src = viewerUrl(title || path.split(/[\\/]/).pop() || '');
+        showViewerFrame(title || path.split(/[\\/]/).pop() || '');
+        if (state.viewerReady) sendPendingOpen().catch(function (error) {
+            showStatus(error && error.message ? error.message : error, true);
+        });
     }
 
-    function openFiles(files, selectedName) {
+    function openFiles(files, selectedName, options) {
         const list = Array.from(files || []);
         if (!list.length) return;
+        const opts = options || {};
         releaseObjectUrls();
-        state.pendingOpen = { files: list, selectedName: selectedName || list[0].name || '' };
+        state.pendingOpen = {
+            files: list,
+            selectedName: selectedName || list[0].name || '',
+            importMode: opts.importMode === 'append' ? 'append' : 'replace'
+        };
         show(selectedName || list[0].name || '이미지');
-        state.frame.src = viewerUrl(selectedName || list[0].name || '');
+        showViewerFrame(selectedName || list[0].name || '');
+        if (state.viewerReady) sendPendingOpen().catch(function (error) {
+            showStatus(error && error.message ? error.message : error, true);
+        });
+    }
+
+    function getViewerImageCount() {
+        if (!state.viewerReady || !state.frame || !state.frame.contentWindow) return 0;
+        try {
+            const viewerBridge = state.frame.contentWindow.FMAMdViewerBridge;
+            if (viewerBridge && typeof viewerBridge.getImageCount === 'function') {
+                return Number(viewerBridge.getImageCount()) || 0;
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    function requestViewerImageCount() {
+        const directCount = getViewerImageCount();
+        if (directCount !== null) return Promise.resolve(directCount);
+        if (!state.viewerReady || !state.frame || !state.frame.contentWindow) return Promise.resolve(0);
+        const requestId = 'fma-count-' + Date.now() + '-' + (++state.imageCountRequestSequence);
+        return new Promise(function (resolve) {
+            const timer = global.setTimeout(function () {
+                state.imageCountWaiters.delete(requestId);
+                resolve(0);
+            }, 1500);
+            state.imageCountWaiters.set(requestId, {
+                resolve: resolve,
+                timer: timer
+            });
+            postToViewer({
+                type: 'fmaviewer-get-image-count',
+                requestId: requestId
+            });
+        });
+    }
+
+    function resolveViewerImageCount(data) {
+        const requestId = String(data && data.requestId || '');
+        const waiter = state.imageCountWaiters.get(requestId);
+        if (!waiter) return false;
+        state.imageCountWaiters.delete(requestId);
+        global.clearTimeout(waiter.timer);
+        waiter.resolve(Math.max(0, Number(data.imageCount) || 0));
+        return true;
+    }
+
+    function cancelViewerImageCountRequests() {
+        state.imageCountWaiters.forEach(function (waiter) {
+            global.clearTimeout(waiter.timer);
+            waiter.resolve(0);
+        });
+        state.imageCountWaiters.clear();
+    }
+
+    function showViewerImportChoice(existingCount, incomingCount) {
+        const add = global.confirm(
+            'FMA Viewer에 기존 이미지 ' + existingCount + '개가 있습니다.\n\n' +
+            '새 이미지 ' + incomingCount + '개를 추가할까요?\n\n' +
+            '[확인] 이미지 추가  ·  [취소] 초기화 선택으로 이동'
+        );
+        if (add) return 'append';
+        const replace = global.confirm(
+            '기존 이미지를 초기화하고 새로 넣을까요?\n\n' +
+            '[확인] 초기화하고 새로 넣기  ·  [취소] 작업 취소'
+        );
+        return replace ? 'replace' : 'cancel';
+    }
+
+    async function getViewerImportMode(incomingCount) {
+        const existingCount = await requestViewerImageCount();
+        if (existingCount <= 0) return 'replace';
+        return showViewerImportChoice(existingCount, incomingCount);
+    }
+
+    function resetViewerReadyState() {
+        state.viewerReady = false;
+        cancelViewerImageCountRequests();
+    }
+
+    function loadViewerFrame(title) {
+        if (!state.frame.getAttribute('src')) {
+            resetViewerReadyState();
+            state.frame.src = viewerUrl(title || '');
+        }
+    }
+
+    async function openFilesWithChoice(files, selectedName) {
+        const list = Array.from(files || []);
+        if (!list.length) return false;
+        const importMode = await getViewerImportMode(list.length);
+        if (importMode === 'cancel') return false;
+        openFiles(list, selectedName, { importMode: importMode });
+        return true;
     }
 
     function releaseObjectUrls() {
@@ -208,7 +353,8 @@
         state.objectUrls = Array.isArray(opts.objectUrls) ? opts.objectUrls.slice() : [];
         state.pendingOpen = null;
         show(title || '파일 보기');
-        state.frame.src = targetUrl;
+        if (isFmaViewerUrl(targetUrl)) showViewerFrame(title || 'FMA Viewer');
+        else showPreviewFrame(targetUrl);
     }
 
     function closeTool() {
@@ -222,9 +368,10 @@
         if (!state.shell) return;
         closeTool();
         state.shell.style.display = 'none';
-        state.frame.removeAttribute('src');
-        state.pendingOpen = null;
-        global.setTimeout(releaseObjectUrls, 0);
+        if (state.activeKind === 'preview') {
+            closePreviewFrame();
+            state.activeKind = '';
+        }
     }
 
     async function imageToDataUrl(image) {
@@ -269,6 +416,27 @@
         url.searchParams.set('targetId', targetId);
         url.searchParams.set('v', '20260725-edit-result-2');
         state.toolFrame.src = url.href;
+    }
+
+    async function openImageInsertFromViewer(image) {
+        if (typeof global.openImageInsertModal !== 'function' ||
+            typeof global.applyImageInsertDataUrl !== 'function') {
+            throw new Error('문서 이미지 삽입 기능을 찾지 못했습니다.');
+        }
+        const dataUrl = await imageToDataUrl(image);
+        close();
+        ensureEditMode();
+        global.openImageInsertModal();
+        global.applyImageInsertDataUrl(
+            dataUrl,
+            image.name || ('fma_viewer_' + Date.now() + '.png')
+        );
+        if (typeof global.setImageInsertStatus === 'function') {
+            global.setImageInsertStatus(
+                'FMA Viewer 이미지가 준비되었습니다. [imgBB] Upload 또는 문서내부저장으로 링크를 만든 뒤 Markdown/HTML을 선택하세요.',
+                false
+            );
+        }
     }
 
     function ensureEditMode() {
@@ -336,7 +504,12 @@
         const data = event && event.data;
         if (!data || typeof data !== 'object') return;
         if (state.frame && event.source === state.frame.contentWindow) {
+            if (data.type === 'fmaviewer-image-count') {
+                resolveViewerImageCount(data);
+                return;
+            }
             if (data.type === 'fmaviewer-ready') {
+                state.viewerReady = true;
                 try { await sendPendingOpen(); } catch (error) { showStatus(error.message || error, true); }
                 return;
             }
@@ -348,6 +521,7 @@
             try {
                 if (data.type === 'fmaviewer-crop-image') await openCrop(image);
                 if (data.type === 'fmaviewer-remove-background') await openBackgroundRemover(image);
+                if (data.type === 'fmaviewer-open-image-insert') await openImageInsertFromViewer(image);
                 if (data.type === 'fmaviewer-insert-internal') await saveInternalAndInsert(image);
                 if (data.type === 'fmaviewer-upload-imgbb') await uploadToImgbbAndInsert(image);
             } catch (error) {
@@ -408,6 +582,9 @@
     global.InternalImageApp = Object.freeze({
         openPath: openPath,
         openFiles: openFiles,
+        openFilesWithChoice: openFilesWithChoice,
+        getViewerImageCount: getViewerImageCount,
+        requestViewerImageCount: requestViewerImageCount,
         openFrame: openFrame,
         close: close
     });

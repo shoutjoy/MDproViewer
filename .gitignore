@@ -5,6 +5,9 @@ Docs/
 backup/
 restore/
 temp/
+__pycache__/
+*.py[cod]
+/LocalSave_sqlite/data/
 #   
 
 

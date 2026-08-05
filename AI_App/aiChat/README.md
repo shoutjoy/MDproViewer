@@ -7,6 +7,7 @@ ScholarAI의 문서 처리 기능과 분리된 일반 멀티턴 채팅이다.
 - LM Studio 선택 시 `/api/v1/models`의 `loaded_instances`를 확인하고 현재 로드된 첫 번째 LLM을 자동 사용한다.
 - AI Studio 선택 시 앱에 저장된 API Key와 선택한 Gemini 모델을 사용한다.
 - Ollama 선택 시 로컬 Ollama(`http://127.0.0.1:11434`)에 API Key 없이 직접 연결하고 Ollama의 모델 조회·채팅 API를 사용한다.
+- OpenAI 선택 시 설정에 저장된 Platform API Key로 `/v1/models`를 조회하고, 공식 Responses API(`/v1/responses`)로 멀티턴 대화를 전송한다. 기본 후보는 GPT-5.6 Sol/Terra/Luna이며 실제 계정에서 조회된 텍스트 모델 목록을 우선한다. ChatGPT Plus/Pro 구독과 OpenAI API 결제는 별도이므로 Platform API 결제가 활성화되어 있어야 한다.
   - 설정을 열면 저장된 AI Studio 키로 Gemini 모델 조회를 재개하여 성공 시 빛나는 `연결됨` 상태를 표시한다. AI Studio와 imgBB 키 입력란의 눈 버튼으로 키를 일시적으로 표시하거나 다시 가릴 수 있으며, imgBB는 저장 완료와 실제 업로드 확인 완료 상태를 구분한다.
 - AI Studio 모델 목록에는 공식 Gemini 3.5 Flash, Gemini 3.1 Pro Preview, Gemini 3 Flash Preview와 기존 2.5 계열을 포함한다. API 조회 결과에 추가 모델이 있으면 함께 표시한다.
 - Nano Banana 2 Lite(`gemini-3.1-flash-lite-image`), Nano Banana 2(`gemini-3.1-flash-image`), Nano Banana Pro(`gemini-3-pro-image`), Nano Banana(`gemini-2.5-flash-image`)를 선택하면 채팅에서 이미지를 생성하고 결과를 IndexedDB 대화에 저장·표시하며 파일로 내려받을 수 있다.

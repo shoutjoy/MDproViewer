@@ -29,6 +29,7 @@ var rembgResolvedModelUrl = null;
 var rembgResolvedModelSource = "unknown";
 var rembgSelectedModelObjectUrl = null;
 var rembgSelectedModelSource = null;
+var rembgSelectedModelSignature = null;
 var rembgModelDownloadPromise = null;
 var mediaPipeScriptPromise = null;
 var mediaPipeSessionPromise = null;
@@ -639,8 +640,15 @@ async function runWebGlBackgroundRemoval(src, signal, startPercent, endPercent) 
 async function loadRembgModule() {
     if (!rembgModulePromise) {
         rembgModulePromise = import(REMBG_WEB_MODULE_URL).then(async module => {
+            if (typeof module?.remove !== "function" ||
+                typeof module?.newSession !== "function" ||
+                typeof module?.rembgConfig?.setCustomModelPath !== "function") {
+                throw new Error("rembg-web ONNX 모듈 API가 올바르지 않습니다.");
+            }
             rembgResolvedModelUrl = await resolveBackgroundModelUrl();
             module.rembgConfig.setCustomModelPath("u2net_human_seg", rembgResolvedModelUrl);
+            module.rembgConfig.setSessionCacheBypass?.(false);
+            module.rembgConfig.setModelCacheBypass?.(false);
             return module;
         }).catch(error => {
             rembgModulePromise = null;
@@ -719,9 +727,14 @@ async function getHumanSegmentationSession(module) {
                 "u2net_human_seg",
                 undefined,
                 {
-                    bypassSessionCache: true,
-                    bypassModelCache: true,
-                    onProgress: updateBgRemoveProgress
+                    bypassSessionCache: false,
+                    bypassModelCache: false,
+                    onProgress: info => updateBgRemoveStageProgress(
+                        info,
+                        78,
+                        82,
+                        "ONNX 사람 분리 모델 불러오는 중"
+                    )
                 }
             ));
 
@@ -743,11 +756,21 @@ async function getHumanSegmentationSessionWithRecovery(module) {
     try {
         return await getHumanSegmentationSession(module);
     } catch (firstError) {
-        console.warn("Model session initialization failed; clearing rembg cache and retrying.", firstError);
-        await clearBackgroundModelRuntimeCache(module);
+        const clearModelCache = isLikelyBackgroundModelCacheError(firstError);
+        console.warn(
+            `Model session initialization failed; clearing ${clearModelCache ? "model and session" : "session"} cache and retrying.`,
+            firstError
+        );
+        await clearBackgroundModelRuntimeCache(module, clearModelCache);
         module.rembgConfig.setCustomModelPath("u2net_human_seg", rembgResolvedModelUrl);
         return getHumanSegmentationSession(module);
     }
+}
+
+function isLikelyBackgroundModelCacheError(error) {
+    const message = String(error?.message || error || "");
+    return /integrity|protobuf|invalid\s+(?:onnx|model|graph)|failed to (?:load|parse).*model|tensor.*invalid/i
+        .test(message);
 }
 
 async function handleBackgroundModelFileSelection(event) {
@@ -771,20 +794,44 @@ async function handleBackgroundModelFileSelection(event) {
     setBgRemoveProgress(2, "선택한 모델을 브라우저 저장소에 보관 중");
 
     try {
+        const selectedSignature = getBackgroundModelBlobSignature(file);
+        const sameConnectedModel = Boolean(
+            rembgSelectedModelObjectUrl &&
+            selectedSignature &&
+            selectedSignature === rembgSelectedModelSignature
+        );
+
+        if (sameConnectedModel && rembgHumanSessionPromise) {
+            try {
+                await rembgHumanSessionPromise;
+                rembgResolvedModelSource = rembgSelectedModelSource || "selected";
+                setBgRemoveProgress(100, "이미 준비된 ONNX 모델을 재사용합니다");
+                dom.btnPrepareBgModel.innerText = "✓ 모델 준비 완료";
+                dom.btnPrepareBgModel.disabled = true;
+                await updateBackgroundModelLocation();
+                return;
+            } catch (error) {
+                console.warn("Previously prepared ONNX session is unavailable; retrying.", error);
+            }
+        }
+
         const currentModule = await rembgModulePromise?.catch(() => null);
-        if (currentModule) await clearBackgroundModelRuntimeCache(currentModule);
-        setSelectedBackgroundModelBlob(file, "selected");
-        rembgResolvedModelSource = "selected";
-        rembgResolvedModelUrl = rembgSelectedModelObjectUrl;
-        rembgModulePromise = null;
-        rembgHumanSessionPromise = null;
+        if (!sameConnectedModel) {
+            if (currentModule) await clearBackgroundModelRuntimeCache(currentModule, true);
+            setSelectedBackgroundModelBlob(file, "selected");
+            rembgResolvedModelSource = "selected";
+            rembgResolvedModelUrl = rembgSelectedModelObjectUrl;
+            rembgModulePromise = null;
+            rembgHumanSessionPromise = null;
+        }
 
         try {
-            await saveBackgroundModel(file);
+            if (!sameConnectedModel) await saveBackgroundModel(file);
             dom.bgModelLocation.classList.remove("remote");
             dom.bgModelLocation.classList.add("available");
             dom.bgModelLocation.innerHTML =
-                `✓ 선택한 모델 저장 완료: <code>${escapeBackgroundModelText(file.name)}</code> ` +
+                `${sameConnectedModel ? "✓ 동일 모델 재사용" : "✓ 선택한 모델 저장 완료"}: ` +
+                `<code>${escapeBackgroundModelText(file.name)}</code> ` +
                 `(${formatBackgroundModelBytes(file.size)})`;
         } catch (storageError) {
             console.warn("Model persistence failed; using for current session only.", storageError);
@@ -891,6 +938,18 @@ function setSelectedBackgroundModelBlob(blob, source) {
     if (rembgSelectedModelObjectUrl) URL.revokeObjectURL(rembgSelectedModelObjectUrl);
     rembgSelectedModelObjectUrl = URL.createObjectURL(blob);
     rembgSelectedModelSource = source || "selected";
+    rembgSelectedModelSignature = getBackgroundModelBlobSignature(blob);
+}
+
+function getBackgroundModelBlobSignature(blob) {
+    if (!(blob instanceof Blob)) return "";
+    const fileName = typeof File !== "undefined" && blob instanceof File
+        ? blob.name
+        : "";
+    const lastModified = typeof File !== "undefined" && blob instanceof File
+        ? blob.lastModified
+        : 0;
+    return [fileName, blob.size, blob.type || "", lastModified].join("|");
 }
 
 function openBackgroundModelDatabase() {
@@ -947,7 +1006,7 @@ async function loadSavedBackgroundModel() {
     }
 }
 
-async function clearBackgroundModelRuntimeCache(module) {
+async function clearBackgroundModelRuntimeCache(module, clearModelCache = false) {
     rembgHumanSessionPromise = null;
     try {
         if (typeof module.disposeAllSessions === "function") {
@@ -958,12 +1017,14 @@ async function clearBackgroundModelRuntimeCache(module) {
     } catch (error) {
         console.warn("Session cache clear failed:", error);
     }
-    try {
-        if (typeof module.clearModelCacheForModel === "function") {
-            await module.clearModelCacheForModel("u2net_human_seg");
+    if (clearModelCache) {
+        try {
+            if (typeof module.clearModelCacheForModel === "function") {
+                await module.clearModelCacheForModel("u2net_human_seg");
+            }
+        } catch (error) {
+            console.warn("Model cache clear failed:", error);
         }
-    } catch (error) {
-        console.warn("Model cache clear failed:", error);
     }
 }
 
@@ -1011,7 +1072,7 @@ async function prepareBackgroundRemoveModel() {
             downloaded: "다운로드한 ONNX 모델 불러오는 중",
             remote: "원본 서버에서 약 176MB 모델 다운로드 및 초기화"
         };
-        setBgRemoveProgress(82, sourceStatus[rembgResolvedModelSource] || sourceStatus.remote);
+        setBgRemoveProgress(78, sourceStatus[rembgResolvedModelSource] || sourceStatus.remote);
         await getHumanSegmentationSessionWithRecovery(module);
         setBgRemoveProgress(100, "모델 실제 로드 및 자동 연결 완료");
         dom.btnPrepareBgModel.innerText = "✓ 모델 준비 완료";
@@ -1037,6 +1098,13 @@ async function prepareBackgroundRemoveModel() {
 async function runBackgroundRemoval() {
     const item = images[bgRemoveState.imageIndex];
     if (bgRemoveState.processing) {
+        if (bgRemoveState.mode === "local" && bgRemoveState.localEngine === "onnx") {
+            setBgRemoveProgress(
+                Math.max(1, Number.parseInt(dom.bgRemovePercent?.innerText, 10) || 0),
+                "ONNX 계산이 진행 중입니다 · 완료될 때까지 기다려 주세요"
+            );
+            return;
+        }
         bgRemoveState.abortController?.abort();
         dom.btnRunBgRemove.innerText = "정지 처리 중...";
         setBgRemoveProgress(0, "정지 요청됨");
@@ -1050,13 +1118,14 @@ async function runBackgroundRemoval() {
     bgRemoveState.processing = true;
     bgRemoveState.directRefinement = false;
     bgRemoveState.abortController = new AbortController();
-    dom.btnRunBgRemove.disabled = false;
+    const onnxProcessing = bgRemoveState.mode === "local" && bgRemoveState.localEngine === "onnx";
+    dom.btnRunBgRemove.disabled = onnxProcessing;
     dom.btnBgRemoveRefine.disabled = true;
     const originalButtonText = dom.btnRunBgRemove.innerText;
     dom.btnRunBgRemove.innerText = bgRemoveState.mode === "ai"
         ? "■ AI 처리 정지"
         : bgRemoveState.localEngine === "onnx"
-            ? "■ ONNX 처리 정지"
+            ? "ONNX 처리 중..."
             : "■ WebGL 처리 정지";
 
     try {
@@ -1087,13 +1156,12 @@ async function runBackgroundRemoval() {
                 const transparentBlob = await module.remove(aiResultBlob, {
                     session: session,
                     postProcessMask: true,
-                    onProgress: info => {
-                        const progress = Number(info?.progress);
-                        setBgRemoveProgress(
-                            Number.isFinite(progress) ? 48 + progress * .44 : 55,
-                            "AI 결과의 배경을 투명하게 변환 중"
-                        );
-                    }
+                    onProgress: info => updateBgRemoveStageProgress(
+                        info,
+                        48,
+                        94,
+                        "AI 결과의 배경을 투명하게 변환 중"
+                    )
                 });
                 throwIfStopped();
                 bgRemoveState.resultSrc = await blobToDataUrl(transparentBlob);
@@ -1113,7 +1181,7 @@ async function runBackgroundRemoval() {
                 await ensureBackgroundModelConnected();
                 setBgRemoveProgress(78, "ONNX 배경 제거 라이브러리 로드");
                 const module = await loadRembgModule();
-                setBgRemoveProgress(82, "사람 분리 모델 실제 로드 및 초기화");
+                setBgRemoveProgress(78, "사람 분리 모델 실제 로드 및 초기화");
                 const session = await getHumanSegmentationSessionWithRecovery(module);
                 throwIfStopped();
                 dom.btnPrepareBgModel.innerText = "✓ 모델 준비 완료";
@@ -1122,7 +1190,12 @@ async function runBackgroundRemoval() {
                 const resultBlob = await module.remove(inputBlob, {
                     session: session,
                     postProcessMask: true,
-                    onProgress: updateBgRemoveProgress
+                    onProgress: info => updateBgRemoveStageProgress(
+                        info,
+                        82,
+                        94,
+                        "ONNX 전경과 배경 분리 중"
+                    )
                 });
                 throwIfStopped();
                 bgRemoveState.resultSrc = await blobToDataUrl(resultBlob);
@@ -1241,6 +1314,24 @@ function updateBgRemoveProgress(info) {
     };
     const status = info?.message || stepNames[info?.step] || "배경 제거 처리 중";
     setBgRemoveProgress(Number.isFinite(progress) ? progress : 10, status);
+}
+
+function updateBgRemoveStageProgress(info, startPercent, endPercent, fallbackStatus) {
+    const start = Math.max(0, Math.min(100, Number(startPercent) || 0));
+    const end = Math.max(start, Math.min(100, Number(endPercent) || start));
+    const rawProgress = typeof info === "number" ? info : Number(info?.progress);
+    const progress = Number.isFinite(rawProgress)
+        ? Math.max(0, Math.min(100, rawProgress))
+        : 0;
+    const mappedProgress = start + ((end - start) * progress / 100);
+    const stepNames = {
+        downloading: "ONNX 모델 데이터 읽는 중",
+        processing: fallbackStatus || "ONNX 처리 중",
+        postprocessing: "ONNX 마스크 가장자리 다듬는 중",
+        complete: "ONNX 처리 단계 완료"
+    };
+    const status = info?.message || stepNames[info?.step] || fallbackStatus || "ONNX 처리 중";
+    setBgRemoveProgress(mappedProgress, status);
 }
 
 function setBgRemoveProgress(percent, status) {

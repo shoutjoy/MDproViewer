@@ -379,7 +379,7 @@ function toggleImageInsertGallery() {
         return;
     }
 
-    const galleryUrl = new URL('./imageDB/image-gallery.html?v=20260731-gallery-window-1', document.baseURI || window.location.href);
+    const galleryUrl = new URL('./imageDB/image-gallery.html?v=20260806-fma-choice-3', document.baseURI || window.location.href);
     const width = Math.max(900, Math.min(1440, Math.round((window.screen && window.screen.availWidth || 1400) * 0.86)));
     const height = Math.max(620, Math.min(960, Math.round((window.screen && window.screen.availHeight || 900) * 0.86)));
     const left = Math.max(0, Math.round(((window.screen && window.screen.availWidth || width) - width) / 2));
@@ -465,7 +465,7 @@ async function sendImageInsertGalleryRecords(targetWindow) {
     }
 }
 
-async function openImageInsertGalleryInFma(selectedId) {
+async function openImageInsertGalleryInFma(selectedId, requestedImportMode) {
     try {
         const records = await getImageInsertGalleryRecords();
         const safeId = String(selectedId || '');
@@ -483,7 +483,13 @@ async function openImageInsertGalleryInFma(selectedId) {
                 lastModified: Number(record.createdAt || Date.now())
             });
         });
-        window.InternalImageApp.openFiles(files, String(selected.name || selected.id));
+        const importMode = requestedImportMode === 'append' ? 'append' : 'replace';
+        window.InternalImageApp.openFiles(files, String(selected.name || selected.id), {
+            importMode: importMode
+        });
+        setImageInsertStatus(importMode === 'append'
+            ? 'inDB 이미지를 기존 FMA Viewer 갤러리에 추가했습니다.'
+            : 'FMA Viewer를 초기화하고 inDB 이미지를 열었습니다.', false);
     } catch (error) {
         setImageInsertStatus('FMA Viewer 열기 실패: ' + (error && error.message ? error.message : error), true);
     }
@@ -499,8 +505,31 @@ window.addEventListener('message', function (event) {
         applyImageInsertGalleryPopupSelection(event.data.id);
         return;
     }
+    if (event.data.type === 'image-gallery-request-fma-open') {
+        const targetWindow = event.source;
+        const selectedId = String(event.data.id || '');
+        const countOperation = window.InternalImageApp &&
+            typeof window.InternalImageApp.requestViewerImageCount === 'function'
+            ? window.InternalImageApp.requestViewerImageCount()
+            : Promise.resolve(0);
+        Promise.resolve(countOperation).then(function (count) {
+            if (!targetWindow || targetWindow.closed) return;
+            targetWindow.postMessage({
+                type: 'image-gallery-fma-open-choice',
+                id: selectedId,
+                existingCount: Math.max(0, Number(count) || 0)
+            }, '*');
+        }).catch(function (error) {
+            if (!targetWindow || targetWindow.closed) return;
+            targetWindow.postMessage({
+                type: 'image-gallery-error',
+                message: 'FMA Viewer 상태 확인 실패: ' + (error && error.message ? error.message : error)
+            }, '*');
+        });
+        return;
+    }
     if (event.data.type === 'image-gallery-open-fma') {
-        openImageInsertGalleryInFma(event.data.id);
+        openImageInsertGalleryInFma(event.data.id, event.data.importMode);
         return;
     }
     if (event.data.type === 'image-gallery-closed') {

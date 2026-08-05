@@ -10,10 +10,16 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from LocalSave_sqlite.server.api import SqliteApiRouter
+
 PREFERRED_PORT = int(os.environ.get("MD_VIEWER_PORT", "8765"))
 DIR = os.path.dirname(os.path.abspath(__file__))
+HOST = os.environ.get("MD_VIEWER_HOST", "127.0.0.1").strip() or "127.0.0.1"
+OPEN_BROWSER = os.environ.get("MD_VIEWER_NO_BROWSER", "").strip().lower() not in {"1", "true", "yes"}
 
 os.chdir(DIR)
+
+SQLITE_API = SqliteApiRouter(DIR)
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     IMAGE_PROXY_PATH = "/__mdviewer_image_proxy"
@@ -80,6 +86,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(payload)
 
     def do_GET(self):
+        if SQLITE_API.handle(self, "GET"):
+            return
         parsed = urllib.parse.urlsplit(self.path)
         if parsed.path == self.IMAGE_PROXY_PATH:
             query = urllib.parse.parse_qs(parsed.query)
@@ -87,22 +95,45 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def do_POST(self):
+        if SQLITE_API.handle(self, "POST"):
+            return
+        self.send_error(404, "Not Found")
+
+    def do_PUT(self):
+        if SQLITE_API.handle(self, "PUT"):
+            return
+        self.send_error(404, "Not Found")
+
+    def do_PATCH(self):
+        if SQLITE_API.handle(self, "PATCH"):
+            return
+        self.send_error(404, "Not Found")
+
+    def do_DELETE(self):
+        if SQLITE_API.handle(self, "DELETE"):
+            return
+        self.send_error(404, "Not Found")
+
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
         super().end_headers()
 
-class ReusableTCPServer(socketserver.TCPServer):
+class ReusableTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
+    daemon_threads = True
 
 try:
-    httpd = ReusableTCPServer(("", PREFERRED_PORT), Handler)
+    httpd = ReusableTCPServer((HOST, PREFERRED_PORT), Handler)
 except OSError:
-    httpd = ReusableTCPServer(("", 0), Handler)
+    httpd = ReusableTCPServer((HOST, 0), Handler)
 
 with httpd:
     port = httpd.server_address[1]
     url = f"http://localhost:{port}"
     print(f"서버 실행: {url}")
+    print(f"바인딩: {HOST}:{port}")
     print("종료: Ctrl+C")
-    webbrowser.open(url)
+    if OPEN_BROWSER:
+        webbrowser.open(url)
     httpd.serve_forever()

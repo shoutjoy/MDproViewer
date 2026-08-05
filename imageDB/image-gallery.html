@@ -476,14 +476,50 @@
                         throw new Error('원본 md-viewer 창에서 갤러리를 다시 열어 주세요.');
                     }
                     window.opener.postMessage({
-                        type: 'image-gallery-open-fma',
+                        type: 'image-gallery-request-fma-open',
                         id: String(selected.id)
                     }, '*');
-                    window.opener.focus();
-                    setStatus('FMA Viewer에 전체 이미지 열기를 요청했습니다.', false);
+                    setStatus('FMA Viewer의 기존 이미지 상태를 확인하는 중...', false);
                 } catch (error) {
                     setStatus('FMA Viewer 열기 실패: ' + (error.message || error), true);
                 }
+            }
+
+            function continueOpenInFmaViewer(data) {
+                const selectedId = String(data && data.id || state.selectedId || '');
+                const existingCount = Math.max(0, Number(data && data.existingCount) || 0);
+                let importMode = 'replace';
+                if (existingCount > 0) {
+                    const append = window.confirm(
+                        'FMA Viewer에 기존 이미지 ' + existingCount + '개가 있습니다.\n\n' +
+                        'inDB 이미지를 기존 갤러리에 추가할까요?\n\n' +
+                        '[확인] 이미지 추가  ·  [취소] 초기화 선택으로 이동'
+                    );
+                    if (append) importMode = 'append';
+                    else {
+                        const replace = window.confirm(
+                            '기존 이미지를 초기화하고 inDB 이미지를 새로 넣을까요?\n\n' +
+                            '[확인] 초기화하고 새로 넣기  ·  [취소] 작업 취소'
+                        );
+                        if (!replace) {
+                            setStatus('FMA Viewer로 이미지 보내기를 취소했습니다.', false);
+                            return;
+                        }
+                    }
+                }
+                if (!window.opener || window.opener.closed) {
+                    setStatus('원본 md-viewer 창이 닫혀 있습니다.', true);
+                    return;
+                }
+                window.opener.postMessage({
+                    type: 'image-gallery-open-fma',
+                    id: selectedId,
+                    importMode: importMode
+                }, '*');
+                window.opener.focus();
+                setStatus(importMode === 'append'
+                    ? '기존 FMA Viewer 갤러리에 이미지 추가를 요청했습니다.'
+                    : 'FMA Viewer 초기화 후 이미지 열기를 요청했습니다.', false);
             }
 
             function selectInInsertWindow() {
@@ -570,6 +606,9 @@
                 }
                 if (event.data && event.data.type === 'image-gallery-error') {
                     setStatus('갤러리 로드 실패: ' + String(event.data.message || '알 수 없는 오류'), true);
+                }
+                if (event.data && event.data.type === 'image-gallery-fma-open-choice') {
+                    continueOpenInFmaViewer(event.data);
                 }
             });
             window.addEventListener('beforeunload', function () {

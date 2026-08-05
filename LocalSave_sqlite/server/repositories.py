@@ -1,0 +1,626 @@
+"""Document and folder repositories for the local SQLite service."""
+
+from __future__ import annotations
+
+import hashlib
+import re
+import sqlite3
+import time
+import uuid
+from typing import Any, Dict, List, Optional
+
+from .database import DatabaseManager
+
+
+class RepositoryError(RuntimeError):
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        status: int = 400,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.status = status
+        self.details = details or {}
+
+
+class StorageRepository:
+    MAX_TITLE_LENGTH = 500
+    MAX_CONTENT_LENGTH = 10 * 1024 * 1024
+    MAX_SEARCH_QUERY_LENGTH = 500
+    SAFE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
+
+    def __init__(self, manager: DatabaseManager) -> None:
+        self.manager = manager
+
+    @staticmethod
+    def _now_ms() -> int:
+        return int(time.time() * 1000)
+
+    @staticmethod
+    def _checksum(content: str) -> str:
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _word_count(content: str) -> int:
+        return len([part for part in re.split(r"\s+", content.strip()) if part])
+
+    def _validate_id(self, value: Any, field: str) -> str:
+        normalized = str(value or "").strip()
+        if not normalized or not self.SAFE_ID_RE.fullmatch(normalized):
+            raise RepositoryError("INVALID_ID", f"{field} is invalid.")
+        return normalized
+
+    def _validate_title(self, value: Any) -> str:
+        title = str(value or "").strip()
+        if not title:
+            raise RepositoryError("TITLE_REQUIRED", "Document title is required.")
+        if len(title) > self.MAX_TITLE_LENGTH:
+            raise RepositoryError("TITLE_TOO_LONG", "Document title is too long.")
+        return title
+
+    def _validate_content(self, value: Any) -> str:
+        content = str(value if value is not None else "")
+        if len(content.encode("utf-8")) > self.MAX_CONTENT_LENGTH:
+            raise RepositoryError("CONTENT_TOO_LARGE", "Document content exceeds 10 MB.", 413)
+        return content
+
+    @staticmethod
+    def _document_summary(row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "workspaceId": row["workspace_id"],
+            "folderId": row["folder_id"],
+            "title": row["title"],
+            "contentFormat": row["content_format"],
+            "documentType": row["document_type"],
+            "status": row["status"],
+            "wordCount": row["word_count"],
+            "version": row["version"],
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+            "lastOpenedAt": row["last_opened_at"],
+        }
+
+    @classmethod
+    def _document_detail(cls, row: sqlite3.Row) -> Dict[str, Any]:
+        result = cls._document_summary(row)
+        result.update(
+            {
+                "content": row["content"],
+                "checksum": row["checksum"],
+                "language": row["language"],
+                "sourceMode": row["source_mode"],
+                "isFavorite": bool(row["is_favorite"]),
+                "isPinned": bool(row["is_pinned"]),
+                "isReadonly": bool(row["is_readonly"]),
+            }
+        )
+        return result
+
+    @staticmethod
+    def _folder_result(row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "id": row["id"],
+            "workspaceId": row["workspace_id"],
+            "parentId": row["parent_id"],
+            "name": row["name"],
+            "sortOrder": row["sort_order"],
+            "isExpanded": bool(row["is_expanded"]),
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def _require_folder(self, connection: sqlite3.Connection, folder_id: str) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM folders WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL",
+            (folder_id, self.manager.DEFAULT_WORKSPACE_ID),
+        ).fetchone()
+        if not row:
+            raise RepositoryError("FOLDER_NOT_FOUND", "Folder not found.", 404)
+        return row
+
+    def list_documents(
+        self,
+        folder_id: Optional[str] = None,
+        query: str = "",
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        safe_limit = max(1, min(int(limit or 200), 500))
+        clauses = ["workspace_id = ?", "deleted_at IS NULL"]
+        values: List[Any] = [self.manager.DEFAULT_WORKSPACE_ID]
+        if folder_id:
+            clauses.append("folder_id = ?")
+            values.append(self._validate_id(folder_id, "folderId"))
+        normalized_query = str(query or "").strip()
+        if normalized_query:
+            clauses.append("title LIKE ? ESCAPE '\\'")
+            escaped = normalized_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            values.append(f"%{escaped}%")
+        values.append(safe_limit)
+        sql = f"""
+            SELECT id, workspace_id, folder_id, title, content_format, document_type,
+                   status, word_count, version, created_at, updated_at, last_opened_at
+            FROM documents
+            WHERE {' AND '.join(clauses)}
+            ORDER BY updated_at DESC, id ASC
+            LIMIT ?
+        """
+        with self.manager.connection() as connection:
+            return [self._document_summary(row) for row in connection.execute(sql, values)]
+
+    def search_documents(
+        self,
+        query: str,
+        folder_id: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        normalized_query = str(query or "").strip()
+        if not normalized_query:
+            return []
+        if len(normalized_query) > self.MAX_SEARCH_QUERY_LENGTH:
+            raise RepositoryError("SEARCH_QUERY_TOO_LONG", "Search query is too long.")
+
+        safe_limit = max(1, min(int(limit or 100), 200))
+        folder_clause = ""
+        folder_values: List[Any] = []
+        if folder_id:
+            folder_clause = " AND d.folder_id = ?"
+            folder_values.append(self._validate_id(folder_id, "folderId"))
+
+        summary_columns = """
+            d.id, d.workspace_id, d.folder_id, d.title, d.content_format,
+            d.document_type, d.status, d.word_count, d.version, d.created_at,
+            d.updated_at, d.last_opened_at
+        """
+        if len(normalized_query) <= 2:
+            escaped = normalized_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            pattern = f"%{escaped}%"
+            sql = f"""
+                SELECT {summary_columns},
+                       CASE WHEN d.title LIKE ? ESCAPE '\\' THEN 'title' ELSE 'content' END AS match_source,
+                       '' AS snippet
+                FROM documents AS d
+                WHERE d.workspace_id = ? AND d.deleted_at IS NULL
+                  AND (d.title LIKE ? ESCAPE '\\' OR d.content LIKE ? ESCAPE '\\')
+                  {folder_clause}
+                ORDER BY CASE WHEN d.title LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END,
+                         d.updated_at DESC, d.id ASC
+                LIMIT ?
+            """
+            values: List[Any] = [
+                pattern,
+                self.manager.DEFAULT_WORKSPACE_ID,
+                pattern,
+                pattern,
+                *folder_values,
+                pattern,
+                safe_limit,
+            ]
+        else:
+            fts_query = '"' + normalized_query.replace('"', '""') + '"'
+            sql = f"""
+                SELECT {summary_columns},
+                       CASE WHEN instr(lower(d.title), lower(?)) > 0 THEN 'title' ELSE 'content' END AS match_source,
+                       snippet(document_fts, 3, '', '', ' … ', 16) AS snippet
+                FROM document_fts
+                JOIN documents AS d ON d.id = document_fts.document_id
+                WHERE document_fts MATCH ?
+                  AND d.workspace_id = ? AND d.deleted_at IS NULL
+                  {folder_clause}
+                ORDER BY bm25(document_fts, 0.0, 0.0, 5.0, 1.0),
+                         d.updated_at DESC, d.id ASC
+                LIMIT ?
+            """
+            values = [
+                normalized_query,
+                fts_query,
+                self.manager.DEFAULT_WORKSPACE_ID,
+                *folder_values,
+                safe_limit,
+            ]
+
+        with self.manager.connection() as connection:
+            rows = connection.execute(sql, values).fetchall()
+        results = []
+        for row in rows:
+            item = self._document_summary(row)
+            item["matchSource"] = row["match_source"]
+            item["snippet"] = row["snippet"]
+            results.append(item)
+        return results
+
+    def get_document(self, document_id: str) -> Dict[str, Any]:
+        normalized_id = self._validate_id(document_id, "documentId")
+        with self.manager.connection() as connection:
+            row = connection.execute(
+                "SELECT * FROM documents WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL",
+                (normalized_id, self.manager.DEFAULT_WORKSPACE_ID),
+            ).fetchone()
+        if not row:
+            raise RepositoryError("DOCUMENT_NOT_FOUND", "Document not found.", 404)
+        return self._document_detail(row)
+
+    def create_document(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise RepositoryError("INVALID_PAYLOAD", "Document payload must be an object.")
+        document_id = self._validate_id(
+            payload.get("id") or f"doc_{uuid.uuid4().hex}", "documentId"
+        )
+        folder_id = self._validate_id(payload.get("folderId") or self.manager.ROOT_FOLDER_ID, "folderId")
+        title = self._validate_title(payload.get("title"))
+        content = self._validate_content(payload.get("content"))
+        now_ms = self._now_ms()
+        checksum = self._checksum(content)
+        version_id = f"version_{uuid.uuid4().hex}"
+
+        try:
+            with self.manager.write_transaction() as connection:
+                self._require_folder(connection, folder_id)
+                connection.execute(
+                    """
+                    INSERT INTO documents
+                        (id, workspace_id, folder_id, title, content, content_format,
+                         document_type, status, language, source_mode, word_count,
+                         checksum, version, created_at, updated_at, last_opened_at)
+                    VALUES (?, ?, ?, ?, ?, 'markdown', 'document', 'active', 'ko',
+                            'internal', ?, ?, 1, ?, ?, ?)
+                    """,
+                    (
+                        document_id,
+                        self.manager.DEFAULT_WORKSPACE_ID,
+                        folder_id,
+                        title,
+                        content,
+                        self._word_count(content),
+                        checksum,
+                        now_ms,
+                        now_ms,
+                        now_ms,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO document_versions
+                        (id, document_id, version_no, title, content, checksum,
+                         change_type, change_summary, created_at)
+                    VALUES (?, ?, 1, ?, ?, ?, 'manual_save', ?, ?)
+                    """,
+                    (version_id, document_id, title, content, checksum, "Initial SQLite save", now_ms),
+                )
+        except sqlite3.IntegrityError as error:
+            raise RepositoryError("DOCUMENT_CONFLICT", "A document with this ID already exists.", 409) from error
+        return self.get_document(document_id)
+
+    def update_document(self, document_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        normalized_id = self._validate_id(document_id, "documentId")
+        if not isinstance(payload, dict):
+            raise RepositoryError("INVALID_PAYLOAD", "Document payload must be an object.")
+        expected_version = payload.get("expectedVersion")
+        if not isinstance(expected_version, int) or expected_version < 1:
+            raise RepositoryError("EXPECTED_VERSION_REQUIRED", "expectedVersion is required.")
+
+        with self.manager.write_transaction() as connection:
+            current = connection.execute(
+                "SELECT * FROM documents WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL",
+                (normalized_id, self.manager.DEFAULT_WORKSPACE_ID),
+            ).fetchone()
+            if not current:
+                raise RepositoryError("DOCUMENT_NOT_FOUND", "Document not found.", 404)
+            if int(current["version"]) != expected_version:
+                raise RepositoryError(
+                    "VERSION_CONFLICT",
+                    "The document was changed by another operation.",
+                    409,
+                    {"currentVersion": int(current["version"])},
+                )
+
+            title = self._validate_title(payload.get("title", current["title"]))
+            content = self._validate_content(payload.get("content", current["content"]))
+            folder_id = self._validate_id(payload.get("folderId", current["folder_id"]), "folderId")
+            self._require_folder(connection, folder_id)
+            next_version = expected_version + 1
+            now_ms = self._now_ms()
+            checksum = self._checksum(content)
+            cursor = connection.execute(
+                """
+                UPDATE documents
+                SET folder_id = ?, title = ?, content = ?, word_count = ?, checksum = ?,
+                    version = ?, updated_at = ?, last_opened_at = ?
+                WHERE id = ? AND version = ? AND deleted_at IS NULL
+                """,
+                (
+                    folder_id,
+                    title,
+                    content,
+                    self._word_count(content),
+                    checksum,
+                    next_version,
+                    now_ms,
+                    now_ms,
+                    normalized_id,
+                    expected_version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise RepositoryError("VERSION_CONFLICT", "Document update conflict.", 409)
+            connection.execute(
+                """
+                INSERT INTO document_versions
+                    (id, document_id, version_no, title, content, checksum,
+                     change_type, change_summary, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'manual_save', ?, ?)
+                """,
+                (
+                    f"version_{uuid.uuid4().hex}",
+                    normalized_id,
+                    next_version,
+                    title,
+                    content,
+                    checksum,
+                    str(payload.get("changeSummary") or "SQLite document update")[:500],
+                    now_ms,
+                ),
+            )
+        return self.get_document(normalized_id)
+
+    def soft_delete_document(self, document_id: str, expected_version: int) -> Dict[str, Any]:
+        normalized_id = self._validate_id(document_id, "documentId")
+        if not isinstance(expected_version, int) or expected_version < 1:
+            raise RepositoryError("EXPECTED_VERSION_REQUIRED", "expectedVersion is required.")
+        now_ms = self._now_ms()
+        with self.manager.write_transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE documents
+                SET deleted_at = ?, updated_at = ?, version = version + 1
+                WHERE id = ? AND workspace_id = ? AND version = ? AND deleted_at IS NULL
+                """,
+                (
+                    now_ms,
+                    now_ms,
+                    normalized_id,
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                    expected_version,
+                ),
+            )
+            if cursor.rowcount != 1:
+                current = connection.execute(
+                    "SELECT version FROM documents WHERE id = ? AND deleted_at IS NULL",
+                    (normalized_id,),
+                ).fetchone()
+                if current:
+                    raise RepositoryError(
+                        "VERSION_CONFLICT",
+                        "The document was changed before deletion.",
+                        409,
+                        {"currentVersion": int(current["version"])},
+                    )
+                raise RepositoryError("DOCUMENT_NOT_FOUND", "Document not found.", 404)
+        return {"id": normalized_id, "deleted": True}
+
+    def list_document_versions(self, document_id: str) -> List[Dict[str, Any]]:
+        normalized_id = self._validate_id(document_id, "documentId")
+        self.get_document(normalized_id)
+        with self.manager.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, version_no, title, checksum, change_type, change_summary, created_at
+                FROM document_versions
+                WHERE document_id = ?
+                ORDER BY version_no DESC
+                """,
+                (normalized_id,),
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "version": row["version_no"],
+                "title": row["title"],
+                "checksum": row["checksum"],
+                "changeType": row["change_type"],
+                "changeSummary": row["change_summary"],
+                "createdAt": row["created_at"],
+            }
+            for row in rows
+        ]
+
+    def restore_document_version(
+        self,
+        document_id: str,
+        version_number: int,
+        expected_version: int,
+    ) -> Dict[str, Any]:
+        normalized_id = self._validate_id(document_id, "documentId")
+        if version_number < 1 or expected_version < 1:
+            raise RepositoryError("INVALID_VERSION", "Document version is invalid.")
+        with self.manager.write_transaction() as connection:
+            current = connection.execute(
+                "SELECT * FROM documents WHERE id = ? AND deleted_at IS NULL",
+                (normalized_id,),
+            ).fetchone()
+            if not current:
+                raise RepositoryError("DOCUMENT_NOT_FOUND", "Document not found.", 404)
+            if int(current["version"]) != expected_version:
+                raise RepositoryError(
+                    "VERSION_CONFLICT",
+                    "The document changed before restore.",
+                    409,
+                    {"currentVersion": int(current["version"])},
+                )
+            source = connection.execute(
+                "SELECT * FROM document_versions WHERE document_id = ? AND version_no = ?",
+                (normalized_id, version_number),
+            ).fetchone()
+            if not source:
+                raise RepositoryError("VERSION_NOT_FOUND", "Document version not found.", 404)
+            next_version = expected_version + 1
+            now_ms = self._now_ms()
+            connection.execute(
+                """
+                UPDATE documents
+                SET title = ?, content = ?, checksum = ?, word_count = ?,
+                    version = ?, updated_at = ?
+                WHERE id = ? AND version = ?
+                """,
+                (
+                    source["title"],
+                    source["content"],
+                    source["checksum"],
+                    self._word_count(source["content"]),
+                    next_version,
+                    now_ms,
+                    normalized_id,
+                    expected_version,
+                ),
+            )
+            connection.execute(
+                """
+                INSERT INTO document_versions
+                    (id, document_id, version_no, title, content, checksum,
+                     change_type, change_summary, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'restore', ?, ?)
+                """,
+                (
+                    f"version_{uuid.uuid4().hex}",
+                    normalized_id,
+                    next_version,
+                    source["title"],
+                    source["content"],
+                    source["checksum"],
+                    f"Restored version {version_number}",
+                    now_ms,
+                ),
+            )
+        return self.get_document(normalized_id)
+
+    def list_folders(self) -> List[Dict[str, Any]]:
+        with self.manager.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, workspace_id, parent_id, name, sort_order, is_expanded,
+                       created_at, updated_at
+                FROM folders
+                WHERE workspace_id = ? AND deleted_at IS NULL
+                ORDER BY CASE WHEN id = 'root' THEN 0 ELSE 1 END, sort_order, name, id
+                """,
+                (self.manager.DEFAULT_WORKSPACE_ID,),
+            ).fetchall()
+        return [self._folder_result(row) for row in rows]
+
+    def create_folder(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise RepositoryError("INVALID_PAYLOAD", "Folder payload must be an object.")
+        folder_id = self._validate_id(payload.get("id") or f"folder_{uuid.uuid4().hex}", "folderId")
+        parent_id_value = payload.get("parentId")
+        parent_id = self._validate_id(parent_id_value, "parentId") if parent_id_value else None
+        name = self._validate_title(payload.get("name"))
+        now_ms = self._now_ms()
+        try:
+            with self.manager.write_transaction() as connection:
+                if parent_id:
+                    self._require_folder(connection, parent_id)
+                connection.execute(
+                    """
+                    INSERT INTO folders
+                        (id, workspace_id, parent_id, name, sort_order,
+                         is_expanded, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                    """,
+                    (
+                        folder_id,
+                        self.manager.DEFAULT_WORKSPACE_ID,
+                        parent_id,
+                        name,
+                        int(payload.get("sortOrder") or 0),
+                        now_ms,
+                        now_ms,
+                    ),
+                )
+        except sqlite3.IntegrityError as error:
+            raise RepositoryError("FOLDER_CONFLICT", "A folder with this name or ID already exists.", 409) from error
+        return self.get_folder(folder_id)
+
+    def get_folder(self, folder_id: str) -> Dict[str, Any]:
+        normalized_id = self._validate_id(folder_id, "folderId")
+        with self.manager.connection() as connection:
+            row = self._require_folder(connection, normalized_id)
+        return self._folder_result(row)
+
+    def update_folder(self, folder_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        normalized_id = self._validate_id(folder_id, "folderId")
+        if normalized_id == self.manager.ROOT_FOLDER_ID:
+            raise RepositoryError("ROOT_FOLDER_LOCKED", "ROOT folder cannot be modified.", 409)
+        if not isinstance(payload, dict):
+            raise RepositoryError("INVALID_PAYLOAD", "Folder payload must be an object.")
+        with self.manager.write_transaction() as connection:
+            current = self._require_folder(connection, normalized_id)
+            name = self._validate_title(payload.get("name", current["name"]))
+            parent_value = payload.get("parentId", current["parent_id"])
+            parent_id = self._validate_id(parent_value, "parentId") if parent_value else None
+            if parent_id:
+                self._require_folder(connection, parent_id)
+                descendants = connection.execute(
+                    """
+                    WITH RECURSIVE descendants(id) AS (
+                        SELECT id FROM folders WHERE parent_id = ? AND deleted_at IS NULL
+                        UNION ALL
+                        SELECT child.id FROM folders AS child
+                        JOIN descendants AS parent ON child.parent_id = parent.id
+                        WHERE child.deleted_at IS NULL
+                    )
+                    SELECT 1 FROM descendants WHERE id = ? LIMIT 1
+                    """,
+                    (normalized_id, parent_id),
+                ).fetchone()
+                if parent_id == normalized_id or descendants:
+                    raise RepositoryError("FOLDER_CYCLE", "A folder cannot be moved into itself.", 409)
+            try:
+                connection.execute(
+                    """
+                    UPDATE folders
+                    SET name = ?, parent_id = ?, sort_order = ?, updated_at = ?
+                    WHERE id = ? AND deleted_at IS NULL
+                    """,
+                    (
+                        name,
+                        parent_id,
+                        int(payload.get("sortOrder", current["sort_order"])),
+                        self._now_ms(),
+                        normalized_id,
+                    ),
+                )
+            except sqlite3.IntegrityError as error:
+                raise RepositoryError("FOLDER_CONFLICT", "Folder update conflicts with existing data.", 409) from error
+        return self.get_folder(normalized_id)
+
+    def delete_folder(self, folder_id: str) -> Dict[str, Any]:
+        normalized_id = self._validate_id(folder_id, "folderId")
+        if normalized_id == self.manager.ROOT_FOLDER_ID:
+            raise RepositoryError("ROOT_FOLDER_LOCKED", "ROOT folder cannot be deleted.", 409)
+        now_ms = self._now_ms()
+        with self.manager.write_transaction() as connection:
+            folder = self._require_folder(connection, normalized_id)
+            moved_documents = connection.execute(
+                "SELECT COUNT(*) FROM documents WHERE folder_id = ? AND deleted_at IS NULL",
+                (normalized_id,),
+            ).fetchone()[0]
+            connection.execute(
+                """
+                UPDATE documents
+                SET folder_id = ?, version = version + 1, updated_at = ?
+                WHERE folder_id = ? AND deleted_at IS NULL
+                """,
+                (self.manager.ROOT_FOLDER_ID, now_ms, normalized_id),
+            )
+            connection.execute(
+                "UPDATE folders SET parent_id = ?, updated_at = ? WHERE parent_id = ? AND deleted_at IS NULL",
+                (folder["parent_id"], now_ms, normalized_id),
+            )
+            connection.execute(
+                "UPDATE folders SET deleted_at = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL",
+                (now_ms, now_ms, normalized_id),
+            )
+        return {"id": normalized_id, "deleted": True, "movedDocuments": int(moved_documents)}

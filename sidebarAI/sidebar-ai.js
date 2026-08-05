@@ -1546,7 +1546,7 @@
     var getter = getCallback('getScholarAIProvider');
     try {
       var provider = getter && getter();
-      return provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' ? provider : 'lmstudio';
+      return provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'openai' ? provider : 'lmstudio';
     } catch (e) { return 'lmstudio'; }
   }
 
@@ -1591,7 +1591,7 @@
     wrap.innerHTML = ''
       + '<label for="scholar-ai-provider-select" style="font-size:10px;margin-bottom:4px;display:block">AI 공급자</label>'
       + '<select id="scholar-ai-provider-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8;margin-bottom:8px">'
-      + '<option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option></select>'
+      + '<option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select>'
       + '<button type="button" id="scholar-ai-lm-model-refresh" class="sa-btn ghost" style="display:none;width:100%;margin:0 0 8px">LM Studio 현재 모델 다시 확인</button>'
       + '<div id="scholar-ai-provider-status" role="status" style="font-size:10px;color:#94a3b8;margin:-2px 0 8px;line-height:1.4">상세 연결 설정은 앱 설정 → AI 연동 설정에서 관리합니다.</div>';
     panel.insertBefore(wrap, panel.firstChild);
@@ -1775,6 +1775,36 @@
       sel.onchange = function () {
         var setter = getCallback('setScholarAIModelId');
         if (typeof setter === 'function') setter(sel.value, scholarAIGetProvider());
+      };
+      return;
+    }
+    if (provider === 'openai') {
+      sel.disabled = false;
+      sel.style.cursor = 'pointer';
+      sel.title = 'OpenAI Platform API에서 사용할 모델입니다.';
+      if (sel.previousElementSibling && sel.previousElementSibling.tagName === 'LABEL') {
+        sel.previousElementSibling.textContent = 'OpenAI 모델 선택';
+      }
+      scholarAISetProviderStatus('OpenAI Platform API에서 사용할 모델을 선택하세요.', false);
+      var openaiSelectedModel = '';
+      try { openaiSelectedModel = (getter && getter(provider)) || ''; } catch (openaiError) {}
+      var cachedOpenAIGetter = getCallback('getCachedScholarAIOpenAIModels');
+      var openaiModels = [];
+      try { openaiModels = typeof cachedOpenAIGetter === 'function' ? (cachedOpenAIGetter() || []) : []; } catch (cachedOpenAIError) {}
+      if (!openaiModels.length) openaiModels = ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
+      scholarAISetModelOptions(openaiModels, openaiSelectedModel || openaiModels[0]);
+      var refreshOpenAI = getCallback('refreshOpenAIModels');
+      if (typeof refreshOpenAI === 'function') {
+        Promise.resolve(refreshOpenAI()).then(function (models) {
+          scholarAISetModelOptions(models || openaiModels, openaiSelectedModel || (models && models[0]) || openaiModels[0]);
+          scholarAISetProviderStatus('OpenAI 모델 목록을 확인했습니다.', false);
+        }).catch(function (error) {
+          scholarAISetProviderStatus(error && error.message ? error.message : String(error), true);
+        });
+      }
+      sel.onchange = function () {
+        var setter = getCallback('setScholarAIModelId');
+        if (typeof setter === 'function') setter(sel.value, 'openai');
       };
       return;
     }

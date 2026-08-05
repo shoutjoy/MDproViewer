@@ -1,0 +1,7 @@
+{
+  "name": "MD Viewer SQLite runtime migrations",
+  "schema_version": 3,
+  "initial_migration": "001_initial_v3.sql",
+  "schema_checksum_sha256": "153246a6e96484c7c99e8e2bd7d9ac8ea9cae0e662a957383432a11128a8203a"
+}
+

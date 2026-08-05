@@ -134,6 +134,24 @@ function renderDynamicMeta(i) {
             a.click();
         };
 
+        const documentInsertBtn = document.createElement("button");
+        documentInsertBtn.className = "meta-action-button meta-document-insert-button";
+        documentInsertBtn.title = "문서에 이미지 넣기";
+        documentInsertBtn.setAttribute("aria-label", documentInsertBtn.title);
+        documentInsertBtn.innerHTML = [
+            '<svg viewBox="0 0 24 24" aria-hidden="true">',
+            '<path d="M6.5 3.5h7l4 4v13h-11z"></path>',
+            '<path d="M13.5 3.5v4h4M12 11v6M9 14h6"></path>',
+            '</svg>'
+        ].join("");
+        documentInsertBtn.onclick = () => {
+            const bridge = window.FMAMdViewerBridge;
+            if (!bridge || typeof bridge.sendAction !== "function" ||
+                !bridge.sendAction("fmaviewer-open-image-insert", idx)) {
+                alert("문서에 넣기는 mdpro 안에서 FMA Viewer를 열었을 때 사용할 수 있습니다.");
+            }
+        };
+
         const cropBtn = document.createElement("button");
         cropBtn.innerText = "Crop";
         cropBtn.className = "meta-action-button meta-crop-button";
@@ -156,6 +174,7 @@ function renderDynamicMeta(i) {
 
         actionsDiv.appendChild(favBtn);
         actionsDiv.appendChild(downBtn);
+        if (!videoItem) actionsDiv.appendChild(documentInsertBtn);
         if (videoItem) {
             editBtn.onclick = () => openVideoEditor(idx);
             actionsDiv.appendChild(editBtn);

@@ -867,13 +867,13 @@ html[data-theme="light"] .external-app-buttons {
 
 
 .image-import-panel {
-    min-height: 210px;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     margin: 2px 0 18px;
-    padding: 24px 18px;
+    padding: 14px 18px;
     box-sizing: border-box;
     text-align: center;
     border: 1px dashed rgba(165, 255, 138, .34);
@@ -892,32 +892,6 @@ html[data-theme="light"] .external-app-buttons {
         rgba(24, 38, 30, .95);
     transform: translateY(-2px);
     box-shadow: 0 12px 35px rgba(0, 0, 0, .3), 0 0 0 3px rgba(165, 255, 138, .08);
-}
-
-.import-icon {
-    width: 48px;
-    height: 48px;
-    display: grid;
-    place-items: center;
-    margin-bottom: 10px;
-    color: #a5ff8a;
-    border: 1px solid rgba(165, 255, 138, .28);
-    border-radius: 14px;
-    background: rgba(165, 255, 138, .09);
-    font-size: 28px;
-    line-height: 1;
-}
-
-.image-import-panel h2 {
-    margin: 0;
-    font-size: 18px;
-    letter-spacing: -.2px;
-}
-
-.image-import-panel > p {
-    margin: 7px 0 16px;
-    color: rgba(255, 255, 255, .58);
-    font-size: 12px;
 }
 
 .import-actions {
@@ -1541,7 +1515,8 @@ html[data-theme="light"] .media-filter-select option {
 }
 
 .meta-favorite-button,
-.meta-download-button {
+.meta-download-button,
+.meta-document-insert-button {
     width: 32px;
     min-width: 32px !important;
     height: 32px;
@@ -1562,6 +1537,22 @@ html[data-theme="light"] .media-filter-select option {
     color: #88e5ff !important;
     border-color: rgba(74, 202, 255, .34) !important;
     background: rgba(20, 105, 145, .18) !important;
+}
+
+.meta-document-insert-button {
+    color: #b8ffcf !important;
+    border-color: rgba(73, 222, 128, .38) !important;
+    background: rgba(22, 123, 73, .2) !important;
+}
+
+.meta-document-insert-button svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
 }
 
 .hint {

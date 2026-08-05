@@ -32,7 +32,7 @@
         if (global.dom?.imageCount) global.dom.imageCount.innerText = "Media: " + global.images.length;
     }
 
-    async function openFiles(files, selectedName) {
+    async function openFiles(files, selectedName, importMode) {
         const list = Array.from(files || []).filter(Boolean);
         if (!list.length) return;
         const fma = list.find(item => /\.(?:fma|json)$/i.test(String(item.name || "")));
@@ -40,8 +40,11 @@
             await global.loadFMA(fma);
             return;
         }
-        global.images = [];
-        if (typeof global.releaseFmaArchiveObjectUrls === "function") global.releaseFmaArchiveObjectUrls();
+        const append = importMode === "append";
+        if (!append) {
+            global.images = [];
+            if (typeof global.releaseFmaArchiveObjectUrls === "function") global.releaseFmaArchiveObjectUrls();
+        }
         if (typeof global.handleImportFiles === "function") await global.handleImportFiles(list);
         else if (typeof global.handleAddImages === "function") await global.handleAddImages(list);
         selectImage(selectedName, "");
@@ -100,23 +103,30 @@
         persistImages();
     }
 
-    function currentImagePayload() {
-        const item = global.images?.[global.currentIndex];
+    function currentImagePayload(requestedIndex) {
+        const requested = Number(requestedIndex);
+        const index = Number.isInteger(requested) && requested >= 0 && requested < (global.images?.length || 0)
+            ? requested : global.currentIndex;
+        const item = global.images?.[index];
         if (!item) return null;
         return {
-            index: global.currentIndex,
+            index,
             src: String(item.src || ""),
             path: String(item.path || ""),
-            name: fileName(item.path, `image_${global.currentIndex + 1}.png`),
+            name: fileName(item.path, `image_${index + 1}.png`),
             size: Number(item.size || 0)
         };
     }
 
-    function sendAction(type) {
-        const image = currentImagePayload();
+    function sendAction(type, requestedIndex) {
+        const image = currentImagePayload(requestedIndex);
         if (!image || global.parent === global) return false;
         global.parent.postMessage({ type, image }, "*");
         return true;
+    }
+
+    function getImageCount() {
+        return Array.isArray(global.images) ? global.images.length : 0;
     }
 
     async function handleMessage(event) {
@@ -124,7 +134,16 @@
         const data = event.data;
         if (!data || typeof data !== "object") return;
         try {
-            if (data.type === "fmaviewer-open-files") await openFiles(data.files, data.selectedName || "");
+            if (data.type === "fmaviewer-get-image-count") {
+                global.parent.postMessage({
+                    type: "fmaviewer-image-count",
+                    requestId: String(data.requestId || ""),
+                    imageCount: getImageCount()
+                }, "*");
+            }
+            else if (data.type === "fmaviewer-open-files") {
+                await openFiles(data.files, data.selectedName || "", data.importMode || "replace");
+            }
             else if (data.type === "fmaviewer-open-records") openRecords(data.records, data.selectedPath || "");
             else if (data.type === "fmaviewer-apply-image") applyEditedImage(data.dataUrl, data.name, false);
             else if (data.type === "fmaviewer-add-image") applyEditedImage(data.dataUrl, data.name, true);
@@ -137,7 +156,7 @@
         global.parent.postMessage({ type: "fmaviewer-ready" }, "*");
     }
 
-    global.FMAMdViewerBridge = Object.freeze({ sendAction, currentImagePayload });
+    global.FMAMdViewerBridge = Object.freeze({ sendAction, currentImagePayload, getImageCount });
     global.addEventListener("message", handleMessage);
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", announceReady, { once: true });
     else announceReady();

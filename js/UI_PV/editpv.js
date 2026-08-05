@@ -75,9 +75,11 @@ function choosePreviewPopupFile(kind) {
     const type = String(kind || '').toLowerCase();
     const input = previewPopupWindow.document.createElement('input');
     input.type = 'file';
-    input.accept = type === 'pdf'
-        ? '.pdf,application/pdf'
-        : '.pptx,.ppsx,application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    input.accept = type === 'image'
+        ? 'image/*,.png,.jpg,.jpeg,.gif,.webp,.bmp,.svg,.ico,.avif'
+        : type === 'pdf'
+            ? '.pdf,application/pdf'
+            : '.pptx,.ppsx,application/vnd.openxmlformats-officedocument.presentationml.presentation';
     input.style.display = 'none';
     input.addEventListener('change', function () {
         const file = input.files && input.files[0];
@@ -95,12 +97,17 @@ function openSelectedFileInPreviewPopup(file) {
     const lowerName = name.toLowerCase();
     const isPdf = lowerName.endsWith('.pdf');
     const isPresentation = /\.(pptx|ppsx)$/.test(lowerName);
-    if (!isPdf && !isPresentation) {
-        showToast('PDF 또는 PPTX 파일을 선택하세요.');
+    const isImage = String(file.type || '').toLowerCase().startsWith('image/')
+        || /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/.test(lowerName);
+    if (!isImage && !isPdf && !isPresentation) {
+        showToast('이미지, PDF 또는 PPTX 파일을 선택하세요.');
         return false;
     }
     revokePreviewPopupFileObjectUrl();
     previewPopupFileObjectUrl = URL.createObjectURL(file);
+    if (isImage) {
+        return openImageInPreviewPopup(previewPopupFileObjectUrl, name);
+    }
     if (isPdf) {
         return openFileViewerInPreviewPopup(previewPopupFileObjectUrl, name);
     }
@@ -118,6 +125,47 @@ function openSelectedFileInPreviewPopup(file) {
             showToast('PPTX 파일을 읽을 수 없습니다: ' + (error && error.message ? error.message : error));
         });
     });
+}
+
+function openImageInPreviewPopup(imageUrl, fileName) {
+    if (!isPreviewPopupAlive()) return false;
+    const doc = previewPopupWindow.document;
+    let content = doc.getElementById('pv-content');
+    if (!content) {
+        try {
+            doc.open();
+            doc.write(getPreviewPopupDocumentHtml());
+            doc.close();
+            content = doc.getElementById('pv-content');
+        } catch (error) {
+            showToast('PV 이미지 화면을 준비하지 못했습니다.');
+            return false;
+        }
+    }
+    if (!content) return false;
+
+    previewPopupFileMode = true;
+    previewPopupScale = 1;
+    previewPopupWidthScale = 1.5;
+    doc.title = 'MDproViewer Preview - ' + String(fileName || 'Image');
+    content.innerHTML = '';
+    content.classList.add('pv-image-content');
+
+    const heading = doc.createElement('div');
+    heading.className = 'pv-image-title';
+    heading.textContent = String(fileName || 'Image');
+    const stage = doc.createElement('div');
+    stage.className = 'pv-image-stage';
+    const image = doc.createElement('img');
+    image.className = 'pv-open-image';
+    image.src = String(imageUrl || '');
+    image.alt = String(fileName || 'Preview image');
+    stage.appendChild(image);
+    content.appendChild(heading);
+    content.appendChild(stage);
+    applyPreviewPopupViewport();
+    try { previewPopupWindow.focus(); } catch (_) {}
+    return true;
 }
 
 function openFileViewerInPreviewPopup(viewerUrl, fileName, onReady) {
@@ -193,8 +241,13 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-content .md-footnotes ol{margin:.5rem 0 0;padding-left:1.25rem;}'
         + '#pv-content .md-footnote-ref a,#pv-content .md-footnote-backref{color:#2563eb;text-decoration:none;font-weight:700;}'
         + '#pv-content .md-footnote-ref a:hover,#pv-content .md-footnote-backref:hover{text-decoration:underline;}'
+        + '#pv-content.pv-image-content{box-sizing:border-box;}'
+        + '#pv-content .pv-image-title{margin:0 0 10px;padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:14px;font-weight:800;color:#334155;}'
+        + '#pv-content .pv-image-stage{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 150px);padding:18px;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:10px;background-color:#eef2f7;background-image:linear-gradient(45deg,#dbe2ea 25%,transparent 25%),linear-gradient(-45deg,#dbe2ea 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#dbe2ea 75%),linear-gradient(-45deg,transparent 75%,#dbe2ea 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0;}'
+        + '#pv-content .pv-open-image{display:block;max-width:100%;height:auto;max-height:calc(100vh - 190px);object-fit:contain;box-shadow:0 12px 32px rgba(15,23,42,.18);}'
         + '</style></head><body><div id=\"pv-root\"><div id=\"pv-toolbar\">'
         + '<strong style=\"margin-right:6px\">Preview</strong>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.choosePreviewPopupFile(\'image\')\">이미지 열기</button>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.choosePreviewPopupFile(\'pdf\')\">PDF 열기</button>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.choosePreviewPopupFile(\'pptx\')\">PPTX 열기</button>'
         + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">Zoom Out</button>'
@@ -558,6 +611,7 @@ function getPreviewPopupSourceMarkdown() {
 
 async function updatePreviewPopupContent() {
     if (!isPreviewPopupAlive()) return;
+    if (previewPopupFileMode) return;
     const token = ++previewPopupRenderToken;
     const raw = getPreviewPopupSourceMarkdown();
     const htmlDocument = (typeof getRenderableHtmlDocument === 'function')

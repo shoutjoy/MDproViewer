@@ -39,7 +39,7 @@
   </style>
 </head>
 <body>
-  <h3>영역을 드래그해 선택하고, 선택 영역 안을 드래그해 이동하세요.</h3>
+  <h3>영역을 드래그해 선택하세요. 안쪽을 드래그하면 이동하고, 모서리 핸들을 드래그하면 크기를 조절할 수 있습니다.</h3>
   <div class="crop-canvas-wrap">
     <canvas id="crop-canvas"></canvas>
   </div>
@@ -58,8 +58,13 @@
     let rect = { x: 0, y: 0, w: 0, h: 0 };
     let dragging = false;
     let dragMode = 'select';
+    let resizeHandle = null;
     let start = { x: 0, y: 0 };
     let dragStartRect = { x: 0, y: 0, w: 0, h: 0 };
+
+    const MIN_SELECTION_SIZE = 5;
+    const HANDLE_SIZE = 10;
+    const HANDLE_HIT_SIZE = 14;
 
     const canvas = document.getElementById('crop-canvas');
     const ctx = canvas.getContext('2d');
@@ -71,21 +76,58 @@
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
       if (rect.w > 2 && rect.h > 2) {
-        ctx.strokeStyle = '#6ac8f7';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
-
         ctx.fillStyle = 'rgba(0,0,0,.4)';
         ctx.fillRect(0, 0, canvas.width, rect.y);
         ctx.fillRect(0, rect.y, rect.x, rect.h);
         ctx.fillRect(rect.x + rect.w, rect.y, canvas.width - rect.x - rect.w, rect.h);
         ctx.fillRect(0, rect.y + rect.h, canvas.width, canvas.height - rect.y - rect.h);
 
+        ctx.strokeStyle = '#6ac8f7';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+        drawResizeHandles();
+
         updatePreview();
       } else {
         previewEl.style.display = 'none';
       }
+    }
+
+    function getResizeHandlePoints() {
+      return {
+        nw: { x: rect.x, y: rect.y },
+        ne: { x: rect.x + rect.w, y: rect.y },
+        se: { x: rect.x + rect.w, y: rect.y + rect.h },
+        sw: { x: rect.x, y: rect.y + rect.h }
+      };
+    }
+
+    function getResizeHandleDisplayPoint(point) {
+      const half = HANDLE_SIZE / 2;
+      return {
+        x: Math.max(half + 1, Math.min(canvas.width - half - 1, point.x)),
+        y: Math.max(half + 1, Math.min(canvas.height - half - 1, point.y))
+      };
+    }
+
+    function drawResizeHandles() {
+      const half = HANDLE_SIZE / 2;
+      const points = getResizeHandlePoints();
+
+      ctx.save();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#168ccc';
+
+      Object.keys(points).forEach(function(name) {
+        const point = getResizeHandleDisplayPoint(points[name]);
+        // 캔버스 가장자리의 핸들도 잘리지 않고 모두 보이도록 중심을 안쪽으로 제한한다.
+        ctx.fillRect(point.x - half, point.y - half, HANDLE_SIZE, HANDLE_SIZE);
+        ctx.strokeRect(point.x - half, point.y - half, HANDLE_SIZE, HANDLE_SIZE);
+      });
+      ctx.restore();
     }
 
     function updatePreview() {
@@ -209,6 +251,27 @@
         point.y >= rect.y && point.y <= rect.y + rect.h;
     }
 
+    function getResizeHandle(point) {
+      if (rect.w < MIN_SELECTION_SIZE || rect.h < MIN_SELECTION_SIZE) return null;
+      const points = getResizeHandlePoints();
+      const halfHit = HANDLE_HIT_SIZE / 2;
+      const names = ['nw', 'ne', 'se', 'sw'];
+
+      for (let i = 0; i < names.length; i += 1) {
+        const name = names[i];
+        const handlePoint = getResizeHandleDisplayPoint(points[name]);
+        if (Math.abs(point.x - handlePoint.x) <= halfHit &&
+            Math.abs(point.y - handlePoint.y) <= halfHit) {
+          return name;
+        }
+      }
+      return null;
+    }
+
+    function getResizeCursor(handle) {
+      return handle === 'nw' || handle === 'se' ? 'nwse-resize' : 'nesw-resize';
+    }
+
     function canMoveSelection(point) {
       const isInitialFullSelection =
         rect.x <= 1 && rect.y <= 1 &&
@@ -219,9 +282,45 @@
 
     function updateCanvasCursor(point) {
       if (dragging) {
-        canvas.style.cursor = dragMode === 'move' ? 'grabbing' : 'crosshair';
+        if (dragMode === 'resize') {
+          canvas.style.cursor = getResizeCursor(resizeHandle);
+        } else {
+          canvas.style.cursor = dragMode === 'move' ? 'grabbing' : 'crosshair';
+        }
       } else {
-        canvas.style.cursor = canMoveSelection(point) ? 'move' : 'crosshair';
+        const handle = getResizeHandle(point);
+        canvas.style.cursor = handle
+          ? getResizeCursor(handle)
+          : (canMoveSelection(point) ? 'move' : 'crosshair');
+      }
+    }
+
+    function resizeSelection(point) {
+      const left = dragStartRect.x;
+      const top = dragStartRect.y;
+      const right = dragStartRect.x + dragStartRect.w;
+      const bottom = dragStartRect.y + dragStartRect.h;
+
+      if (resizeHandle === 'nw') {
+        rect.x = Math.max(0, Math.min(right - MIN_SELECTION_SIZE, point.x));
+        rect.y = Math.max(0, Math.min(bottom - MIN_SELECTION_SIZE, point.y));
+        rect.w = right - rect.x;
+        rect.h = bottom - rect.y;
+      } else if (resizeHandle === 'ne') {
+        rect.x = left;
+        rect.y = Math.max(0, Math.min(bottom - MIN_SELECTION_SIZE, point.y));
+        rect.w = Math.max(MIN_SELECTION_SIZE, Math.min(canvas.width, point.x) - left);
+        rect.h = bottom - rect.y;
+      } else if (resizeHandle === 'se') {
+        rect.x = left;
+        rect.y = top;
+        rect.w = Math.max(MIN_SELECTION_SIZE, Math.min(canvas.width, point.x) - left);
+        rect.h = Math.max(MIN_SELECTION_SIZE, Math.min(canvas.height, point.y) - top);
+      } else if (resizeHandle === 'sw') {
+        rect.x = Math.max(0, Math.min(right - MIN_SELECTION_SIZE, point.x));
+        rect.y = top;
+        rect.w = right - rect.x;
+        rect.h = Math.max(MIN_SELECTION_SIZE, Math.min(canvas.height, point.y) - top);
       }
     }
 
@@ -231,11 +330,16 @@
       dragging = true;
       start = point;
 
-      if (canMoveSelection(point)) {
+      resizeHandle = getResizeHandle(point);
+      if (resizeHandle) {
+        dragMode = 'resize';
+        dragStartRect = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
+      } else if (canMoveSelection(point)) {
         dragMode = 'move';
         dragStartRect = { x: rect.x, y: rect.y, w: rect.w, h: rect.h };
       } else {
         dragMode = 'select';
+        resizeHandle = null;
         rect = { x: point.x, y: point.y, w: 0, h: 0 };
       }
 
@@ -251,7 +355,9 @@
         return;
       }
 
-      if (dragMode === 'move') {
+      if (dragMode === 'resize') {
+        resizeSelection(point);
+      } else if (dragMode === 'move') {
         const maxX = Math.max(0, canvas.width - dragStartRect.w);
         const maxY = Math.max(0, canvas.height - dragStartRect.h);
         rect.x = Math.max(0, Math.min(maxX, dragStartRect.x + point.x - start.x));
@@ -275,6 +381,7 @@
       dragging = false;
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
       updateCanvasCursor(getCanvasPoint(e));
+      resizeHandle = null;
     }
 
     canvas.addEventListener('pointerup', finishPointerDrag);
