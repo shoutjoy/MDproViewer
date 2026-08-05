@@ -4,6 +4,11 @@ import http.server
 import socketserver
 import webbrowser
 import os
+import ipaddress
+import socket
+import urllib.error
+import urllib.parse
+import urllib.request
 
 PREFERRED_PORT = int(os.environ.get("MD_VIEWER_PORT", "8765"))
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -11,6 +16,77 @@ DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(DIR)
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    IMAGE_PROXY_PATH = "/__mdviewer_image_proxy"
+    IMAGE_PROXY_LIMIT = 30 * 1024 * 1024
+
+    @staticmethod
+    def _validate_public_image_url(raw_url):
+        target = urllib.parse.urlsplit(str(raw_url or "").strip())
+        if target.scheme not in {"http", "https"} or not target.hostname:
+            raise ValueError("Only HTTP(S) image URLs are supported")
+        if target.username or target.password:
+            raise ValueError("Credentials in image URLs are not allowed")
+        for address in socket.getaddrinfo(target.hostname, target.port or 443, type=socket.SOCK_STREAM):
+            ip = ipaddress.ip_address(address[4][0])
+            if not ip.is_global:
+                raise ValueError("Private or local network image URLs are not allowed")
+        return target.geturl()
+
+    def _send_proxy_error(self, status, message):
+        payload = str(message or "Image proxy error").encode("utf-8", errors="replace")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _proxy_image(self, raw_url):
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            self._send_proxy_error(403, "Image proxy is available only from this computer")
+            return
+        try:
+            target_url = self._validate_public_image_url(raw_url)
+            class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    Handler._validate_public_image_url(newurl)
+                    return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+            request = urllib.request.Request(
+                target_url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 MDViewer/1.0",
+                    "Accept": "image/avif,image/webp,image/svg+xml,image/*,*/*;q=0.8",
+                },
+            )
+            opener = urllib.request.build_opener(SafeRedirectHandler())
+            with opener.open(request, timeout=15) as response:
+                self._validate_public_image_url(response.geturl())
+                declared_size = int(response.headers.get("Content-Length") or 0)
+                if declared_size > self.IMAGE_PROXY_LIMIT:
+                    raise ValueError("Image is larger than 30 MB")
+                payload = response.read(self.IMAGE_PROXY_LIMIT + 1)
+                if len(payload) > self.IMAGE_PROXY_LIMIT:
+                    raise ValueError("Image is larger than 30 MB")
+                content_type = response.headers.get_content_type() or "application/octet-stream"
+        except (ValueError, OSError, urllib.error.URLError) as error:
+            self._send_proxy_error(502, error)
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "private, max-age=300")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def do_GET(self):
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == self.IMAGE_PROXY_PATH:
+            query = urllib.parse.parse_qs(parsed.query)
+            self._proxy_image((query.get("url") or [""])[0])
+            return
+        super().do_GET()
+
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
         super().end_headers()

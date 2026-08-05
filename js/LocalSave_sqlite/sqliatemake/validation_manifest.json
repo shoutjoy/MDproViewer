@@ -1,0 +1,24 @@
+{
+  "name": "MDpro SQLite Database Design v3.0",
+  "schema_version": 3,
+  "generated_at": "2026-07-25",
+  "sqlite_validation_version": "3.46.1",
+  "schema_checksum_sha256": "dc407ce4125830c2bac94edebf86d4c98cb998a8fc0b411661dfb454b7e70bf9",
+  "logical_tables": 57,
+  "fts_virtual_tables": 5,
+  "views": 4,
+  "triggers": 15,
+  "query_statements_prepared": 87,
+  "query_statements_skipped_control_or_pragma": 15,
+  "query_prepare_failures": [],
+  "integrity_check": "ok",
+  "foreign_key_violations": 0,
+  "korean_trigram_search_smoke_test": true,
+  "storage_policy": {
+    "persistent": "SQLite",
+    "draft_recovery": "IndexedDB",
+    "large_binary": "Filesystem",
+    "secrets": "OS Credential Store",
+    "ui_state": "localStorage"
+  }
+}

@@ -2091,6 +2091,18 @@ function getRenderedHtmlForDocxExport() {
     }
 }
 
+async function resolveDocxExportImage(src) {
+    const source = String(src || '').trim();
+    if (!source.startsWith('internal://') || !db || !window.ImageDB ||
+        typeof window.ImageDB.getImage !== 'function') return null;
+    const id = typeof window.ImageDB.parseInternalUrl === 'function'
+        ? window.ImageDB.parseInternalUrl(source)
+        : decodeURIComponent(source.slice('internal://'.length));
+    if (!id) return null;
+    const record = await window.ImageDB.getImage(db, id);
+    return record && record.blob ? { blob: record.blob } : null;
+}
+
 async function exportCurrentDocumentAsDocx() {
     syncCurrentMarkdownFromEditor();
     if (!window.DocxExport || typeof window.DocxExport.createBlob !== 'function') {
@@ -2098,7 +2110,9 @@ async function exportCurrentDocumentAsDocx() {
     }
     const blob = await window.DocxExport.createBlob({
         content: String(currentMarkdown || ''),
-        html: getRenderedHtmlForDocxExport()
+        html: getRenderedHtmlForDocxExport(),
+        baseUrl: document.baseURI,
+        resolveImage: resolveDocxExportImage
     });
     downloadBlobFile(blob, getDocxSaveFileName());
     return true;
@@ -2198,7 +2212,22 @@ async function exportCurrentDocumentByChoice() {
         return !!ok;
     }
     if (choice === 'html') {
-        if (typeof HtmlExport !== 'undefined' && HtmlExport.exportToHTML) await HtmlExport.exportToHTML();
+        syncCurrentMarkdownFromEditor();
+        if (!window.HtmlExport || typeof window.HtmlExport.exportToHTML !== 'function') {
+            throw new Error('HTML export is not available.');
+        }
+        const result = await window.HtmlExport.exportToHTML({
+            content: String(currentMarkdown || ''),
+            fileName: getSaveCandidateFileName(),
+            renderedElement: viewer,
+            baseUrl: document.baseURI,
+            resolveImage: resolveDocxExportImage
+        });
+        if (!result) return false;
+        const externalCount = Number(result.externalImageCount || 0);
+        showToast(externalCount > 0
+            ? `HTML exported. ${externalCount} image(s) remain as external links.`
+            : 'HTML exported as a self-contained file.');
         markPersistedState();
         return true;
     }
