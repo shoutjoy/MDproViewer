@@ -1,4 +1,4 @@
-/* AI Chat public academic search - OpenAlex first, Crossref metadata/abstract enrichment second. */
+/* AI Jena public academic search - OpenAlex first, Crossref metadata/abstract enrichment second. */
 (function (root) {
   'use strict';
 

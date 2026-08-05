@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Jena — 답변 보기</title>
+  <link rel="stylesheet" href="./ai-chat-answer-view.css">
+</head>
+<body>
+  <header class="av-header">
+    <div class="av-title-block">
+      <h1>AI Jena 답변</h1>
+      <p id="av-subtitle">Markdown 원문 · 렌더 미리보기 · 문서 삽입(렌더)</p>
+    </div>
+    <div class="av-toolbar-tools" aria-label="보기 도구">
+      <button type="button" id="av-theme" class="av-theme-dot" title="다크 / 라이트 전환" aria-label="테마 전환"></button>
+      <button type="button" id="av-win-shrink" class="av-tool" title="팝업 크기로">축소</button>
+      <button type="button" id="av-win-expand" class="av-tool" title="전체화면">확대</button>
+      <button type="button" id="av-zoom-out" class="av-tool av-tool-zoom" title="글자 축소">−</button>
+      <button type="button" id="av-zoom-in" class="av-tool av-tool-zoom" title="글자 확대">+</button>
+    </div>
+    <div class="av-actions">
+      <button type="button" id="av-copy-raw">MD raw 복사</button>
+      <button type="button" id="av-copy-render">MD render 복사</button>
+      <div class="av-insert-group" aria-label="문서에 넣기">
+        <span>문서에 넣기</span>
+        <button type="button" data-insert-mode="replace">대체</button>
+        <button type="button" data-insert-mode="cursor">커서</button>
+        <button type="button" data-insert-mode="line-below">한 줄 아래</button>
+        <button type="button" data-insert-mode="document-end">맨 아래</button>
+      </div>
+    </div>
+  </header>
+  <div class="av-tabs" role="tablist">
+    <button type="button" id="av-tab-md" class="active" data-pane="md" role="tab" aria-selected="true">MD</button>
+    <button type="button" id="av-tab-pv" data-pane="pv" role="tab" aria-selected="false">PV</button>
+  </div>
+  <div class="av-body">
+    <section id="av-pane-md" class="av-pane active" role="tabpanel">
+      <textarea id="av-md-source" readonly spellcheck="false" aria-label="Markdown 원문"></textarea>
+    </section>
+    <section id="av-pane-pv" class="av-pane" role="tabpanel" hidden>
+      <div id="av-pv-render" class="ai-chat-md-preview"></div>
+    </section>
+  </div>
+  <p id="av-status" class="av-status" aria-live="polite"></p>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="./ai-chat-markdown.js"></script>
+  <script src="./ai-chat-answer-view.js"></script>
+</body>
+</html>

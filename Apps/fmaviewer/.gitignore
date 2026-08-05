@@ -1,2 +1,8 @@
-# Large local segmentation model (keep outside GitHub)
-/image_model/u2net_human_seg.onnx
+# Browser-side AI model binaries are downloaded/generated locally.
+/image_model/
+push.bat
+pusy.py
+
+
+# Publish only Code.gs so admin.html can display and copy the current Apps Script source.
+# Local deployment notes and any future files in this folder remain excluded.

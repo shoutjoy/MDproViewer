@@ -1,4 +1,4 @@
-/* AI Chat - persistent floating multi-turn chat for LM Studio, AI Studio, Ollama, and DeepSeek. */
+/* AI Jena - persistent floating multi-turn chat for LM Studio, AI Studio, Ollama, and DeepSeek. */
 (function (root) {
   'use strict';
 
@@ -8,6 +8,14 @@
   var DEEPSEEK_MODEL_KEY = 'ss_ai_chat_deepseek_model';
   var OLLAMA_MODEL_KEY = 'ss_ai_chat_ollama_model';
   var WRITING_STYLE_KEY = 'ss_ai_chat_writing_style';
+  var WRITING_STYLE_DEFAULT_REVISION_KEY = 'ss_ai_chat_writing_style_default_revision';
+  var INSERT_EXPAND_KEY = 'ss_ai_chat_insert_actions_expanded';
+  var DOCUMENT_INSERT_OPTIONS = [
+    { mode: 'replace', label: '대체 삽입', shortLabel: '대체', title: '선택한 내용을 AI 답변(Markdown 원문)으로 대체합니다.' },
+    { mode: 'cursor', label: '커서 위치에 삽입 · Ctrl+I', shortLabel: '커서', title: '현재 커서 위치에 Markdown 원문을 삽입합니다.' },
+    { mode: 'line-below', label: '한 줄 아래 삽입', shortLabel: '한 줄 아래', title: '커서 줄 바로 아래에 Markdown 원문을 삽입합니다.' },
+    { mode: 'document-end', label: '문서 맨 아래에 삽입', shortLabel: '맨 아래', title: 'Markdown 원문을 문서 맨 아래에 삽입합니다.' }
+  ];
   var RESPONSE_MODE_KEY = 'ss_ai_chat_response_mode';
   var SHOW_REASONING_KEY = 'ss_ai_chat_show_reasoning';
   var ACADEMIC_SEARCH_KEY = 'ss_ai_chat_academic_search_enabled';
@@ -16,6 +24,7 @@
   var HISTORY_KEY = 'ss_ai_chat_history_v1';
   var HISTORY_SORT_KEY = 'ss_ai_chat_history_sort';
   var LAYOUT_KEY = 'ss_ai_chat_layout';
+  var START_LAYOUT_KEY = 'ss_ai_chat_start_layout';
   var POPUP_RECT_KEY = 'ss_ai_chat_popup_rect';
   var POPUP_SIZE_REVISION_KEY = 'ss_ai_chat_popup_size_revision';
   var DOCK_WIDTH_KEY = 'ss_ai_chat_dock_width';
@@ -30,22 +39,21 @@
   var DOCK_HISTORY_MIN_WIDTH = 550;
   var DEFAULT_POPUP_HEIGHT = 585;
   var DEFAULT_GEMINI_MODELS = [
-    'gemini-3.6-flash',
     'gemini-3.5-flash',
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
-    'gemini-3.1-pro',
-    // 'gemini-3.1-pro-preview',
-    // 'gemini-3-flash-preview',
-    'gemini-3.5-live-translate',
+    'gemini-3.1-pro-preview',
+    'gemini-3-flash-preview',
+    'gemini-3.6-flash',
+    'gemini-deep-research-pro-preview',
     'gemini-2.5-flash-tts',
     'gemini-2.5-pro-tts',
-    'gemini-deep-research-pro-preview',
     'gemini-2.5-flash-native-audio-dialog',
     'gemini-3-flash-live',
+    'gemini-3.5-live-translate',
     'lyria-3-clip',
     'lyria-3-pro',
     'veo-3-fast-generate',
+    'gemini-2.5-flash',
+    'gemini-2.5-pro',
     'gemini-2.5-flash-lite',
     'gemini-3.1-flash-lite-image',
     'gemini-3.1-flash-image',
@@ -65,7 +73,8 @@
     running: false,
     provider: 'lmstudio',
     providerControlsOpen: false,
-    writingStyle: 'polite',
+    writingStyle: 'academic',
+    insertActionsExpanded: false,
     responseMode: 'quick',
     showReasoning: false,
     academicSearchEnabled: false,
@@ -77,6 +86,7 @@
     lmContextLength: 0,
     messages: [],
     layout: 'popup',
+    startLayout: 'dock',
     conversationId: '',
     conversationTitle: '새 대화',
     conversationTitleCustomized: false,
@@ -100,6 +110,8 @@
   var academicAbortController = null;
   var documentSelectionBuffer = '';
   var suppressLauncherClick = false;
+  var topLayerObserver = null;
+  var topLayerPromotionTimer = null;
 
   function storageGet(key, fallback) {
     try {
@@ -113,7 +125,7 @@
   }
 
   function normalizeWritingStyle(value) {
-    return value === 'academic' ? 'academic' : 'polite';
+    return value === 'polite' ? 'polite' : 'academic';
   }
 
   function writingStyleLabel(value) {
@@ -141,7 +153,7 @@
   }
 
   function getBridge() {
-    if (!root.AIChatBridge) throw new Error('AI Chat 연결 모듈이 준비되지 않았습니다. 앱을 새로고침하세요.');
+    if (!root.AIChatBridge) throw new Error('AI Jena 연결 모듈이 준비되지 않았습니다. 앱을 새로고침하세요.');
     return root.AIChatBridge;
   }
 
@@ -194,7 +206,7 @@
         }
       };
       request.onsuccess = function () { resolve(request.result); };
-      request.onerror = function () { reject(request.error || new Error('AI Chat 저장소를 열지 못했습니다.')); };
+      request.onerror = function () { reject(request.error || new Error('AI Jena 저장소를 열지 못했습니다.')); };
     });
   }
 
@@ -295,9 +307,6 @@
     state.messages = record && Array.isArray(record.messages) ? record.messages.slice(-MAX_STORED_MESSAGES) : [];
     state.messages.forEach(function (message, messageIndex) {
       if (!message || message.role !== 'assistant' || message.error) return;
-      var separatedResponse = separateResponseReasoning(message.content, message.reasoning);
-      message.content = separatedResponse.answer;
-      message.reasoning = separatedResponse.reasoning;
       sanitizeAssistantMessage(message);
       if (!message.checklist && !message.academicTotalParts) {
         var sections = parseAssistantSections(message.content);
@@ -409,19 +418,20 @@
     launcher.type = 'button';
     launcher.id = 'ai-chat-launcher';
     launcher.className = 'ai-chat-launcher';
-    launcher.title = 'AI Chat 열기';
-    launcher.setAttribute('aria-label', 'AI Chat 열기');
-    launcher.innerHTML = '<span class="ai-chat-launcher-icon" aria-hidden="true">AI</span><span class="ai-chat-launcher-label">Chat</span>';
+    launcher.title = 'AI Jena 열기';
+    launcher.setAttribute('aria-label', 'AI Jena 열기');
+    launcher.innerHTML = '<span class="ai-chat-launcher-icon" aria-hidden="true">AI</span><span class="ai-chat-launcher-label">Jena</span>';
 
     var panel = document.createElement('section');
     panel.id = 'ai-chat-panel';
     panel.className = 'ai-chat-panel';
     panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-label', 'AI Chat');
+    panel.setAttribute('popover', 'manual');
+    panel.setAttribute('aria-label', 'AI Jena');
     panel.setAttribute('aria-hidden', 'true');
     panel.innerHTML = ''
       + '<header class="ai-chat-header">'
-      + '  <div><strong>AI Chat</strong><span id="ai-chat-header-model">연결 확인 전</span></div>'
+      + '  <div><strong>AI Jena</strong><span id="ai-chat-header-model">연결 확인 전</span></div>'
       + '  <div class="ai-chat-header-actions">'
       + '    <button type="button" id="ai-chat-history-toggle" class="ai-chat-icon-action" title="왼쪽 대화 기록 열기" aria-label="왼쪽 대화 기록 열기" aria-expanded="false">'
       + '      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1M5.5 12h1M5.5 16h1"/></svg><span class="ai-chat-action-label">기록</span>'
@@ -440,12 +450,14 @@
       + '        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16M15 12h6"/></svg><span class="ai-chat-action-label">배치</span><span class="ai-chat-menu-caret">▾</span>'
       + '      </button>'
       + '      <div id="ai-chat-layout-menu" class="ai-chat-layout-menu" role="menu">'
-      + '        <button type="button" data-ai-chat-layout="popup" role="menuitem">팝업</button>'
-      + '        <button type="button" data-ai-chat-layout="dock" role="menuitem">Dock · 우측 사이드바</button>'
-      + '        <button type="button" data-ai-chat-layout="fullscreen" role="menuitem">전체화면 · 기록 보기</button>'
+      + '        <div class="ai-chat-layout-menu-hint">시작 위치 ON인 배치로 AI Jena가 열립니다.</div>'
+      + '        <button type="button" data-ai-chat-layout="popup" role="menuitem"><span class="ai-chat-layout-label">팝업 <kbd>Alt+1</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="popup">OFF</span></button>'
+      + '        <button type="button" data-ai-chat-layout="dock" role="menuitem"><span class="ai-chat-layout-label">Dock · 우측 사이드바 <kbd>Alt+2</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="dock">OFF</span></button>'
+      + '        <button type="button" data-ai-chat-layout="fullscreen" role="menuitem"><span class="ai-chat-layout-label">전체화면 · 기록 보기 <kbd>Alt+3</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="fullscreen">OFF</span></button>'
+      + '        <button type="button" id="ai-chat-set-start-layout" class="ai-chat-set-start-layout" role="menuitem">현재 배치를 시작 위치로 지정</button>'
       + '      </div>'
       + '    </div>'
-      + '    <button type="button" id="ai-chat-close" title="닫기" aria-label="AI Chat 닫기">×</button>'
+      + '    <button type="button" id="ai-chat-close" title="닫기" aria-label="AI Jena 닫기">×</button>'
       + '  </div>'
       + '</header>'
       + '<div class="ai-chat-shell">'
@@ -467,8 +479,8 @@
       + '        <button type="button" id="ai-chat-refresh-model" title="현재 모델 새로고침">↻</button>'
       + '      </div>'
       + '      <div class="ai-chat-writing-style-row">'
-      + '        <label>답변 문체<select id="ai-chat-writing-style"><option value="polite">기본 존댓말 (-습니다/-입니다)</option><option value="academic">전문적 학술체 (-이다/-한다)</option></select></label>'
-      + '        <small id="ai-chat-writing-style-help">모든 새 AI 요청의 사전 프롬프트에 적용됩니다.</small>'
+      + '        <label>답변 문체<select id="ai-chat-writing-style"><option value="academic">전문적 학술체 (-이다/-한다)</option><option value="polite">기본 존댓말 (-습니다/-입니다)</option></select></label>'
+      + '        <label class="ai-chat-insert-expand-toggle" title="켜면 각 AI 답변 아래에 문서 삽입 버튼을 펼쳐 표시합니다."><input type="checkbox" id="ai-chat-insert-expand"><span>문서에넣기펼치기</span></label>'
       + '      </div>'
       + '    </div>'
       + '    <div id="ai-chat-status" class="ai-chat-status" role="status" aria-live="polite"></div>'
@@ -479,14 +491,14 @@
       + '        <span>응답 모드</span>'
       + '        <button type="button" data-ai-chat-mode="quick">⚡ 즉시응답</button>'
       + '        <button type="button" data-ai-chat-mode="reasoning">🧠 추론</button>'
-      + '        <label class="ai-chat-reasoning-toggle" title="모델이 별도 필드나 응답 본문으로 반환한 추론 내용을 채팅에서 표시할지 결정합니다."><input type="checkbox" id="ai-chat-show-reasoning"><span>추론 내용 표시</span></label>'
+      + '        <label class="ai-chat-reasoning-toggle" title="모델은 그대로 추론하며, 이 설정은 반환된 추론 내용을 채팅에 표시·저장할지만 결정합니다."><input type="checkbox" id="ai-chat-show-reasoning"><span>추론 내용 표시</span></label>'
       + '        <button type="button" id="ai-chat-academic-toggle" class="ai-chat-academic-toggle" aria-pressed="false">🔎 학술검색</button>'
       + '        <label id="ai-chat-academic-count-wrap" class="ai-chat-academic-count-wrap" title="목록에서 선택하거나 더블클릭하여 1~50 사이 숫자를 직접 입력하세요.">결과 <select id="ai-chat-academic-count" aria-label="학술검색 결과 수"><option value="5">5개</option><option value="10">10개</option><option value="20">20개</option><option value="30">30개</option><option value="50">50개</option></select><input id="ai-chat-academic-count-input" type="number" min="1" max="50" step="1" inputmode="numeric" aria-label="학술검색 결과 수 직접 입력" hidden></label>'
       + '        <small id="ai-chat-mode-help"></small>'
       + '      </div>'
       + '      <div class="ai-chat-compose-actions">'
       + '        <span>대화 내용은 IndexedDB에 저장됩니다.</span>'
-      + '        <button type="button" id="ai-chat-import-selection" class="ai-chat-import-selection" aria-label="문서 선택 내용을 AI Chat 입력창으로 가져오기" data-tooltip="문서에서 내용을 선택한 뒤 Ctrl+Alt+L을 누르거나 이 버튼을 클릭하세요.">↙ 선택 가져오기</button>'
+      + '        <button type="button" id="ai-chat-import-selection" class="ai-chat-import-selection" aria-label="문서 선택 내용을 AI Jena 입력창으로 가져오기" data-tooltip="문서에서 내용을 선택한 뒤 Ctrl+Alt+L을 누르거나 이 버튼을 클릭하세요.">↙ 선택 가져오기</button>'
       + '        <button type="button" id="ai-chat-stop" class="ai-chat-stop" disabled>중지</button>'
       + '        <button type="button" id="ai-chat-send" class="ai-chat-send">전송</button>'
       + '      </div>'
@@ -497,16 +509,17 @@
     var dockSlot = document.createElement('div');
     dockSlot.id = 'ai-chat-dock-slot';
     dockSlot.className = 'ai-chat-dock-slot order-4 shrink-0';
+    dockSlot.setAttribute('popover', 'manual');
     dockSlot.innerHTML = '<div id="ai-chat-dock-resizer" class="ai-chat-dock-resizer" title="드래그하여 Dock 너비 조절"></div>';
-    var rightSidebar = document.getElementById('ai-right-sidebar-wrap');
-    if (rightSidebar && rightSidebar.parentElement) rightSidebar.parentElement.appendChild(dockSlot);
-
+    document.body.appendChild(dockSlot);
     document.body.appendChild(launcher);
     document.body.appendChild(panel);
+    ensureTopLayerObserver();
 
     launcher.addEventListener('click', function () {
       if (suppressLauncherClick) return;
-      setOpen(!state.open);
+      if (state.open && state.layout === state.startLayout) setOpen(false);
+      else openAtStartLayout();
     });
     setupLauncherDrag(launcher);
     document.getElementById('ai-chat-close').addEventListener('click', function () { setOpen(false); });
@@ -538,8 +551,20 @@
     });
     var layoutButtons = panel.querySelectorAll('[data-ai-chat-layout]');
     for (var layoutIndex = 0; layoutIndex < layoutButtons.length; layoutIndex++) {
-      layoutButtons[layoutIndex].addEventListener('click', function () {
-        setLayout(this.getAttribute('data-ai-chat-layout'));
+      layoutButtons[layoutIndex].addEventListener('click', function (event) {
+        var layout = this.getAttribute('data-ai-chat-layout');
+        if (event.target && event.target.closest && event.target.closest('[data-ai-chat-start]')) {
+          setStartLayout(layout);
+          return;
+        }
+        setLayout(layout);
+      });
+    }
+    var setStartBtn = document.getElementById('ai-chat-set-start-layout');
+    if (setStartBtn) {
+      setStartBtn.addEventListener('click', function () {
+        setStartLayout(state.layout);
+        setStatus('시작 위치를 ' + startLayoutLabel(state.startLayout) + '(으)로 지정했습니다.', 'ok');
       });
     }
     var modeButtons = panel.querySelectorAll('[data-ai-chat-mode]');
@@ -604,6 +629,12 @@
     document.getElementById('ai-chat-writing-style').addEventListener('change', function (event) {
       setWritingStyle(event.target.value, true);
     });
+    var insertExpand = document.getElementById('ai-chat-insert-expand');
+    if (insertExpand) {
+      insertExpand.addEventListener('change', function () {
+        setInsertActionsExpanded(insertExpand.checked, true);
+      });
+    }
     document.getElementById('ai-chat-input').addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
@@ -612,6 +643,11 @@
     });
     setupPopupDrag(panel);
     setupDockResize(dockSlot);
+    if (root.ResizeObserver) {
+      new ResizeObserver(function () {
+        if (state.layout === 'popup') updatePagePush();
+      }).observe(panel);
+    }
     document.addEventListener('click', function (event) {
       if (!event.target.closest('.ai-chat-layout-menu-wrap')) closeLayoutMenu();
     });
@@ -620,8 +656,30 @@
       clampLauncherToViewport();
       updateDockHistoryVisibility();
     });
+    root.addEventListener('focus', function () {
+      if (state.open) scheduleTopLayerPromotion();
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden && state.open) scheduleTopLayerPromotion();
+    });
     document.addEventListener('keydown', function (event) {
       if (event.key === 'Escape' && state.open && state.layout === 'fullscreen') setLayout('popup');
+      if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+        var layoutShortcut = event.code === 'Digit1' || event.code === 'Numpad1'
+          ? 'popup'
+          : event.code === 'Digit2' || event.code === 'Numpad2'
+            ? 'dock'
+            : event.code === 'Digit3' || event.code === 'Numpad3'
+              ? 'fullscreen'
+              : '';
+        if (layoutShortcut) {
+          event.preventDefault();
+          event.stopPropagation();
+          setLayout(layoutShortcut);
+          setOpen(true);
+          return;
+        }
+      }
       if (event.ctrlKey && event.altKey && !event.shiftKey && !event.metaKey && String(event.key || '').toLowerCase() === 'l') {
         moveDocumentSelectionToChat(event);
       }
@@ -778,17 +836,159 @@
     savePopupRect();
   }
 
+  function normalizeLayout(layout) {
+    return layout === 'dock' || layout === 'fullscreen' ? layout : 'popup';
+  }
+
+  function startLayoutLabel(layout) {
+    layout = normalizeLayout(layout);
+    if (layout === 'dock') return 'Dock · 우측 사이드바';
+    if (layout === 'fullscreen') return '전체화면';
+    return '팝업';
+  }
+
+  function setStartLayout(layout) {
+    state.startLayout = normalizeLayout(layout);
+    storageSet(START_LAYOUT_KEY, state.startLayout);
+    updateLayoutButtons();
+    closeLayoutMenu();
+  }
+
+  function openAtStartLayout() {
+    var layout = normalizeLayout(state.startLayout || state.layout || 'dock');
+    if (state.layout !== layout) setLayout(layout);
+    setOpen(true);
+    if (layout === 'popup') {
+      setTimeout(function () {
+        if (!readPopupRect()) positionPopupOnRight();
+      }, 0);
+    }
+  }
+
   function updateLayoutButtons() {
     var buttons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-layout]');
     for (var i = 0; i < buttons.length; i++) {
-      buttons[i].classList.toggle('active', buttons[i].getAttribute('data-ai-chat-layout') === state.layout);
+      var layout = buttons[i].getAttribute('data-ai-chat-layout');
+      var isActive = layout === state.layout;
+      var isStart = layout === state.startLayout;
+      buttons[i].classList.toggle('active', isActive);
+      buttons[i].classList.toggle('start-on', isStart);
+      var badge = buttons[i].querySelector('[data-ai-chat-start]');
+      if (badge) {
+        badge.textContent = isStart ? '시작 ON' : 'OFF';
+        badge.classList.toggle('on', isStart);
+        badge.title = isStart ? '현재 시작 위치' : '클릭하면 이 배치를 시작 위치로 지정';
+      }
     }
+    var setStartBtn = document.getElementById('ai-chat-set-start-layout');
+    if (setStartBtn) {
+      setStartBtn.textContent = state.layout === state.startLayout
+        ? '시작 위치 · ' + startLayoutLabel(state.startLayout) + ' (지정됨)'
+        : '현재 배치를 시작 위치로 지정';
+    }
+  }
+
+  function panelIsInTopLayer(panel) {
+    if (!panel || typeof panel.showPopover !== 'function') return false;
+    try { return panel.matches(':popover-open'); } catch (_) { return false; }
+  }
+
+  function leavePanelTopLayer(panel) {
+    if (!panel || typeof panel.hidePopover !== 'function' || !panelIsInTopLayer(panel)) return;
+    try { panel.hidePopover(); } catch (_) {}
+  }
+
+  function leaveDockTopLayer() {
+    var slot = document.getElementById('ai-chat-dock-slot');
+    if (!slot || typeof slot.hidePopover !== 'function' || !panelIsInTopLayer(slot)) return;
+    try { slot.hidePopover(); } catch (_) {}
+  }
+
+  function leaveChatTopLayer() {
+    leavePanelTopLayer(document.getElementById('ai-chat-panel'));
+    leaveDockTopLayer();
+  }
+
+  function promotePanelToTopLayer() {
+    var panel = document.getElementById('ai-chat-panel');
+    var slot = document.getElementById('ai-chat-dock-slot');
+    var target = state.layout === 'dock' ? slot : panel;
+    if (!panel || !target || !state.open || typeof target.showPopover !== 'function') return false;
+    var focused = panel.contains(document.activeElement) ? document.activeElement : null;
+    try {
+      if (target !== panel) leavePanelTopLayer(panel);
+      else leaveDockTopLayer();
+      if (panelIsInTopLayer(target)) target.hidePopover();
+      target.showPopover();
+      if (focused && typeof focused.focus === 'function') focused.focus({ preventScroll: true });
+      if (state.layout === 'dock') {
+        requestAnimationFrame(function () {
+          updateDockHistoryVisibility();
+          updatePagePush();
+        });
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function scheduleTopLayerPromotion() {
+    if (!state.open) return;
+    clearTimeout(topLayerPromotionTimer);
+    topLayerPromotionTimer = setTimeout(function () {
+      topLayerPromotionTimer = null;
+      promotePanelToTopLayer();
+    }, 50);
+  }
+
+  function nodeContainsExternalOverlay(node) {
+    if (!node || node.nodeType !== 1 || node.closest?.('#ai-chat-panel, #ai-chat-dock-slot')) return false;
+    var selector = 'dialog, [role="dialog"], mat-dialog-container, .cdk-overlay-pane, .cdk-dialog-container, mat-bottom-sheet-container';
+    try { return node.matches(selector) || !!node.querySelector(selector); } catch (_) { return false; }
+  }
+
+  function ensureTopLayerObserver() {
+    if (topLayerObserver || !root.MutationObserver || !document.body) return;
+    topLayerObserver = new MutationObserver(function (mutations) {
+      if (!state.open) return;
+      var found = mutations.some(function (mutation) {
+        if (mutation.target?.closest?.('#ai-chat-panel, #ai-chat-dock-slot')) return false;
+        if (mutation.type === 'attributes') return nodeContainsExternalOverlay(mutation.target);
+        return Array.from(mutation.addedNodes || []).some(nodeContainsExternalOverlay);
+      });
+      if (found) scheduleTopLayerPromotion();
+    });
+    topLayerObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['open', 'class', 'style', 'aria-hidden']
+    });
   }
 
   function syncLayoutVisibility() {
     var slot = document.getElementById('ai-chat-dock-slot');
-    if (slot) slot.classList.toggle('active', state.open && state.enabled && state.layout === 'dock');
+    var dockActive = state.open && state.enabled && state.layout === 'dock';
+    if (slot) slot.classList.toggle('active', dockActive);
+    if (!dockActive) leaveDockTopLayer();
     document.body.classList.toggle('ai-chat-fullscreen-open', state.open && state.layout === 'fullscreen');
+    updatePagePush();
+    if (dockActive) scheduleTopLayerPromotion();
+  }
+
+  function updatePagePush() {
+    // Popup is a true floating window. Only Dock reserves page width.
+    var shouldPush = state.open && state.enabled && state.layout === 'dock';
+    var panel = document.getElementById('ai-chat-panel');
+    var slot = document.getElementById('ai-chat-dock-slot');
+    var width = state.layout === 'dock' && slot
+      ? slot.getBoundingClientRect().width
+      : panel
+        ? panel.getBoundingClientRect().width + 16
+        : 0;
+    document.documentElement.classList.toggle('ai-chat-page-pushed', !!shouldPush);
+    document.documentElement.style.setProperty('--ai-chat-page-push', shouldPush ? Math.max(0, Math.round(width)) + 'px' : '0px');
   }
 
   function updateDockHistoryVisibility(widthOverride) {
@@ -834,10 +1034,11 @@
   }
 
   function setLayout(layout) {
-    layout = layout === 'dock' || layout === 'fullscreen' ? layout : 'popup';
+    layout = normalizeLayout(layout);
     var panel = document.getElementById('ai-chat-panel');
     var slot = document.getElementById('ai-chat-dock-slot');
     if (!panel) return;
+    leaveChatTopLayer();
     if (state.layout === 'popup' && state.open) savePopupRect();
     state.layout = layout;
     storageSet(LAYOUT_KEY, layout);
@@ -846,10 +1047,6 @@
     if (layout === 'dock' && slot) {
       slot.appendChild(panel);
       panel.removeAttribute('style');
-      var savedDockWidth = Number(storageGet(DOCK_WIDTH_KEY, ''));
-      if (Number.isFinite(savedDockWidth) && savedDockWidth >= 340) {
-        slot.style.width = Math.min(savedDockWidth, root.innerWidth * 0.7) + 'px';
-      }
     } else {
       document.body.appendChild(panel);
       panel.removeAttribute('style');
@@ -865,6 +1062,30 @@
       var input = document.getElementById('ai-chat-input');
       if (state.open && input) input.focus();
     }, 0);
+    if (state.open) setTimeout(promotePanelToTopLayer, 0);
+  }
+
+  function openAsPopup() {
+    if (state.layout !== 'popup') setLayout('popup');
+    setOpen(true);
+    setTimeout(positionPopupOnRight, 0);
+  }
+
+  function openAsDock() {
+    if (state.layout !== 'dock') setLayout('dock');
+    setOpen(true);
+  }
+
+  function positionPopupOnRight() {
+    var panel = document.getElementById('ai-chat-panel');
+    if (!panel || !state.open || state.layout !== 'popup') return;
+    var rect = panel.getBoundingClientRect();
+    var width = Math.min(rect.width || 410, root.innerWidth - 12);
+    panel.style.left = Math.max(6, root.innerWidth - width - 20) + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.top = Math.max(6, Math.min(rect.top || 20, root.innerHeight - rect.height - 6)) + 'px';
+    savePopupRect();
   }
 
   function setupPopupDrag(panel) {
@@ -916,13 +1137,14 @@
         var width = Math.max(340, Math.min(startWidth + startX - moveEvent.clientX, root.innerWidth * 0.7));
         slot.style.width = Math.round(width) + 'px';
         updateDockHistoryVisibility(width);
+        updatePagePush();
       }
       function finish() {
         handle.removeEventListener('pointermove', move);
         handle.removeEventListener('pointerup', finish);
         handle.removeEventListener('pointercancel', finish);
-        storageSet(DOCK_WIDTH_KEY, String(Math.round(slot.getBoundingClientRect().width)));
         updateDockHistoryVisibility();
+        updatePagePush();
       }
       handle.addEventListener('pointermove', move);
       handle.addEventListener('pointerup', finish);
@@ -1107,7 +1329,9 @@
       liveStream.stage = '대화 문맥 처리 ' + Math.round((Number(event.progress) || 0) * 100) + '%';
       liveStream.progress = 15 + Math.max(0, Math.min(1, Number(event.progress) || 0)) * 20;
     } else if (type === 'prompt_processing.end') {
-      liveStream.stage = '문맥 처리 완료 · 첫 추론 토큰 대기';
+      liveStream.stage = state.responseMode === 'quick'
+        ? '문맥 처리 완료 · 첫 응답 토큰 대기'
+        : '문맥 처리 완료 · 첫 추론 토큰 대기';
       liveStream.progress = Math.max(liveStream.progress, 35);
     } else if (type === 'reasoning.start') {
       liveStream.phase = 'generating';
@@ -1354,7 +1578,7 @@
     if (!state.enabled) return;
     var selected = readDocumentSelectionText();
     event.preventDefault();
-    setOpen(true);
+    openAtStartLayout();
     putDocumentSelectionInComposer(selected);
   }
 
@@ -1375,7 +1599,7 @@
 
   function putDocumentSelectionInComposer(selected) {
     if (!selected.trim()) {
-      setStatus('문서에서 AI Chat으로 보낼 영역을 먼저 선택하세요.', 'error');
+      setStatus('문서에서 AI Jena로 보낼 영역을 먼저 선택하세요.', 'error');
       return;
     }
     setTimeout(function () {
@@ -1384,7 +1608,7 @@
       input.value = selected.trim();
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
-      setStatus('선택한 문서 내용을 AI Chat 입력창으로 가져왔습니다.', 'ok');
+      setStatus('선택한 문서 내용을 AI Jena 입력창으로 가져왔습니다.', 'ok');
     }, 0);
   }
 
@@ -1415,17 +1639,70 @@
     saveHistory();
   }
 
+  function setInsertActionsExpanded(expanded, rerender) {
+    state.insertActionsExpanded = !!expanded;
+    storageSet(INSERT_EXPAND_KEY, state.insertActionsExpanded ? '1' : '0');
+    var checkbox = document.getElementById('ai-chat-insert-expand');
+    if (checkbox) checkbox.checked = state.insertActionsExpanded;
+    if (rerender !== false) renderMessages();
+  }
+
+  function bindDocumentInsertOptionButton(button, messageIndex, message, option, insertWrap) {
+    button.type = 'button';
+    button.textContent = state.insertActionsExpanded ? option.shortLabel : option.label;
+    button.title = option.title;
+    button.addEventListener('mousedown', function (event) {
+      event.preventDefault();
+      snapshotEditorSelectionForInsert();
+    });
+    button.addEventListener('click', function () {
+      if (insertWrap) insertWrap.open = false;
+      insertQuestionAnswer(messageIndex, message, option.mode);
+    });
+  }
+
+  function appendAssistantDocumentInsertActions(actions, messageIndex, message, targetParent) {
+    var parent = targetParent || actions;
+    if (state.insertActionsExpanded) {
+      var expanded = document.createElement('div');
+      expanded.className = 'ai-chat-insert-expanded';
+      var expandedLabel = document.createElement('span');
+      expandedLabel.className = 'ai-chat-insert-expanded-label';
+      expandedLabel.textContent = '문서에 삽입';
+      expanded.appendChild(expandedLabel);
+      DOCUMENT_INSERT_OPTIONS.forEach(function (option) {
+        var insertBtn = document.createElement('button');
+        bindDocumentInsertOptionButton(insertBtn, messageIndex, message, option, null);
+        expanded.appendChild(insertBtn);
+      });
+      parent.appendChild(expanded);
+      return;
+    }
+    var insertWrap = document.createElement('details');
+    insertWrap.className = 'ai-chat-insert-wrap';
+    var insertSummary = document.createElement('summary');
+    insertSummary.textContent = '문서에 넣기 ▾';
+    insertSummary.title = 'AI 답변 Markdown 원문을 그대로 문서에 넣기';
+    insertSummary.addEventListener('mousedown', function (event) {
+      snapshotEditorSelectionForInsert();
+    });
+    insertWrap.appendChild(insertSummary);
+    var insertMenu = document.createElement('div');
+    insertMenu.className = 'ai-chat-insert-menu';
+    DOCUMENT_INSERT_OPTIONS.forEach(function (option) {
+      var insertOption = document.createElement('button');
+      bindDocumentInsertOptionButton(insertOption, messageIndex, message, option, insertWrap);
+      insertMenu.appendChild(insertOption);
+    });
+    insertWrap.appendChild(insertMenu);
+    actions.appendChild(insertWrap);
+  }
+
   function setWritingStyle(style, announce) {
     state.writingStyle = normalizeWritingStyle(style);
     storageSet(WRITING_STYLE_KEY, state.writingStyle);
     var select = document.getElementById('ai-chat-writing-style');
-    var help = document.getElementById('ai-chat-writing-style-help');
     if (select) select.value = state.writingStyle;
-    if (help) {
-      help.textContent = state.writingStyle === 'academic'
-        ? '객관적인 -이다/-한다 형식으로 사전 프롬프팅합니다.'
-        : '정중한 -습니다/-입니다 형식으로 사전 프롬프팅합니다.';
-    }
     updateHeaderModel();
     if (announce) setStatus('답변 문체를 ' + writingStyleLabel(state.writingStyle) + '로 설정했습니다.', 'ok');
   }
@@ -1449,12 +1726,14 @@
     if (panel) {
       panel.classList.toggle('open', state.open);
       panel.setAttribute('aria-hidden', state.open ? 'false' : 'true');
+      if (!state.open) leaveChatTopLayer();
     }
     if (launcher) launcher.classList.toggle('active', state.open);
     syncLayoutVisibility();
     setTimeout(updateDockHistoryVisibility, 0);
     if (state.open) {
       if (state.layout === 'popup') applyPopupRect();
+      setTimeout(promotePanelToTopLayer, 0);
       renderMessages();
       refreshModels(true);
       setTimeout(function () {
@@ -1562,6 +1841,12 @@
     return labels[model] || model;
   }
 
+  function mergeGeminiModels(models) {
+    return Array.from(new Set(DEFAULT_GEMINI_MODELS.concat(
+      (Array.isArray(models) ? models : []).map(String).filter(Boolean)
+    )));
+  }
+
   function updateModelModeUI() {
     var imageModel = state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel);
     var panel = document.getElementById('ai-chat-panel');
@@ -1624,7 +1909,7 @@
     } else {
       var cached = DEFAULT_GEMINI_MODELS;
       try { cached = getBridge().getCachedGeminiModels(); } catch (e) {}
-      if (!cached || !cached.length) cached = DEFAULT_GEMINI_MODELS;
+      cached = mergeGeminiModels(cached);
       setModelOptions(cached, state.geminiModel, false);
       var model = document.getElementById('ai-chat-model');
       if (model && model.value) {
@@ -1677,7 +1962,7 @@
       } else {
         var models = silent ? bridge.getCachedGeminiModels() : await bridge.refreshGeminiModels();
         if (state.provider !== requestedProvider) return;
-        if (!models || !models.length) models = DEFAULT_GEMINI_MODELS;
+        models = mergeGeminiModels(models);
         setModelOptions(models, state.geminiModel, false);
         var modelSelect = document.getElementById('ai-chat-model');
         if (modelSelect && modelSelect.value) state.geminiModel = modelSelect.value;
@@ -1856,16 +2141,6 @@
     } catch (error) {
       setStatus('대화 기록을 삭제하지 못했습니다.', 'error');
     }
-  }
-
-  function separateResponseReasoning(answer, reasoning) {
-    if (root.AIChatResponseSeparator && typeof root.AIChatResponseSeparator.split === 'function') {
-      return root.AIChatResponseSeparator.split(answer, reasoning);
-    }
-    return {
-      answer: String(answer == null ? '' : answer).trim(),
-      reasoning: String(reasoning == null ? '' : reasoning).trim()
-    };
   }
 
   function parseAssistantSections(rawText) {
@@ -2076,6 +2351,90 @@
     };
   }
 
+  function joinSeparatedReasoning(existing, embedded) {
+    var parts = [String(existing || '').trim(), String(embedded || '').trim()].filter(Boolean);
+    if (parts.length < 2) return parts[0] || '';
+    if (parts[0].indexOf(parts[1]) >= 0) return parts[0];
+    if (parts[1].indexOf(parts[0]) >= 0) return parts[1];
+    return parts.join('\n\n');
+  }
+
+  function separateEmbeddedReasoning(answerText, explicitReasoning) {
+    var answer = String(answerText || '').trim();
+    var reasoning = String(explicitReasoning || '').trim();
+    if (!answer) return { answer: '', reasoning: reasoning };
+
+    var tagged = [];
+    answer = answer
+      .replace(/<(?:think|analysis|reasoning)>([\s\S]*?)<\/(?:think|analysis|reasoning)>/gi, function (_, value) {
+        if (String(value || '').trim()) tagged.push(String(value).trim());
+        return ' ';
+      })
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    if (tagged.length) reasoning = joinSeparatedReasoning(reasoning, tagged.join('\n\n'));
+
+    // Prefer an explicit final-answer boundary when a model emits one inside
+    // the normal content field instead of reasoning_content.
+    var explicitBoundary = null;
+    var explicitPattern = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:\*{0,2})?(?:\[ANSWER\]|final\s+(?:answer|response|output)|최종\s*(?:답변|응답))\s*(?:\*{0,2})?\s*[:：]?\s*/gi;
+    var explicitMatch;
+    while ((explicitMatch = explicitPattern.exec(answer))) explicitBoundary = explicitMatch;
+    if (explicitBoundary && explicitBoundary.index > 0) {
+      var explicitBody = answer.slice(explicitBoundary.index + explicitBoundary[0].length).trim();
+      var explicitThought = answer.slice(0, explicitBoundary.index).trim();
+      if (explicitBody) {
+        return {
+          answer: explicitBody,
+          reasoning: joinSeparatedReasoning(reasoning, explicitThought)
+        };
+      }
+    }
+
+    // Some local models (notably Gemma reasoning variants) leak their plan as
+    // ordinary prose: “I will… The final output should…<actual Korean>”.
+    // Only split when a clear first-person/meta-production signal occurs.
+    var metaPattern = /\b(?:the\s+user\s+(?:wants|asks|requested)|i\s+(?:will|need\s+to|should|must|can\s+now|am\s+going\s+to)|we\s+(?:will|need\s+to|should|must)|my\s+(?:answer|response)\s+should|the\s+final\s+(?:answer|response|output)\s+should|here(?:'s|\s+is)\s+the\s+(?:final\s+)?(?:answer|response|output)|let(?:'s|\s+us)\s+(?:craft|compose|write|prepare|translate|analy[sz]e))\b/gi;
+    var lastMeta = null;
+    var metaMatch;
+    while ((metaMatch = metaPattern.exec(answer))) lastMeta = metaMatch;
+    if (!lastMeta) return { answer: answer, reasoning: reasoning };
+
+    var searchStart = lastMeta.index;
+    var tail = answer.slice(searchStart);
+    var bodyOffset = -1;
+
+    // Strongest form: the meta sentence ends immediately before Korean text.
+    var koreanTransition = tail.match(/[.!?。！？:：]\s*(?=[가-힣])/);
+    if (koreanTransition) {
+      bodyOffset = searchStart + koreanTransition.index + koreanTransition[0].length;
+    } else {
+      // Otherwise accept the first Korean-dominant paragraph after the last
+      // planning sentence. This keeps legitimate English answers intact.
+      var paragraphPattern = /\n\s*\n+/g;
+      var paragraphBoundary;
+      while ((paragraphBoundary = paragraphPattern.exec(tail))) {
+        var candidateOffset = searchStart + paragraphBoundary.index + paragraphBoundary[0].length;
+        var candidate = answer.slice(candidateOffset).split(/\n\s*\n/)[0] || '';
+        var koreanCount = (candidate.match(/[가-힣]/g) || []).length;
+        var englishCount = (candidate.match(/[A-Za-z]/g) || []).length;
+        if (koreanCount >= 6 && koreanCount > englishCount) {
+          bodyOffset = candidateOffset;
+          break;
+        }
+      }
+    }
+
+    if (bodyOffset <= 0 || bodyOffset >= answer.length) return { answer: answer, reasoning: reasoning };
+    var body = answer.slice(bodyOffset).trim();
+    var embedded = answer.slice(0, bodyOffset).trim();
+    if (!body || !embedded) return { answer: answer, reasoning: reasoning };
+    return {
+      answer: body,
+      reasoning: joinSeparatedReasoning(reasoning, embedded)
+    };
+  }
+
   function sanitizeAssistantMessage(message) {
     if (!message || message.role !== 'assistant') return message;
     var detectedStatus = false;
@@ -2088,6 +2447,9 @@
         if (!message.notice) message.notice = status.notice;
       }
     });
+    var separated = separateEmbeddedReasoning(message.content, message.reasoning);
+    message.content = separated.answer;
+    message.reasoning = separated.reasoning;
     if (detectedStatus) message.continuationAvailable = true;
     return message;
   }
@@ -2394,6 +2756,7 @@
         ];
     setRunning(true);
     startThinkingProgress();
+    renderMessages();
     target.continuationAvailable = false;
     renderMessages();
     setStatus(splitAcademic ? '학술 분할 답변 ' + requestedPart + '/' + academicTotalParts + '을 작성하는 중...' : '이전 답변의 끊긴 지점부터 이어서 작성하는 중...', 'loading');
@@ -2425,8 +2788,6 @@
             ].join(' ')
       });
       var continuedRaw = result && result.text != null ? String(result.text) : '';
-      var separatedContinuation = separateResponseReasoning(continuedRaw, result && result.reasoning);
-      continuedRaw = separatedContinuation.answer;
       var continuedStatus = extractModelStatus(continuedRaw);
       var continued = continuedStatus.answer ? parseAssistantSections(continuedStatus.answer).answer.trim() : '';
       var continuationBody = extractContinuationBody(continued);
@@ -2442,7 +2803,7 @@
         role: 'assistant',
         content: continued,
         checklist: '',
-        reasoning: separatedContinuation.reasoning,
+        reasoning: '',
         notice: continuedStatus.notice,
         isContinuation: true,
         continuationCount: (Number(target.continuationCount) || 0) + 1,
@@ -2510,7 +2871,7 @@
   function putQuestionInComposer(text, sendImmediately) {
     if (state.running) return setStatus('현재 응답이 끝난 뒤 다시 시도하세요.', 'error');
     var input = document.getElementById('ai-chat-input');
-    if (!input) return setStatus('AI Chat 입력창을 찾지 못했습니다.', 'error');
+    if (!input) return setStatus('AI Jena 입력창을 찾지 못했습니다.', 'error');
     input.value = String(text || '');
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
@@ -2603,28 +2964,94 @@
     return '커서 위치에 삽입';
   }
 
-  function insertQuestionAnswer(messageIndex, message, mode) {
+  function snapshotEditorSelectionForInsert() {
+    var hooks = root.ScholarAIChatEditorHooks;
+    if (hooks && typeof hooks.rememberCursor === 'function') hooks.rememberCursor();
+  }
+
+  function bindPreserveEditorSelectionOnPanel() {
+    if (root.__aiChatPreserveEditorSelectionBound) return;
+    root.__aiChatPreserveEditorSelectionBound = true;
+    document.addEventListener('pointerdown', function (event) {
+      if (!event.target || !event.target.closest) return;
+      if (!event.target.closest('#ai-chat-panel, #ai-chat-launcher')) return;
+      snapshotEditorSelectionForInsert();
+    }, true);
+  }
+
+  function insertIntoCurrentDocument(text, mode, options) {
+    options = options || {};
+    snapshotEditorSelectionForInsert();
+    var bridge = getBridge();
+    if (typeof bridge.insertIntoDocument === 'function') {
+      return bridge.insertIntoDocument(text, mode || 'cursor', options);
+    }
+    throw new Error('문서 삽입 모듈이 준비되지 않았습니다.');
+  }
+
+  function openAnswerPreviewWindow(messageIndex, message) {
+    var md = String(message && message.content || '').trim();
+    if (!md) return setStatus('미리보기할 답변이 없습니다.', 'error');
+    var payload = {
+      markdown: md,
+      question: findQuestionForAnswer(messageIndex),
+      createdAt: Date.now()
+    };
+    try {
+      var payloadKey = 'aiJenaAnswerViewPayload:' + Date.now() + ':' + Math.random().toString(36).slice(2, 9);
+      localStorage.setItem(payloadKey, JSON.stringify(payload));
+      var url = new URL('./AI_App/aiChat/ai-chat-answer-view.html', root.location.href);
+      url.searchParams.set('payload', payloadKey);
+      var answerWindow = root.open(url.href, 'ai-jena-answer-' + Date.now(), 'popup=yes,width=940,height=820,resizable=yes,scrollbars=yes');
+      if (!answerWindow) throw new Error('팝업이 차단되었습니다.');
+      setStatus('AI Jena 답변 보기 창을 열었습니다.', 'ok');
+    } catch (error) {
+      setStatus(error && error.message ? error.message : '답변 보기 창을 열지 못했습니다.', 'error');
+    }
+  }
+
+  function copyAnswerMarkdownRaw(message) {
+    var md = String(message && message.content || '');
+    if (!md.trim()) return setStatus('복사할 답변이 없습니다.', 'error');
+    if (root.AIChatMarkdown && typeof root.AIChatMarkdown.copyRaw === 'function') {
+      root.AIChatMarkdown.copyRaw(md, function (ok) {
+        setStatus(ok ? 'MD raw를 복사했습니다.' : '복사하지 못했습니다.', ok ? 'ok' : 'error');
+      });
+      return;
+    }
+    copyText(md);
+  }
+
+  function copyAnswerMarkdownRendered(message) {
+    var md = String(message && message.content || '');
+    if (!md.trim()) return setStatus('복사할 답변이 없습니다.', 'error');
+    if (root.AIChatMarkdown && typeof root.AIChatMarkdown.copyRendered === 'function') {
+      root.AIChatMarkdown.copyRendered(md, function (ok) {
+        setStatus(ok ? 'MD render를 복사했습니다.' : '복사하지 못했습니다.', ok ? 'ok' : 'error');
+      });
+      return;
+    }
+    copyText(md);
+  }
+
+  async function insertQuestionAnswer(messageIndex, message, mode) {
     var answer = String(message && message.content || '').trim();
     if (!answer) return setStatus('문서에 삽입할 AI 답변이 없습니다.', 'error');
     try {
-      var bridge = getBridge();
-      if (typeof bridge.insertIntoDocument !== 'function') throw new Error('문서 삽입 모듈이 준비되지 않았습니다.');
-      bridge.insertIntoDocument(answer, mode || 'cursor');
+      await insertIntoCurrentDocument(answer, mode || 'cursor');
       setStatus('AI 답변만 ' + insertModeLabel(mode) + '했습니다.', 'ok');
     } catch (error) {
       setStatus(error && error.message ? error.message : '문서에 삽입하지 못했습니다.', 'error');
     }
   }
 
-  function insertReasoningAndAnswer(message) {
+  async function insertReasoningAndAnswer(message) {
     var reasoning = String(message && message.reasoning || '').trim();
     var answer = String(message && message.content || '').trim();
     if (!reasoning) return setStatus('문서에 삽입할 추론 내용이 없습니다.', 'error');
     if (!answer) return setStatus('문서에 삽입할 최종 답변이 없습니다.', 'error');
     try {
-      var bridge = getBridge();
-      if (typeof bridge.insertIntoDocument !== 'function') throw new Error('문서 삽입 모듈이 준비되지 않았습니다.');
-      bridge.insertIntoDocument('## 모델의 생각/추론\n\n' + reasoning + '\n\n## 최종 답변\n\n' + answer, 'cursor');
+      await insertIntoCurrentDocument('## 모델의 생각/추론\n\n' + reasoning + '\n\n## 최종 답변\n\n' + answer, 'cursor');
       setStatus('추론과 최종 답변을 문서의 커서 위치에 삽입했습니다.', 'ok');
     } catch (error) {
       setStatus(error && error.message ? error.message : '추론과 답변을 문서에 삽입하지 못했습니다.', 'error');
@@ -2698,13 +3125,11 @@
     }).join('\n\n');
   }
 
-  function insertAcademicResults(message, mode) {
+  async function insertAcademicResults(message, mode) {
     try {
       var markdown = academicResultsMarkdown(message);
       if (!markdown.trim()) throw new Error('문서에 삽입할 학술검색 결과가 없습니다.');
-      var bridge = getBridge();
-      if (typeof bridge.insertIntoDocument !== 'function') throw new Error('문서 삽입 모듈이 준비되지 않았습니다.');
-      bridge.insertIntoDocument(markdown, mode || 'cursor');
+      await insertIntoCurrentDocument(markdown, mode || 'cursor');
       setStatus('학술검색 결과를 ' + insertModeLabel(mode) + '했습니다.', 'ok');
     } catch (error) {
       setStatus(error && error.message ? error.message : '학술검색 결과를 문서에 삽입하지 못했습니다.', 'error');
@@ -2820,52 +3245,44 @@
         if (message.role === 'assistant') {
           var actions = document.createElement('div');
           actions.className = 'ai-chat-message-actions';
-          var copy = document.createElement('button');
-          copy.type = 'button';
-          copy.textContent = '답변 복사';
-          copy.addEventListener('click', function () { copyText(message.content); });
-          actions.appendChild(copy);
+          var expandedLayout = !!state.insertActionsExpanded;
+          var copyRow = null;
+          var mainRow = null;
+          if (expandedLayout) {
+            actions.classList.add('insert-actions-expanded');
+            copyRow = document.createElement('div');
+            copyRow.className = 'ai-chat-actions-row';
+            mainRow = document.createElement('div');
+            mainRow.className = 'ai-chat-actions-row';
+          }
+          var copyHost = copyRow || actions;
+          var mainHost = mainRow || actions;
+          var copyRaw = document.createElement('button');
+          copyRaw.type = 'button';
+          copyRaw.textContent = 'MD raw 복사';
+          copyRaw.title = 'Markdown 원문 복사';
+          copyRaw.addEventListener('click', function () { copyAnswerMarkdownRaw(message); });
+          copyHost.appendChild(copyRaw);
+          var copyRender = document.createElement('button');
+          copyRender.type = 'button';
+          copyRender.textContent = 'MD render 복사';
+          copyRender.title = '렌더된 답변(HTML/텍스트) 복사';
+          copyRender.addEventListener('click', function () { copyAnswerMarkdownRendered(message); });
+          copyHost.appendChild(copyRender);
           var copyQa = document.createElement('button');
           copyQa.type = 'button';
           copyQa.textContent = 'Q&A 복사';
           copyQa.title = '이 답변과 연결된 질문을 함께 복사';
           copyQa.addEventListener('click', function () { copyQuestionAnswer(messageIndex, message); });
-          actions.appendChild(copyQa);
+          copyHost.appendChild(copyQa);
           if (!message.error && String(message.content || '').trim() && !(Array.isArray(message.images) && message.images.length)) {
-            if (state.showReasoning && message.reasoning) {
-              var insertReasoning = document.createElement('button');
-              insertReasoning.type = 'button';
-              insertReasoning.textContent = '추론+응답 삽입';
-              insertReasoning.title = '모델의 생각/추론과 최종 답변을 현재 문서에 삽입';
-              insertReasoning.addEventListener('click', function () { insertReasoningAndAnswer(message); });
-              actions.appendChild(insertReasoning);
-            }
-            var insertWrap = document.createElement('details');
-            insertWrap.className = 'ai-chat-insert-wrap';
-            var insertSummary = document.createElement('summary');
-            insertSummary.textContent = '문서에 넣기 ▾';
-            insertSummary.title = 'AI 답변만 문서에 넣는 방법 선택';
-            insertWrap.appendChild(insertSummary);
-            var insertMenu = document.createElement('div');
-            insertMenu.className = 'ai-chat-insert-menu';
-            [
-              { mode: 'replace', label: '대체 삽입', title: '선택한 내용을 AI 답변으로 대체합니다.' },
-              { mode: 'cursor', label: '커서 위치에 삽입', title: '현재 커서 위치에 AI 답변만 삽입합니다.' },
-              { mode: 'line-below', label: '한 줄 아래 삽입', title: '커서가 있는 줄 바로 아래에 AI 답변만 삽입합니다.' },
-              { mode: 'document-end', label: '문서 맨 아래에 삽입', title: 'AI 답변만 현재 문서의 맨 아래에 삽입합니다.' }
-            ].forEach(function (option) {
-              var insertOption = document.createElement('button');
-              insertOption.type = 'button';
-              insertOption.textContent = option.label;
-              insertOption.title = option.title;
-              insertOption.addEventListener('click', function () {
-                insertWrap.open = false;
-                insertQuestionAnswer(messageIndex, message, option.mode);
-              });
-              insertMenu.appendChild(insertOption);
-            });
-            insertWrap.appendChild(insertMenu);
-            actions.appendChild(insertWrap);
+            appendAssistantDocumentInsertActions(actions, messageIndex, message, expandedLayout ? mainHost : null);
+            var previewBtn = document.createElement('button');
+            previewBtn.type = 'button';
+            previewBtn.textContent = '새창에서 보기';
+            previewBtn.title = 'MD/PV 미리보기 · 렌더된 답변만 문서에 넣기';
+            previewBtn.addEventListener('click', function () { openAnswerPreviewWindow(messageIndex, message); });
+            mainHost.appendChild(previewBtn);
           }
           if (Array.isArray(message.images) && message.images.length) {
             var primaryImage = message.images[0];
@@ -2874,21 +3291,21 @@
             saveImageButton.textContent = '이미지 저장';
             saveImageButton.disabled = state.running || !!primaryImage._documentInsertBusy;
             saveImageButton.addEventListener('click', function () { saveGeneratedImage(primaryImage, 0); });
-            actions.appendChild(saveImageButton);
+            mainHost.appendChild(saveImageButton);
             var insertImageButton = document.createElement('button');
             insertImageButton.type = 'button';
             insertImageButton.textContent = '문서삽입';
             insertImageButton.title = '생성 이미지를 내부 이미지 DB에 저장한 뒤 현재 문서에 삽입';
             insertImageButton.disabled = state.running || !!primaryImage._documentInsertBusy;
             insertImageButton.addEventListener('click', function () { insertGeneratedImageIntoDocument(primaryImage, 0, false); });
-            actions.appendChild(insertImageButton);
+            mainHost.appendChild(insertImageButton);
             var uploadInsertImageButton = document.createElement('button');
             uploadInsertImageButton.type = 'button';
             uploadInsertImageButton.textContent = '업로드 문서삽입';
             uploadInsertImageButton.title = 'imgBB에 업로드하고 저장된 직접 주소로 현재 문서에 삽입';
             uploadInsertImageButton.disabled = state.running || !!primaryImage._documentInsertBusy;
             uploadInsertImageButton.addEventListener('click', function () { insertGeneratedImageIntoDocument(primaryImage, 0, true); });
-            actions.appendChild(uploadInsertImageButton);
+            mainHost.appendChild(uploadInsertImageButton);
           }
           var deleteAnswerButton = document.createElement('button');
           deleteAnswerButton.type = 'button';
@@ -2897,7 +3314,11 @@
           deleteAnswerButton.title = '이 AI 답변만 대화에서 삭제';
           deleteAnswerButton.disabled = state.running;
           deleteAnswerButton.addEventListener('click', function () { deleteAnswer(messageIndex, message); });
-          actions.appendChild(deleteAnswerButton);
+          mainHost.appendChild(deleteAnswerButton);
+          if (expandedLayout) {
+            actions.appendChild(copyRow);
+            actions.appendChild(mainRow);
+          }
         }
         var content = document.createElement('div');
         content.className = 'ai-chat-message-content';
@@ -3136,7 +3557,7 @@
       ? (state.deepseekModel || '확인되지 않음')
       : state.geminiModel;
     var lines = [
-      '# AI Chat 대화',
+      '# AI Jena 대화',
       '',
       '- 대화 제목: ' + currentTitle,
       '- 저장 시각: ' + new Date().toLocaleString('ko-KR'),
@@ -3166,7 +3587,7 @@
       if (state.showReasoning && message.reasoning) lines.push('### 모델의 생각/추론', '', String(message.reasoning).trim(), '');
       lines.push('### 최종 답변', '', String(message.content || '').trim(), '');
       if (Array.isArray(message.images) && message.images.length) {
-        lines.push('> 생성 이미지 ' + message.images.length + '개는 AI Chat 대화 저장소에 보관되어 있습니다.', '');
+        lines.push('> 생성 이미지 ' + message.images.length + '개는 AI Jena 대화 저장소에 보관되어 있습니다.', '');
       }
     });
     return lines.join('\n').replace(/\n{4,}/g, '\n\n\n').trim() + '\n';
@@ -3417,6 +3838,7 @@
     setRunning(true);
     startThinkingProgress();
     renderMessages();
+    renderMessages();
     try {
       var academicSearchActive = state.academicSearchEnabled && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel));
       var splitAcademicResponse = false;
@@ -3509,12 +3931,13 @@
             ].join(' ')
       });
       var answer = result && result.text != null ? String(result.text) : '';
-      var separatedResult = separateResponseReasoning(answer, result && result.reasoning);
-      answer = separatedResult.answer;
       var responseStatus = extractModelStatus(answer);
-      var reasoningStatus = extractModelStatus(separatedResult.reasoning);
+      var reasoningStatus = extractModelStatus(result && result.reasoning ? String(result.reasoning) : '');
       if (reasoningStatus.notice && !responseStatus.notice) responseStatus.notice = reasoningStatus.notice;
       var reasoningText = reasoningStatus.answer;
+      var separatedResponse = separateEmbeddedReasoning(responseStatus.answer, reasoningText);
+      responseStatus.answer = separatedResponse.answer;
+      reasoningText = separatedResponse.reasoning;
       if (!responseStatus.answer && !responseStatus.notice && !reasoningText) throw new Error('AI 응답이 비어 있습니다.');
       var sections = responseStatus.answer
         ? parseAssistantSections(responseStatus.answer)
@@ -3542,7 +3965,7 @@
         role: 'assistant',
         content: sections.answer,
         checklist: sections.checklist,
-        reasoning: reasoningText,
+        reasoning: state.showReasoning ? reasoningText : '',
         notice: responseStatus.notice,
         images: result && Array.isArray(result.images) ? result.images : [],
         createdAt: Date.now(),
@@ -3601,14 +4024,30 @@
     try { getBridge().abort(); } catch (e) {}
   }
 
-  function init() {
+  async function init() {
+    try {
+      var initialBridge = root.AIChatBridge;
+      if (initialBridge && initialBridge.readySettings) await initialBridge.readySettings;
+    } catch (_) {}
     createUI();
+    bindPreserveEditorSelectionOnPanel();
     var savedProvider = storageGet(PROVIDER_KEY, 'lmstudio');
     state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'deepseek'
       ? savedProvider
       : (savedProvider === 'lmstudio' ? 'lmstudio' : 'lmstudio');
     state.providerControlsOpen = storageGet(PROVIDER_CONTROLS_KEY, '0') === '1';
-    state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, 'polite'));
+    var writingStyleDefaultRevision = storageGet(WRITING_STYLE_DEFAULT_REVISION_KEY, '');
+    if (writingStyleDefaultRevision !== 'academic-v1') {
+      // Apply the new academic default once to existing installations. Any
+      // user selection made after this migration remains preserved.
+      state.writingStyle = 'academic';
+      storageSet(WRITING_STYLE_KEY, state.writingStyle);
+      storageSet(WRITING_STYLE_DEFAULT_REVISION_KEY, 'academic-v1');
+    } else {
+      state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, 'academic'));
+    }
+    state.insertActionsExpanded = storageGet(INSERT_EXPAND_KEY, '0') === '1';
+    setInsertActionsExpanded(state.insertActionsExpanded, false);
     state.responseMode = storageGet(RESPONSE_MODE_KEY, 'quick') === 'reasoning' ? 'reasoning' : 'quick';
     state.showReasoning = storageGet(SHOW_REASONING_KEY, '0') === '1';
     state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, '0') === '1';
@@ -3616,8 +4055,10 @@
     state.geminiModel = storageGet(GEMINI_MODEL_KEY, DEFAULT_GEMINI_MODELS[0]);
     state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, '');
     state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, DEFAULT_DEEPSEEK_MODELS[0]);
-    state.layout = storageGet(LAYOUT_KEY, 'popup');
-    if (state.layout !== 'dock' && state.layout !== 'fullscreen') state.layout = 'popup';
+    // AI Jena starts from the user-selected start layout. Popup/fullscreen
+    // positions are restored from the last saved coordinates.
+    state.startLayout = normalizeLayout(storageGet(START_LAYOUT_KEY, 'dock'));
+    state.layout = normalizeLayout(storageGet(LAYOUT_KEY, state.startLayout));
     state.enabled = storageGet(ENABLED_KEY, '0') === '1';
     updateProviderUI();
     setProviderControlsOpen(state.providerControlsOpen);
@@ -3627,6 +4068,7 @@
     updateAcademicSearchUI();
     renderMessages();
     setLayout(state.layout);
+    updateLayoutButtons();
     setEnabled(state.enabled);
     setRunning(false);
     initializeConversationStore();
@@ -3641,7 +4083,30 @@
     init: init,
     setEnabled: setEnabled,
     isEnabled: function () { return state.enabled; },
-    open: function () { setOpen(true); },
+    isOpen: function () { return state.open; },
+    bringToFront: function () {
+      return promotePanelToTopLayer();
+    },
+    syncSettings: function () {
+      state.geminiModel = storageGet(GEMINI_MODEL_KEY, state.geminiModel);
+      state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, state.ollamaModel);
+      state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
+      updateProviderUI();
+    },
+    open: function () { openAtStartLayout(); },
+    openDock: function () {
+      setEnabled(true);
+      openAtStartLayout();
+    },
+    toggleDock: function () {
+      setEnabled(true);
+      if (state.open && state.layout === state.startLayout) {
+        setOpen(false);
+        return false;
+      }
+      openAtStartLayout();
+      return true;
+    },
     close: function () { setOpen(false); }
   });
 

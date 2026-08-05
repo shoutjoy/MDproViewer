@@ -254,6 +254,31 @@
                 </button>
                 
                 <div id="panel-uploads" class="hidden p-3 pt-0 space-y-2">
+                    <div class="pt-2 p-2 rounded-lg border border-indigo-500/20 bg-indigo-500/5 space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-[9px] font-bold text-indigo-200">VTON 작업 저장</span>
+                            <span id="aura-vton-save-status" class="text-[8px] text-slate-500">임시 작업 준비</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button type="button" onclick="saveAuraVtonProject()"
+                                class="text-[9px] px-2 py-1.5 rounded bg-indigo-500/20 text-indigo-200 border border-indigo-500/30">내부 저장</button>
+                            <button type="button" onclick="loadAuraVtonSavedProject()"
+                                class="text-[9px] px-2 py-1.5 rounded bg-slate-800 text-slate-200 border border-slate-700">저장 작업 불러오기</button>
+                            <button type="button" onclick="exportAuraVtonProjectJson()"
+                                class="text-[9px] px-2 py-1.5 rounded bg-cyan-500/10 text-cyan-200 border border-cyan-500/30">JSON 내보내기</button>
+                            <button type="button" onclick="document.getElementById('aura-vton-json-input').click()"
+                                class="text-[9px] px-2 py-1.5 rounded bg-slate-800 text-slate-200 border border-slate-700">JSON 불러오기</button>
+                        </div>
+                        <input id="aura-vton-json-input" type="file" accept=".json,application/json"
+                            class="hidden" onchange="importAuraVtonProjectJson(event)">
+                        <button type="button" onclick="clearAuraVtonTemporaryProject()"
+                            class="w-full text-[8px] px-2 py-1 rounded text-rose-300 bg-rose-500/5 border border-rose-500/20">
+                            현재 임시 작업 지우기
+                        </button>
+                        <p class="text-[7px] leading-relaxed text-slate-500">
+                            내부 저장은 다음 실행에도 유지됩니다. 저장하지 않은 임시 작업은 앱 세션 종료 후 자동 정리됩니다.
+                        </p>
+                    </div>
                     <div class="grid grid-cols-2 gap-2 pt-2">
                         <!-- 1. 인물 마스크 -->
                         <div class="bg-slate-900/50 rounded-xl p-2.5 border border-slate-800 space-y-1.5">
@@ -1170,7 +1195,19 @@
                 button.textContent = '■ AI 정지';
                 button.classList.remove('hidden');
             }
+            sendAuraProgress(3, 'Aura AI 작업을 시작합니다…');
             return auraAbortController;
+        }
+
+        function sendAuraProgress(percent, message, status = 'running') {
+            if (window.parent === window) return;
+            window.parent.postMessage({
+                type: 'fma-app-progress',
+                app: 'aura',
+                percent: Math.max(0, Math.min(100, Number(percent) || 0)),
+                message: message || 'Aura 이미지 처리 중…',
+                status
+            }, '*');
         }
 
         function finishAuraAi(controller) {
@@ -1182,6 +1219,7 @@
         function stopAuraAi() {
             if (!auraAbortController) return;
             auraAbortController.abort();
+            sendAuraProgress(0, 'Aura AI 작업 정지를 요청했습니다.', 'stopped');
             const button = document.getElementById('aura-stop-ai-btn');
             if (button) button.textContent = '정지 처리 중…';
         }
@@ -1997,12 +2035,21 @@
             const progress = document.getElementById('loader-progress');
             if (headline && sub && progress) {
                 progress.style.width = '0%';
-                setTimeout(() => { headline.innerText = "원화 특징 분석 중..."; progress.style.width = '30%'; }, 0);
+                setTimeout(() => {
+                    headline.innerText = "원화 특징 분석 중...";
+                    progress.style.width = '30%';
+                    sendAuraProgress(30, "원화 특징 분석 중…");
+                }, 0);
                 setTimeout(() => {
                     headline.innerText = isTryon ? "VTON 텍스처 결합 중..." : "스타일 전이 및 프롬프트 인코딩...";
                     progress.style.width = '65%';
+                    sendAuraProgress(65, isTryon ? "VTON 텍스처 결합 중…" : "스타일 전이 및 프롬프트 인코딩 중…");
                 }, 1500);
-                setTimeout(() => { headline.innerText = "최종 렌더링 및 디테일 보정"; progress.style.width = '90%'; }, 3000);
+                setTimeout(() => {
+                    headline.innerText = "최종 렌더링 및 디테일 보정";
+                    progress.style.width = '90%';
+                    sendAuraProgress(90, "최종 렌더링 및 디테일 보정 중…");
+                }, 3000);
             }
         }
 
@@ -2249,6 +2296,9 @@
                 renderSuccessfulImage(imgDataUri, ratio, true);
             } catch (error) {
                 console.error(error);
+                sendAuraProgress(0,
+                    error.name === 'AbortError' ? "이미지 생성을 정지했습니다." : `생성 실패: ${error.message}`,
+                    error.name === 'AbortError' ? 'stopped' : 'error');
                 showToast(error.name === 'AbortError' ? "이미지 생성을 정지했습니다." : `생성 실패: ${error.message}`, "fa-circle-exclamation");
                 document.getElementById('canvas-loader').classList.add('hidden');
                 document.getElementById('canvas-placeholder').classList.remove('hidden');
@@ -2270,6 +2320,7 @@
                 document.getElementById('canvas-loader').classList.add('hidden');
                 canvasFrame.classList.remove('hidden');
                 ['download-btn', 'share-btn', 'zoom-btn', 'newwindow-btn'].forEach(id => document.getElementById(id).disabled = false);
+                sendAuraProgress(100, "Aura 이미지 생성 완료 · 갤러리를 계속 탐색할 수 있습니다.", 'complete');
             };
             imgEl.src = dataUri;
             if (addToHistory) { historyList.unshift(dataUri); rebuildHistoryGrid(); }
@@ -2597,9 +2648,11 @@
                 progress.style.width = '0%';
                 headline.innerText = "마스킹 및 컨텍스트 파싱 중...";
                 progress.style.width = '30%';
+                sendAuraProgress(30, "마스킹 및 컨텍스트 파싱 중…");
                 setTimeout(() => { 
                     headline.innerText = "국소 인페인팅 렌더링 중..."; 
                     progress.style.width = '65%'; 
+                    sendAuraProgress(65, "국소 인페인팅 렌더링 중…");
                 }, 1500);
             }
 
@@ -2649,6 +2702,9 @@ Ensure seamless blending at the boundaries.`;
                 }
             } catch (error) {
                 console.error(error);
+                sendAuraProgress(0,
+                    error.name === 'AbortError' ? "부분 재생성을 정지했습니다." : `부분 재생성 실패: ${error.message}`,
+                    error.name === 'AbortError' ? 'stopped' : 'error');
                 showToast(error.name === 'AbortError' ? "부분 재생성을 정지했습니다." : `부분 재생성 실패: ${error.message}`, "fa-circle-exclamation");
                 document.getElementById('canvas-loader').classList.add('hidden');
                 document.getElementById('canvas-frame').classList.remove('hidden');
@@ -2854,7 +2910,318 @@ Ensure seamless blending at the boundaries.`;
             }
         }
 
+        // Aura VTON project persistence:
+        // - explicit save: durable IndexedDB record
+        // - temporary draft: session-scoped IndexedDB record, removed on the next fresh app session
+        const AURA_VTON_DB_NAME = 'AuraVtonProjectDatabase';
+        const AURA_VTON_DB_STORE = 'projects';
+        const AURA_VTON_SAVED_ID = 'saved:default';
+        const AURA_VTON_SESSION_STORAGE = 'aura_vton_session_id';
+        let auraVtonDbPromise = null;
+        let auraVtonTempTimer = null;
+        let auraVtonApplyingProject = false;
+        let auraVtonSessionId = '';
+        try {
+            auraVtonSessionId = sessionStorage.getItem(AURA_VTON_SESSION_STORAGE) || '';
+            if (!auraVtonSessionId) {
+                auraVtonSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+                sessionStorage.setItem(AURA_VTON_SESSION_STORAGE, auraVtonSessionId);
+            }
+        } catch (error) {
+            auraVtonSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        }
+        const AURA_VTON_TEMP_ID = `temp:${auraVtonSessionId}`;
+
+        function openAuraVtonDatabase() {
+            if (auraVtonDbPromise) return auraVtonDbPromise;
+            auraVtonDbPromise = new Promise((resolve, reject) => {
+                const request = indexedDB.open(AURA_VTON_DB_NAME, 1);
+                request.onupgradeneeded = () => {
+                    if (!request.result.objectStoreNames.contains(AURA_VTON_DB_STORE)) {
+                        request.result.createObjectStore(AURA_VTON_DB_STORE, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error || new Error('IndexedDB를 열 수 없습니다.'));
+            });
+            return auraVtonDbPromise;
+        }
+
+        async function putAuraVtonRecord(record) {
+            const db = await openAuraVtonDatabase();
+            return new Promise((resolve, reject) => {
+                const request = db.transaction(AURA_VTON_DB_STORE, 'readwrite')
+                    .objectStore(AURA_VTON_DB_STORE).put(record);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function getAuraVtonRecord(id) {
+            const db = await openAuraVtonDatabase();
+            return new Promise((resolve, reject) => {
+                const request = db.transaction(AURA_VTON_DB_STORE, 'readonly')
+                    .objectStore(AURA_VTON_DB_STORE).get(id);
+                request.onsuccess = () => resolve(request.result || null);
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function deleteAuraVtonRecord(id) {
+            const db = await openAuraVtonDatabase();
+            return new Promise((resolve, reject) => {
+                const request = db.transaction(AURA_VTON_DB_STORE, 'readwrite')
+                    .objectStore(AURA_VTON_DB_STORE).delete(id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        async function cleanupExpiredAuraVtonTemporaryProjects() {
+            const db = await openAuraVtonDatabase();
+            return new Promise((resolve, reject) => {
+                const store = db.transaction(AURA_VTON_DB_STORE, 'readwrite')
+                    .objectStore(AURA_VTON_DB_STORE);
+                const request = store.openCursor();
+                request.onsuccess = () => {
+                    const cursor = request.result;
+                    if (!cursor) return resolve();
+                    if (String(cursor.key).startsWith('temp:') && cursor.key !== AURA_VTON_TEMP_ID) {
+                        cursor.delete();
+                    }
+                    cursor.continue();
+                };
+                request.onerror = () => reject(request.error);
+            });
+        }
+
+        function getAuraVtonImageData(elementId) {
+            const source = document.getElementById(elementId)?.getAttribute('src') || '';
+            return source.startsWith('data:image') ? source : null;
+        }
+
+        function collectAuraVtonProject() {
+            const fieldIds = [
+                'subject-input', 'outfit-input', 'custom-bg-desc-input',
+                'pose-override-input', 'custom-style-prompt'
+            ];
+            const checkboxIds = [
+                'subject-style-override', 'outfit-style-override',
+                'bg-style-override', 'pose-style-override'
+            ];
+            return {
+                format: 'aura-vton-project',
+                version: 1,
+                savedAt: new Date().toISOString(),
+                images: {
+                    reference: getAuraVtonImageData('ref-img-thumb'),
+                    tryon: getAuraVtonImageData('tryon-img-thumb'),
+                    background: getAuraVtonImageData('bg-img-thumb'),
+                    pose: getAuraVtonImageData('pose-img-thumb'),
+                    style: getAuraVtonImageData('style-img-thumb')
+                },
+                fields: Object.fromEntries(fieldIds.map(id => [id, document.getElementById(id)?.value || ''])),
+                checks: Object.fromEntries(checkboxIds.map(id => [id, Boolean(document.getElementById(id)?.checked)]))
+            };
+        }
+
+        function setAuraVtonSlot(slot, dataUrl) {
+            const config = {
+                reference: ['ref-img-thumb', 'dropzone-prompt', 'dropzone-preview'],
+                tryon: ['tryon-img-thumb', 'tryon-prompt', 'tryon-preview'],
+                background: ['bg-img-thumb', 'bg-prompt', 'bg-preview'],
+                pose: ['pose-img-thumb', 'pose-prompt', 'pose-preview'],
+                style: ['style-img-thumb', 'style-prompt', 'style-preview']
+            }[slot];
+            if (!config) return;
+            const [imageId, promptId, previewId] = config;
+            const image = document.getElementById(imageId);
+            if (dataUrl) {
+                image.src = dataUrl;
+                document.getElementById(promptId)?.classList.add('hidden');
+                document.getElementById(previewId)?.classList.remove('hidden');
+            } else {
+                image.removeAttribute('src');
+                document.getElementById(promptId)?.classList.remove('hidden');
+                document.getElementById(previewId)?.classList.add('hidden');
+            }
+        }
+
+        function dataUrlToAuraBase64(dataUrl) {
+            return typeof dataUrl === 'string' && dataUrl.includes(',') ? dataUrl.split(',')[1] : null;
+        }
+
+        function applyAuraVtonProject(project) {
+            if (!project || project.format !== 'aura-vton-project') {
+                throw new Error('Aura VTON 프로젝트 JSON 형식이 아닙니다.');
+            }
+            auraVtonApplyingProject = true;
+            try {
+                const projectImages = project.images || {};
+                currentReferenceImageBase64 = dataUrlToAuraBase64(projectImages.reference);
+                currentTryonImageBase64 = dataUrlToAuraBase64(projectImages.tryon);
+                currentBackgroundBase64 = dataUrlToAuraBase64(projectImages.background);
+                currentPoseImageBase64 = dataUrlToAuraBase64(projectImages.pose);
+                currentStyleImageBase64 = dataUrlToAuraBase64(projectImages.style);
+                Object.entries({
+                    reference: projectImages.reference,
+                    tryon: projectImages.tryon,
+                    background: projectImages.background,
+                    pose: projectImages.pose,
+                    style: projectImages.style
+                }).forEach(([slot, source]) => setAuraVtonSlot(slot, source));
+                Object.entries(project.fields || {}).forEach(([id, value]) => {
+                    const element = document.getElementById(id);
+                    if (element) element.value = value;
+                });
+                Object.entries(project.checks || {}).forEach(([id, value]) => {
+                    const element = document.getElementById(id);
+                    if (element) element.checked = Boolean(value);
+                });
+                document.getElementById('reference-status').innerText =
+                    currentReferenceImageBase64 ? '저장 마스크 복원' : '대기';
+                document.getElementById('bg-preset-container')?.classList.toggle(
+                    'pointer-events-none', Boolean(currentBackgroundBase64)
+                );
+                const styleTarget = document.getElementById('style-target-val');
+                if (styleTarget) styleTarget.disabled = Boolean(currentStyleImageBase64);
+            } finally {
+                auraVtonApplyingProject = false;
+            }
+        }
+
+        function setAuraVtonSaveStatus(message, colorClass = 'text-slate-500') {
+            const status = document.getElementById('aura-vton-save-status');
+            if (!status) return;
+            status.textContent = message;
+            status.className = `text-[8px] ${colorClass}`;
+        }
+
+        async function saveAuraVtonProject() {
+            try {
+                await putAuraVtonRecord({
+                    id: AURA_VTON_SAVED_ID,
+                    kind: 'saved',
+                    updatedAt: Date.now(),
+                    project: collectAuraVtonProject()
+                });
+                setAuraVtonSaveStatus('내부 저장 완료', 'text-emerald-400');
+                showToast('VTON 작업을 IndexedDB에 저장했습니다.', 'fa-floppy-disk');
+            } catch (error) {
+                console.error(error);
+                showToast('VTON 작업 저장에 실패했습니다.', 'fa-triangle-exclamation');
+            }
+        }
+
+        async function loadAuraVtonSavedProject() {
+            try {
+                const record = await getAuraVtonRecord(AURA_VTON_SAVED_ID);
+                if (!record?.project) {
+                    showToast('내부에 저장된 VTON 작업이 없습니다.', 'fa-circle-info');
+                    return;
+                }
+                applyAuraVtonProject(record.project);
+                scheduleAuraVtonTemporarySave();
+                setAuraVtonSaveStatus('저장 작업 불러옴', 'text-cyan-300');
+                showToast('저장한 VTON 작업을 불러왔습니다.', 'fa-folder-open');
+            } catch (error) {
+                console.error(error);
+                showToast('저장 작업을 불러오지 못했습니다.', 'fa-triangle-exclamation');
+            }
+        }
+
+        function scheduleAuraVtonTemporarySave() {
+            if (auraVtonApplyingProject) return;
+            clearTimeout(auraVtonTempTimer);
+            auraVtonTempTimer = setTimeout(async () => {
+                try {
+                    await putAuraVtonRecord({
+                        id: AURA_VTON_TEMP_ID,
+                        kind: 'temporary',
+                        sessionId: auraVtonSessionId,
+                        updatedAt: Date.now(),
+                        project: collectAuraVtonProject()
+                    });
+                    setAuraVtonSaveStatus('임시 저장됨', 'text-slate-400');
+                } catch (error) {
+                    console.warn('Aura VTON temporary save failed:', error);
+                }
+            }, 350);
+        }
+
+        async function clearAuraVtonTemporaryProject() {
+            auraVtonApplyingProject = true;
+            try {
+                currentReferenceImageBase64 = null;
+                currentTryonImageBase64 = null;
+                currentBackgroundBase64 = null;
+                currentPoseImageBase64 = null;
+                currentStyleImageBase64 = null;
+                ['reference', 'tryon', 'background', 'pose', 'style']
+                    .forEach(slot => setAuraVtonSlot(slot, null));
+                await deleteAuraVtonRecord(AURA_VTON_TEMP_ID);
+                setAuraVtonSaveStatus('임시 작업 비움', 'text-rose-300');
+                showToast('현재 세션의 임시 VTON 작업을 지웠습니다.', 'fa-trash-can');
+            } finally {
+                auraVtonApplyingProject = false;
+            }
+        }
+
+        function exportAuraVtonProjectJson() {
+            const project = collectAuraVtonProject();
+            const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '');
+            const url = URL.createObjectURL(blob);
+            link.href = url;
+            link.download = `auraVton_${stamp}.json`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+            showToast('Aura VTON JSON을 내보냈습니다.', 'fa-file-export');
+        }
+
+        async function importAuraVtonProjectJson(event) {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (!file) return;
+            try {
+                const project = JSON.parse(await file.text());
+                applyAuraVtonProject(project);
+                scheduleAuraVtonTemporarySave();
+                showToast('Aura VTON JSON 작업을 불러왔습니다.', 'fa-file-import');
+            } catch (error) {
+                console.error(error);
+                showToast('올바른 Aura VTON JSON 파일이 아닙니다.', 'fa-triangle-exclamation');
+            }
+        }
+
+        async function initAuraVtonProjectStorage() {
+            try {
+                await cleanupExpiredAuraVtonTemporaryProjects();
+                const temporary = await getAuraVtonRecord(AURA_VTON_TEMP_ID);
+                if (temporary?.project) {
+                    applyAuraVtonProject(temporary.project);
+                    setAuraVtonSaveStatus('임시 작업 복원됨', 'text-cyan-300');
+                }
+                const watchedPanel = document.getElementById('panel-uploads');
+                watchedPanel?.addEventListener('input', scheduleAuraVtonTemporarySave);
+                watchedPanel?.addEventListener('change', scheduleAuraVtonTemporarySave);
+                ['ref-img-thumb', 'tryon-img-thumb', 'bg-img-thumb', 'pose-img-thumb', 'style-img-thumb']
+                    .forEach(id => {
+                        const image = document.getElementById(id);
+                        if (image) new MutationObserver(scheduleAuraVtonTemporarySave)
+                            .observe(image, { attributes: true, attributeFilter: ['src'] });
+                    });
+            } catch (error) {
+                console.warn('Aura VTON project storage unavailable:', error);
+                setAuraVtonSaveStatus('저장소 사용 불가', 'text-rose-300');
+            }
+        }
+
         initAuraApiKeyControls();
+        initAuraVtonProjectStorage();
 
         // FMA Viewer iframe bridge
         function sendAuraImagesToFma(mode, requestId) {

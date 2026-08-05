@@ -137,7 +137,7 @@
     function viewerUrl(title) {
         const url = new URL('./Apps/fmaviewer/index.html', document.baseURI || global.location.href);
         url.searchParams.set('embedded', '1');
-        url.searchParams.set('v', '20260725-edit-result-2');
+        url.searchParams.set('v', '20260806-ultra-1');
         if (title) url.searchParams.set('title', title);
         return url.href;
     }

@@ -1,4 +1,4 @@
-/* LM Studio settings UI shared by AI Chat and ScholarAI. */
+/* LM Studio settings UI shared by AI Jena and ScholarAI. */
 (function (root) {
   'use strict';
 
@@ -42,7 +42,7 @@
       '  </label>',
       '</div>',
       '<div class="rounded-md border border-indigo-200 dark:border-indigo-900/70 bg-indigo-50/70 dark:bg-indigo-950/20 p-2.5">',
-      '  <div class="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-300">AI Chat 출력 토큰</div>',
+      '  <div class="mb-2 text-xs font-semibold text-slate-700 dark:text-slate-300">AI Jena 출력 토큰</div>',
       '  <div class="grid grid-cols-2 gap-2">',
       '    <label class="text-xs text-slate-600 dark:text-slate-400">즉시응답 Max tokens',
       '      <input id="settings-aichat-quick-max-tokens" type="number" min="1" step="1" value="4096" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',

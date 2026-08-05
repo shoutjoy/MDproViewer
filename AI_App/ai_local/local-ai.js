@@ -404,21 +404,38 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
   }
 
   function contentToText(content) {
-    if (typeof content === 'string') return content;
-    if (!Array.isArray(content)) return '';
-    return content.map(function (part) {
-      if (typeof part === 'string') return part;
-      return part && typeof part.text === 'string' ? part.text : '';
-    }).join('');
+    if (content == null) return '';
+    if (typeof content === 'string' || typeof content === 'number') return String(content);
+    if (Array.isArray(content)) return content.map(contentToText).join('');
+    if (typeof content !== 'object') return '';
+    if (typeof content.text === 'string') return content.text;
+    if (typeof content.content === 'string' || Array.isArray(content.content)) return contentToText(content.content);
+    if (typeof content.value === 'string') return content.value;
+    if (content.message) return contentToText(content.message);
+    return '';
   }
 
   function extractCompletionParts(data) {
-    const choice = data && data.choices && data.choices[0];
+    const payload = data && data.data && !data.choices ? data.data
+      : data && data.response && !data.choices ? data.response
+      : data;
+    const choice = payload && payload.choices && payload.choices[0];
     const message = choice && choice.message;
-    let text = trim(contentToText((message && message.content) || (choice && choice.text)));
+    const nativeOutput = payload && Array.isArray(payload.output) ? payload.output : [];
+    let text = trim(contentToText(
+      (message && message.content)
+      || (choice && choice.text)
+      || (payload && payload.output_text)
+      || nativeOutput.filter(function (item) {
+        return item && (item.type === 'message' || item.role === 'assistant');
+      }).map(function (item) { return item.content || item.text || ''; })
+    ));
     let reasoning = trim(message && (
       message.reasoning_content || message.reasoning || message.analysis
-    ) || choice && (choice.reasoning_content || choice.reasoning));
+    ) || choice && (choice.reasoning_content || choice.reasoning)
+      || nativeOutput.filter(function (item) {
+        return item && (item.type === 'reasoning' || item.type === 'analysis');
+      }).map(function (item) { return item.content || item.text || ''; }).join('\n'));
     const taggedReasoning = [];
     text = text.replace(/<think>([\s\S]*?)<\/think>/gi, function (_, value) {
       if (trim(value)) taggedReasoning.push(trim(value));
@@ -633,7 +650,7 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
               const abortXhr = function () {
                 if (settled) return;
                 try { xhr.abort(); } catch (ignore) {}
-                const error = new Error('AI Chat request aborted');
+                const error = new Error('AI Jena request aborted');
                 error.name = 'AbortError';
                 fail(error);
               };
@@ -657,7 +674,7 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
               xhr.onerror = function () { fail(new Error('LM Studio 스트리밍 연결에 실패했습니다.')); };
               xhr.ontimeout = function () { fail(new Error('LM Studio 스트리밍 요청 시간이 초과되었습니다 (' + timeoutMs + 'ms).')); };
               xhr.onabort = function () {
-                const error = new Error('AI Chat request aborted');
+                const error = new Error('AI Jena request aborted');
                 error.name = 'AbortError';
                 fail(error);
               };

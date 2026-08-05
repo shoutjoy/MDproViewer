@@ -1868,7 +1868,7 @@ function openFmaViewer() {
     }
     const viewerUrl = new URL('./Apps/fmaviewer/index.html', document.baseURI || window.location.href);
     viewerUrl.searchParams.set('embedded', '1');
-    viewerUrl.searchParams.set('v', '20260725-fma-viewer-1');
+    viewerUrl.searchParams.set('v', '20260806-ultra-1');
     window.InternalImageApp.openFrame(viewerUrl.href, 'FMA Viewer');
     return true;
 }
@@ -8342,7 +8342,7 @@ function getInDbExportRecordFolderName(storeName, record, recordIndex, usedNames
 
 function getInDbConversationMarkdown(record) {
     const item = record || {};
-    const lines = ['# ' + String(item.title || 'AI Chat'), ''];
+    const lines = ['# ' + String(item.title || 'AI Jena'), ''];
     const messages = Array.isArray(item.messages) ? item.messages : [];
     messages.forEach(function (message) {
         const role = String(message && message.role || 'message');
@@ -10503,8 +10503,12 @@ window.AIChatBridge = Object.freeze({
         saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, models);
         return { model: result.model, models: models, contextLength: getAIChatLMContextLength(result) };
     },
-    insertIntoDocument: function (text, mode) {
-        return insertAIChatTextIntoDocument(text, mode);
+    insertIntoDocument: function (text, mode, options) {
+        const insertOptions = options && typeof options === 'object' ? options : {};
+        const value = insertOptions.format === 'html' && String(insertOptions.html || '').trim()
+            ? insertOptions.html
+            : text;
+        return insertAIChatTextIntoDocument(value, mode);
     },
     saveImageForDocument: function (image, index) {
         return saveAIChatGeneratedImageForDocument(image, index);
@@ -10563,7 +10567,7 @@ window.AIChatBridge = Object.freeze({
             }
             const synced = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
             if (controller.signal.aborted) {
-                const abortError = new Error('AI Chat request aborted');
+                const abortError = new Error('AI Jena request aborted');
                 abortError.name = 'AbortError';
                 throw abortError;
             }
