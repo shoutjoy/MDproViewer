@@ -246,6 +246,7 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     };
     const state = await global.MDPStorage.initialize({
         getIndexedDb: function () { return {}; },
+        sqliteBackend: 'api',
         recoveryBuffer: recoveryBuffer
     });
     assert.equal(state.activeMode, 'indb');
@@ -643,6 +644,57 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     assert.equal(restartedUpdate.version, 3);
     assert.equal(refreshedSessionCalls, 1, 'server restart must refresh the session once');
     assert.equal(refreshedMutationCalls, 2, 'failed mutation must be retried only once');
+
+    global.MDPSqliteWasmAdapter = class MDPSqliteWasmAdapter {
+        static isSupported() { return true; }
+        constructor() {
+            this.kind = 'sqlite';
+            this.backend = 'wasm-opfs';
+        }
+        async health() {
+            return {
+                available: true,
+                backend: 'wasm-opfs',
+                schemaVersion: 3,
+                journalMode: 'delete',
+                capabilities: { ...capabilities }
+            };
+        }
+    };
+    values.delete(global.MDPStorage.SQLITE_BACKEND_KEY);
+    const defaultBackendState = await global.MDPStorage.initialize({
+        getIndexedDb: function () { return {}; },
+        recoveryBuffer: recoveryBuffer
+    });
+    assert.equal(defaultBackendState.sqliteBackendPreference, 'wasm');
+    assert.equal(defaultBackendState.sqliteBackend, 'wasm-opfs');
+
+    const switchState = await global.MDPStorage.initialize({
+        getIndexedDb: function () { return {}; },
+        sqliteBackend: 'wasm',
+        recoveryBuffer: recoveryBuffer,
+        fetchImpl: async function () { throw new Error('API offline'); }
+    });
+    assert.equal(switchState.sqliteBackendPreference, 'wasm');
+    await global.MDPStorage.requestMode('sqlite');
+
+    const unavailableApiState = await global.MDPStorage.requestSqliteBackend('api');
+    assert.equal(unavailableApiState.sqliteBackendPreference, 'api', 'an unavailable backend selection must be retained');
+    assert.equal(unavailableApiState.sqliteBackend, 'api', 'the selected adapter must replace the previous adapter');
+    assert.equal(unavailableApiState.sqliteHealth, null);
+    assert.equal(unavailableApiState.activeMode, 'indb', 'offline backend switching must safely fall back to IndexedDB');
+    assert.equal(values.get(global.MDPStorage.SQLITE_BACKEND_KEY), 'api');
+
+    const wasmSwitchState = await global.MDPStorage.requestSqliteBackend('wasm');
+    assert.equal(wasmSwitchState.sqliteBackendPreference, 'wasm');
+    assert.equal(wasmSwitchState.sqliteBackend, 'wasm-opfs');
+    assert.equal(wasmSwitchState.sqliteHealth.available, true);
+
+    const autoSwitchState = await global.MDPStorage.requestSqliteBackend('auto');
+    assert.equal(autoSwitchState.sqliteBackendPreference, 'auto');
+    assert.equal(autoSwitchState.sqliteBackend, 'wasm-opfs', 'auto must fall back from an offline API to WASM');
+    assert.equal(autoSwitchState.sqliteHealth.available, true);
+    assert.equal(values.get(global.MDPStorage.SQLITE_BACKEND_KEY), 'auto');
     console.log('Storage service tests passed.');
 })().catch(function (error) {
     console.error(error);

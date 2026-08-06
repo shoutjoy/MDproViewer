@@ -12,7 +12,7 @@
     let sqliteAdapter = null;
     let sqliteApiAdapter = null;
     let sqliteWasmAdapter = null;
-    let sqliteBackendPreference = 'auto';
+    let sqliteBackendPreference = 'wasm';
     let sqliteBackend = null;
     let recoveryBuffer = null;
     let recoveryFlushPromise = null;
@@ -41,10 +41,10 @@
 
     function readSqliteBackendPreference() {
         try {
-            const value = String(root.localStorage.getItem(SQLITE_BACKEND_KEY) || 'auto').toLowerCase();
-            return value === 'api' || value === 'wasm' ? value : 'auto';
+            const value = String(root.localStorage.getItem(SQLITE_BACKEND_KEY) || 'wasm').toLowerCase();
+            return value === 'auto' || value === 'api' || value === 'wasm' ? value : 'wasm';
         } catch (_) {
-            return 'auto';
+            return 'wasm';
         }
     }
 
@@ -88,17 +88,31 @@
         return [sqliteApiAdapter, sqliteWasmAdapter].filter(Boolean);
     }
 
+    function sqliteBackendName(adapter) {
+        if (adapter === sqliteWasmAdapter) return 'wasm-opfs';
+        if (adapter === sqliteApiAdapter) return 'api';
+        return adapter && adapter.backend ? adapter.backend : null;
+    }
+
     async function refreshSqliteHealth() {
         const candidates = sqliteBackendCandidates();
-        if (!candidates.length) throw new Error('SQLite storage adapter is not available.');
         sqliteHealth = null;
         lastError = null;
+        sqliteAdapter = candidates[0] || null;
+        sqliteBackend = sqliteBackendName(sqliteAdapter);
+        if (!candidates.length) {
+            const unavailable = new Error('SQLite storage adapter is not available.');
+            unavailable.code = 'SQLITE_BACKEND_UNAVAILABLE';
+            lastError = unavailable;
+            notify();
+            throw unavailable;
+        }
         for (let index = 0; index < candidates.length; index++) {
             const candidate = candidates[index];
             try {
                 const health = await candidate.health();
                 sqliteAdapter = candidate;
-                sqliteBackend = candidate.backend || (candidate === sqliteWasmAdapter ? 'wasm-opfs' : 'api');
+                sqliteBackend = sqliteBackendName(candidate);
                 sqliteHealth = Object.assign({}, health, { backend: health.backend || sqliteBackend });
                 lastError = null;
                 break;
@@ -126,11 +140,13 @@
                 timeoutMs: config.sqliteWasmTimeoutMs
             });
         }
-        sqliteBackendPreference = ['api', 'wasm'].includes(config.sqliteBackend)
+        sqliteBackendPreference = ['auto', 'api', 'wasm'].includes(config.sqliteBackend)
             ? config.sqliteBackend
             : readSqliteBackendPreference();
-        sqliteAdapter = sqliteApiAdapter;
-        sqliteBackend = 'api';
+        sqliteAdapter = sqliteBackendPreference === 'wasm' && sqliteWasmAdapter
+            ? sqliteWasmAdapter
+            : sqliteApiAdapter;
+        sqliteBackend = sqliteAdapter === sqliteWasmAdapter ? 'wasm-opfs' : 'api';
         recoveryBuffer = config.recoveryBuffer || (
             typeof root.MDPRecoveryBuffer === 'function'
                 ? new root.MDPRecoveryBuffer({ indexedDBImpl: config.recoveryIndexedDB || root.indexedDB })
@@ -177,8 +193,8 @@
 
     async function requestSqliteBackend(backend) {
         const requested = backend === 'api' || backend === 'wasm' ? backend : 'auto';
-        const previous = sqliteBackendPreference;
         sqliteBackendPreference = requested;
+        writeSqliteBackendPreference(requested);
         let health = null;
         try {
             health = await refreshSqliteHealth();
@@ -186,13 +202,15 @@
             lastError = error;
         }
         if (!health) {
-            sqliteBackendPreference = previous;
-            await refreshSqliteHealth().catch(function () {});
-            const unavailable = lastError || new Error('Requested SQLite backend is unavailable.');
-            unavailable.code = unavailable.code || 'SQLITE_BACKEND_UNAVAILABLE';
-            throw unavailable;
+            // Keep the user's explicit backend selection. If it is temporarily
+            // unavailable, fall back to IndexedDB for document writes until the
+            // selected backend becomes healthy and SQLite is enabled again.
+            if (activeMode === MODES.SQLITE) {
+                activeMode = MODES.INDB;
+                preferredMode = MODES.INDB;
+                writePreferredMode(MODES.INDB);
+            }
         }
-        writeSqliteBackendPreference(requested);
         notify();
         return snapshot();
     }

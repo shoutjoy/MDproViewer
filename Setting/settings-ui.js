@@ -88,7 +88,16 @@
         link.classList.toggle('hidden', visible !== true);
     }
 
-    function sqliteOfflineDetails(error) {
+    function sqliteOfflineDetails(error, state) {
+        const preference = state && state.sqliteBackendPreference;
+        if (preference === 'wasm') {
+            return (error && error.message ? error.message : 'WASM SQLite를 초기화할 수 없습니다.')
+                + ' · 이 브라우저에서 Web Worker, WebAssembly, OPFS를 사용할 수 있는지 확인해 주세요.';
+        }
+        if (preference === 'auto') {
+            return (error && error.message ? error.message : '사용 가능한 SQLite 백엔드를 찾지 못했습니다.')
+                + ' · Python API와 WASM · OPFS 연결을 모두 확인해 주세요.';
+        }
         const launch = getSqliteLaunchInfo();
         if (!launch.isExpectedPort) {
             return '현재 앱 주소: ' + launch.currentAddress
@@ -99,7 +108,10 @@
             + ' · run.py가 127.0.0.1:8765에서 실행 중인지 확인해 주세요.';
     }
 
-    function sqliteOfflineStatus() {
+    function sqliteOfflineStatus(state) {
+        const preference = state && state.sqliteBackendPreference;
+        if (preference === 'wasm') return 'WASM SQLite 초기화 실패';
+        if (preference === 'auto') return 'SQLite 백엔드 연결 실패';
         return getSqliteLaunchInfo().isExpectedPort
             ? 'SQLite 서버 연결 실패'
             : '로컬 SQLite 앱 주소가 아님';
@@ -126,7 +138,7 @@
                 '  <select id="sqlite-backend-select" class="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] dark:border-slate-600 dark:bg-slate-800">',
                 '    <option value="auto">자동 (API → WASM)</option>',
                 '    <option value="api">Python API</option>',
-                '    <option value="wasm">WASM · OPFS</option>',
+                '    <option value="wasm" selected>WASM · OPFS</option>',
                 '  </select>',
                 '</div>',
                 '<p id="sqlite-connection-details" class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-500"></p>',
@@ -2008,7 +2020,8 @@
                 setSqliteStatus('SQLite 복구 버퍼 사용 불가', 'error', error.message);
             } else {
                 setLocalAppLinkVisible(true);
-                setSqliteStatus(sqliteOfflineStatus(), 'error', sqliteOfflineDetails(error));
+                const state = window.MDPStorage.getStatus();
+                setSqliteStatus(sqliteOfflineStatus(state), 'error', sqliteOfflineDetails(error, state));
             }
         } finally {
             checkbox.disabled = false;
@@ -2035,7 +2048,7 @@
         elements.checkbox.checked = state.activeMode === 'sqlite';
         notifyStorageFeatureVisibility();
         const backendSelect = document.getElementById('sqlite-backend-select');
-        if (backendSelect) backendSelect.value = state.sqliteBackendPreference || 'auto';
+        if (backendSelect) backendSelect.value = state.sqliteBackendPreference || 'wasm';
         const health = state.sqliteHealth;
         if (!health) {
             setMigrationPreviewAvailable(false);
@@ -2047,7 +2060,7 @@
             sqliteRestoreApplyAvailable = false;
             setSqliteRestorePreviewAvailable(false);
             setLocalAppLinkVisible(true);
-            setSqliteStatus(sqliteOfflineStatus(), 'error', sqliteOfflineDetails(state.lastError) + ' · 현재 저장소: inDB');
+            setSqliteStatus(sqliteOfflineStatus(state), 'error', sqliteOfflineDetails(state.lastError, state) + ' · 현재 저장소: inDB');
             return state;
         }
         setLocalAppLinkVisible(false);
