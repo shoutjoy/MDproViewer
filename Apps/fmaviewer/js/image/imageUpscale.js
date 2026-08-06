@@ -186,8 +186,20 @@ function readUpscaleSetting(key, fallback) {
 function writeUpscaleSetting(key, value) {
     try {
         localStorage.setItem(key, value);
+        notifyFmaAiToolSettingsChanged();
     } catch (error) {
         console.warn("Settings save failed:", error);
+    }
+}
+
+function notifyFmaAiToolSettingsChanged() {
+    try {
+        const host = window.parent && window.parent !== window ? window.parent : window;
+        if (host && typeof host.notifyAiToolSettingsChanged === "function") {
+            host.notifyAiToolSettingsChanged();
+        }
+    } catch (error) {
+        console.warn("SQLite AI tool settings sync skipped:", error);
     }
 }
 

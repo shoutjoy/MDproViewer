@@ -1902,6 +1902,10 @@
   function scholarAISaveTonePreset(v) {
     var next = (v === 'academic_ida' || v === 'academic_eumham' || v === 'general_polite') ? v : SA_TONE_DEFAULT;
     try { localStorage.setItem(LS_SA_TONE_PRESET, next); } catch (e) {}
+    try {
+      var host = getHost();
+      if (host && typeof host.notifyAiToolSettingsChanged === 'function') host.notifyAiToolSettingsChanged();
+    } catch (e) {}
     return next;
   }
   function scholarAIGetToneInstruction(v) {
@@ -3199,10 +3203,32 @@ function viewerSSPFsUploadImgbb() {
         }
       });
     }
+    var savedSspSettings = invokeSync('getSspimgSettings') || {};
+    var sspPromptInput = document.getElementById('ssp-prompt');
+    var sspPrompt2Input = document.getElementById('ssp-prompt-2');
+    var sspNoTextInput = document.getElementById('ssp-no-text');
+    if (sspPromptInput && !sspPromptInput.value) sspPromptInput.value = savedSspSettings.prompt || '';
+    if (sspPrompt2Input && !sspPrompt2Input.value) sspPrompt2Input.value = savedSspSettings.prompt2 || '';
+    if (sspNoTextInput) sspNoTextInput.checked = savedSspSettings.noText === true;
+    __viewerSSPRatio = String(savedSspSettings.ratio || __viewerSSPRatio || '1:1');
+    function persistSspSettings() {
+      var saveSettings = getCallback('saveSspimgSettings');
+      var modelSetter = getCallback('setImageModelId');
+      var modelInput = document.getElementById('ssp-model');
+      if (typeof modelSetter === 'function' && modelInput) modelSetter(modelInput.value);
+      if (typeof saveSettings === 'function') saveSettings({
+        prompt: sspPromptInput ? sspPromptInput.value : '',
+        prompt2: sspPrompt2Input ? sspPrompt2Input.value : '',
+        ratio: __viewerSSPRatio,
+        noText: !!(sspNoTextInput && sspNoTextInput.checked)
+      });
+    }
     document.querySelectorAll('.ssp-ratio-btn').forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-ratio') === __viewerSSPRatio);
       b.onclick = function () {
         __viewerSSPRatio = this.getAttribute('data-ratio') || '1:1';
         document.querySelectorAll('.ssp-ratio-btn').forEach(function (x) { x.classList.toggle('active', x === b); });
+        persistSspSettings();
       };
     });
     var modelSel = document.getElementById('ssp-model');
@@ -3214,6 +3240,19 @@ function viewerSSPFsUploadImgbb() {
         if (savedImageModel === 'gemini-3-pro-image-preview') savedImageModel = 'gemini-3-pro-image';
         modelSel.value = savedImageModel;
       } catch (e) {}
+      modelSel.onchange = persistSspSettings;
+    }
+    if (sspPromptInput && !sspPromptInput.__viewerSSPSettingsBound) {
+      sspPromptInput.__viewerSSPSettingsBound = true;
+      sspPromptInput.addEventListener('blur', persistSspSettings);
+    }
+    if (sspPrompt2Input && !sspPrompt2Input.__viewerSSPSettingsBound) {
+      sspPrompt2Input.__viewerSSPSettingsBound = true;
+      sspPrompt2Input.addEventListener('blur', persistSspSettings);
+    }
+    if (sspNoTextInput && !sspNoTextInput.__viewerSSPSettingsBound) {
+      sspNoTextInput.__viewerSSPSettingsBound = true;
+      sspNoTextInput.addEventListener('change', persistSspSettings);
     }
     var imgLinkLabel = document.querySelector('.ssp-img-link-label');
     if (imgLinkLabel) imgLinkLabel.textContent = 'Image URL -> Insert (Markdown / HTML)';
@@ -3313,6 +3352,12 @@ function viewerSSPFsUploadImgbb() {
     var modelSel = document.getElementById('ssp-model');
     var modelId = modelSel ? modelSel.value : 'gemini-3.1-flash-image';
     var noText = document.getElementById('ssp-no-text') && document.getElementById('ssp-no-text').checked;
+    var saveSspSettings = getCallback('saveSspimgSettings');
+    if (typeof saveSspSettings === 'function') saveSspSettings({
+      prompt: p1, prompt2: p2, ratio: __viewerSSPRatio, noText: !!noText
+    });
+    var setImageModel = getCallback('setImageModelId');
+    if (typeof setImageModel === 'function') setImageModel(modelId);
     var h = getHost();
     if (h && h._aiTaskCancelled !== undefined) h._aiTaskCancelled = false;
     __viewerSSPAbortRequested = false;

@@ -3,6 +3,7 @@
 
     const output = document.getElementById('result');
     const checks = [];
+    const productionHealthOnly = new URLSearchParams(window.location.search).get('production-health') === '1';
     const token = Date.now().toString(36);
     const folderId = 'folder_wasm_test_' + token;
     const documentId = 'doc_wasm_test_' + token;
@@ -23,10 +24,38 @@
         }).join('');
     }
 
+    async function makeFmaBlob() {
+        const binary = atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
+        const mediaBytes = Uint8Array.from(binary, function (character) { return character.charCodeAt(0); });
+        const mediaId = 'media_' + token;
+        const mediaPath = 'media/' + mediaId + '.png';
+        const manifest = {
+            format: 'fma-archive',
+            version: 3,
+            timestamp: new Date().toISOString(),
+            generator: 'SQLite WASM integration test',
+            images: [{
+                path: 'sample-' + token + '.png',
+                src: { $fmaMedia: mediaId },
+                mimeType: 'image/png',
+                mediaType: 'image',
+                size: mediaBytes.byteLength,
+                width: 1,
+                height: 1
+            }],
+            media: {}
+        };
+        manifest.media[mediaId] = { path: mediaPath, mimeType: 'image/png', size: mediaBytes.byteLength };
+        const zip = new JSZip();
+        zip.file(mediaPath, mediaBytes, { binary: true, compression: 'STORE' });
+        zip.file('manifest.json', JSON.stringify(manifest));
+        return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.fma+zip' });
+    }
+
     let adapter = null;
     try {
         adapter = new window.MDPSqliteWasmAdapter({
-            workerUrl: './sqlite-wasm-worker.js?test=1',
+            workerUrl: productionHealthOnly ? './sqlite-wasm-worker.js?production-health=1' : './sqlite-wasm-worker.js?test=1',
             timeoutMs: 60000
         });
 
@@ -36,10 +65,17 @@
         assert(Number(health.schemaVersion) === 3, 'schema version 3');
         assert(Number(String(health.sqliteVersion).split('.')[0]) >= 3, 'SQLite version');
         assert(health.capabilities.search === true, 'FTS5 capability');
-        assert(health.capabilities.workFiles === false, 'excluded work files capability');
+        assert(health.capabilities.explorer === true, 'SQLite explorer capability');
+        assert(health.capabilities.databaseImport === true, 'SQLite database import capability');
+        assert(health.capabilities.workFiles === true, 'FMA work files capability');
         assert(health.capabilities.backupPackage === false && health.capabilities.restore === false, 'excluded mdpbackup capability');
-        assert(health.capabilities.modelAssets === false && health.capabilities.fmaPreview === false, 'excluded model and FMA capability');
+        assert(health.capabilities.modelAssets === false && health.capabilities.fmaPreview === true, 'FMA preview without model assets');
         assert(health.capabilities.imageProxy === false && health.capabilities.staticHosting === false, 'excluded proxy and hosting capability');
+        if (productionHealthOnly) {
+            output.dataset.status = 'passed';
+            output.textContent = JSON.stringify({ ok: true, checks: checks, health: health }, null, 2);
+            return;
+        }
 
         const bootstrap = await adapter.bootstrap();
         assert(bootstrap.rootFolder.id === 'root', 'bootstrap ROOT folder');
@@ -134,6 +170,41 @@
         const repeatedApply = await adapter.applyIndexedDbMigration(migrationBatch);
         assert(repeatedApply.status === 'completed' && repeatedApply.applied.documents === 0, 'IndexedDB migration idempotent apply');
 
+        const fmaBlob = await makeFmaBlob();
+        const fmaName = 'gallery-' + token + '.fma';
+        const savedFma = await adapter.uploadWorkFile(fmaBlob, {
+            fileName: fmaName, workType: 'fma', appId: 'fmaviewer'
+        });
+        assert(savedFma.workType === 'fma' && savedFma.sizeBytes === fmaBlob.size, 'FMA archive saved as SQLite BLOB');
+        const savedWebpFma = await adapter.uploadWorkFile(fmaBlob, {
+            fileName: 'gallery-webp-' + token + '.fma', workType: 'fma_webp', appId: 'fmaviewer'
+        });
+        assert(savedWebpFma.workType === 'fma_webp' && savedWebpFma.deduplicatedAsset === true, 'WebP FMA work type and asset deduplication');
+        const workFiles = await adapter.listWorkFiles({ appId: 'fmaviewer', query: token, limit: 20 });
+        assert(workFiles.items.length >= 2 && workFiles.items.some(function (item) {
+            return item.id === savedFma.id && item.workType === 'fma';
+        }), 'FMA work-file list');
+        const fmaEntry = await adapter.getExplorerFileEntry(savedFma.id);
+        assert(fmaEntry.extension === 'fma' && fmaEntry.workType === 'fma', 'FMA SQLite explorer file detail');
+        const fmaPreview = await adapter.getExplorerFmaPreview(savedFma.id);
+        assert(fmaPreview.counts.galleryItems === 1 && fmaPreview.gallery[0].previewAvailable === true, 'FMA manifest gallery summary');
+        const fmaThumbnail = await adapter.getExplorerFmaThumbnail(savedFma.id, fmaPreview.gallery[0].mediaId);
+        assert(fmaThumbnail instanceof Blob && fmaThumbnail.size > 0, 'FMA gallery thumbnail');
+        const downloadedFma = await adapter.downloadWorkFile(workFiles.items.find(function (item) { return item.id === savedFma.id; }));
+        assert(downloadedFma.size === fmaBlob.size, 'FMA SQLite BLOB download');
+
+        const explorer = await adapter.getExplorerSnapshot({ query: token, limit: 300 });
+        assert(explorer.readOnly === true && explorer.database.path.indexOf('OPFS:') === 0, 'SQLite explorer read-only snapshot');
+        assert(explorer.documents.some(function (item) { return item.id === documentId; })
+            && explorer.folders.some(function (item) { return item.id === folderId; }), 'SQLite explorer document and folder lists');
+        assert(explorer.settings.some(function (item) { return item.key === 'githubBranch'; })
+            && explorer.migrationCheckpoints.length > 0, 'SQLite explorer settings and migration history');
+        assert(explorer.fileEntries.some(function (item) { return item.id === savedFma.id; })
+            && explorer.sources.some(function (item) { return item.id === 'source_sqlite_workfiles_fmaviewer'; }), 'SQLite explorer FMA source and files');
+        const explorerDocument = await adapter.getExplorerDocument(documentId);
+        const explorerVersions = await adapter.listExplorerDocumentVersions(documentId);
+        assert(explorerDocument.content.indexOf(token) >= 0 && explorerVersions.length === 3, 'SQLite explorer document detail and versions');
+
         await adapter.createFolder({ id: migratedChildFolderId, name: 'Migration child ' + token, parentId: migratedFolderId });
         let folderCycle = null;
         try {
@@ -166,6 +237,18 @@
         const deletedDocument = await adapter.deleteDocument(documentId, 3);
         const visibleAfterDelete = await adapter.listDocuments({ query: token });
         assert(deletedDocument.deleted === true && !visibleAfterDelete.some(function (item) { return item.id === documentId; }), 'document soft delete');
+
+        const imported = await adapter.importDatabase(exported.blob, { fileName: 'roundtrip-' + token + '.sqlite' });
+        const restoredByImport = await adapter.getDocument(documentId);
+        assert(imported.imported === true && imported.validation.schemaVersion === 3, 'SQLite database import validation and apply');
+        assert(imported.backup.path.indexOf('pre-import') >= 0 && restoredByImport.version === 3, 'SQLite database import backup and roundtrip restore');
+        let invalidImport = null;
+        try {
+            await adapter.importDatabase(new Blob([new Uint8Array(512)]), { fileName: 'invalid.sqlite' });
+        } catch (error) { invalidImport = error; }
+        const preservedAfterInvalidImport = await adapter.getDocument(documentId);
+        assert(invalidImport && invalidImport.code === 'DATABASE_IMPORT_HEADER_INVALID'
+            && preservedAfterInvalidImport.version === 3, 'invalid SQLite import preserves current database');
 
         output.dataset.status = 'passed';
         output.textContent = JSON.stringify({

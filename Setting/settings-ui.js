@@ -13,8 +13,17 @@
     let sqliteExplorerSelectedBackupId = '';
     let sqliteExplorerFileDetailToken = 0;
     let sqliteExplorerPreviewUrls = [];
+    let sqliteExplorerLMStudioProbeToken = 0;
+    let sqliteExplorerLMStudioStatus = {
+        state: 'idle',
+        endpoint: '',
+        models: [],
+        error: '',
+        checkedAt: 0
+    };
     let sqliteIntegrityCheckRunning = false;
     let sqliteDatabaseExportRunning = false;
+    let sqliteDatabaseImportRunning = false;
     let sqliteBackupPackageRunning = false;
     let lastSqliteBackupPackage = null;
     let sqliteRestorePreviewRunning = false;
@@ -130,9 +139,12 @@
                 ,'<div class="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">'
                 ,'  <div class="flex flex-wrap items-center gap-2">'
                 ,'    <button type="button" id="sqlite-wasm-db-export" disabled class="px-2 py-1 text-[10px] rounded border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 disabled:opacity-40">WASM DB 파일 내보내기</button>'
-                ,'    <span class="text-[10px] text-slate-500 dark:text-slate-400">OPFS의 SQLite DB만 브라우저 다운로드 · 자산 ZIP 제외</span>'
+                ,'    <input type="file" id="sqlite-wasm-db-import-file" accept=".sqlite,.sqlite3,.db,application/vnd.sqlite3,application/x-sqlite3" class="hidden">'
+                ,'    <button type="button" id="sqlite-wasm-db-import" disabled class="px-2 py-1 text-[10px] rounded border border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-700 dark:text-fuchsia-300 disabled:opacity-40">WASM DB 파일 불러오기</button>'
+                ,'    <span class="text-[10px] text-slate-500 dark:text-slate-400">OPFS SQLite 단일 파일 · 자산 ZIP 제외</span>'
                 ,'  </div>'
                 ,'  <div id="sqlite-wasm-db-export-result" class="hidden mt-2 rounded border p-2 text-[10px]"></div>'
+                ,'  <div id="sqlite-wasm-db-import-result" class="hidden mt-2 rounded border p-2 text-[10px]"></div>'
                 ,'</div>'
                 ,'<div class="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">'
                 ,'  <div class="flex flex-wrap items-center gap-2">'
@@ -166,6 +178,12 @@
             if (integrityCheck) integrityCheck.addEventListener('click', runSqliteIntegrityCheck);
             const databaseExport = panel.querySelector('#sqlite-wasm-db-export');
             if (databaseExport) databaseExport.addEventListener('click', runSqliteWasmDatabaseExport);
+            const databaseImport = panel.querySelector('#sqlite-wasm-db-import');
+            const databaseImportFile = panel.querySelector('#sqlite-wasm-db-import-file');
+            if (databaseImport && databaseImportFile) {
+                databaseImport.addEventListener('click', function () { databaseImportFile.click(); });
+                databaseImportFile.addEventListener('change', runSqliteWasmDatabaseImport);
+            }
             const backupCreate = panel.querySelector('#sqlite-backup-package-create');
             if (backupCreate) backupCreate.addEventListener('click', runSqliteBackupPackageCreate);
             const restoreFile = panel.querySelector('#sqlite-restore-package-file');
@@ -191,12 +209,13 @@
     }
 
     function setSqliteExplorerAvailable(available) {
-        const button = document.getElementById('btn-open-sqlite-explorer');
-        if (!button) return;
-        button.disabled = available !== true;
-        button.title = available === true
-            ? 'SQLite 서버에 저장된 데이터를 읽기 전용으로 탐색'
-            : 'SQLite 로컬 서버 연결 후 사용할 수 있습니다.';
+        const buttons = document.querySelectorAll('#btn-open-sqlite-explorer, #btn-footer-open-sqlite-explorer');
+        buttons.forEach(function (button) {
+            button.disabled = available !== true;
+            button.title = available === true
+                ? '현재 SQLite 백엔드에 저장된 데이터를 읽기 전용으로 탐색'
+                : 'SQLite API 또는 WASM 백엔드 연결 후 사용할 수 있습니다.';
+        });
     }
 
     function setSqliteBackupPackageAvailable(available) {
@@ -223,6 +242,15 @@
         button.disabled = available !== true || sqliteDatabaseExportRunning;
         button.title = available === true
             ? '현재 OPFS SQLite DB를 단일 .sqlite 파일로 다운로드'
+            : 'SQLite WASM 백엔드에 연결된 경우 사용할 수 있습니다.';
+    }
+
+    function setSqliteDatabaseImportAvailable(available) {
+        const button = document.getElementById('sqlite-wasm-db-import');
+        if (!button) return;
+        button.disabled = available !== true || sqliteDatabaseImportRunning;
+        button.title = available === true
+            ? '검증된 SQLite DB 파일로 현재 OPFS DB 교체'
             : 'SQLite WASM 백엔드에 연결된 경우 사용할 수 있습니다.';
     }
 
@@ -600,6 +628,144 @@
         return (item.locked ? '잠김' : '잠금 해제') + (item.last4 ? ' · 끝 ' + item.last4 : '');
     }
 
+    function isLMStudioTool(tool) {
+        return String(tool && tool.provider || '').trim().toLowerCase() === 'lmstudio';
+    }
+
+    function lmStudioConnectionPresentation() {
+        const status = sqliteExplorerLMStudioStatus;
+        if (status.state === 'checking') {
+            return {
+                label: 'LM Studio 연결 확인 중',
+                className: 'border-sky-400 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/40 dark:text-sky-300',
+                detail: '저장된 로컬 엔드포인트와 로드 모델을 확인하고 있습니다.'
+            };
+        }
+        if (status.state === 'connected') {
+            const modelText = status.models.length ? status.models.join(', ') : '';
+            return {
+                label: 'LM Studio 연결됨',
+                className: 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+                detail: modelText ? '로드 모델: ' + modelText : 'LM Studio 로컬 모델에 연결되었습니다.'
+            };
+        }
+        if (status.state === 'server') {
+            return {
+                label: '서버 연결됨 · 모델 없음',
+                className: 'border-amber-500 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300',
+                detail: 'LM Studio 서버에는 연결되었지만 현재 로드된 LLM이 없습니다.'
+            };
+        }
+        if (status.state === 'error') {
+            return {
+                label: 'LM Studio 연결 안 됨',
+                className: 'border-red-400 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300',
+                detail: status.error || 'LM Studio 로컬 서버에 연결할 수 없습니다.'
+            };
+        }
+        return {
+            label: 'LM Studio 확인 전',
+            className: 'border-slate-300 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
+            detail: 'SQLite 탐색 화면에서 로컬 모델 연결 상태를 확인합니다.'
+        };
+    }
+
+    function renderLMStudioConnectionBlock(tool) {
+        if (!isLMStudioTool(tool)) return '';
+        const presentation = lmStudioConnectionPresentation();
+        return [
+            '<div class="mt-2 rounded-md border border-slate-200 bg-white/70 p-2 dark:border-slate-700 dark:bg-slate-900/70">',
+            '<div class="flex flex-wrap items-center gap-2">',
+            '<span data-sqlite-lmstudio-connection class="rounded-full border px-2 py-0.5 text-[10px] font-bold ' + presentation.className + '">' + escapeMigrationText(presentation.label) + '</span>',
+            '<span class="text-[10px] font-semibold text-slate-500 dark:text-slate-400">로컬 AI</span>',
+            '</div>',
+            '<p data-sqlite-lmstudio-connection-detail class="mt-1 break-all text-[10px] text-slate-500 dark:text-slate-400">' + escapeMigrationText(presentation.detail) + '</p>',
+            '</div>'
+        ].join('');
+    }
+
+    function updateSqliteExplorerLMStudioConnectionUI() {
+        const presentation = lmStudioConnectionPresentation();
+        document.querySelectorAll('[data-sqlite-lmstudio-connection]').forEach(function (badge) {
+            badge.textContent = presentation.label;
+            badge.className = 'rounded-full border px-2 py-0.5 text-[10px] font-bold ' + presentation.className;
+            badge.title = sqliteExplorerLMStudioStatus.endpoint || '';
+        });
+        document.querySelectorAll('[data-sqlite-lmstudio-connection-detail]').forEach(function (detail) {
+            detail.textContent = presentation.detail;
+        });
+    }
+
+    function resetSqliteExplorerLMStudioConnection() {
+        sqliteExplorerLMStudioProbeToken += 1;
+        sqliteExplorerLMStudioStatus = {
+            state: 'idle',
+            endpoint: '',
+            models: [],
+            error: '',
+            checkedAt: 0
+        };
+    }
+
+    async function refreshSqliteExplorerLMStudioConnection(tools) {
+        const lmStudioTools = (Array.isArray(tools) ? tools : []).filter(isLMStudioTool);
+        if (!lmStudioTools.length) return;
+
+        let config = {};
+        try {
+            if (!window.LocalAI || typeof window.LocalAI.loadConfig !== 'function' || typeof window.LocalAI.createClient !== 'function') {
+                throw new Error('LM Studio 연결 모듈이 준비되지 않았습니다.');
+            }
+            config = window.LocalAI.loadConfig(localStorage) || {};
+        } catch (error) {
+            sqliteExplorerLMStudioStatus = {
+                state: 'error', endpoint: '', models: [],
+                error: error && error.message ? error.message : String(error), checkedAt: Date.now()
+            };
+            updateSqliteExplorerLMStudioConnectionUI();
+            return;
+        }
+
+        const endpoint = String(config.baseUrl || (lmStudioTools[0] && lmStudioTools[0].endpoint) || '').trim();
+        const current = sqliteExplorerLMStudioStatus;
+        if (current.state === 'checking' && current.endpoint === endpoint) return;
+        if (current.endpoint === endpoint && current.checkedAt && Date.now() - current.checkedAt < 15000) {
+            updateSqliteExplorerLMStudioConnectionUI();
+            return;
+        }
+
+        const token = ++sqliteExplorerLMStudioProbeToken;
+        sqliteExplorerLMStudioStatus = {
+            state: 'checking', endpoint: endpoint, models: [], error: '', checkedAt: 0
+        };
+        updateSqliteExplorerLMStudioConnectionUI();
+        try {
+            const client = window.LocalAI.createClient(config);
+            const loaded = await client.listLoadedModels({ timeoutMs: Math.min(Number(config.timeoutMs) || 8000, 8000) });
+            if (token !== sqliteExplorerLMStudioProbeToken) return;
+            const models = (Array.isArray(loaded) ? loaded : []).map(function (item) {
+                return String(item && (item.displayName || item.id || item.key) || '').trim();
+            }).filter(Boolean);
+            sqliteExplorerLMStudioStatus = {
+                state: models.length ? 'connected' : 'server',
+                endpoint: endpoint,
+                models: models,
+                error: '',
+                checkedAt: Date.now()
+            };
+        } catch (error) {
+            if (token !== sqliteExplorerLMStudioProbeToken) return;
+            sqliteExplorerLMStudioStatus = {
+                state: 'error',
+                endpoint: endpoint,
+                models: [],
+                error: error && error.message ? error.message : String(error),
+                checkedAt: Date.now()
+            };
+        }
+        updateSqliteExplorerLMStudioConnectionUI();
+    }
+
     function renderToolSettingCard(tool) {
         const options = tool && tool.options && typeof tool.options === 'object' ? tool.options : {};
         const optionText = Object.keys(options).filter(function (key) { return options[key] !== ''; }).map(function (key) {
@@ -616,6 +782,7 @@
             '</div>',
             tool.endpoint ? '<p class="mt-2 break-all text-[10px] text-slate-500">Endpoint: ' + escapeMigrationText(tool.endpoint) + '</p>' : '',
             optionText ? '<p class="mt-1 break-all text-[10px] text-slate-500">' + escapeMigrationText(optionText) + '</p>' : '',
+            renderLMStudioConnectionBlock(tool),
             '<details class="mt-2"><summary class="cursor-pointer text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">프롬프트 보기</summary>',
             '<pre class="mt-1 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-200 bg-white p-2 text-[10px] dark:border-slate-700 dark:bg-slate-900">' + escapeMigrationText(tool.prompt || '저장된 프롬프트 없음') + '</pre></details>',
             '</article>'
@@ -696,6 +863,7 @@
             '<p class="mt-3 text-[10px] text-slate-400">API 키 원문은 이 화면에 표시하지 않습니다. 모델·프롬프트·일반 옵션만 읽기 전용으로 확인할 수 있습니다.</p>'
         ].join('');
         bindToolVaultButtons();
+        refreshSqliteExplorerLMStudioConnection(tools);
     }
 
     function openSqliteExplorerSetting(index) {
@@ -931,6 +1099,7 @@
     async function refreshSqliteExplorer() {
         if (sqliteExplorerLoading) return;
         releaseSqliteExplorerPreviewUrls();
+        resetSqliteExplorerLMStudioConnection();
         const status = document.getElementById('sqlite-explorer-status');
         const refreshButton = document.getElementById('sqlite-explorer-refresh');
         const queryElement = document.getElementById('sqlite-explorer-query');
@@ -1250,6 +1419,81 @@
                 ? window.MDPStorage.getStatus() : null;
             setSqliteDatabaseExportAvailable(!!(state && state.sqliteHealth && state.sqliteHealth.capabilities
                 && state.sqliteHealth.capabilities.databaseExport === true));
+        }
+    }
+
+    async function runSqliteWasmDatabaseImport(event) {
+        if (sqliteDatabaseImportRunning) return;
+        const input = event && event.currentTarget
+            ? event.currentTarget : document.getElementById('sqlite-wasm-db-import-file');
+        const file = input && input.files && input.files[0] ? input.files[0] : null;
+        const button = document.getElementById('sqlite-wasm-db-import');
+        const element = document.getElementById('sqlite-wasm-db-import-result');
+        if (!file) return;
+        const accepted = window.confirm(
+            '선택한 SQLite DB로 현재 WASM OPFS DB를 교체합니다.\n\n'
+            + '파일: ' + file.name + '\n크기: ' + formatExplorerBytes(file.size) + '\n\n'
+            + '먼저 schema·설정 정책·integrity·FK를 검사하고 현재 DB를 OPFS에 자동 백업합니다. '
+            + '검사 실패 시 현재 DB는 변경하지 않습니다. 완료 후 앱을 자동으로 새로고침하므로 '
+            + '저장되지 않은 편집 내용은 사라질 수 있습니다. 계속할까요?'
+        );
+        if (!accepted) {
+            input.value = '';
+            return;
+        }
+        sqliteDatabaseImportRunning = true;
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'DB 검사·불러오는 중...';
+        }
+        if (element) {
+            element.className = 'mt-2 rounded border border-slate-300 bg-slate-50 p-2 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300';
+            element.textContent = '후보 DB를 임시 OPFS 영역에서 검증한 뒤 현재 DB를 안전하게 교체하고 있습니다.';
+        }
+        try {
+            if (!window.MDPStorage || typeof window.MDPStorage.importSqliteDatabase !== 'function') {
+                throw new Error('WASM DB 불러오기 모듈이 준비되지 않았습니다.');
+            }
+            const result = await window.MDPStorage.importSqliteDatabase(file, { fileName: file.name });
+            const validation = result && result.validation ? result.validation : {};
+            const counts = validation.counts || {};
+            if (element) {
+                element.className = 'mt-2 rounded border border-emerald-400 bg-emerald-50 p-2 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200';
+                element.innerHTML = '<p class="font-semibold">WASM SQLite DB 불러오기 완료</p>'
+                    + '<p class="mt-1 break-all">' + escapeMigrationText(result.fileName || file.name)
+                    + ' · ' + escapeMigrationText(formatExplorerBytes(result.sizeBytes || file.size)) + '</p>'
+                    + '<p>schema v' + Number(validation.schemaVersion || 0)
+                    + ' · 문서 ' + Number(counts.documents || 0)
+                    + ' · 폴더 ' + Number(counts.folders || 0)
+                    + ' · 버전 ' + Number(counts.versions || 0)
+                    + ' · 설정 ' + Number(counts.settings || 0) + '</p>'
+                    + '<p class="mt-1">기존 DB 자동 백업: ' + escapeMigrationText(result.backup && result.backup.path || '-') + '</p>'
+                    + '<p class="mt-1 font-semibold">새 DB 상태로 앱을 자동 새로고침합니다.</p>';
+            }
+            try {
+                window.dispatchEvent(new CustomEvent('mdp-sqlite-database-imported', { detail: result }));
+            } catch (_) {}
+            if (window.MDPStorage && typeof window.MDPStorage.refreshSqliteHealth === 'function') {
+                await window.MDPStorage.refreshSqliteHealth();
+            }
+            if (typeof window.showToast === 'function') {
+                window.showToast('WASM SQLite DB를 불러왔습니다. 앱을 새로고침합니다.');
+            }
+            setTimeout(function () { window.location.reload(); }, 1200);
+        } catch (error) {
+            if (element) {
+                element.className = 'mt-2 rounded border border-red-300 bg-red-50 p-2 text-[10px] text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300';
+                element.textContent = 'WASM DB 불러오기 실패: ' + (error && error.message ? error.message : error)
+                    + ' · 현재 DB는 유지되거나 자동 백업에서 복구되었습니다.';
+            }
+        } finally {
+            sqliteDatabaseImportRunning = false;
+            if (input) input.value = '';
+            if (button) button.textContent = 'WASM DB 파일 불러오기';
+            const state = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
+                ? window.MDPStorage.getStatus() : null;
+            setSqliteDatabaseImportAvailable(!!(state && state.sqliteHealth && state.sqliteHealth.capabilities
+                && state.sqliteHealth.capabilities.databaseImport === true));
         }
     }
 
@@ -1649,6 +1893,7 @@
             setSqliteBackupPackageAvailable(false);
             setSqliteIntegrityCheckAvailable(false);
             setSqliteDatabaseExportAvailable(false);
+            setSqliteDatabaseImportAvailable(false);
             sqliteRestoreApplyAvailable = false;
             setSqliteRestorePreviewAvailable(false);
             setLocalAppLinkVisible(true);
@@ -1661,6 +1906,7 @@
         setSqliteBackupPackageAvailable(!!(health.capabilities && health.capabilities.backupPackage === true));
         setSqliteIntegrityCheckAvailable(!!(health.capabilities && health.capabilities.integrityCheck === true));
         setSqliteDatabaseExportAvailable(!!(health.capabilities && health.capabilities.databaseExport === true));
+        setSqliteDatabaseImportAvailable(!!(health.capabilities && health.capabilities.databaseImport === true));
         sqliteRestoreApplyAvailable = !!(health.capabilities && health.capabilities.restore === true);
         setSqliteRestorePreviewAvailable(!!(health.capabilities && health.capabilities.restorePreview === true));
         const recovery = state.recoveryStatus || null;

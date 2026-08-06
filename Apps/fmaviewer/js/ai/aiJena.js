@@ -158,7 +158,22 @@ function initAiJenaFeature() {
             const duration = normalizeAiJenaVideoDuration(dom.aiJenaVideoDuration.value, 8);
             dom.aiJenaVideoDuration.value = String(duration);
             localStorage.setItem("fmaAiJenaVideoDuration", String(duration));
+            if (typeof notifyFmaAiToolSettingsChanged === "function") notifyFmaAiToolSettingsChanged();
         });
+        if (!window.__fmaAiJenaDurationStorageBound) {
+            window.__fmaAiJenaDurationStorageBound = true;
+            window.addEventListener("storage", event => {
+                if (event.key !== "fmaAiJenaVideoDuration" || !dom.aiJenaVideoDuration) return;
+                dom.aiJenaVideoDuration.value = String(normalizeAiJenaVideoDuration(event.newValue, 8));
+            });
+            window.addEventListener("mdp-ai-tool-settings-restored", () => {
+                if (!dom.aiJenaVideoDuration) return;
+                dom.aiJenaVideoDuration.value = String(normalizeAiJenaVideoDuration(
+                    localStorage.getItem("fmaAiJenaVideoDuration"),
+                    8
+                ));
+            });
+        }
     }
     dom.aiJenaPrompt.addEventListener("keydown", event => {
         if (event.key !== "Enter" || !event.ctrlKey || event.isComposing) return;
@@ -2008,6 +2023,7 @@ function getAiJenaVideoDuration() {
         throw new Error("Veo 영상 시간은 4초, 6초 또는 8초로 입력해 주세요.");
     }
     localStorage.setItem("fmaAiJenaVideoDuration", String(duration));
+    if (typeof notifyFmaAiToolSettingsChanged === "function") notifyFmaAiToolSettingsChanged();
     return duration;
 }
 

@@ -7,6 +7,8 @@ const WORKER_PARAMETERS = new URL(self.location.href).searchParams;
 const TEST_MODE = WORKER_PARAMETERS.get('test') === '1';
 const DATABASE_NAME = TEST_MODE ? '/mdpro-browser-test.sqlite' : '/mdpro.sqlite';
 const MIGRATION_BACKUP_NAME = TEST_MODE ? '/pre-migration-test.sqlite' : '/pre-migration.sqlite';
+const IMPORT_CANDIDATE_NAME = TEST_MODE ? '/import-candidate-test.sqlite' : '/import-candidate.sqlite';
+const PRE_IMPORT_BACKUP_NAME = TEST_MODE ? '/pre-import-test.sqlite' : '/pre-import.sqlite';
 const SCHEMA_URL = '../LocalSave_sqlite/migrations/001_initial_v3.sql';
 const MANIFEST_URL = '../LocalSave_sqlite/migrations/manifest.json';
 const SQLITE_JS_URL = './vendor/sqlite3/sqlite3.js';
@@ -15,6 +17,18 @@ const SAFE_ID_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_TITLE_LENGTH = 500;
 const MAX_CONTENT_BYTES = 10 * 1024 * 1024;
 const MAX_SEARCH_LENGTH = 500;
+const MAX_DATABASE_IMPORT_BYTES = 512 * 1024 * 1024;
+const MAX_WORK_FILE_BYTES = 512 * 1024 * 1024;
+const SAFE_APP_RE = /^[a-z][a-z0-9_-]{0,63}$/;
+const FMA_WORK_TYPES = Object.freeze({
+    fma: 'application/vnd.fma+zip',
+    fma_webp: 'application/vnd.fma+zip',
+    fma_snapshot: 'application/vnd.fma+zip'
+});
+const REQUIRED_IMPORT_TABLES = Object.freeze([
+    'schema_migrations', 'app_meta', 'profiles', 'workspaces', 'folders',
+    'documents', 'document_versions', 'settings', 'document_fts'
+]);
 
 let sqlite3 = null;
 let poolUtil = null;
@@ -48,6 +62,14 @@ function randomId(prefix) {
 
 async function sha256Text(value) {
     const bytes = new TextEncoder().encode(String(value == null ? '' : value));
+    const digest = await self.crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map(function (byte) {
+        return byte.toString(16).padStart(2, '0');
+    }).join('');
+}
+
+async function sha256Bytes(value) {
+    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value || 0);
     const digest = await self.crypto.subtle.digest('SHA-256', bytes);
     return Array.from(new Uint8Array(digest)).map(function (byte) {
         return byte.toString(16).padStart(2, '0');
@@ -108,6 +130,22 @@ function execute(sql, bind) {
 
 function transaction(callback) {
     return database.transaction('IMMEDIATE', callback);
+}
+
+function configureDatabaseConnection(connection) {
+    connection.exec([
+        'PRAGMA foreign_keys = ON;',
+        'PRAGMA journal_mode = DELETE;',
+        'PRAGMA synchronous = NORMAL;',
+        'PRAGMA busy_timeout = 5000;',
+        'PRAGMA temp_store = MEMORY;',
+        'PRAGMA recursive_triggers = ON;'
+    ].join('\n'));
+    return connection;
+}
+
+function openPoolDatabase(name) {
+    return configureDatabaseConnection(new poolUtil.OpfsSAHPoolDb(name));
 }
 
 function documentSummary(source) {
@@ -252,15 +290,7 @@ async function initializeDatabase() {
             initialCapacity: 8
         });
         await poolUtil.reserveMinimumCapacity(8);
-        database = new poolUtil.OpfsSAHPoolDb(DATABASE_NAME);
-        database.exec([
-            'PRAGMA foreign_keys = ON;',
-            'PRAGMA journal_mode = DELETE;',
-            'PRAGMA synchronous = NORMAL;',
-            'PRAGMA busy_timeout = 5000;',
-            'PRAGMA temp_store = MEMORY;',
-            'PRAGMA recursive_triggers = ON;'
-        ].join('\n'));
+        database = openPoolDatabase(DATABASE_NAME);
         const schema = await loadAndVerifySchema();
         const hasSchema = value("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_migrations'");
         const currentVersion = hasSchema
@@ -307,15 +337,16 @@ const CAPABILITIES = Object.freeze({
     migrationPreview: true,
     onlineBackup: true,
     databaseExport: true,
-    explorer: false,
+    databaseImport: true,
+    explorer: true,
     backup: false,
     backupPackage: false,
     backupExplorer: false,
     restorePreview: false,
     restore: false,
-    workFiles: false,
+    workFiles: true,
     modelAssets: false,
-    fmaPreview: false,
+    fmaPreview: true,
     imageProxy: false,
     staticHosting: false,
     storageModeActivation: true
@@ -636,6 +667,369 @@ function listSettings(options) {
     ).map(settingResult);
 }
 
+function normalizeWorkFilePayload(payloadInput) {
+    const payload = payloadInput && typeof payloadInput === 'object' ? payloadInput : {};
+    const appId = String(payload.appId || '').trim().toLowerCase();
+    const workType = String(payload.workType || '').trim().toLowerCase();
+    const rawName = String(payload.fileName || '').replace(/\\/g, '/').split('/').pop().trim();
+    const bytes = payload.bytes instanceof Uint8Array
+        ? payload.bytes
+        : (payload.bytes instanceof ArrayBuffer ? new Uint8Array(payload.bytes) : null);
+    if (!SAFE_APP_RE.test(appId)) throw appError('WORK_FILE_APP_INVALID', 'Work file app identifier is invalid.');
+    if (appId !== 'fmaviewer') throw appError('WORK_FILE_APP_UNSUPPORTED', 'SQLite WASM currently supports FMA Viewer work files only.', 415);
+    if (!Object.prototype.hasOwnProperty.call(FMA_WORK_TYPES, workType)) {
+        throw appError('WORK_FILE_TYPE_UNSUPPORTED', 'SQLite WASM currently supports FMA work files only.', 415);
+    }
+    if (!rawName || rawName.length > 255 || rawName.indexOf('\u0000') >= 0 || !/\.fma$/i.test(rawName)) {
+        throw appError('WORK_FILE_NAME_INVALID', 'FMA work file name is invalid.');
+    }
+    if (!bytes || bytes.byteLength <= 0) throw appError('WORK_FILE_EMPTY', 'FMA work file is empty.');
+    if (bytes.byteLength > MAX_WORK_FILE_BYTES) {
+        throw appError('WORK_FILE_TOO_LARGE', 'FMA work file exceeds the browser 512 MB limit.', 413, {
+            sizeBytes: bytes.byteLength,
+            maxBytes: MAX_WORK_FILE_BYTES
+        });
+    }
+    if (bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
+        throw appError('FMA_ARCHIVE_INVALID', 'FMA file is not a valid ZIP archive.');
+    }
+    return {
+        appId: appId,
+        workType: workType,
+        fileName: rawName,
+        mimeType: FMA_WORK_TYPES[workType],
+        bytes: bytes,
+        validation: payload.validation && typeof payload.validation === 'object' ? payload.validation : {}
+    };
+}
+
+function workFileResult(source, appId) {
+    return {
+        id: source.id,
+        assetId: source.asset_id,
+        appId: appId,
+        workType: String(source.remote_revision || ''),
+        name: source.name,
+        extension: String(source.extension || ''),
+        mimeType: String(source.mime_type || 'application/octet-stream'),
+        sizeBytes: Number(source.size_bytes) || 0,
+        checksumSha256: String(source.checksum || ''),
+        createdAt: Number(source.created_at) || null,
+        updatedAt: Number(source.updated_at) || null,
+        downloadUrl: null
+    };
+}
+
+async function uploadWorkFile(payloadInput) {
+    const payload = normalizeWorkFilePayload(payloadInput);
+    const checksum = await sha256Bytes(payload.bytes);
+    const timestamp = nowMs();
+    const sourceId = 'source_sqlite_workfiles_' + payload.appId;
+    const entryId = randomId('file_');
+    let assetId = randomId('asset_');
+    let deduplicatedAsset = false;
+    const logicalPath = payload.appId + '/' + timestamp + '/' + entryId.slice(-12) + '_' + payload.fileName;
+
+    transaction(function () {
+        execute(
+            "INSERT INTO workspace_sources (id, workspace_id, source_type, name, root_uri, config_json, sync_direction, is_enabled, status, created_at, updated_at) "
+            + "VALUES (?, ?, 'internal_library', ?, ?, ?, 'manual', 1, 'ready', ?, ?) "
+            + "ON CONFLICT(id) DO UPDATE SET name=excluded.name, config_json=excluded.config_json, is_enabled=1, status='ready', updated_at=excluded.updated_at",
+            [sourceId, WORKSPACE_ID, payload.appId + ' SQLite 작업파일', 'sqlite://workfiles/' + payload.appId,
+                JSON.stringify({ appId: payload.appId, kind: 'workfiles' }), timestamp, timestamp]
+        );
+
+        const existing = row(
+            'SELECT a.id, a.storage_type, a.size_bytes, b.asset_id AS blob_asset_id FROM assets a '
+            + 'LEFT JOIN asset_blobs b ON b.asset_id=a.id '
+            + 'WHERE a.workspace_id=? AND a.checksum_sha256=? AND a.deleted_at IS NULL',
+            [WORKSPACE_ID, checksum]
+        );
+        if (existing) {
+            assetId = String(existing.id);
+            deduplicatedAsset = existing.storage_type === 'sqlite_blob'
+                && Boolean(existing.blob_asset_id)
+                && Number(existing.size_bytes) === payload.bytes.byteLength;
+            if (!deduplicatedAsset) {
+                execute(
+                    "UPDATE assets SET asset_type='attachment', storage_type='sqlite_blob', original_name=?, stored_name=?, "
+                    + "relative_path=NULL, external_url=NULL, mime_type=?, extension='fma', size_bytes=?, checksum_sha256=?, "
+                    + "source_provider=?, updated_at=? WHERE id=?",
+                    [payload.fileName, checksum + '.fma', payload.mimeType, payload.bytes.byteLength, checksum,
+                        'sqlite_workfiles:' + payload.appId, timestamp, assetId]
+                );
+                execute(
+                    'INSERT INTO asset_blobs (asset_id, blob_data, created_at) VALUES (?, ?, ?) '
+                    + 'ON CONFLICT(asset_id) DO UPDATE SET blob_data=excluded.blob_data, created_at=excluded.created_at',
+                    [assetId, payload.bytes, timestamp]
+                );
+            }
+        } else {
+            execute(
+                "INSERT INTO assets (id, workspace_id, asset_type, storage_type, original_name, stored_name, mime_type, extension, "
+                + "size_bytes, checksum_sha256, source_provider, created_at, updated_at) "
+                + "VALUES (?, ?, 'attachment', 'sqlite_blob', ?, ?, ?, 'fma', ?, ?, ?, ?, ?)",
+                [assetId, WORKSPACE_ID, payload.fileName, checksum + '.fma', payload.mimeType, payload.bytes.byteLength,
+                    checksum, 'sqlite_workfiles:' + payload.appId, timestamp, timestamp]
+            );
+            execute(
+                'INSERT INTO asset_blobs (asset_id, blob_data, created_at) VALUES (?, ?, ?)',
+                [assetId, payload.bytes, timestamp]
+            );
+        }
+
+        execute(
+            "INSERT INTO file_entries (id, source_id, entry_type, path, name, extension, mime_type, asset_id, size_bytes, "
+            + "modified_at, remote_revision, checksum, base_checksum, sync_status, created_at, updated_at) "
+            + "VALUES (?, ?, 'file', ?, ?, 'fma', ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?)",
+            [entryId, sourceId, logicalPath, payload.fileName, payload.mimeType, assetId, payload.bytes.byteLength,
+                timestamp, payload.workType, checksum, checksum, timestamp, timestamp]
+        );
+    });
+
+    return {
+        id: entryId,
+        assetId: assetId,
+        appId: payload.appId,
+        workType: payload.workType,
+        name: payload.fileName,
+        mimeType: payload.mimeType,
+        sizeBytes: payload.bytes.byteLength,
+        checksumSha256: checksum,
+        createdAt: timestamp,
+        deduplicatedAsset: deduplicatedAsset,
+        validation: payload.validation,
+        downloadUrl: null
+    };
+}
+
+function listWorkFiles(options) {
+    const config = options || {};
+    const appId = String(config.appId || 'fmaviewer').trim().toLowerCase();
+    if (!SAFE_APP_RE.test(appId)) throw appError('WORK_FILE_APP_INVALID', 'Work file app identifier is invalid.');
+    const workType = String(config.workType || '').trim().toLowerCase();
+    if (workType && !Object.prototype.hasOwnProperty.call(FMA_WORK_TYPES, workType)) {
+        throw appError('WORK_FILE_TYPE_UNSUPPORTED', 'SQLite WASM currently supports FMA work files only.', 415);
+    }
+    const query = String(config.query || '').trim();
+    if (query.length > MAX_SEARCH_LENGTH) throw appError('WORK_FILE_QUERY_TOO_LONG', 'Work file search query is too long.');
+    const limit = Math.max(1, Math.min(Number(config.limit) || 100, 500));
+    const clauses = ['f.source_id=?', 'f.deleted_at IS NULL', 'a.deleted_at IS NULL'];
+    const bind = ['source_sqlite_workfiles_' + appId];
+    if (query) {
+        const pattern = '%' + query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_') + '%';
+        clauses.push("(f.name LIKE ? ESCAPE '\\' OR f.path LIKE ? ESCAPE '\\')");
+        bind.push(pattern, pattern);
+    }
+    if (workType) {
+        clauses.push('f.remote_revision=?');
+        bind.push(workType);
+    }
+    bind.push(limit);
+    const items = rows(
+        'SELECT f.id, f.asset_id, f.name, f.extension, f.mime_type, f.size_bytes, f.remote_revision, '
+        + 'f.checksum, f.created_at, f.updated_at FROM file_entries f JOIN assets a ON a.id=f.asset_id '
+        + 'WHERE ' + clauses.join(' AND ') + ' ORDER BY f.created_at DESC, f.id DESC LIMIT ?',
+        bind
+    ).map(function (item) { return workFileResult(item, appId); });
+    return { items: items, query: query, appId: appId, workType: workType || null, limit: limit };
+}
+
+function requireWorkFile(entryId) {
+    const normalizedId = requireId(entryId, 'fileEntryId');
+    const item = row(
+        'SELECT f.id, f.asset_id, f.name, f.extension, f.mime_type, f.size_bytes, f.remote_revision, '
+        + 'f.checksum, f.created_at, f.updated_at, a.storage_type, a.checksum_sha256, b.blob_data '
+        + 'FROM file_entries f JOIN workspace_sources s ON s.id=f.source_id JOIN assets a ON a.id=f.asset_id '
+        + 'LEFT JOIN asset_blobs b ON b.asset_id=a.id '
+        + "WHERE f.id=? AND s.workspace_id=? AND s.id='source_sqlite_workfiles_fmaviewer' "
+        + 'AND f.deleted_at IS NULL AND a.deleted_at IS NULL',
+        [normalizedId, WORKSPACE_ID]
+    );
+    if (!item) throw appError('WORK_FILE_NOT_FOUND', 'Work file was not found.', 404);
+    if (item.storage_type !== 'sqlite_blob' || !(item.blob_data instanceof Uint8Array)) {
+        throw appError('WORK_FILE_ASSET_MISSING', 'Stored FMA bytes are not available in this browser database.', 409);
+    }
+    if (item.blob_data.byteLength !== Number(item.size_bytes)) {
+        throw appError('WORK_FILE_SIZE_MISMATCH', 'Stored FMA size does not match its metadata.', 409);
+    }
+    return item;
+}
+
+function downloadWorkFile(entryId) {
+    const item = requireWorkFile(entryId);
+    const result = workFileResult(item, 'fmaviewer');
+    result.bytes = new Uint8Array(item.blob_data);
+    return result;
+}
+
+function getExplorerFileEntry(entryId) {
+    const normalizedId = requireId(entryId, 'fileEntryId');
+    const item = row(
+        'SELECT e.id, e.source_id, s.name AS source_name, e.parent_id, e.entry_type, e.path, e.name, '
+        + 'e.extension, e.mime_type, e.content_text, e.size_bytes, e.modified_at, e.remote_revision, e.checksum, '
+        + 'e.sync_status, e.created_at, e.updated_at FROM file_entries e JOIN workspace_sources s ON s.id=e.source_id '
+        + 'WHERE e.id=? AND s.workspace_id=? AND e.deleted_at IS NULL',
+        [normalizedId, WORKSPACE_ID]
+    );
+    if (!item) throw appError('FILE_ENTRY_NOT_FOUND', 'File entry not found.', 404);
+    return {
+        id: item.id, sourceId: item.source_id, sourceName: item.source_name, parentId: item.parent_id,
+        entryType: item.entry_type, path: item.path, name: item.name, extension: item.extension,
+        mimeType: item.mime_type, content: item.content_text, sizeBytes: Number(item.size_bytes) || 0,
+        modifiedAt: Number(item.modified_at) || null, workType: String(item.remote_revision || ''),
+        checksum: item.checksum, syncStatus: item.sync_status,
+        createdAt: Number(item.created_at) || null, updatedAt: Number(item.updated_at) || null
+    };
+}
+
+function getExplorerSnapshot(options) {
+    const config = options || {};
+    const query = String(config.query || '').trim();
+    if (query.length > MAX_SEARCH_LENGTH) throw appError('SEARCH_QUERY_TOO_LONG', 'Search query is too long.');
+    const limit = Math.max(1, Math.min(Number(config.limit) || 200, 500));
+    const pattern = '%' + query.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_') + '%';
+
+    const documentWhere = [
+        'd.workspace_id=?',
+        'd.deleted_at IS NULL'
+    ];
+    const documentBind = [WORKSPACE_ID];
+    if (query) {
+        documentWhere.push("(d.title LIKE ? ESCAPE '\\' OR d.id LIKE ? ESCAPE '\\' OR COALESCE(f.name, '') LIKE ? ESCAPE '\\')");
+        documentBind.push(pattern, pattern, pattern);
+    }
+    documentBind.push(limit);
+    const documents = rows(
+        'SELECT d.id, d.workspace_id, d.folder_id, d.title, d.content_format, d.document_type, d.status, '
+        + 'd.word_count, d.version, d.checksum, d.source_mode, d.created_at, d.updated_at, d.last_opened_at, '
+        + 'f.name AS folder_name FROM documents d LEFT JOIN folders f ON f.id=d.folder_id AND f.deleted_at IS NULL '
+        + 'WHERE ' + documentWhere.join(' AND ') + ' ORDER BY d.updated_at DESC, d.id ASC LIMIT ?',
+        documentBind
+    ).map(function (item) {
+        return Object.assign(documentSummary(item), {
+            checksum: item.checksum,
+            sourceMode: item.source_mode,
+            folderName: item.folder_name
+        });
+    });
+
+    const folderWhere = ['workspace_id=?', 'deleted_at IS NULL'];
+    const folderBind = [WORKSPACE_ID];
+    if (query) {
+        folderWhere.push("(name LIKE ? ESCAPE '\\' OR id LIKE ? ESCAPE '\\')");
+        folderBind.push(pattern, pattern);
+    }
+    folderBind.push(limit);
+    const folders = rows(
+        'SELECT folders.*, (SELECT COUNT(*) FROM documents d WHERE d.folder_id=folders.id AND d.deleted_at IS NULL) AS document_count '
+        + 'FROM folders WHERE ' + folderWhere.join(' AND ')
+        + " ORDER BY CASE WHEN id='root' THEN 0 ELSE 1 END, sort_order, name, id LIMIT ?",
+        folderBind
+    ).map(function (item) {
+        return Object.assign(folderResult(item), { documentCount: Number(item.document_count) || 0 });
+    });
+
+    const settingWhere = [];
+    const settingBind = [];
+    if (query) {
+        settingWhere.push("(setting_key LIKE ? ESCAPE '\\' OR setting_group LIKE ? ESCAPE '\\' OR scope_type LIKE ? ESCAPE '\\' OR scope_id LIKE ? ESCAPE '\\' OR value_json LIKE ? ESCAPE '\\')");
+        settingBind.push(pattern, pattern, pattern, pattern, pattern);
+    }
+    settingBind.push(limit);
+    const settings = rows(
+        'SELECT * FROM settings' + (settingWhere.length ? ' WHERE ' + settingWhere.join(' AND ') : '')
+        + ' ORDER BY updated_at DESC, setting_group, setting_key LIMIT ?',
+        settingBind
+    ).map(settingResult);
+
+    const checkpoints = rows(
+        "SELECT key, value_json, updated_at FROM app_meta WHERE key LIKE 'indexeddb_migration:%' ORDER BY updated_at DESC, key DESC LIMIT ?",
+        [limit]
+    ).map(function (item) {
+        let metadata = {};
+        try { metadata = JSON.parse(item.value_json) || {}; } catch (_) { metadata = { status: 'invalid_metadata' }; }
+        return {
+            key: item.key,
+            migrationId: String(item.key).split(':').slice(1).join(':'),
+            status: metadata.status,
+            fingerprint: metadata.fingerprint,
+            applied: metadata.applied || {},
+            verified: metadata.verified || {},
+            backup: metadata.backup || null,
+            completedAt: metadata.completedAt || null,
+            updatedAt: Number(item.updated_at) || null
+        };
+    });
+
+    const sources = rows(
+        'SELECT id, source_type, name, root_uri, sync_direction, is_enabled, status, last_synced_at, created_at, updated_at '
+        + 'FROM workspace_sources WHERE workspace_id=? ORDER BY updated_at DESC, id ASC LIMIT ?',
+        [WORKSPACE_ID, limit]
+    ).map(function (item) {
+        return {
+            id: item.id, type: item.source_type, name: item.name, rootUri: item.root_uri,
+            syncDirection: item.sync_direction, isEnabled: item.is_enabled === 1, status: item.status,
+            lastSyncedAt: Number(item.last_synced_at) || null, createdAt: Number(item.created_at) || null,
+            updatedAt: Number(item.updated_at) || null
+        };
+    });
+
+    const fileWhere = ['s.workspace_id=?', 'e.deleted_at IS NULL'];
+    const fileBind = [WORKSPACE_ID];
+    if (query) {
+        fileWhere.push("(e.path LIKE ? ESCAPE '\\' OR e.name LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\')");
+        fileBind.push(pattern, pattern, pattern);
+    }
+    fileBind.push(limit);
+    const fileEntries = rows(
+        'SELECT e.id, e.source_id, s.name AS source_name, e.parent_id, e.entry_type, e.path, e.name, '
+        + 'e.extension, e.mime_type, e.size_bytes, e.modified_at, e.remote_revision, e.checksum, e.sync_status, '
+        + 'e.created_at, e.updated_at FROM file_entries e JOIN workspace_sources s ON s.id=e.source_id '
+        + 'WHERE ' + fileWhere.join(' AND ') + " ORDER BY CASE WHEN e.entry_type='folder' THEN 0 ELSE 1 END, e.path, e.id LIMIT ?",
+        fileBind
+    ).map(function (item) {
+        return {
+            id: item.id, sourceId: item.source_id, sourceName: item.source_name, parentId: item.parent_id,
+            entryType: item.entry_type, path: item.path, name: item.name, extension: item.extension,
+            mimeType: item.mime_type, sizeBytes: Number(item.size_bytes) || 0,
+            modifiedAt: Number(item.modified_at) || null, workType: String(item.remote_revision || ''),
+            checksum: item.checksum, syncStatus: item.sync_status,
+            createdAt: Number(item.created_at) || null, updatedAt: Number(item.updated_at) || null
+        };
+    });
+
+    return {
+        readOnly: true,
+        query: query,
+        limit: limit,
+        database: {
+            path: 'OPFS:' + DATABASE_NAME,
+            schemaVersion: Number(value('SELECT COALESCE(MAX(version), 0) FROM schema_migrations')) || 0,
+            sqliteVersion: String(value('SELECT sqlite_version()')),
+            journalMode: String(value('PRAGMA journal_mode'))
+        },
+        counts: {
+            documents: Number(value('SELECT COUNT(*) FROM documents WHERE workspace_id=? AND deleted_at IS NULL', [WORKSPACE_ID])) || 0,
+            deletedDocuments: Number(value('SELECT COUNT(*) FROM documents WHERE workspace_id=? AND deleted_at IS NOT NULL', [WORKSPACE_ID])) || 0,
+            folders: Number(value('SELECT COUNT(*) FROM folders WHERE workspace_id=? AND deleted_at IS NULL', [WORKSPACE_ID])) || 0,
+            versions: Number(value('SELECT COUNT(*) FROM document_versions v JOIN documents d ON d.id=v.document_id WHERE d.workspace_id=?', [WORKSPACE_ID])) || 0,
+            backups: 0,
+            migrationCheckpoints: Number(value("SELECT COUNT(*) FROM app_meta WHERE key LIKE 'indexeddb_migration:%'")) || 0,
+            sources: Number(value('SELECT COUNT(*) FROM workspace_sources WHERE workspace_id=?', [WORKSPACE_ID])) || 0,
+            fileEntries: Number(value('SELECT COUNT(*) FROM file_entries e JOIN workspace_sources s ON s.id=e.source_id WHERE s.workspace_id=? AND e.deleted_at IS NULL', [WORKSPACE_ID])) || 0,
+            settings: Number(value('SELECT COUNT(*) FROM settings')) || 0
+        },
+        documents: documents,
+        folders: folders,
+        backups: [],
+        migrationCheckpoints: checkpoints,
+        sources: sources,
+        fileEntries: fileEntries,
+        settings: settings
+    };
+}
+
 function putSetting(payload) {
     const item = self.MDPWasmSettingPolicy.validateSetting(payload);
     const timestamp = nowMs();
@@ -897,6 +1291,179 @@ function exportDatabase(options) {
     };
 }
 
+function firstColumnStrings(connection, sql) {
+    return connection.selectObjects(sql).map(function (item) {
+        return String(Object.values(item)[0]);
+    });
+}
+
+function validateImportedDatabase(connection, expectedSchemaVersion) {
+    const objectNames = new Set(connection.selectObjects(
+        "SELECT name FROM sqlite_schema WHERE type IN ('table', 'view')"
+    ).map(function (item) { return String(item.name); }));
+    const missingTables = REQUIRED_IMPORT_TABLES.filter(function (name) { return !objectNames.has(name); });
+    if (missingTables.length) {
+        throw appError('DATABASE_IMPORT_SCHEMA_INVALID', '필수 SQLite 테이블이 없습니다.', 400, {
+            missingTables: missingTables
+        });
+    }
+    const schemaVersion = Number(connection.selectValue(
+        'SELECT COALESCE(MAX(version), 0) FROM schema_migrations'
+    )) || 0;
+    if (schemaVersion !== Number(expectedSchemaVersion)) {
+        throw appError(
+            'DATABASE_IMPORT_SCHEMA_VERSION_MISMATCH',
+            'DB schema 버전이 현재 앱과 일치하지 않습니다.',
+            409,
+            { expected: Number(expectedSchemaVersion), actual: schemaVersion }
+        );
+    }
+    if (!connection.selectValue('SELECT 1 FROM profiles WHERE id=?', [PROFILE_ID])
+        || !connection.selectValue('SELECT 1 FROM workspaces WHERE id=?', [WORKSPACE_ID])
+        || !connection.selectValue('SELECT 1 FROM folders WHERE id=? AND workspace_id=? AND deleted_at IS NULL', [ROOT_FOLDER_ID, WORKSPACE_ID])) {
+        throw appError('DATABASE_IMPORT_BOOTSTRAP_MISSING', '기본 profile, workspace 또는 ROOT 폴더가 없습니다.', 400);
+    }
+
+    connection.selectObjects(
+        'SELECT scope_type, scope_id, setting_group, setting_key, value_json FROM settings'
+    ).forEach(function (source) {
+        let parsed;
+        try { parsed = JSON.parse(source.value_json); } catch (_) {
+            throw appError('DATABASE_IMPORT_SETTING_INVALID', 'DB에 올바르지 않은 설정 JSON이 있습니다.', 400, {
+                key: source.setting_key
+            });
+        }
+        const validated = self.MDPWasmSettingPolicy.validateSetting({
+            key: source.setting_key,
+            value: parsed,
+            scopeType: source.scope_type,
+            scopeId: source.scope_id
+        });
+        if (validated.group !== String(source.setting_group)) {
+            throw appError('DATABASE_IMPORT_SETTING_POLICY_MISMATCH', 'DB 설정 그룹이 현재 보안 정책과 일치하지 않습니다.', 400, {
+                key: source.setting_key
+            });
+        }
+    });
+
+    const quickCheck = firstColumnStrings(connection, 'PRAGMA quick_check');
+    const integrityCheckResult = firstColumnStrings(connection, 'PRAGMA integrity_check');
+    const foreignKeyViolations = connection.selectObjects('PRAGMA foreign_key_check');
+    const checksOk = quickCheck.every(function (item) { return item.toLowerCase() === 'ok'; })
+        && integrityCheckResult.every(function (item) { return item.toLowerCase() === 'ok'; })
+        && foreignKeyViolations.length === 0;
+    if (!checksOk) {
+        throw appError('DATABASE_IMPORT_INTEGRITY_FAILED', '불러올 SQLite DB의 무결성 검사에 실패했습니다.', 400, {
+            quickCheck: quickCheck,
+            integrityCheck: integrityCheckResult,
+            foreignKeyViolations: foreignKeyViolations.slice(0, 20)
+        });
+    }
+    return {
+        schemaVersion: schemaVersion,
+        quickCheck: quickCheck,
+        integrityCheck: integrityCheckResult,
+        foreignKeyViolations: foreignKeyViolations.length,
+        counts: {
+            documents: Number(connection.selectValue('SELECT COUNT(*) FROM documents WHERE workspace_id=? AND deleted_at IS NULL', [WORKSPACE_ID])) || 0,
+            folders: Number(connection.selectValue('SELECT COUNT(*) FROM folders WHERE workspace_id=? AND deleted_at IS NULL', [WORKSPACE_ID])) || 0,
+            versions: Number(connection.selectValue('SELECT COUNT(*) FROM document_versions')) || 0,
+            settings: Number(connection.selectValue('SELECT COUNT(*) FROM settings')) || 0
+        }
+    };
+}
+
+function normalizeImportBytes(payload) {
+    const source = payload && payload.bytes;
+    let bytes;
+    if (source instanceof Uint8Array) bytes = source;
+    else if (source instanceof ArrayBuffer) bytes = new Uint8Array(source);
+    else if (ArrayBuffer.isView(source)) bytes = new Uint8Array(source.buffer, source.byteOffset, source.byteLength);
+    else throw appError('DATABASE_IMPORT_FILE_REQUIRED', 'SQLite DB 파일 데이터가 필요합니다.', 400);
+    if (bytes.byteLength < 512 || bytes.byteLength > MAX_DATABASE_IMPORT_BYTES || bytes.byteLength % 512 !== 0) {
+        throw appError('DATABASE_IMPORT_SIZE_INVALID', 'SQLite DB 파일 크기가 올바르지 않거나 512MB 제한을 초과했습니다.', 413, {
+            sizeBytes: bytes.byteLength,
+            maxBytes: MAX_DATABASE_IMPORT_BYTES
+        });
+    }
+    const expectedHeader = 'SQLite format 3\u0000';
+    for (let index = 0; index < expectedHeader.length; index += 1) {
+        if (bytes[index] !== expectedHeader.charCodeAt(index)) {
+            throw appError('DATABASE_IMPORT_HEADER_INVALID', 'SQLite format 3 파일이 아닙니다.', 400);
+        }
+    }
+    return bytes;
+}
+
+async function importDatabase(payloadInput) {
+    const payload = payloadInput && typeof payloadInput === 'object' ? payloadInput : {};
+    const bytes = normalizeImportBytes(payload);
+    const expectedSchemaVersion = Number(value('SELECT COALESCE(MAX(version), 0) FROM schema_migrations')) || 0;
+    const sourceFileName = String(payload.fileName || 'import.sqlite').slice(0, 260);
+    let candidate = null;
+    let liveBytes = null;
+    let mainTouched = false;
+    let validation = null;
+    try {
+        try { poolUtil.unlink(IMPORT_CANDIDATE_NAME); } catch (_) {}
+        poolUtil.importDb(IMPORT_CANDIDATE_NAME, bytes);
+        candidate = openPoolDatabase(IMPORT_CANDIDATE_NAME);
+        validation = validateImportedDatabase(candidate, expectedSchemaVersion);
+        candidate.close();
+        candidate = null;
+        try { poolUtil.unlink(IMPORT_CANDIDATE_NAME); } catch (_) {}
+
+        liveBytes = poolUtil.exportFile(DATABASE_NAME);
+        poolUtil.importDb(PRE_IMPORT_BACKUP_NAME, liveBytes);
+        database.close();
+        database = null;
+        mainTouched = true;
+        poolUtil.importDb(DATABASE_NAME, bytes);
+        database = openPoolDatabase(DATABASE_NAME);
+        validation = validateImportedDatabase(database, expectedSchemaVersion);
+        execute(
+            'INSERT INTO app_meta (key, value_json, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=excluded.updated_at',
+            [
+                'last_database_import',
+                JSON.stringify({ fileName: sourceFileName, sizeBytes: bytes.byteLength, schemaVersion: validation.schemaVersion }),
+                nowMs()
+            ]
+        );
+        return {
+            imported: true,
+            fileName: sourceFileName,
+            sizeBytes: bytes.byteLength,
+            validation: validation,
+            backup: {
+                path: 'OPFS:' + PRE_IMPORT_BACKUP_NAME,
+                sizeBytes: liveBytes.byteLength
+            },
+            databasePath: 'OPFS:' + DATABASE_NAME
+        };
+    } catch (error) {
+        if (candidate) {
+            try { candidate.close(); } catch (_) {}
+            candidate = null;
+        }
+        try { poolUtil.unlink(IMPORT_CANDIDATE_NAME); } catch (_) {}
+        if (mainTouched && liveBytes) {
+            try {
+                if (database) database.close();
+                database = null;
+                poolUtil.importDb(DATABASE_NAME, liveBytes);
+                database = openPoolDatabase(DATABASE_NAME);
+            } catch (rollbackError) {
+                throw appError('DATABASE_IMPORT_ROLLBACK_FAILED', 'DB 불러오기 실패 후 기존 DB 복구에도 실패했습니다.', 500, {
+                    importError: String(error && error.message || error),
+                    rollbackError: String(rollbackError && rollbackError.message || rollbackError)
+                });
+            }
+        }
+        if (error && error.code) throw error;
+        throw appError('DATABASE_IMPORT_FAILED', String(error && error.message || 'SQLite DB 불러오기에 실패했습니다.'), 500);
+    }
+}
+
 async function dispatch(method, args) {
     await initializeDatabase();
     const input = Array.isArray(args) ? args : [];
@@ -919,10 +1486,18 @@ async function dispatch(method, args) {
     case 'listSettings': return listSettings(input[0]);
     case 'getResolvedSettings': return getResolvedSettings(input[0]);
     case 'putSetting': return putSetting(input[0]);
+    case 'getExplorerSnapshot': return getExplorerSnapshot(input[0]);
+    case 'getExplorerDocument': return getDocument(input[0]);
+    case 'listExplorerDocumentVersions': return listDocumentVersions(input[0]);
+    case 'getExplorerFileEntry': return getExplorerFileEntry(input[0]);
+    case 'uploadWorkFile': return uploadWorkFile(input[0]);
+    case 'listWorkFiles': return listWorkFiles(input[0]);
+    case 'downloadWorkFile': return downloadWorkFile(input[0]);
     case 'integrityCheck': return integrityCheck();
     case 'previewIndexedDbMigration': return previewMigration(input[0]);
     case 'applyIndexedDbMigration': return applyMigration(input[0]);
     case 'exportDatabase': return exportDatabase(input[0]);
+    case 'importDatabase': return importDatabase(input[0]);
     default: throw appError('WASM_METHOD_UNSUPPORTED', 'SQLite WASM method is not supported: ' + method, 501);
     }
 }

@@ -5,8 +5,9 @@
 Python `run.py`의 SQLite HTTP API를 브라우저의 SQLite WASM + OPFS 저장소로 대체한다.
 기존 UI는 `MDPStorage` 파사드를 계속 사용하고, HTTP `fetch()` 대신 Web Worker RPC로 SQLite를 호출한다.
 
-이번 작업 범위는 문서 중심 저장 기능이다. 대용량 작업 파일, 전체 패키지 백업, FMA 처리,
-이미지 프록시와 정적 웹 제공은 명시적으로 제외한다.
+1차 범위는 문서 중심 저장 기능이다. 2026-08-06 추가 범위로 FMA Viewer의 FMA/FMA WebP
+작업파일 저장·불러오기와 SQLite보기 갤러리 미리보기를 포함한다. 전체 패키지 백업,
+ONNX 모델, 이미지 프록시와 정적 웹 제공은 계속 제외한다.
 
 ## 2. 현재 구조
 
@@ -91,16 +92,17 @@ SQLite는 메인 UI 스레드에서 실행하지 않는다. 전용 Worker 하나
 | 자동저장·복구 버퍼 | 거의 그대로 | 기존 IndexedDB RecoveryBuffer 재사용 |
 | 무결성 검사 | 쉬움 | `quick_check`, `integrity_check`, `foreign_key_check` 실행 |
 | DB 파일 백업 | 가능 | OPFS DB를 독립 `.sqlite` 파일로 export |
+| FMA 작업파일 저장·불러오기 | 보통 | FMA ZIP 전체를 `asset_blobs` BLOB으로 저장하고 Python과 동일한 Source/Asset/FileEntry 메타데이터 유지 |
+| FMA WebP 저장 | 보통 | FMA Viewer의 기존 WebP 변환 archive 생성기를 사용한 뒤 WASM BLOB 저장 |
+| FMA 갤러리 | 보통 | JSZip으로 manifest와 내부 media를 검증·조회하고 Canvas에서 최대 240px WebP 썸네일 생성 |
 
 ## 5. 제외 범위
 
 아래 기능은 이번 구현에서 포팅하지 않는다. WASM health capability에서 `false`로 보고한다.
 
 - 전체 `.mdpbackup` 생성·검증·복원
-- 작업파일 저장 및 다운로드
+- FMA 외 작업파일(FME, 프리셋, GenSlide 파일) 저장 및 다운로드
 - ONNX 모델 저장
-- FMA ZIP 검증
-- FMA 썸네일 생성
 - 이미지 프록시
 - 정적 웹 제공
 
@@ -139,8 +141,17 @@ SQLite는 메인 UI 스레드에서 실행하지 않는다. 전용 Worker 하나
 
 브라우저는 Windows의 기존 `LocalSave_sqlite/data/mdpro.sqlite`를 직접 열 수 없다.
 기존 서버에서 online backup으로 완결된 `.sqlite` 파일을 만든 뒤 파일 선택 또는 드래그로
-OPFS에 가져오는 별도 단계가 필요하다. 이번 단계에서는 IndexedDB -> WASM 이관과 OPFS DB export를
-우선 구현하고, 네이티브 `.sqlite` import UI는 후속 체크리스트로 유지한다.
+OPFS에 가져와야 한다. 설정 화면의 `WASM DB 파일 불러오기`는 후보 DB를 임시 OPFS 경로에서
+검증한 뒤 현재 DB를 교체한다. 교체 직전 DB는 `/pre-import.sqlite`로 자동 백업한다.
+
+불러오기 검증 항목:
+
+- `SQLite format 3` 헤더와 512MB 크기 제한
+- 현재 앱과 동일한 schema version
+- 필수 테이블과 기본 profile/workspace/ROOT
+- 설정 허용 목록과 민감 데이터 정책
+- `quick_check`, `integrity_check`, `foreign_key_check`
+- 실패 시 기존 DB 유지 또는 자동 백업 롤백
 
 ## 7. 구현 체크리스트
 
@@ -187,7 +198,9 @@ OPFS에 가져오는 별도 단계가 필요하다. 이번 단계에서는 Index
 - [x] 3글자 이상 FTS5 검색
 - [x] `quick_check`, `integrity_check`, `foreign_key_check`
 - [x] OPFS DB `.sqlite` export
+- [x] `.sqlite` 파일 검증·자동 백업·OPFS DB import
 - [x] 브라우저 다운로드 헬퍼
+- [x] 문서·폴더·설정·버전·이관 기록 읽기 전용 SQLite 탐색기
 
 ### F. IndexedDB 및 복구
 
@@ -210,6 +223,19 @@ OPFS에 가져오는 별도 단계가 필요하다. 이번 단계에서는 Index
 - [x] Python API 기존 회귀 테스트 유지
 - [x] 구현 결과로 이 체크리스트 갱신
 
+### H. FMA Viewer 작업파일·갤러리 추가 범위
+
+- [x] FMA Viewer가 부모 `MDPStorage`를 사용하도록 WASM 저장 경로 연결
+- [x] 일반 FMA와 WebP FMA의 기존 archive 생성 흐름 유지
+- [x] WASM Worker에 FMA BLOB 저장·중복 Asset 재사용 구현
+- [x] `workspace_sources`, `assets`, `asset_blobs`, `file_entries` 메타데이터 기록
+- [x] FMA 작업파일 목록·다운로드 Worker RPC 구현
+- [x] SQLite보기 Source·파일 목록과 파일 상세 연결
+- [x] JSZip 기반 manifest/media 안전성 검증
+- [x] 최대 24개 내부 미디어 갤러리와 240px WebP 썸네일 구현
+- [x] Node 구문·기존 FMA/Python fallback 계약 테스트 통과
+- [x] 실제 Chromium OPFS에서 저장→목록→갤러리→다운로드 통합 검증
+
 ## 8. 완료 기준
 
 1. Python 서버가 꺼진 상태에서 `wasm` backend health가 성공한다.
@@ -219,11 +245,12 @@ OPFS에 가져오는 별도 단계가 필요하다. 이번 단계에서는 Index
 5. IndexedDB 이관을 재실행해도 중복 데이터가 생성되지 않는다.
 6. `integrity_check`와 `foreign_key_check`가 통과한다.
 7. 내보낸 `.sqlite` 파일을 네이티브 SQLite에서 열 수 있다.
-8. 제외 기능은 숨겨진 성공이 아니라 capability `false` 또는 명시적 오류를 반환한다.
+8. FMA/FMA WebP 작업파일은 SQLite보기 파일 탭과 내부 갤러리에서 확인할 수 있다.
+9. 나머지 제외 기능은 숨겨진 성공이 아니라 capability `false` 또는 명시적 오류를 반환한다.
 
 ## 9. 구현 및 검증 결과 (2026-08-06)
 
-- 실제 브라우저 통합 테스트 38개 항목 통과
+- 실제 Chromium 통합 테스트 55개 항목 통과
 - SQLite 3.53.4, schema v3, OPFS SAH Pool, FTS5 활성 확인
 - Worker 종료·재시작 뒤 문서 version 유지 확인
 - 동일 IndexedDB batch의 재-preview·재-apply에서 신규 0건 확인
@@ -231,11 +258,15 @@ OPFS에 가져오는 별도 단계가 필요하다. 이번 단계에서는 Index
 - Node Worker RPC 계약, 기존 StorageService, 기존 IndexedDB 이관 테스트 통과
 - 기존 Python SQLite core 및 HTTP API 회귀 테스트 통과
 - 메인 설정 UI에서 API/WASM 전환과 WASM DB 내보내기 활성 상태 확인
+- WASM 백엔드의 `SQLite보기` 탐색기와 문서 상세·버전 조회 확인
+- 내보내기 → 문서 삭제 → DB 불러오기 → 문서·버전 복원 라운드트립 확인
+- 잘못된 SQLite 파일 거부 후 현재 DB 보존 확인
+- 일반 FMA와 `fma_webp` 작업 유형을 OPFS SQLite BLOB으로 저장하고 동일 원본 Asset 중복 제거 확인
+- SQLite보기의 FMA Source·파일 상세·manifest 갤러리·썸네일·다운로드 확인
 - 실제 데스크톱 SQLite 프로그램에서 다운로드 파일을 다시 여는 수동 검증은 후속 확인 항목
 
 ## 10. 후속 작업
 
-- 네이티브 `.sqlite` 파일 import UI와 검증
 - 다중 탭 Web Locks 또는 `opfs-wl` 평가
 - 저장 quota와 `navigator.storage.persist()` 사용자 안내
 - 안정적인 origin 정책 확정

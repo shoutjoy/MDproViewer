@@ -79,9 +79,14 @@ class MemoryStorage {
     assert(!JSON.stringify(redactedCatalog).includes('sk-abcdefghijklmnopqrstuvwxyz'), 'prompt secret leaked into catalog');
 
     const ui = fs.readFileSync(path.join(__dirname, '..', 'Setting', 'settings-ui.js'), 'utf8');
+    const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
     assert(ui.includes("entry.item.key !== 'encryptedToolVault'"), 'explorer does not hide encrypted envelope record');
     assert(ui.includes('도구 설정 모아보기'), 'tool overview UI is missing');
     assert(ui.includes('API 키 원문은 이 화면에 표시하지 않습니다.'), 'masked key notice is missing');
+    assert(ui.includes('LM Studio 연결됨'), 'LM Studio connected badge is missing');
+    assert(ui.includes("client.listLoadedModels({ timeoutMs:"), 'LM Studio loaded-model connection probe is missing');
+    assert(ui.includes('data-sqlite-lmstudio-connection-detail'), 'LM Studio connection detail UI is missing');
+    assert(index.includes('settings-ui.js?v=20260806-lmstudio-status-1'), 'LM Studio status UI cache version is missing');
     console.log('SQLite encrypted tool vault tests passed.');
 })().catch(error => {
     console.error(error);

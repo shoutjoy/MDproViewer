@@ -989,6 +989,14 @@ window.onload = async () => {
                 updateStorageRecoveryStatusUI(nextState);
                 syncSqlitePendingRetryTimer(nextState);
                 if (modeChanged && activeSidebarTab === 'files') renderDBList();
+                if (modeChanged && nextMode === 'sqlite'
+                    && window.MDPCredentialVault && typeof window.MDPCredentialVault.restoreCatalog === 'function') {
+                    window.MDPCredentialVault.load()
+                        .then(function () { return window.MDPCredentialVault.restoreCatalog(); })
+                        .catch(function (error) {
+                            console.warn('AI tool settings SQLite restore skipped:', error && error.message ? error.message : error);
+                        });
+                }
             });
             if (window.SettingUI && typeof window.SettingUI.refreshSqliteStatus === 'function') {
                 await window.SettingUI.refreshSqliteStatus();
@@ -997,6 +1005,9 @@ window.onload = async () => {
                 && window.MDPCredentialVault && typeof window.MDPCredentialVault.load === 'function') {
                 try {
                     await window.MDPCredentialVault.load();
+                    if (typeof window.MDPCredentialVault.restoreCatalog === 'function') {
+                        await window.MDPCredentialVault.restoreCatalog();
+                    }
                 } catch (vaultError) {
                     console.warn('Encrypted API key vault status load skipped:', vaultError && vaultError.message ? vaultError.message : vaultError);
                 }
@@ -9952,6 +9963,13 @@ function saveStoredModelList(key, models) {
     return values;
 }
 
+function notifyAiToolSettingsChanged() {
+    if (window.MDPCredentialVault && typeof window.MDPCredentialVault.notifySettingsChanged === 'function') {
+        window.MDPCredentialVault.notifySettingsChanged();
+    }
+}
+window.notifyAiToolSettingsChanged = notifyAiToolSettingsChanged;
+
 function setSettingsScholarAIStatus(message, isError) {
     const status = document.getElementById('settings-scholar-ai-provider-status');
     if (!status) return;
@@ -10096,6 +10114,7 @@ function saveScholarAIProviderSettingsFromUI(showStatus) {
             config.apiKey ? 'API Key 저장됨 · 연결 확인 필요' : '선택 항목 · API Key 미사용'
         );
         if (showStatus) setSettingsScholarAIStatus('LM Studio 설정을 저장했습니다.', false);
+        notifyAiToolSettingsChanged();
         return config;
     } catch (error) {
         setSettingsScholarAIStatus('저장 실패: ' + (error && error.message ? error.message : error), true);
@@ -11759,12 +11778,24 @@ function ensureSidebarAILoaded() {
                 saveStoredModelList('ss_scholar_ai_openai_models_v1', models);
                 return models;
             },
-            setScholarAIDeepseekConfig: function (config) { return getScholarAIProviderRuntime().setDeepSeekConfig(config); },
+            setScholarAIDeepseekConfig: function (config) {
+                const result = getScholarAIProviderRuntime().setDeepSeekConfig(config);
+                notifyAiToolSettingsChanged();
+                return result;
+            },
             getScholarAIDeepseekConfig: function () { return getScholarAIProviderRuntime().getDeepSeekConfig(); },
             getScholarAIProvider: function () { return getScholarAIProviderRuntime().getProvider(); },
-            setScholarAIProvider: function (provider) { return getScholarAIProviderRuntime().setProvider(provider); },
+            setScholarAIProvider: function (provider) {
+                const result = getScholarAIProviderRuntime().setProvider(provider);
+                notifyAiToolSettingsChanged();
+                return result;
+            },
             getScholarAILMStudioConfig: function () { return getScholarAIProviderRuntime().getLMStudioConfig(); },
-            saveScholarAILMStudioConfig: function (config) { return getScholarAIProviderRuntime().saveLMStudioConfig(config); },
+            saveScholarAILMStudioConfig: function (config) {
+                const result = getScholarAIProviderRuntime().saveLMStudioConfig(config);
+                notifyAiToolSettingsChanged();
+                return result;
+            },
             listScholarAILMStudioModels: function (config) { return getScholarAIProviderRuntime().listLMStudioModels(config); },
             testScholarAILMStudio: function (config) { return getScholarAIProviderRuntime().testLMStudio(config); },
             /**
@@ -11891,14 +11922,41 @@ function ensureSidebarAILoaded() {
                 const next = String(text || '').trim();
                 if (!next) localStorage.removeItem('ss_scholar_ai_system');
                 else localStorage.setItem('ss_scholar_ai_system', next);
+                notifyAiToolSettingsChanged();
             },
             getScholarAIModelId: function (provider) { return getScholarAIProviderRuntime().getModel(provider); },
-            setScholarAIModelId: function (id, provider) { return getScholarAIProviderRuntime().setModel(id, provider); },
+            setScholarAIModelId: function (id, provider) {
+                const result = getScholarAIProviderRuntime().setModel(id, provider);
+                notifyAiToolSettingsChanged();
+                return result;
+            },
             getImageModelId: function () {
                 const saved = localStorage.getItem('ss_image_model') || 'gemini-3.1-flash-image';
                 if (saved === 'gemini-3.1-flash-image-preview') return 'gemini-3.1-flash-image';
                 if (saved === 'gemini-3-pro-image-preview') return 'gemini-3-pro-image';
                 return saved;
+            },
+            setImageModelId: function (id) {
+                const value = String(id || 'gemini-3.1-flash-image').trim().slice(0, 256) || 'gemini-3.1-flash-image';
+                localStorage.setItem('ss_image_model', value);
+                notifyAiToolSettingsChanged();
+                return value;
+            },
+            getSspimgSettings: function () {
+                return {
+                    prompt: localStorage.getItem('ss_image_prompt') || '',
+                    prompt2: localStorage.getItem('ss_image_prompt_2') || '',
+                    ratio: localStorage.getItem('ss_image_ratio') || '1:1',
+                    noText: localStorage.getItem('ss_image_no_text') === 'true'
+                };
+            },
+            saveSspimgSettings: function (settings) {
+                const value = settings && typeof settings === 'object' ? settings : {};
+                localStorage.setItem('ss_image_prompt', String(value.prompt || '').slice(0, 65536));
+                localStorage.setItem('ss_image_prompt_2', String(value.prompt2 || '').slice(0, 65536));
+                localStorage.setItem('ss_image_ratio', String(value.ratio || '1:1').slice(0, 16));
+                localStorage.setItem('ss_image_no_text', value.noText === true ? 'true' : 'false');
+                notifyAiToolSettingsChanged();
             },
             abortCurrentTask: function () {
                 if (scholarAIProviderRuntime) scholarAIProviderRuntime.abort();
@@ -12547,6 +12605,33 @@ function toggleSettingsModalFullscreen() {
     applySettingsModalFullscreenUI();
     updateSettingsModalResponsiveLayout();
 }
+
+async function openGithubRepositoryShortcut() {
+    const repoInput = document.getElementById('github-repo-input');
+    let repo = String(repoInput && repoInput.value ? repoInput.value : '').trim();
+    if (!repo) {
+        try {
+            const settings = await getAiSettings();
+            repo = String(settings && settings.githubRepo ? settings.githubRepo : '').trim();
+        } catch (_) {}
+    }
+    repo = repo
+        .replace(/^https?:\/\/github\.com\//i, '')
+        .replace(/[?#].*$/, '')
+        .replace(/\.git$/i, '')
+        .replace(/^\/+|\/+$/g, '');
+    const parts = repo.split('/').filter(Boolean);
+    if (parts.length !== 2 || !parts.every(function (part) { return /^[A-Za-z0-9_.-]+$/.test(part); })) {
+        showToast('GitHub 저장소(owner/repo)를 먼저 설정하세요.');
+        const githubSettings = document.getElementById('github-settings-wrap');
+        if (githubSettings && typeof githubSettings.scrollIntoView === 'function') {
+            githubSettings.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return false;
+    }
+    window.open('https://github.com/' + parts.map(encodeURIComponent).join('/'), '_blank', 'noopener,noreferrer');
+    return true;
+}
 function bindSettingsModalDrag() {
     if (settingsModalDragBound) return;
     settingsModalDragBound = true;
@@ -12980,6 +13065,7 @@ window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
 window.toggleSettingsShortcutsFold = toggleSettingsShortcutsFold;
 window.toggleSettingsModalCompact = toggleSettingsModalCompact;
 window.toggleSettingsModalFullscreen = toggleSettingsModalFullscreen;
+window.openGithubRepositoryShortcut = openGithubRepositoryShortcut;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;

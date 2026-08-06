@@ -32,6 +32,11 @@
   var LAUNCHER_POSITION_KEY = 'ss_ai_chat_launcher_position';
   var CURRENT_CONVERSATION_KEY = 'ss_ai_chat_current_conversation_id';
   var MIGRATION_KEY = 'ss_ai_chat_idb_migrated_v1';
+  var SQLITE_SYNC_KEYS = new Set([
+    ENABLED_KEY, PROVIDER_KEY, GEMINI_MODEL_KEY, DEEPSEEK_MODEL_KEY, OPENAI_MODEL_KEY,
+    OLLAMA_MODEL_KEY, WRITING_STYLE_KEY, RESPONSE_MODE_KEY, SHOW_REASONING_KEY,
+    ACADEMIC_SEARCH_KEY, ACADEMIC_COUNT_KEY, LAYOUT_KEY, START_LAYOUT_KEY
+  ]);
   var CHAT_DB_NAME = 'md_viewer_ai_chat';
   var CHAT_DB_VERSION = 1;
   var CONVERSATION_STORE = 'conversations';
@@ -128,7 +133,12 @@
   }
 
   function storageSet(key, value) {
-    try { localStorage.setItem(key, value); } catch (e) {}
+    try {
+      localStorage.setItem(key, value);
+      if (SQLITE_SYNC_KEYS.has(key) && typeof root.notifyAiToolSettingsChanged === 'function') {
+        root.notifyAiToolSettingsChanged();
+      }
+    } catch (e) {}
   }
 
   function normalizeWritingStyle(value) {
@@ -4143,11 +4153,28 @@
       return promotePanelToTopLayer();
     },
     syncSettings: function () {
+      var provider = storageGet(PROVIDER_KEY, state.provider);
+      state.provider = provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'openai'
+        ? provider : 'lmstudio';
       state.geminiModel = storageGet(GEMINI_MODEL_KEY, state.geminiModel);
       state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, state.ollamaModel);
       state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
       state.openaiModel = storageGet(OPENAI_MODEL_KEY, state.openaiModel);
+      state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, state.writingStyle));
+      state.responseMode = storageGet(RESPONSE_MODE_KEY, state.responseMode) === 'reasoning' ? 'reasoning' : 'quick';
+      state.showReasoning = storageGet(SHOW_REASONING_KEY, state.showReasoning ? '1' : '0') === '1';
+      state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, state.academicSearchEnabled ? '1' : '0') === '1';
+      state.academicSearchCount = normalizeAcademicCount(storageGet(ACADEMIC_COUNT_KEY, String(state.academicSearchCount)));
+      state.startLayout = normalizeLayout(storageGet(START_LAYOUT_KEY, state.startLayout));
+      state.layout = normalizeLayout(storageGet(LAYOUT_KEY, state.layout));
+      state.enabled = storageGet(ENABLED_KEY, state.enabled ? '1' : '0') === '1';
       updateProviderUI();
+      setWritingStyle(state.writingStyle, false);
+      setResponseMode(state.responseMode);
+      setShowReasoning(state.showReasoning);
+      updateAcademicSearchUI();
+      setLayout(state.layout);
+      setEnabled(state.enabled);
     },
     open: function () { openAtStartLayout(); },
     openDock: function () {

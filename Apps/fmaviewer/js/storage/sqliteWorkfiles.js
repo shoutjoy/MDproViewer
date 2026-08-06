@@ -17,6 +17,27 @@
     let searchTimer = 0;
     let currentItems = [];
 
+    function getHostStorage() {
+        try {
+            if (window.parent && window.parent !== window && window.parent.MDPStorage) {
+                return window.parent.MDPStorage;
+            }
+        } catch (_) {}
+        return window.MDPStorage || null;
+    }
+
+    async function getHostStorageStatus() {
+        const storage = getHostStorage();
+        if (!storage || typeof storage.getStatus !== "function") return null;
+        let status = storage.getStatus();
+        if ((!status?.sqliteHealth || !status.sqliteHealth.available)
+            && typeof storage.refreshSqliteHealth === "function") {
+            await storage.refreshSqliteHealth();
+            status = storage.getStatus();
+        }
+        return { storage, status };
+    }
+
     function isSqliteMode() {
         try {
             return localStorage.getItem(STORAGE_MODE_KEY) === "sqlite";
@@ -70,7 +91,16 @@
         if (!isSqliteMode()) {
             throw new Error("메인 MD Viewer 설정에서 ‘Sqlite 사용’을 먼저 선택하세요.");
         }
+        const host = await getHostStorageStatus();
+        if (host && host.status?.activeMode === "sqlite") {
+            sessionCapabilities = host.status.sqliteHealth?.capabilities || {};
+            if (sessionCapabilities.workFiles === true) return host.storage;
+            if (host.status.sqliteBackend === "wasm-opfs") {
+                throw new Error("현재 SQLite WASM 저장소는 FMA 작업파일 저장을 지원하지 않습니다.");
+            }
+        }
         await getSession();
+        return null;
     }
 
     async function requireModelAssets() {
@@ -81,7 +111,18 @@
     }
 
     async function uploadWorkFile(blob, fileName, workType) {
-        await requireSqlite();
+        const hostStorage = await requireSqlite();
+        if (hostStorage) {
+            if (!["fma", "fma_webp", "fma_snapshot"].includes(String(workType || ""))) {
+                throw new Error("현재 SQLite WASM 저장소는 FMA 작업파일만 지원합니다.");
+            }
+            return hostStorage.saveSqliteWorkFile(blob, {
+                fileName,
+                workType,
+                appId: APP_ID,
+                mimeType: blob.type || "application/vnd.fma+zip"
+            });
+        }
         return apiJson("/workfiles", {
             method: "POST",
             headers: {
@@ -95,7 +136,15 @@
     }
 
     async function listWorkFiles(options = {}) {
-        await requireSqlite();
+        const hostStorage = await requireSqlite();
+        if (hostStorage) {
+            return hostStorage.listSqliteWorkFiles({
+                appId: APP_ID,
+                query: options.query,
+                workType: options.workType,
+                limit: 200
+            });
+        }
         const params = new URLSearchParams({ app: APP_ID, limit: "200" });
         if (options.query) params.set("q", options.query);
         if (options.workType) params.set("type", options.workType);
@@ -103,6 +152,17 @@
     }
 
     async function fetchWorkFile(item) {
+        const hostStorage = await requireSqlite();
+        if (hostStorage) {
+            const blob = await hostStorage.loadSqliteWorkFile(item);
+            if (blob.size !== Number(item.sizeBytes)) {
+                throw new Error("불러온 작업파일의 크기가 SQLite 메타데이터와 다릅니다.");
+            }
+            return new File([blob], item.name, {
+                type: item.mimeType || blob.type || "application/octet-stream",
+                lastModified: Number(item.updatedAt || item.createdAt || Date.now())
+            });
+        }
         const response = await sessionFetch(`/workfiles/${encodeURIComponent(item.id)}/download`, {
             method: "GET",
             headers: { Accept: item.mimeType || "application/octet-stream" }

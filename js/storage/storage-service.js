@@ -676,6 +676,9 @@
         exportSqliteDatabase: function (options) {
             return callSqlite('exportDatabase', [options || {}]);
         },
+        importSqliteDatabase: function (file, options) {
+            return callSqlite('importDatabase', [file, options || {}]);
+        },
         saveSqliteWorkFile: saveSqliteWorkFile,
         listSqliteWorkFiles: listSqliteWorkFiles,
         loadSqliteWorkFile: loadSqliteWorkFile,

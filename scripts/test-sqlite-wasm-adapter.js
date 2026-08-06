@@ -41,6 +41,18 @@ class MockWorker {
                     ok: true,
                     result: { bytes: new Uint8Array([83, 81, 76]), fileName: 'test.sqlite', sizeBytes: 3 }
                 });
+            } else if (message.method === 'getExplorerSnapshot') {
+                this.emit('message', {
+                    id: message.id,
+                    ok: true,
+                    result: { readOnly: true, documents: [], folders: [], settings: [] }
+                });
+            } else if (message.method === 'importDatabase') {
+                this.emit('message', {
+                    id: message.id,
+                    ok: true,
+                    result: { imported: true, fileName: message.args[0].fileName, sizeBytes: message.args[0].bytes.byteLength }
+                });
             } else {
                 this.emit('message', { id: message.id, ok: true, result: null });
             }
@@ -87,6 +99,16 @@ require(path.join(__dirname, '..', 'Local_SQLiteWASM', 'sqlite-wasm-adapter.js')
     assert.equal(exported.fileName, 'test.sqlite');
     assert.equal(exported.sizeBytes, 3);
     assert.equal(exported.blob.size, 3);
+
+    const explorer = await adapter.getExplorerSnapshot({ query: 'test' });
+    assert.equal(explorer.readOnly, true);
+    assert.equal(calls.at(-1).method, 'getExplorerSnapshot');
+
+    const sqliteBytes = new Uint8Array(512);
+    const imported = await adapter.importDatabase(new Blob([sqliteBytes]), { fileName: 'roundtrip.sqlite' });
+    assert.equal(imported.imported, true);
+    assert.equal(imported.fileName, 'roundtrip.sqlite');
+    assert.equal(imported.sizeBytes, 512);
 
     await assert.rejects(adapter.createBackupPackage(), function (error) {
         return error.code === 'SQLITE_WASM_FEATURE_EXCLUDED' && error.status === 501;

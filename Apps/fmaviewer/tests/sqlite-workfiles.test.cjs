@@ -174,6 +174,43 @@ assert(api, "FMASqliteWorkfiles API was not exported");
     assert.strictEqual(modelUpload.options.headers.get("X-MDViewer-Session"), "test-session");
     assert.strictEqual(modelDownload.options.headers.get("X-MDViewer-Session"), "test-session");
 
+    const hostCalls = [];
+    windowObject.parent = {
+        MDPStorage: {
+            getStatus() {
+                return {
+                    activeMode: "sqlite",
+                    sqliteBackend: "wasm-opfs",
+                    sqliteHealth: { available: true, capabilities: { workFiles: true, modelAssets: false } }
+                };
+            },
+            async saveSqliteWorkFile(file, options) {
+                hostCalls.push({ method: "save", file, options });
+                return { id: "file_wasm", name: options.fileName, workType: options.workType, sizeBytes: file.size };
+            },
+            async listSqliteWorkFiles(options) {
+                hostCalls.push({ method: "list", options });
+                return { items: [{
+                    id: "file_wasm", name: "WASM.fma", workType: "fma", mimeType: "application/vnd.fma+zip",
+                    sizeBytes: 4, createdAt: 1, updatedAt: 1
+                }] };
+            },
+            async loadSqliteWorkFile(item) {
+                hostCalls.push({ method: "load", item });
+                return new Blob(["test"], { type: item.mimeType });
+            }
+        }
+    };
+    api._resetSessionForTests();
+    const requestCountBeforeHost = requests.length;
+    const hostSaved = await api.uploadWorkFile(blob, "WASM.fma", "fma");
+    const hostListed = await api.listWorkFiles({ workType: "fma" });
+    const hostLoaded = await api.fetchWorkFile(hostListed.items[0]);
+    assert.strictEqual(hostSaved.id, "file_wasm", "FMA iframe did not use parent MDPStorage");
+    assert.strictEqual(hostLoaded.size, 4, "FMA iframe parent storage load changed bytes");
+    assert.deepStrictEqual(hostCalls.map(call => call.method), ["save", "list", "load"]);
+    assert.strictEqual(requests.length, requestCountBeforeHost, "WASM FMA bridge must not call Python API");
+
     storageMode = "inDB";
     await assert.rejects(
         api.listWorkFiles(),
