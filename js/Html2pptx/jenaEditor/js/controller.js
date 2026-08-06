@@ -202,7 +202,7 @@
     "./js/Export/pptModeImageText.js",
     "./js/Export/pptModeFull.js",
     "./js/Export/pptExport.js",
-    "./js/sqliteStorage.js",
+    "./js/sqliteStorage.js?v=20260806-storage-feature-visibility-1",
     "./js/main.js"
   ];
   const ASSET_VERSION = "20260806-sqlite-storage-1";

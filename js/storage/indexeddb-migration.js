@@ -6,7 +6,7 @@
     const FILE_SOURCE_ID = 'source_mdpro_indb_v1';
     const AI_SETTINGS_KEY = 'ai_settings';
     const SENSITIVE_SETTING_RE = /(?:api[_-]?key|token|secret|password|passwd|credential|private[_-]?key|access[_-]?key|password[_-]?hash)/i;
-    const TRANSIENT_SETTING_KEYS = new Set(['id', 'sqliteEnabled', 'githubCacheDocs', 'githubLastPulledAt', 'verified']);
+    const TRANSIENT_SETTING_KEYS = new Set(['id', 'sqliteEnabled', 'localEnabled', 'githubCacheDocs', 'githubLastPulledAt', 'verified']);
     const SAFE_SETTING_RULES = Object.freeze({
         aiMasterEnabled: ['features', 'global'], scholarAI: ['features', 'global'],
         sspimgAI: ['features', 'global'], imageUploadEnabled: ['features', 'global'],

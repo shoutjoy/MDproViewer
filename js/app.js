@@ -290,7 +290,7 @@ function toggleFolderCollapse(folderId) {
 function getStorageSourceTabFromLocal() {
     try {
         const v = String(localStorage.getItem(STORAGE_SOURCE_TAB_KEY) || '').trim().toLowerCase();
-        return v === 'github' || v === 'sqlite' ? v : 'indb';
+        return v === 'github' || v === 'sqlite' || v === 'local' ? v : 'indb';
     } catch (_) {
         return 'indb';
     }
@@ -298,7 +298,7 @@ function getStorageSourceTabFromLocal() {
 
 function setStorageSourceTabToLocal(tab) {
     try {
-        const normalized = tab === 'github' || tab === 'sqlite' ? tab : 'indb';
+        const normalized = tab === 'github' || tab === 'sqlite' || tab === 'local' ? tab : 'indb';
         localStorage.setItem(STORAGE_SOURCE_TAB_KEY, normalized);
     } catch (_) {}
 }
@@ -926,9 +926,11 @@ function organizeSettingsDashboard() {
 
     const featureTools = document.getElementById('feature-tools-settings');
     const sqliteTool = document.getElementById('sqlite-settings-tool');
+    const localStorageTool = document.getElementById('local-storage-settings-tool');
     if (featureTools) toolsColumn.appendChild(featureTools);
+    if (localStorageTool) localSaveTools.appendChild(localStorageTool);
     if (sqliteTool) localSaveTools.appendChild(sqliteTool);
-    if (inDbStatusButton || sqliteExplorerButton || sqliteTool) saveColumn.appendChild(localSaveTools);
+    if (inDbStatusButton || sqliteExplorerButton || sqliteTool || localStorageTool) saveColumn.appendChild(localSaveTools);
 
     const aiMaster = document.getElementById('ai-master-settings-card');
     const aiIntegration = document.getElementById('ai-integration-settings-slot');
@@ -978,7 +980,7 @@ window.onload = async () => {
             const storageState = await window.MDPStorage.initialize({ getIndexedDb: function () { return db; } });
             if (storageStatusUnsubscribe) storageStatusUnsubscribe();
             storageStatusUnsubscribe = window.MDPStorage.subscribe(function (nextState) {
-                if (currentStorageSourceTab === 'github') return;
+                if (currentStorageSourceTab === 'github' || currentStorageSourceTab === 'local') return;
                 const nextMode = nextState && nextState.activeMode === 'sqlite' ? 'sqlite' : 'indb';
                 const modeChanged = currentStorageSourceTab !== nextMode;
                 if (currentStorageSourceTab !== nextMode) {
@@ -997,6 +999,11 @@ window.onload = async () => {
                             console.warn('AI tool settings SQLite restore skipped:', error && error.message ? error.message : error);
                         });
                 }
+                if (modeChanged && nextMode === 'sqlite') {
+                    syncShareAddressSettingsToSqlite().catch(function (error) {
+                        console.warn('Share address SQLite sync skipped:', error && error.message ? error.message : error);
+                    });
+                }
             });
             if (window.SettingUI && typeof window.SettingUI.refreshSqliteStatus === 'function') {
                 await window.SettingUI.refreshSqliteStatus();
@@ -1011,6 +1018,11 @@ window.onload = async () => {
                 } catch (vaultError) {
                     console.warn('Encrypted API key vault status load skipped:', vaultError && vaultError.message ? vaultError.message : vaultError);
                 }
+            }
+            if (storageState && storageState.activeMode === 'sqlite') {
+                await syncShareAddressSettingsToSqlite().catch(function (error) {
+                    console.warn('Share address SQLite startup sync skipped:', error && error.message ? error.message : error);
+                });
             }
             if (storageState && storageState.activeMode !== 'sqlite'
                 && getStorageSourceTabFromLocal() === 'sqlite') {
@@ -2315,6 +2327,39 @@ async function handleFileSelect(event) {
     if (input) input.value = '';
 }
 
+async function openFileFromLocalFolderExplorer(file) {
+    if (!file) return false;
+    const extension = getSelectedFileExtension(file);
+    const imageFile = isSelectedImageFile(file, extension);
+    let nativePath = String(file.path || '').trim();
+    if (!nativePath && window.web2electron && typeof window.web2electron.getPathForFile === 'function') {
+        try { nativePath = String(window.web2electron.getPathForFile(file) || '').trim(); } catch (_) {}
+    }
+    if (imageFile) {
+        if (isFmaViewerFeatureEnabled()) openSelectedFileInBrowserViewer(file, extension);
+        else if (!openSelectedImageInPreviewPopup(file)) showToast('이미지를 PV 창에서 열지 못했습니다.');
+        return true;
+    }
+    if (DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)
+        && nativePath
+        && window.web2electron
+        && typeof window.web2electron.openLocalFile === 'function') {
+        const result = await window.web2electron.openLocalFile({ filePath: nativePath });
+        if (result && result.error) showToast('파일을 열 수 없습니다: ' + result.error);
+        return !(result && result.error);
+    }
+    if (extension === '.docx') return openDocxInEditor(file);
+    if (DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)) {
+        if (openSelectedFileInBrowserViewer(file, extension)) return true;
+        showToast('이 파일 형식은 데스크톱 앱에서 열 수 있습니다: ' + file.name);
+        return false;
+    }
+    await readFile(file, { filePath: nativePath || null });
+    return true;
+}
+
+window.openFileFromLocalFolderExplorer = openFileFromLocalFolderExplorer;
+
 function createNewFile() {
     currentMarkdown = "";
     setCurrentDocumentInfo("untitled.md", null);
@@ -2739,7 +2784,7 @@ async function readFile(file, options) {
         if (kind === 'html') {
             showToast('HTML loaded in rendered preview mode.');
         }
-        setCurrentDocumentInfo(file.name, file.path || null);
+        setCurrentDocumentInfo(file.name, opts.filePath || file.path || null);
         updateContent(parsed && typeof parsed.text === 'string' ? parsed.text : raw);
         markPersistedState();
         showToast("File loaded successfully.");
@@ -3259,6 +3304,7 @@ let lastRenderedTocItems = [];
 function switchSidebarTab(tab) {
     if (window.SidebarLeft && typeof window.SidebarLeft.switchSidebarTab === 'function') {
         activeSidebarTab = window.SidebarLeft.switchSidebarTab(tab, { renderDBList, renderTOC });
+        if (typeof updateStorageSourceTabsUI === 'function') updateStorageSourceTabsUI();
         return;
     }
     activeSidebarTab = tab;
@@ -3368,6 +3414,90 @@ function createNewFolder() {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     input.focus();
+}
+
+async function createDocumentInFolder(folderId) {
+    const targetFolderId = String(folderId || 'root').trim() || 'root';
+    if (!window.MDPStorage || currentStorageSourceTab === 'github' || currentStorageSourceTab === 'local') return false;
+
+    const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+    if (!canProceed) {
+        showToast('Document creation canceled.');
+        return false;
+    }
+
+    let folderName = ROOT_FOLDER_NAME;
+    try {
+        const folders = await window.MDPStorage.listFolders();
+        const targetFolder = (Array.isArray(folders) ? folders : []).find(function (folder) {
+            return String(folder && folder.id || '') === targetFolderId;
+        });
+        if (!targetFolder) {
+            showToast('Folder not found.');
+            return false;
+        }
+        folderName = String(targetFolder.name || ROOT_FOLDER_NAME);
+    } catch (error) {
+        showToast('Folder list failed: ' + (error && error.message ? error.message : error));
+        return false;
+    }
+
+    const modal = document.getElementById('save-modal');
+    const titleElement = document.querySelector('#save-modal h3');
+    const labelElement = document.querySelector('#save-modal label');
+    const input = document.getElementById('save-title-input');
+    if (!modal || !input) return false;
+
+    const storageMode = getActiveStorageMode();
+    const storageLabel = getStorageModeLabel(storageMode);
+    if (titleElement) titleElement.textContent = storageLabel + ' 문서 생성';
+    if (labelElement) labelElement.textContent = folderName + ' 폴더에 만들 문서 이름';
+    input.value = 'Untitled';
+
+    currentActionCallback = async function (title) {
+        const requestedTitle = String(title || '').trim().replace(/\.md$/i, '');
+        if (!requestedTitle) {
+            showToast('문서 이름을 입력하세요.');
+            return;
+        }
+
+        try {
+            const documents = await window.MDPStorage.listDocuments({ limit: 500 });
+            const folderDocuments = (Array.isArray(documents) ? documents : []).filter(function (doc) {
+                return String(doc && doc.folderId || 'root') === targetFolderId;
+            });
+            const resolvedTitle = getNextIndexedDbTitle(requestedTitle, folderDocuments);
+            const savedDoc = await window.MDPStorage.createDocument({
+                id: 'doc_' + Date.now() + '_' + Math.random().toString(16).slice(2, 8),
+                title: resolvedTitle,
+                content: '',
+                folderId: targetFolderId,
+                updatedAt: new Date()
+            });
+
+            setCurrentDocumentRef(savedDoc, storageMode);
+            if (storageMode === 'sqlite' && savedDoc && savedDoc.id) {
+                await window.MDPStorage.confirmDocumentSaved(savedDoc.id);
+                await window.MDPStorage.deleteRecoveryDraft('unsaved_current');
+            }
+            currentFileName = resolvedTitle + '.md';
+            currentFilePath = null;
+            updateCurrentDocumentDisplay();
+            updateContent('');
+            markPersistedState();
+            await revealSavedInDbDocument(savedDoc);
+            if (editorTextarea) editorTextarea.focus();
+            showToast(storageLabel + ' 문서를 만들었습니다: ' + folderName + '/' + resolvedTitle);
+        } catch (error) {
+            showToast(storageLabel + ' document creation failed: ' + (error && error.message ? error.message : error));
+        }
+    };
+
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    input.focus();
+    input.select();
+    return true;
 }
 
 async function deleteFolderFromDB(folderId) {
@@ -3491,18 +3621,29 @@ async function renderDBList() {
     const searchTerm = String(searchInput && searchInput.value ? searchInput.value : '').toLowerCase();
     const nextList = document.createElement('div');
 
-    const settings = await getAiSettings() || {};
-    const cfg = getGithubConfigFromSettings(settings);
-    const githubReady = !!(cfg.enabled && cfg.token);
-
-    if (currentStorageSourceTab === 'github' && githubReady) {
-        await renderGithubCachedList(nextList, searchTerm);
-    } else {
+    if (currentStorageSourceTab === 'local') {
         try {
-            await renderLocalStorageList(nextList, searchTerm, githubReady);
+            if (!window.LocalFolderExplorer || typeof window.LocalFolderExplorer.render !== 'function') {
+                throw new Error('로컬 폴더 탐색기를 불러오지 못했습니다.');
+            }
+            await window.LocalFolderExplorer.render(nextList, searchTerm);
         } catch (error) {
-            const message = error && error.message ? error.message : '저장소 목록을 읽을 수 없습니다.';
+            const message = error && error.message ? error.message : '로컬 폴더를 읽을 수 없습니다.';
             nextList.innerHTML = '<div class="p-4 text-xs text-red-500 dark:text-red-400">' + escapeHtmlText(message) + '</div>';
+        }
+    } else {
+        const settings = await getAiSettings() || {};
+        const cfg = getGithubConfigFromSettings(settings);
+        const githubReady = !!(cfg.enabled && cfg.token);
+        if (currentStorageSourceTab === 'github' && githubReady) {
+            await renderGithubCachedList(nextList, searchTerm);
+        } else {
+            try {
+                await renderLocalStorageList(nextList, searchTerm, githubReady);
+            } catch (error) {
+                const message = error && error.message ? error.message : '저장소 목록을 읽을 수 없습니다.';
+                nextList.innerHTML = '<div class="p-4 text-xs text-red-500 dark:text-red-400">' + escapeHtmlText(message) + '</div>';
+            }
         }
     }
     if (generation !== renderDBListGeneration) return;
@@ -5957,6 +6098,46 @@ async function setAiSettings(data) {
     }
 }
 
+function getShareAddressSettingsSnapshot(settings) {
+    const source = settings && typeof settings === 'object' ? settings : {};
+    let shareSnapshot = {};
+    try {
+        if (window.ShareModule && typeof window.ShareModule.getSettingsSnapshot === 'function') {
+            shareSnapshot = window.ShareModule.getSettingsSnapshot() || {};
+        }
+    } catch (_) {}
+    const currentSites = typeof window.getSitesList === 'function'
+        ? window.getSitesList()
+        : normalizeSitesList(source.sitesList);
+    return {
+        sitesList: normalizeSitesList(Array.isArray(source.sitesList) ? source.sitesList : currentSites)
+            .map(function (item) { return { name: item.name, url: item.url }; }),
+        shareSites: (Array.isArray(source.shareSites) ? source.shareSites : shareSnapshot.shareSites || [])
+            .map(function (value) { return String(value || '').trim(); })
+            .filter(function (value, index, list) { return value && list.indexOf(value) === index; }),
+        customShareDestinations: (Array.isArray(source.customShareDestinations)
+            ? source.customShareDestinations : shareSnapshot.customShareDestinations || [])
+            .map(function (item) {
+                return {
+                    key: String(item && item.key || '').trim(),
+                    label: String(item && (item.label || item.name) || '').trim(),
+                    url: String(item && item.url || '').trim()
+                };
+            })
+            .filter(function (item) { return item.key && item.url; }),
+        naverBlogId: String(source.naverBlogId != null ? source.naverBlogId : (shareSnapshot.naverBlogId || '')).trim()
+    };
+}
+
+async function syncShareAddressSettingsToSqlite(settings) {
+    if (!window.MDPStorage || typeof window.MDPStorage.getStatus !== 'function'
+        || typeof window.MDPStorage.saveSqliteSafeSettings !== 'function') return { saved: 0, skipped: true };
+    const status = window.MDPStorage.getStatus();
+    if (!status || status.activeMode !== 'sqlite') return { saved: 0, skipped: true };
+    const source = settings && typeof settings === 'object' ? settings : await getAiSettings() || {};
+    return window.MDPStorage.saveSqliteSafeSettings(getShareAddressSettingsSnapshot(source));
+}
+
 function hashPassword(plain) {
     return crypto.subtle.digest('SHA-256', new TextEncoder().encode(plain))
         .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
@@ -8341,10 +8522,12 @@ async function persistAiSettingsFromModal() {
     saveScholarAIProviderSettingsFromUI(false);
     if (!db) return;
     const s = await getAiSettings();
+    const shareAddressSettings = getShareAddressSettingsSnapshot(s || {});
     const verified = !!(s && s.verified);
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
+    const localStorageEl = document.getElementById('local-storage-enabled');
     const scholarOn = verified && scholarEl && scholarEl.checked;
     const sspimgOn = verified && sspimgEl && sspimgEl.checked;
     const imageUploadEl = document.getElementById('image-upload-enabled');
@@ -8380,6 +8563,7 @@ async function persistAiSettingsFromModal() {
         scholarAI: !!scholarOn,
         sspimgAI: !!sspimgOn,
         githubEnabled: !!(githubEl && githubEl.checked),
+        localEnabled: !!(localStorageEl && localStorageEl.checked),
         githubToken: githubToken,
         githubRepo: githubRepo,
         githubBranch: githubBranch,
@@ -8389,7 +8573,13 @@ async function persistAiSettingsFromModal() {
         sitesVisible: sitesVisible,
         macroVisible: macroVisible,
         templateVisible: templateVisible,
+        templateCustomList: normalizeTemplateCustomList(templateCustomList).map(function (item) {
+            return { id: item.id, name: item.name, desc: item.desc, content: item.content };
+        }),
         sitesList: sitesList.slice(),
+        shareSites: shareAddressSettings.shareSites,
+        customShareDestinations: shareAddressSettings.customShareDestinations,
+        naverBlogId: shareAddressSettings.naverBlogId,
         imageUploadEnabled: imageUploadEnabled,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
@@ -11986,7 +12176,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260806-openai-1';
+    const aiSidebarScriptVersion = '20260806-ai-settings-1';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -12224,6 +12414,8 @@ async function loadAiSettingsToUI() {
         if (openaiInputEmpty) openaiInputEmpty.value = getProtectedAiCredential('openai', 'ss_openai_api_key');
         const sqliteEnabledEmpty = document.getElementById('sqlite-enabled');
         if (sqliteEnabledEmpty) sqliteEnabledEmpty.checked = false;
+        const localEnabledEmpty = document.getElementById('local-storage-enabled');
+        if (localEnabledEmpty) localEnabledEmpty.checked = false;
         const githubEnabledEmpty = document.getElementById('ai-github-enabled');
         if (githubEnabledEmpty) githubEnabledEmpty.checked = false;
         const githubTokenEmpty = document.getElementById('github-token-input');
@@ -12326,6 +12518,8 @@ async function loadAiSettingsToUI() {
         const sqliteEnabledCheck = document.getElementById('sqlite-enabled');
         if (sqliteEnabledCheck) sqliteEnabledCheck.checked = false;
     }
+    const localEnabledCheck = document.getElementById('local-storage-enabled');
+    if (localEnabledCheck) localEnabledCheck.checked = settings.localEnabled === true;
     if (window.GoogleDocs && typeof window.GoogleDocs.loadGoogleDocsSettingsUI === 'function') {
         window.GoogleDocs.loadGoogleDocsSettingsUI(settings);
     }
@@ -12374,6 +12568,7 @@ async function loadAiSettingsToUI() {
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
+    const localStorageEl = document.getElementById('local-storage-enabled');
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
@@ -12382,6 +12577,7 @@ async function loadAiSettingsToUI() {
     if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
     if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
     if (githubEl) githubEl.checked = !!settings.githubEnabled;
+    if (localStorageEl) localStorageEl.checked = settings.localEnabled === true;
     if (githubTokenEl) githubTokenEl.value = settings.githubToken || '';
     if (githubRepoEl) githubRepoEl.value = settings.githubRepo || '';
     if (githubBranchEl) githubBranchEl.value = settings.githubBranch || 'main';
@@ -12425,6 +12621,7 @@ async function initAiVisibility() {
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
+    const localStorageEl = document.getElementById('local-storage-enabled');
     const verified = !!(settings && settings.verified);
     if (settings) {
         if (useCheck) {
@@ -12434,10 +12631,12 @@ async function initAiVisibility() {
         if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
         if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
         if (githubEl) githubEl.checked = !!settings.githubEnabled;
+        if (localStorageEl) localStorageEl.checked = settings.localEnabled === true;
     } else {
         if (scholarEl) scholarEl.checked = false;
         if (sspimgEl) sspimgEl.checked = false;
         if (githubEl) githubEl.checked = false;
+        if (localStorageEl) localStorageEl.checked = false;
     }
     enterButtonInsertBr = !!((settings && settings.enterButtonInsertBr === true) || getEnterButtonInsertBrFromLocal());
     selectionWrapEnabled = settings && typeof settings.selectionWrapEnabled === 'boolean'
@@ -12465,6 +12664,9 @@ async function initAiVisibility() {
     applyEditToolsVisibilityByMode();
     await applyGithubUiState(settings || { githubEnabled: false, githubCacheDocs: [] });
     await applyAiFeatureVisibility();
+    await syncShareAddressSettingsToSqlite(settings || {}).catch(function (error) {
+        console.warn('Share address SQLite visibility sync skipped:', error && error.message ? error.message : error);
+    });
 }
 
 function openSettingsModal() {
@@ -12929,6 +13131,7 @@ window.toggleSidebarVisibility = toggleSidebarVisibility;
 window.toggleSidebarCollapse = toggleSidebarCollapse;
 window.ensureRootFolder = ensureRootFolder;
 window.createNewFolder = createNewFolder;
+window.createDocumentInFolder = createDocumentInFolder;
 window.deleteFolderFromDB = deleteFolderFromDB;
 window.saveToDB = saveToDB;
 window.renderDBList = renderDBList;

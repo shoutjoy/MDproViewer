@@ -425,12 +425,14 @@
                 throw new TypeError('uploadWorkFile requires a File or Blob.');
             }
             const config = options || {};
-            const inspected = await this._inspectFmaArchive(file);
+            const workType = String(config.workType || '').trim().toLowerCase();
+            const isFma = workType === 'fma' || workType === 'fma_webp' || workType === 'fma_snapshot';
+            const inspected = isFma ? await this._inspectFmaArchive(file) : { validation: {} };
             const bytes = new Uint8Array(await file.arrayBuffer());
             return this._call('uploadWorkFile', [{
                 bytes: bytes,
                 fileName: String(config.fileName || file.name || 'work-file.fma'),
-                workType: String(config.workType || ''),
+                workType: workType,
                 appId: String(config.appId || ''),
                 mimeType: String(file.type || config.mimeType || 'application/vnd.fma+zip'),
                 validation: inspected.validation

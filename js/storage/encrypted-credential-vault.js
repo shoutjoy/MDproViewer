@@ -5,6 +5,7 @@
     const CATALOG_KEY = 'toolSettingsCatalog';
     const ITERATIONS = 310000;
     const AAD = 'md-viewer:sqlite-tool-vault:v1';
+    const PROBABLE_SECRET_VALUE_RE = /(?:AIza[0-9A-Za-z_-]{30,}|sk-[0-9A-Za-z_-]{16,})/;
     const SECRET_DEFINITIONS = Object.freeze([
         { id: 'gemini', label: 'Google AI Studio', storage: 'ss_gemini_api_key' },
         { id: 'deepseek', label: 'DeepSeek', storage: 'ss_deepseek_api_key' },
@@ -313,9 +314,9 @@
             baseUrl: String(config.baseUrl || 'http://127.0.0.1:5678/v1'),
             model: String(config.model || ''),
             temperature: Number.isFinite(Number(config.temperature)) ? Number(config.temperature) : 0.4,
-            maxTokens: Math.max(1, Number(config.maxTokens) || 8192),
-            quickMaxTokens: Math.max(1, Number(config.quickMaxTokens) || 4096),
-            reasoningMaxTokens: Math.max(1, Number(config.reasoningMaxTokens) || 8192),
+            outputLimit: Math.max(1, Number(config.maxTokens) || 8192),
+            quickOutputLimit: Math.max(1, Number(config.quickMaxTokens) || 4096),
+            reasoningOutputLimit: Math.max(1, Number(config.reasoningMaxTokens) || 8192),
             reasoningLevel: String(config.reasoningLevel || 'auto'),
             timeoutMs: Math.max(1000, Number(config.timeoutMs) || 90000),
             topP: config.topP == null || config.topP === '' ? null : Number(config.topP)
@@ -452,9 +453,9 @@
             baseUrl: String(safe.baseUrl || 'http://127.0.0.1:5678/v1'),
             model: String(safe.model || ''),
             temperature: Number(safe.temperature),
-            maxTokens: Number(safe.maxTokens),
-            quickMaxTokens: Number(safe.quickMaxTokens),
-            reasoningMaxTokens: Number(safe.reasoningMaxTokens),
+            maxTokens: Number(safe.outputLimit == null ? safe.maxTokens : safe.outputLimit),
+            quickMaxTokens: Number(safe.quickOutputLimit == null ? safe.quickMaxTokens : safe.quickOutputLimit),
+            reasoningMaxTokens: Number(safe.reasoningOutputLimit == null ? safe.reasoningMaxTokens : safe.reasoningOutputLimit),
             reasoningLevel: String(safe.reasoningLevel || 'auto'),
             timeoutMs: Number(safe.timeoutMs),
             topP: safe.topP == null ? null : Number(safe.topP)

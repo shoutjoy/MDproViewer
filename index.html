@@ -21,7 +21,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260806-storage-glow-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260806-scholar-sqlite-access-2&amp;storageVisibility=20260806-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260806-ai-jena-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -160,7 +160,7 @@
     </style>
 </head>
 
-<body class="h-screen flex flex-col overflow-hidden transition-colors duration-200">
+<body class="h-screen flex flex-col overflow-hidden transition-colors duration-200 feature-sqlite-disabled feature-github-disabled feature-local-disabled">
 
     <!-- Top Navigation Bar (반응형: 좁은 창에서 타이틀 축소·버튼 줄바꿈) -->
     <header
@@ -296,14 +296,6 @@
             </button>
         </div>
     </header>
-
-    <!-- View-mode copy button: kept outside header to avoid header layout break -->
-    <div class="no-print fixed right-3 top-[72px] z-40">
-        <button type="button" id="btn-copy-view-rich" onclick="copyViewFormattedToClipboard()"
-            class="hidden px-2 py-1 rounded-md text-[11px] font-medium bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 shadow-sm"
-            title="Copy formatted content from view mode">Copy</button>
-    </div>
-
 
     <div class="flex flex-1 overflow-hidden relative">
         <!-- Sidebar Container -->
@@ -845,6 +837,12 @@
                             title="편집창을 오른쪽으로 이동">R</button>
                     </div>
                 </div>
+                <button type="button" id="btn-copy-view-rich" onclick="copyViewFormattedToClipboard()"
+                    class="view-copy-fab hidden no-print"
+                    title="보기 내용을 서식과 함께 복사" aria-label="보기 내용을 서식과 함께 복사">
+                    <i data-lucide="copy" aria-hidden="true"></i>
+                    <span>Copy</span>
+                </button>
                 <div class="scroll-jump-rail no-print" aria-label="문서 빠른 이동">
                     <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentTop()" title="맨 위로 이동">맨위</button>
                     <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentBottom()" title="맨 아래로 이동">맨아래</button>
@@ -1615,7 +1613,14 @@
                             <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
                                 <input type="checkbox" id="sqlite-enabled"
                                     class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                <span>Sqlite 사용</span>
+                                <span>SQLite 사용</span>
+                            </label>
+                        </div>
+                        <div id="local-storage-settings-tool" class="pt-1">
+                            <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                                <input type="checkbox" id="local-storage-enabled" onchange="onStorageFeatureCheckboxChange()"
+                                    class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                <span>Local</span>
                             </label>
                         </div>
                         </div>
@@ -1871,16 +1876,17 @@
             </header>
             <div class="shrink-0 border-b border-slate-200 p-3 dark:border-slate-700">
                 <div class="flex gap-2">
-                    <input id="sqlite-explorer-query" type="search" maxlength="500" placeholder="문서·폴더·파일·설정 검색..."
+                    <input id="sqlite-explorer-query" type="search" maxlength="500" placeholder="문서·폴더·양식·파일·설정 검색..."
                         class="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 outline-none focus:border-emerald-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
                     <button type="button" onclick="SettingUI.refreshSqliteExplorer()"
                         class="rounded-md bg-emerald-700 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800">검색</button>
                 </div>
-                <div id="sqlite-explorer-counts" class="mt-2 grid grid-cols-3 gap-1 text-center text-[10px] sm:grid-cols-9"></div>
+                <div id="sqlite-explorer-counts" class="mt-2 grid grid-cols-3 gap-1 text-center text-[10px] sm:grid-cols-10"></div>
             </div>
             <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-3 pt-2 dark:border-slate-700 dark:bg-slate-950/40" aria-label="SQLite 데이터 종류">
                 <button type="button" data-sqlite-explorer-tab="documents" onclick="SettingUI.setSqliteExplorerTab('documents')" class="rounded-t px-3 py-1.5 text-xs font-semibold">문서</button>
                 <button type="button" data-sqlite-explorer-tab="folders" onclick="SettingUI.setSqliteExplorerTab('folders')" class="rounded-t px-3 py-1.5 text-xs font-semibold">폴더</button>
+                <button type="button" data-sqlite-explorer-tab="templates" onclick="SettingUI.setSqliteExplorerTab('templates')" class="rounded-t px-3 py-1.5 text-xs font-semibold">양식</button>
                 <button type="button" data-sqlite-explorer-tab="files" onclick="SettingUI.setSqliteExplorerTab('files')" class="rounded-t px-3 py-1.5 text-xs font-semibold">파일</button>
                 <button type="button" data-sqlite-explorer-tab="settings" onclick="SettingUI.setSqliteExplorerTab('settings')" class="rounded-t px-3 py-1.5 text-xs font-semibold">설정</button>
                 <button type="button" data-sqlite-explorer-tab="backups" onclick="SettingUI.setSqliteExplorerTab('backups')" class="rounded-t px-3 py-1.5 text-xs font-semibold">백업</button>
@@ -2274,7 +2280,7 @@
 
 <!-- 참고문헌 데이터 처리 -->
 <script
-    src="./js/Scholarref/scholarref.js?v=20260806-scholar-sqlite-1"
+    src="./js/Scholarref/scholarref.js?v=20260806-scholar-sqlite-fallback-3"
     charset="utf-8"
     defer>
 </script>
@@ -2288,7 +2294,7 @@
 
 <!-- 학술검색 통합 셸 -->
 <script
-    src="./js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-1"
+    src="./js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-fallback-3"
     charset="utf-8"
     defer>
 </script>
@@ -2374,7 +2380,7 @@
 
 <!-- 통합 공유 기능 -->
 <script
-    src="./ShareSites/Share/share.js?v=20260723-1"
+    src="./ShareSites/Share/share.js?v=20260806-sqlite-share-1"
     charset="utf-8"
     defer>
 </script>
@@ -2420,13 +2426,13 @@
     defer>
 </script>
 <script
-    src="./js/storage/storage-service.js?v=20260806-maintenance-1"
+    src="./js/storage/storage-service.js?v=20260806-scholar-workfiles-fallback-3"
     charset="utf-8"
     defer>
 </script>
 
 <script
-    src="./js/storage/encrypted-credential-vault.js?v=20260806-tool-vault-1"
+    src="./js/storage/encrypted-credential-vault.js?v=20260806-ai-settings-1"
     charset="utf-8"
     defer>
 </script>
@@ -2439,14 +2445,14 @@
 
 <!-- 설정 UI -->
 <script
-    src="./Setting/settings-ui.js?v=20260806-lmstudio-status-1"
+    src="./Setting/settings-ui.js?v=20260806-lmstudio-status-1&amp;feature=templates-1&amp;storageVisibility=20260806-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 왼쪽 사이드바 -->
 <script
-    src="./sidebar_left/sidebar-left.js?v=20260806-sqlite-github-push-1"
+    src="./sidebar_left/sidebar-left.js?v=20260806-local-folder-1&amp;storageVisibility=20260806-1"
     charset="utf-8"
     defer>
 </script>
@@ -2502,7 +2508,12 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260806-settings-fullscreen-shortcuts-1"
+    src="./sidebar_left/local-folder-explorer.js?v=20260806-local-folder-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/app.js?v=20260806-local-folder-1&amp;feature=templates-1&amp;storageVisibility=20260806-1"
     charset="utf-8"
     defer>
 </script>
@@ -2540,14 +2551,14 @@
 
 <!-- AI Jena -->
 <script
-    src="./AI_App/aiChat/ai-chat.js?v=20260806-openai-1"
+    src="./AI_App/aiChat/ai-chat.js?v=20260806-ai-settings-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- GitHub 실제 기능 -->
 <script
-    src="./js/GithubData/github-app.js?v=20260806-storage-glow-1"
+    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260806-1"
     charset="utf-8"
     defer>
 </script>

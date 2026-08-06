@@ -40,6 +40,22 @@ class MemoryStorage {
     localStorage.setItem('ss_scholar_ai_provider', 'aistudio');
     localStorage.setItem('ss_scholar_ai_model', 'gemini-2.5-pro');
     localStorage.setItem('ss_scholar_ai_system', '학술 근거를 우선해 답하세요.');
+    localStorage.setItem('ss_viewer_scholar_ai_tone_preset', 'researcher');
+    localStorage.setItem('ss_image_model', 'gemini-3-pro-image');
+    localStorage.setItem('ss_image_prompt', '논문 핵심 개념을 시각화하세요.');
+    localStorage.setItem('ss_image_prompt_2', '텍스트는 최소화하세요.');
+    localStorage.setItem('ss_image_ratio', '16:9');
+    localStorage.setItem('ss_image_no_text', 'true');
+    localStorage.setItem('ss_ai_chat_enabled', '1');
+    localStorage.setItem('ss_ai_chat_provider', 'aistudio');
+    localStorage.setItem('ss_ai_chat_gemini_model', 'gemini-3.5-flash');
+    localStorage.setItem('ss_ai_chat_writing_style', 'polite');
+    localStorage.setItem('ss_ai_chat_response_mode', 'reasoning');
+    localStorage.setItem('ss_ai_chat_show_reasoning', '1');
+    localStorage.setItem('fma_ai_upscale_prompt', '원본 질감을 보존해 업스케일하세요.');
+    localStorage.setItem('fma_ai_bg_remove_prompt', '경계를 정교하게 분리하세요.');
+    localStorage.setItem('fma_ai_upscale_resolution', '4K');
+    localStorage.setItem('fmaAiJenaVideoDuration', '12');
 
     await window.MDPCredentialVault.create('correct horse battery', 'correct horse battery');
     const vaultRecord = stored.get('encryptedToolVault');
@@ -73,6 +89,36 @@ class MemoryStorage {
     assert.strictEqual(scholar.prompt, '학술 근거를 우선해 답하세요.');
     assert.strictEqual(scholar.protection.last4, originalGemini.slice(-4));
     assert(!JSON.stringify(catalogRecord).includes(originalGemini), 'catalog leaked a raw key');
+    const sspimg = catalogRecord.value.tools.find(item => item.id === 'sspimgAI');
+    const aiJena = catalogRecord.value.tools.find(item => item.id === 'aiJena');
+    const fmaAiJena = catalogRecord.value.tools.find(item => item.id === 'fmaAiJena');
+    assert.strictEqual(sspimg.options.ratio, '16:9');
+    assert.strictEqual(sspimg.options.noText, true);
+    assert.strictEqual(aiJena.enabled, true);
+    assert.strictEqual(aiJena.model, 'gemini-3.5-flash');
+    assert.strictEqual(aiJena.options.responseMode, 'reasoning');
+    assert.strictEqual(fmaAiJena.options.resolution, '4K');
+
+    [
+        'ss_scholar_ai_system', 'ss_viewer_scholar_ai_tone_preset',
+        'ss_image_model', 'ss_image_prompt', 'ss_image_prompt_2', 'ss_image_ratio', 'ss_image_no_text',
+        'ss_ai_chat_enabled', 'ss_ai_chat_provider', 'ss_ai_chat_gemini_model',
+        'ss_ai_chat_writing_style', 'ss_ai_chat_response_mode', 'ss_ai_chat_show_reasoning',
+        'fma_ai_upscale_prompt', 'fma_ai_bg_remove_prompt', 'fma_ai_upscale_resolution',
+        'fmaAiJenaVideoDuration'
+    ].forEach(key => localStorage.removeItem(key));
+    await window.MDPCredentialVault.restoreCatalog();
+    assert.strictEqual(localStorage.getItem('ss_scholar_ai_system'), '학술 근거를 우선해 답하세요.');
+    assert.strictEqual(localStorage.getItem('ss_viewer_scholar_ai_tone_preset'), 'researcher');
+    assert.strictEqual(localStorage.getItem('ss_image_prompt'), '논문 핵심 개념을 시각화하세요.');
+    assert.strictEqual(localStorage.getItem('ss_image_ratio'), '16:9');
+    assert.strictEqual(localStorage.getItem('ss_image_no_text'), 'true');
+    assert.strictEqual(localStorage.getItem('ss_ai_chat_enabled'), '1');
+    assert.strictEqual(localStorage.getItem('ss_ai_chat_gemini_model'), 'gemini-3.5-flash');
+    assert.strictEqual(localStorage.getItem('ss_ai_chat_response_mode'), 'reasoning');
+    assert.strictEqual(localStorage.getItem('fma_ai_upscale_prompt'), '원본 질감을 보존해 업스케일하세요.');
+    assert.strictEqual(localStorage.getItem('fma_ai_upscale_resolution'), '4K');
+    assert.strictEqual(localStorage.getItem('fmaAiJenaVideoDuration'), '12');
     localStorage.setItem('ss_scholar_ai_system', '예시 sk-abcdefghijklmnopqrstuvwxyz 값을 숨기세요.');
     const redactedCatalog = await window.MDPCredentialVault.syncCatalog();
     assert(redactedCatalog.tools.find(item => item.id === 'scholarAI').prompt.includes('[보호된 값 숨김]'), 'prompt secret was not redacted');

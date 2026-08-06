@@ -28,7 +28,7 @@ const backupRenderer = ui.slice(
 assert.doesNotMatch(backupRenderer, /row\.content\b/);
 assert.doesNotMatch(backupRenderer, /row\.value\b/);
 assert.match(index, /sqlite-api-adapter\.js\?v=20260806-maintenance-1/);
-assert.match(index, /storage-service\.js\?v=20260806-maintenance-1/);
-assert.match(index, /settings-ui\.js\?v=20260806-maintenance-1/);
+assert.match(index, /storage-service\.js\?v=20260806-scholar-workfiles-fallback-3/);
+assert.match(index, /settings-ui\.js\?v=20260806-lmstudio-status-1/);
 
 console.log('SQLite backup explorer UI contract tests passed.');

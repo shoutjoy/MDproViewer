@@ -40,12 +40,30 @@ def main() -> None:
         "tools": [{
             "id": "scholarAI", "label": "ScholarAI", "enabled": True,
             "provider": "aistudio", "model": "gemini-2.5-pro", "prompt": "학술 근거를 우선합니다.",
-            "endpoint": "", "options": {"responseMode": "quick"},
+            "endpoint": "", "options": {
+                "tonePreset": "researcher",
+                "models": {"aistudio": "gemini-2.5-pro", "lmstudio": "local-model"},
+                "lmStudio": {
+                    "baseUrl": "http://127.0.0.1:5678/v1", "model": "local-model",
+                    "temperature": 0.4, "outputLimit": 8192, "reasoningLevel": "auto",
+                },
+                "responseMode": "quick",
+            },
             "protection": {"configured": True, "locked": True, "last4": "1234"},
         }],
     }
     normalized_catalog = validate_setting("toolSettingsCatalog", catalog)
     require(normalized_catalog["group"] == "integrations", "catalog group mismatch")
+
+    nested_secret_catalog = {
+        **catalog,
+        "tools": [{**catalog["tools"][0], "options": {"apiKey": "not-allowed"}}],
+    }
+    try:
+        validate_setting("toolSettingsCatalog", nested_secret_catalog)
+        raise AssertionError("nested API key was accepted in tool catalog")
+    except SettingPolicyError as error:
+        require(error.code in {"SENSITIVE_NESTED_SETTING_BLOCKED", "INVALID_TOOL_CATALOG"}, "unexpected nested secret rejection")
 
     with tempfile.TemporaryDirectory(prefix="sqlite-tool-settings-", dir=ROOT / "LocalSave_sqlite") as temp_name:
         manager = DatabaseManager(ROOT, data_root=Path(temp_name) / "data")

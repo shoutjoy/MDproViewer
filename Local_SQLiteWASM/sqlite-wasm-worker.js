@@ -19,11 +19,14 @@ const MAX_CONTENT_BYTES = 10 * 1024 * 1024;
 const MAX_SEARCH_LENGTH = 500;
 const MAX_DATABASE_IMPORT_BYTES = 512 * 1024 * 1024;
 const MAX_WORK_FILE_BYTES = 512 * 1024 * 1024;
+const MAX_MARKDOWN_WORK_FILE_BYTES = 8 * 1024 * 1024;
 const SAFE_APP_RE = /^[a-z][a-z0-9_-]{0,63}$/;
-const FMA_WORK_TYPES = Object.freeze({
-    fma: 'application/vnd.fma+zip',
-    fma_webp: 'application/vnd.fma+zip',
-    fma_snapshot: 'application/vnd.fma+zip'
+const WORK_FILE_TYPES = Object.freeze({
+    fma: { extension: 'fma', mimeType: 'application/vnd.fma+zip', kind: 'fma', maxBytes: MAX_WORK_FILE_BYTES },
+    fma_webp: { extension: 'fma', mimeType: 'application/vnd.fma+zip', kind: 'fma', maxBytes: MAX_WORK_FILE_BYTES },
+    fma_snapshot: { extension: 'fma', mimeType: 'application/vnd.fma+zip', kind: 'fma', maxBytes: MAX_WORK_FILE_BYTES },
+    scholar_references_md: { extension: 'md', mimeType: 'text/markdown', kind: 'markdown', maxBytes: MAX_MARKDOWN_WORK_FILE_BYTES },
+    crossref_markdown: { extension: 'md', mimeType: 'text/markdown', kind: 'markdown', maxBytes: MAX_MARKDOWN_WORK_FILE_BYTES }
 });
 const REQUIRED_IMPORT_TABLES = Object.freeze([
     'schema_migrations', 'app_meta', 'profiles', 'workspaces', 'folders',
@@ -676,30 +679,52 @@ function normalizeWorkFilePayload(payloadInput) {
         ? payload.bytes
         : (payload.bytes instanceof ArrayBuffer ? new Uint8Array(payload.bytes) : null);
     if (!SAFE_APP_RE.test(appId)) throw appError('WORK_FILE_APP_INVALID', 'Work file app identifier is invalid.');
-    if (appId !== 'fmaviewer') throw appError('WORK_FILE_APP_UNSUPPORTED', 'SQLite WASM currently supports FMA Viewer work files only.', 415);
-    if (!Object.prototype.hasOwnProperty.call(FMA_WORK_TYPES, workType)) {
-        throw appError('WORK_FILE_TYPE_UNSUPPORTED', 'SQLite WASM currently supports FMA work files only.', 415);
+    if (!Object.prototype.hasOwnProperty.call(WORK_FILE_TYPES, workType)) {
+        throw appError('WORK_FILE_TYPE_UNSUPPORTED', 'SQLite WASM does not support this work file type.', 415);
     }
-    if (!rawName || rawName.length > 255 || rawName.indexOf('\u0000') >= 0 || !/\.fma$/i.test(rawName)) {
-        throw appError('WORK_FILE_NAME_INVALID', 'FMA work file name is invalid.');
+    const type = WORK_FILE_TYPES[workType];
+    const extensionPattern = new RegExp('\\.' + type.extension + '$', 'i');
+    if (!rawName || rawName.length > 255 || rawName.indexOf('\u0000') >= 0 || !extensionPattern.test(rawName)) {
+        throw appError('WORK_FILE_NAME_INVALID', 'Work file must use the .' + type.extension + ' extension.');
     }
-    if (!bytes || bytes.byteLength <= 0) throw appError('WORK_FILE_EMPTY', 'FMA work file is empty.');
-    if (bytes.byteLength > MAX_WORK_FILE_BYTES) {
-        throw appError('WORK_FILE_TOO_LARGE', 'FMA work file exceeds the browser 512 MB limit.', 413, {
+    if (!bytes || bytes.byteLength <= 0) throw appError('WORK_FILE_EMPTY', 'Work file is empty.');
+    if (bytes.byteLength > type.maxBytes) {
+        throw appError('WORK_FILE_TOO_LARGE', 'Work file exceeds the browser storage limit for this format.', 413, {
             sizeBytes: bytes.byteLength,
-            maxBytes: MAX_WORK_FILE_BYTES
+            maxBytes: type.maxBytes
         });
     }
-    if (bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
-        throw appError('FMA_ARCHIVE_INVALID', 'FMA file is not a valid ZIP archive.');
+    let validation = {};
+    if (type.kind === 'fma') {
+        if (bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
+            throw appError('FMA_ARCHIVE_INVALID', 'FMA file is not a valid ZIP archive.');
+        }
+        validation = payload.validation && typeof payload.validation === 'object' ? payload.validation : {};
+    } else if (type.kind === 'markdown') {
+        let markdown = '';
+        try {
+            markdown = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        } catch (_) {
+            throw appError('MARKDOWN_ENCODING_INVALID', 'Markdown work file must be valid UTF-8.');
+        }
+        if (markdown.indexOf('\u0000') >= 0) {
+            throw appError('MARKDOWN_CONTENT_INVALID', 'Markdown work file contains an invalid null character.');
+        }
+        validation = {
+            format: 'markdown',
+            workType: workType,
+            lineCount: markdown ? markdown.split(/\r\n|\r|\n/).length : 0,
+            characterCount: markdown.length
+        };
     }
     return {
         appId: appId,
         workType: workType,
         fileName: rawName,
-        mimeType: FMA_WORK_TYPES[workType],
+        extension: type.extension,
+        mimeType: type.mimeType,
         bytes: bytes,
-        validation: payload.validation && typeof payload.validation === 'object' ? payload.validation : {}
+        validation: validation
     };
 }
 
@@ -753,9 +778,9 @@ async function uploadWorkFile(payloadInput) {
             if (!deduplicatedAsset) {
                 execute(
                     "UPDATE assets SET asset_type='attachment', storage_type='sqlite_blob', original_name=?, stored_name=?, "
-                    + "relative_path=NULL, external_url=NULL, mime_type=?, extension='fma', size_bytes=?, checksum_sha256=?, "
+                    + "relative_path=NULL, external_url=NULL, mime_type=?, extension=?, size_bytes=?, checksum_sha256=?, "
                     + "source_provider=?, updated_at=? WHERE id=?",
-                    [payload.fileName, checksum + '.fma', payload.mimeType, payload.bytes.byteLength, checksum,
+                    [payload.fileName, checksum + '.' + payload.extension, payload.mimeType, payload.extension, payload.bytes.byteLength, checksum,
                         'sqlite_workfiles:' + payload.appId, timestamp, assetId]
                 );
                 execute(
@@ -768,8 +793,8 @@ async function uploadWorkFile(payloadInput) {
             execute(
                 "INSERT INTO assets (id, workspace_id, asset_type, storage_type, original_name, stored_name, mime_type, extension, "
                 + "size_bytes, checksum_sha256, source_provider, created_at, updated_at) "
-                + "VALUES (?, ?, 'attachment', 'sqlite_blob', ?, ?, ?, 'fma', ?, ?, ?, ?, ?)",
-                [assetId, WORKSPACE_ID, payload.fileName, checksum + '.fma', payload.mimeType, payload.bytes.byteLength,
+                + "VALUES (?, ?, 'attachment', 'sqlite_blob', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [assetId, WORKSPACE_ID, payload.fileName, checksum + '.' + payload.extension, payload.mimeType, payload.extension, payload.bytes.byteLength,
                     checksum, 'sqlite_workfiles:' + payload.appId, timestamp, timestamp]
             );
             execute(
@@ -781,8 +806,8 @@ async function uploadWorkFile(payloadInput) {
         execute(
             "INSERT INTO file_entries (id, source_id, entry_type, path, name, extension, mime_type, asset_id, size_bytes, "
             + "modified_at, remote_revision, checksum, base_checksum, sync_status, created_at, updated_at) "
-            + "VALUES (?, ?, 'file', ?, ?, 'fma', ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?)",
-            [entryId, sourceId, logicalPath, payload.fileName, payload.mimeType, assetId, payload.bytes.byteLength,
+            + "VALUES (?, ?, 'file', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'synced', ?, ?)",
+            [entryId, sourceId, logicalPath, payload.fileName, payload.extension, payload.mimeType, assetId, payload.bytes.byteLength,
                 timestamp, payload.workType, checksum, checksum, timestamp, timestamp]
         );
     });
@@ -808,8 +833,8 @@ function listWorkFiles(options) {
     const appId = String(config.appId || 'fmaviewer').trim().toLowerCase();
     if (!SAFE_APP_RE.test(appId)) throw appError('WORK_FILE_APP_INVALID', 'Work file app identifier is invalid.');
     const workType = String(config.workType || '').trim().toLowerCase();
-    if (workType && !Object.prototype.hasOwnProperty.call(FMA_WORK_TYPES, workType)) {
-        throw appError('WORK_FILE_TYPE_UNSUPPORTED', 'SQLite WASM currently supports FMA work files only.', 415);
+    if (workType && !Object.prototype.hasOwnProperty.call(WORK_FILE_TYPES, workType)) {
+        throw appError('WORK_FILE_TYPE_UNSUPPORTED', 'SQLite WASM does not support this work file type.', 415);
     }
     const query = String(config.query || '').trim();
     if (query.length > MAX_SEARCH_LENGTH) throw appError('WORK_FILE_QUERY_TOO_LONG', 'Work file search query is too long.');
@@ -827,7 +852,7 @@ function listWorkFiles(options) {
     }
     bind.push(limit);
     const items = rows(
-        'SELECT f.id, f.asset_id, f.name, f.extension, f.mime_type, f.size_bytes, f.remote_revision, '
+        'SELECT f.id, f.source_id, f.asset_id, f.name, f.extension, f.mime_type, f.size_bytes, f.remote_revision, '
         + 'f.checksum, f.created_at, f.updated_at FROM file_entries f JOIN assets a ON a.id=f.asset_id '
         + 'WHERE ' + clauses.join(' AND ') + ' ORDER BY f.created_at DESC, f.id DESC LIMIT ?',
         bind
@@ -838,27 +863,28 @@ function listWorkFiles(options) {
 function requireWorkFile(entryId) {
     const normalizedId = requireId(entryId, 'fileEntryId');
     const item = row(
-        'SELECT f.id, f.asset_id, f.name, f.extension, f.mime_type, f.size_bytes, f.remote_revision, '
+        'SELECT f.id, f.source_id, f.asset_id, f.name, f.extension, f.mime_type, f.size_bytes, f.remote_revision, '
         + 'f.checksum, f.created_at, f.updated_at, a.storage_type, a.checksum_sha256, b.blob_data '
         + 'FROM file_entries f JOIN workspace_sources s ON s.id=f.source_id JOIN assets a ON a.id=f.asset_id '
         + 'LEFT JOIN asset_blobs b ON b.asset_id=a.id '
-        + "WHERE f.id=? AND s.workspace_id=? AND s.id='source_sqlite_workfiles_fmaviewer' "
+        + "WHERE f.id=? AND s.workspace_id=? AND s.id LIKE 'source_sqlite_workfiles_%' "
         + 'AND f.deleted_at IS NULL AND a.deleted_at IS NULL',
         [normalizedId, WORKSPACE_ID]
     );
     if (!item) throw appError('WORK_FILE_NOT_FOUND', 'Work file was not found.', 404);
     if (item.storage_type !== 'sqlite_blob' || !(item.blob_data instanceof Uint8Array)) {
-        throw appError('WORK_FILE_ASSET_MISSING', 'Stored FMA bytes are not available in this browser database.', 409);
+        throw appError('WORK_FILE_ASSET_MISSING', 'Stored work file bytes are not available in this browser database.', 409);
     }
     if (item.blob_data.byteLength !== Number(item.size_bytes)) {
-        throw appError('WORK_FILE_SIZE_MISMATCH', 'Stored FMA size does not match its metadata.', 409);
+        throw appError('WORK_FILE_SIZE_MISMATCH', 'Stored work file size does not match its metadata.', 409);
     }
     return item;
 }
 
 function downloadWorkFile(entryId) {
     const item = requireWorkFile(entryId);
-    const result = workFileResult(item, 'fmaviewer');
+    const sourcePrefix = 'source_sqlite_workfiles_';
+    const result = workFileResult(item, String(item.source_id || '').slice(sourcePrefix.length));
     result.bytes = new Uint8Array(item.blob_data);
     return result;
 }

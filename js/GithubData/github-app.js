@@ -104,23 +104,87 @@
         const checked = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
         const folded = getGithubSettingsFoldedFromLocal();
         const api = window.GithubDataSettings;
+        let result;
         if (api && typeof api.toggleGithubSettingsSection === 'function') {
-            return api.toggleGithubSettingsSection({ checked: checked, folded: folded });
+            result = api.toggleGithubSettingsSection({ checked: checked, folded: folded });
+        } else {
+            const body = document.getElementById('github-settings-body');
+            if (body) body.classList.toggle('hidden', !checked || folded);
         }
-        const body = document.getElementById('github-settings-body');
-        if (body) body.classList.toggle('hidden', !checked || folded);
+        onStorageFeatureCheckboxChange();
+        return result;
+    }
+
+    function getStorageFeatureFlags(settingsInput) {
+        const settings = settingsInput && typeof settingsInput === 'object' ? settingsInput : null;
+        const sqliteCheckbox = document.getElementById('sqlite-enabled');
+        const githubCheckbox = document.getElementById('ai-github-enabled');
+        const localCheckbox = document.getElementById('local-storage-enabled');
+        return {
+            sqlite: sqliteCheckbox ? sqliteCheckbox.checked : !!(settings && settings.sqliteEnabled === true),
+            github: githubCheckbox ? githubCheckbox.checked : !!(settings && settings.githubEnabled === true),
+            local: localCheckbox ? localCheckbox.checked : !!(settings && settings.localEnabled === true)
+        };
+    }
+
+    function applyStorageFeatureVisibility(settingsInput) {
+        const flags = getStorageFeatureFlags(settingsInput);
+        const body = document.body;
+        if (body) {
+            ['sqlite', 'github', 'local'].forEach(function (feature) {
+                body.classList.toggle('feature-' + feature + '-enabled', flags[feature]);
+                body.classList.toggle('feature-' + feature + '-disabled', !flags[feature]);
+            });
+        }
+
+        const localBtn = document.getElementById('tab-storage-local');
+        const sqliteBtn = document.getElementById('tab-storage-sqlite');
+        const githubBtn = document.getElementById('tab-storage-github');
+        const githubLink = document.getElementById('tab-storage-github-link');
+        if (localBtn) localBtn.toggleAttribute('hidden', !flags.local);
+        if (sqliteBtn) sqliteBtn.toggleAttribute('hidden', !flags.sqlite);
+        if (githubBtn) githubBtn.toggleAttribute('hidden', !flags.github);
+        if (githubLink && !flags.github) githubLink.setAttribute('hidden', '');
+
+        const disabledCurrentTab = (currentStorageSourceTab === 'local' && !flags.local)
+            || (currentStorageSourceTab === 'sqlite' && !flags.sqlite)
+            || (currentStorageSourceTab === 'github' && !flags.github);
+        if (disabledCurrentTab) {
+            currentStorageSourceTab = 'indb';
+            setStorageSourceTabToLocal('indb');
+        }
+        if (!flags.sqlite && window.SettingUI && typeof window.SettingUI.closeSqliteExplorer === 'function') {
+            window.SettingUI.closeSqliteExplorer();
+        }
+        return flags;
+    }
+
+    function onStorageFeatureCheckboxChange() {
+        const previousTab = currentStorageSourceTab;
+        const flags = applyStorageFeatureVisibility();
+        if (previousTab !== currentStorageSourceTab && activeSidebarTab === 'files') renderDBList();
+        updateStorageSourceTabsUI();
+        return flags;
     }
 
     function updateStorageSourceTabsUI() {
+        const localBtn = document.getElementById('tab-storage-local');
         const indbBtn = document.getElementById('tab-storage-indb');
         const sqliteBtn = document.getElementById('tab-storage-sqlite');
         const ghBtn = document.getElementById('tab-storage-github');
-        if (!indbBtn || !sqliteBtn || !ghBtn) return;
-        const active = 'px-2 py-1 text-xs font-semibold border border-indigo-500 rounded bg-indigo-600 text-white';
-        const inactive = 'px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200';
+        if (!localBtn || !indbBtn || !sqliteBtn || !ghBtn) return;
+        const active = 'inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-indigo-500 rounded bg-indigo-600 text-white';
+        const inactive = 'inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200';
+        localBtn.className = currentStorageSourceTab === 'local' ? active : inactive;
         indbBtn.className = currentStorageSourceTab === 'indb' ? active : inactive;
         sqliteBtn.className = currentStorageSourceTab === 'sqlite' ? active : inactive;
         ghBtn.className = currentStorageSourceTab === 'github' ? active : inactive;
+        const newFolderButton = document.getElementById('btn-new-folder');
+        if (newFolderButton) newFolderButton.classList.toggle('hidden', currentStorageSourceTab === 'local');
+        const searchInput = document.getElementById('db-search');
+        if (searchInput) searchInput.placeholder = currentStorageSourceTab === 'local'
+            ? '로컬 폴더에서 파일 검색...'
+            : '문서 제목·본문 검색...';
         const storageState = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
             ? window.MDPStorage.getStatus()
             : null;
@@ -133,22 +197,14 @@
             window.setStorageConnectionButtonGlow('tab-storage-sqlite', 'sqlite', sqliteConnected);
             window.setStorageConnectionButtonGlow('tab-storage-github', 'github', window.githubStorageConnectionVerified === true);
         }
-        const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
-        const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
-        syncStorageSourceTabsVisibility(!!(githubEnabled && githubToken));
+        syncStorageSourceTabsVisibility();
     }
 
-    function syncStorageSourceTabsVisibility(githubConfigured) {
+    function syncStorageSourceTabsVisibility(settingsInput) {
         const tabsWrap = document.getElementById('storage-source-tabs');
         if (!tabsWrap) return;
-        const storageState = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
-            ? window.MDPStorage.getStatus()
-            : null;
-        const sqliteAvailable = !!(storageState && storageState.sqliteHealth
-            && storageState.sqliteHealth.capabilities
-            && storageState.sqliteHealth.capabilities.documents === true
-            && storageState.sqliteHealth.capabilities.folders === true);
-        const shouldShow = (!!githubConfigured || sqliteAvailable) && !isSidebarCollapsed;
+        applyStorageFeatureVisibility(settingsInput);
+        const shouldShow = !isSidebarCollapsed;
         tabsWrap.classList.toggle('hidden', !shouldShow);
         tabsWrap.classList.toggle('flex', shouldShow);
     }
@@ -161,7 +217,7 @@
         const syncBtn = document.getElementById('btn-github-sync');
         const syncLabel = document.getElementById('github-sync-label');
 
-        syncStorageSourceTabsVisibility(githubConfigured);
+        syncStorageSourceTabsVisibility(settings);
         if (syncBtn) {
             const showSync = githubConfigured;
             syncBtn.classList.toggle('hidden', !showSync);
@@ -203,7 +259,8 @@
 
     async function switchStorageSourceTab(tab) {
         const requested = String(tab || '').toLowerCase();
-        const next = requested === 'github' || requested === 'sqlite' ? requested : 'indb';
+        const next = requested === 'github' || requested === 'sqlite' || requested === 'local' ? requested : 'indb';
+        const featureFlags = getStorageFeatureFlags();
         const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
         const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
         const githubConfigured = !!(githubEnabled && githubToken);
@@ -214,7 +271,25 @@
             renderDBList();
             return;
         }
-        if (next !== 'github') {
+        if ((next === 'local' && !featureFlags.local) || (next === 'sqlite' && !featureFlags.sqlite)) {
+            currentStorageSourceTab = 'indb';
+            setStorageSourceTabToLocal('indb');
+            updateStorageSourceTabsUI();
+            renderDBList();
+            return;
+        }
+        if (next === 'local') {
+            if (!window.LocalFolderExplorer || typeof window.LocalFolderExplorer.activate !== 'function') {
+                if (typeof showToast === 'function') showToast('로컬 폴더 탐색기를 불러오지 못했습니다.');
+                return;
+            }
+            const activated = await window.LocalFolderExplorer.activate({ pickIfNeeded: true });
+            if (!activated) {
+                updateStorageSourceTabsUI();
+                return;
+            }
+            currentStorageSourceTab = 'local';
+        } else if (next !== 'github') {
             if (!window.MDPStorage || typeof window.MDPStorage.requestMode !== 'function') return;
             try {
                 const state = await window.MDPStorage.requestMode(next);
@@ -479,6 +554,170 @@
         const choices = mergeGithubFolderChoices(localChoices, remoteChoices);
         const defaultFolder = normalizeGithubFolderPath(suggestedFolder || cfg.defaultPushPath || '');
         return await openGithubPushFolderModal(choices, defaultFolder);
+    }
+
+    function normalizeGithubDocumentFileName(fileName) {
+        let normalized = String(fileName || '')
+            .trim()
+            .replace(/[/\\:*?"<>|]+/g, '_');
+        if (!normalized) return '';
+        if (!/\.(md|markdown|txt)$/i.test(normalized)) normalized += '.md';
+        return normalized;
+    }
+
+    function openGithubDocumentCreateModal(defaultFolder) {
+        return new Promise(function (resolve) {
+            const overlay = document.createElement('div');
+            overlay.className = 'fixed inset-0 bg-black/60 flex items-center justify-center p-4 no-print';
+            overlay.style.zIndex = '2147483647';
+
+            const card = document.createElement('form');
+            card.className = 'w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl p-6';
+            card.innerHTML = ''
+                + '<h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">GitHub 문서 생성</h3>'
+                + '<p class="text-xs text-slate-500 dark:text-slate-400 mb-5">폴더와 문서 이름을 입력하면 <b>폴더/문서명.md</b> 경로로 생성됩니다.</p>'
+                + '<label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">폴더 이름</label>'
+                + '<input type="text" data-github-create-folder class="w-full px-3 py-2 mb-4 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" placeholder="예: docs/research (비우면 ROOT)">'
+                + '<label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">문서 이름</label>'
+                + '<input type="text" data-github-create-document class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100" placeholder="예: 새 문서">'
+                + '<div data-github-create-preview class="mt-3 px-3 py-2 rounded-md bg-slate-50 dark:bg-slate-900 text-xs font-mono text-slate-600 dark:text-slate-300 break-all"></div>'
+                + '<p data-github-create-error class="hidden mt-2 text-xs text-red-600 dark:text-red-400"></p>'
+                + '<div class="flex gap-2 mt-6">'
+                + '<button type="button" data-github-create-cancel class="flex-1 px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>'
+                + '<button type="submit" class="flex-1 px-4 py-2 bg-emerald-600 rounded-md text-sm font-medium text-white hover:bg-emerald-700">생성</button>'
+                + '</div>';
+
+            const folderInput = card.querySelector('[data-github-create-folder]');
+            const documentInput = card.querySelector('[data-github-create-document]');
+            const preview = card.querySelector('[data-github-create-preview]');
+            const errorElement = card.querySelector('[data-github-create-error]');
+            const cancelButton = card.querySelector('[data-github-create-cancel]');
+            folderInput.value = normalizeGithubFolderPath(defaultFolder);
+            documentInput.value = 'Untitled';
+
+            function updatePreview() {
+                const folder = normalizeGithubFolderPath(folderInput.value);
+                const fileName = normalizeGithubDocumentFileName(documentInput.value) || '문서명.md';
+                preview.textContent = folder ? (folder + '/' + fileName) : fileName;
+            }
+
+            function close(value) {
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                resolve(value);
+            }
+
+            folderInput.addEventListener('input', updatePreview);
+            documentInput.addEventListener('input', updatePreview);
+            cancelButton.addEventListener('click', function () { close(null); });
+            card.addEventListener('submit', function (event) {
+                event.preventDefault();
+                const fileName = normalizeGithubDocumentFileName(documentInput.value);
+                if (!fileName) {
+                    errorElement.textContent = '문서 이름을 입력하세요.';
+                    errorElement.classList.remove('hidden');
+                    documentInput.focus();
+                    return;
+                }
+                close({
+                    folderPath: normalizeGithubFolderPath(folderInput.value),
+                    fileName: fileName
+                });
+            });
+            overlay.addEventListener('click', function (event) {
+                if (event.target === overlay) close(null);
+            });
+            overlay.addEventListener('keydown', function (event) {
+                if (event.key === 'Escape') close(null);
+            });
+
+            overlay.appendChild(card);
+            document.body.appendChild(overlay);
+            updatePreview();
+            setTimeout(function () { documentInput.focus(); documentInput.select(); }, 0);
+        });
+    }
+
+    async function createGithubDocumentInFolder(suggestedFolder) {
+        const settings = await getAiSettings() || {};
+        const cfg = getGithubConfigFromSettings(settings);
+        if (!cfg.enabled || !cfg.token || !cfg.repo || !cfg.branch) {
+            showToast('Set GitHub token/repo/branch first.');
+            return false;
+        }
+
+        const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+        if (!canProceed) {
+            showToast('GitHub document creation canceled.');
+            return false;
+        }
+
+        const requested = await openGithubDocumentCreateModal(
+            String(suggestedFolder || '') === 'root' ? '' : suggestedFolder
+        );
+        if (!requested) return false;
+
+        const path = joinGithubPath(requested.folderPath, requested.fileName);
+        const remotePath = cfg.basePath
+            ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path)
+            : path;
+        const encodedRemotePath = remotePath.split('/').map(encodeURIComponent).join('/');
+        const contentUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner)
+            + '/' + encodeURIComponent(cfg.name) + '/contents/' + encodedRemotePath;
+
+        try {
+            try {
+                await githubApiRequest(contentUrl + '?ref=' + encodeURIComponent(cfg.branch), {}, cfg.token);
+                showToast('GitHub에 같은 경로의 문서가 이미 있습니다: ' + remotePath);
+                return false;
+            } catch (lookupError) {
+                const status = Number(lookupError && lookupError.status ? lookupError.status : 0);
+                if (status !== 404) throw lookupError;
+            }
+
+            const created = await githubApiRequest(contentUrl, {
+                method: 'PUT',
+                body: JSON.stringify({
+                    message: 'create: ' + path + ' (' + new Date().toISOString() + ')',
+                    content: encodeTextToGithubBase64(''),
+                    branch: cfg.branch
+                })
+            }, cfg.token);
+
+            const nextCache = Array.isArray(settings.githubCacheDocs) ? settings.githubCacheDocs.slice() : [];
+            const entry = {
+                id: 'gh:' + path,
+                path: path,
+                remotePath: remotePath,
+                title: getGithubDocTitleFromPath(path),
+                folderPath: requested.folderPath || 'root',
+                content: '',
+                sha: String(created && created.content && created.content.sha ? created.content.sha : ''),
+                updatedAt: new Date().toISOString()
+            };
+            const existingIndex = nextCache.findIndex(function (doc) {
+                return String(doc && doc.path || '') === path;
+            });
+            if (existingIndex >= 0) nextCache[existingIndex] = entry;
+            else nextCache.push(entry);
+            await setAiSettings({ githubCacheDocs: nextCache });
+
+            const folderStateId = 'gh-folder:' + (entry.folderPath || 'root');
+            if (isFolderCollapsed(folderStateId)) {
+                folderCollapseState[folderStateId] = false;
+                saveFolderCollapseState();
+            }
+            setCurrentDocumentInfo(requested.fileName, path);
+            updateContent('');
+            markPersistedState();
+            await renderDBList();
+            if (editorTextarea) editorTextarea.focus();
+            showToast('GitHub 문서를 만들었습니다: ' + remotePath);
+            if (window.innerWidth < 1024 && !isSidebarHidden) toggleSidebarVisibility();
+            return true;
+        } catch (error) {
+            showToast('GitHub document creation failed: ' + String(error && error.message ? error.message : error));
+            return false;
+        }
     }
 
     async function pullGithubRepo() {
@@ -825,6 +1064,7 @@
             if (!groups.has(key)) groups.set(key, []);
             groups.get(key).push(doc);
         });
+        if (!searchTerm && !groups.has('root')) groups.set('root', []);
         const keys = Array.from(groups.keys()).sort(function (a, b) { return a.localeCompare(b); });
         keys.forEach(function (folderPath) {
             const items = groups.get(folderPath) || [];
@@ -839,6 +1079,21 @@
                 + '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i>'
                 + '<i data-lucide="folder-git-2" class="w-3 h-3"></i>'
                 + '<span class="sidebar-text">' + escapeHtmlText(folderPath === 'root' ? 'ROOT' : folderPath) + '</span>';
+
+            const folderActions = document.createElement('span');
+            folderActions.className = 'ml-auto flex items-center gap-1 sidebar-text';
+            const createButton = document.createElement('button');
+            createButton.type = 'button';
+            createButton.className = 'text-[11px] leading-none px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white';
+            createButton.title = (folderPath === 'root' ? 'ROOT' : folderPath) + ' 경로에 GitHub 문서 생성';
+            createButton.setAttribute('aria-label', createButton.title);
+            createButton.textContent = '+';
+            createButton.addEventListener('click', function (event) {
+                event.stopPropagation();
+                createGithubDocumentInFolder(folderPath);
+            });
+            folderActions.appendChild(createButton);
+            folderHeader.appendChild(folderActions);
             folderHeader.addEventListener('click', function () { toggleFolderCollapse(folderId); });
             folderDiv.appendChild(folderHeader);
 
@@ -893,6 +1148,9 @@
         applyGithubSettingsFold: applyGithubSettingsFold,
         toggleGithubSettingsFold: toggleGithubSettingsFold,
         toggleGithubSettingsSection: toggleGithubSettingsSection,
+        getStorageFeatureFlags: getStorageFeatureFlags,
+        applyStorageFeatureVisibility: applyStorageFeatureVisibility,
+        onStorageFeatureCheckboxChange: onStorageFeatureCheckboxChange,
         updateStorageSourceTabsUI: updateStorageSourceTabsUI,
         syncStorageSourceTabsVisibility: syncStorageSourceTabsVisibility,
         applyGithubUiState: applyGithubUiState,
@@ -906,6 +1164,7 @@
         checkGithubConnectionFromModal: checkGithubConnectionFromModal,
         loadFromGithubCache: loadFromGithubCache,
         getGithubPushSource: getGithubPushSource,
+        createGithubDocumentInFolder: createGithubDocumentInFolder,
         pushDocToGithub: pushDocToGithub,
         pushCurrentContentToGithub: pushCurrentContentToGithub,
         isGithubExportEnabled: isGithubExportEnabled,
@@ -923,6 +1182,9 @@
     window.applyGithubSettingsFold = applyGithubSettingsFold;
     window.toggleGithubSettingsFold = toggleGithubSettingsFold;
     window.toggleGithubSettingsSection = toggleGithubSettingsSection;
+    window.getStorageFeatureFlags = getStorageFeatureFlags;
+    window.applyStorageFeatureVisibility = applyStorageFeatureVisibility;
+    window.onStorageFeatureCheckboxChange = onStorageFeatureCheckboxChange;
     window.updateStorageSourceTabsUI = updateStorageSourceTabsUI;
     window.syncStorageSourceTabsVisibility = syncStorageSourceTabsVisibility;
     window.applyGithubUiState = applyGithubUiState;
@@ -935,6 +1197,7 @@
     window.saveGithubSettingsFromModal = saveGithubSettingsFromModal;
     window.checkGithubConnectionFromModal = checkGithubConnectionFromModal;
     window.loadFromGithubCache = loadFromGithubCache;
+    window.createGithubDocumentInFolder = createGithubDocumentInFolder;
     window.pushDocToGithub = pushDocToGithub;
     window.pushCurrentContentToGithub = pushCurrentContentToGithub;
     window.isGithubExportEnabled = isGithubExportEnabled;

@@ -408,6 +408,55 @@
             background: linear-gradient(135deg, transparent 45%, #94a3b8 46%, #94a3b8 54%, transparent 55%);
         }
 
+        .view-copy-fab {
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+            z-index: 35;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            min-height: 46px;
+            padding: 0 17px;
+            border: 1px solid rgba(255, 255, 255, 0.24);
+            border-radius: 9999px;
+            background: #4f46e5;
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.01em;
+            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.28), 0 4px 10px rgba(79, 70, 229, 0.28);
+            backdrop-filter: blur(8px);
+            cursor: pointer;
+            transition: transform 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
+        }
+
+        .view-copy-fab.hidden {
+            display: none;
+        }
+
+        .view-copy-fab svg {
+            width: 18px;
+            height: 18px;
+            stroke-width: 2.2;
+        }
+
+        .view-copy-fab:hover {
+            transform: translateY(-2px);
+            background: #4338ca;
+            box-shadow: 0 16px 34px rgba(15, 23, 42, 0.32), 0 6px 14px rgba(79, 70, 229, 0.34);
+        }
+
+        .view-copy-fab:active {
+            transform: translateY(0) scale(0.97);
+        }
+
+        .view-copy-fab:focus-visible {
+            outline: 3px solid rgba(129, 140, 248, 0.48);
+            outline-offset: 3px;
+        }
+
         .scroll-jump-rail {
             position: absolute;
             top: 50%;
@@ -466,6 +515,14 @@
         }
 
         @media (max-width: 640px) {
+            .view-copy-fab {
+                right: 12px;
+                bottom: 12px;
+                min-height: 42px;
+                padding: 0 14px;
+                font-size: 12px;
+            }
+
             .scroll-jump-rail {
                 right: 8px;
                 gap: 8px;
@@ -829,4 +886,16 @@ html:not(.dark) .settings-credential-error-status {
     .settings-connection-glow,
     .storage-connected-sqlite,
     .storage-connected-github { animation: none !important; }
+}
+
+/* Storage feature buttons stay absent until their setting checkbox is enabled. */
+body.feature-local-disabled #tab-storage-local,
+body.feature-github-disabled #tab-storage-github,
+body.feature-github-disabled #tab-storage-github-link,
+body.feature-github-disabled #btn-github-sync,
+body.feature-sqlite-disabled button[id*="sqlite" i]:not(.scholar-sqlite-access),
+body.feature-sqlite-disabled a[id*="sqlite" i],
+body.feature-sqlite-disabled button[onclick*="sqlite" i]:not(.scholar-sqlite-access),
+body.feature-sqlite-disabled a[onclick*="sqlite" i] {
+    display: none !important;
 }

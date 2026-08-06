@@ -53,6 +53,18 @@ class MockWorker {
                     ok: true,
                     result: { imported: true, fileName: message.args[0].fileName, sizeBytes: message.args[0].bytes.byteLength }
                 });
+            } else if (message.method === 'uploadWorkFile') {
+                this.emit('message', {
+                    id: message.id,
+                    ok: true,
+                    result: {
+                        id: 'file_markdown_test',
+                        appId: message.args[0].appId,
+                        workType: message.args[0].workType,
+                        name: message.args[0].fileName,
+                        sizeBytes: message.args[0].bytes.byteLength
+                    }
+                });
             } else {
                 this.emit('message', { id: message.id, ok: true, result: null });
             }
@@ -109,6 +121,14 @@ require(path.join(__dirname, '..', 'Local_SQLiteWASM', 'sqlite-wasm-adapter.js')
     assert.equal(imported.imported, true);
     assert.equal(imported.fileName, 'roundtrip.sqlite');
     assert.equal(imported.sizeBytes, 512);
+
+    const markdown = new Blob(['# Crossref 결과\n'], { type: 'text/markdown' });
+    const savedMarkdown = await adapter.uploadWorkFile(markdown, {
+        appId: 'scholarsearch', workType: 'crossref_markdown', fileName: 'crossref.md'
+    });
+    assert.equal(savedMarkdown.workType, 'crossref_markdown');
+    assert.equal(calls.at(-1).args[0].appId, 'scholarsearch');
+    assert.equal(calls.at(-1).args[0].validation && Object.keys(calls.at(-1).args[0].validation).length, 0);
 
     await assert.rejects(adapter.createBackupPackage(), function (error) {
         return error.code === 'SQLITE_WASM_FEATURE_EXCLUDED' && error.status === 501;

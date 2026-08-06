@@ -54,8 +54,11 @@ function replaceMarkerBlock(source, generatedBlock) {
   if (nextFn < 0) nextFn = after.indexOf('\n  function ensureModalMarkup()', fnStart);
   if (nextFn < 0) throw new Error('mountTemplateHtml()/ensureModalMarkup() not found after getTemplateHtml()');
 
+  const fnEnd = after.indexOf('\n  }\n', fnStart);
+  if (fnEnd < 0 || fnEnd >= nextFn) throw new Error('getTemplateHtml() closing brace not found');
+  const preservedHelpers = after.slice(fnEnd + 5, nextFn + 1);
   const tail = after.slice(nextFn + 1);
-  return before + generatedBlock + tail;
+  return before + generatedBlock + preservedHelpers + tail;
 }
 
 function main() {

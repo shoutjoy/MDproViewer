@@ -763,7 +763,7 @@ class StorageRepository:
                 f"""
                 SELECT e.id, e.source_id, s.name AS source_name, e.parent_id,
                        e.entry_type, e.path, e.name, e.extension, e.mime_type,
-                       e.size_bytes, e.modified_at, e.checksum, e.sync_status,
+                       e.size_bytes, e.modified_at, e.remote_revision, e.checksum, e.sync_status,
                        e.created_at, e.updated_at
                 FROM file_entries AS e
                 JOIN workspace_sources AS s ON s.id = e.source_id
@@ -877,6 +877,7 @@ class StorageRepository:
                 "mimeType": row["mime_type"],
                 "sizeBytes": row["size_bytes"],
                 "modifiedAt": row["modified_at"],
+                "workType": str(row["remote_revision"] or ""),
                 "checksum": row["checksum"],
                 "syncStatus": row["sync_status"],
                 "createdAt": row["created_at"],
@@ -924,7 +925,7 @@ class StorageRepository:
                 """
                 SELECT e.id, e.source_id, s.name AS source_name, e.parent_id,
                        e.entry_type, e.path, e.name, e.extension, e.mime_type,
-                       e.content_text, e.size_bytes, e.modified_at, e.checksum,
+                       e.content_text, e.size_bytes, e.modified_at, e.remote_revision, e.checksum,
                        e.sync_status, e.created_at, e.updated_at
                 FROM file_entries AS e
                 JOIN workspace_sources AS s ON s.id = e.source_id
@@ -947,6 +948,7 @@ class StorageRepository:
             "content": row["content_text"],
             "sizeBytes": row["size_bytes"],
             "modifiedAt": row["modified_at"],
+            "workType": str(row["remote_revision"] or ""),
             "checksum": row["checksum"],
             "syncStatus": row["sync_status"],
             "createdAt": row["created_at"],

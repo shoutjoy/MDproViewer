@@ -1047,6 +1047,12 @@
     return global.MDPStorage;
   }
 
+  function callScholarWorkFileApi(storage, scholarMethod, fallbackMethod, args) {
+    var method = typeof storage[scholarMethod] === 'function'
+      ? storage[scholarMethod] : storage[fallbackMethod];
+    return method.apply(storage, args || []);
+  }
+
   function chooseSqliteWorkFile(items, label) {
     var list = Array.isArray(items) ? items.slice(0, 30) : [];
     if (!list.length) return null;
@@ -1071,11 +1077,11 @@
         withAnchors: false
       }).replace(/^\n+/, '');
       var blob = new Blob([body], { type: 'text/markdown' });
-      var result = await storage.saveSqliteWorkFile(blob, {
+      var result = await callScholarWorkFileApi(storage, 'saveScholarSqliteWorkFile', 'saveSqliteWorkFile', [blob, {
         appId: 'scholarref',
         workType: 'scholar_references_md',
         fileName: 'scholar_references_' + Date.now() + '.md'
-      });
+      }]);
       toast('참고문헌 ' + refs.length + '건을 SQLite에 저장했습니다.');
       return result;
     } catch (error) {
@@ -1087,11 +1093,11 @@
   async function loadSqliteMarkdown() {
     try {
       var storage = requireSqliteWorkFileApi();
-      var result = await storage.listSqliteWorkFiles({
+      var result = await callScholarWorkFileApi(storage, 'listScholarSqliteWorkFiles', 'listSqliteWorkFiles', [{
         appId: 'scholarref',
         workType: 'scholar_references_md',
         limit: 30
-      });
+      }]);
       var selected = chooseSqliteWorkFile(result && result.items, 'SQLite 참고문헌 목록');
       if (!selected) {
         if (!result || !Array.isArray(result.items) || !result.items.length) {
@@ -1099,7 +1105,7 @@
         }
         return null;
       }
-      var blob = await storage.loadSqliteWorkFile(selected);
+      var blob = await callScholarWorkFileApi(storage, 'loadScholarSqliteWorkFile', 'loadSqliteWorkFile', [selected]);
       var markdown = await blob.text();
       var extracted = extractReferencesSectionFromMarkdown(markdown);
       var input = q('scholarref-input');

@@ -44,6 +44,10 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
         id: 'ai_settings',
         highlightVisible: true,
         githubRepo: 'owner/repo',
+        sitesList: [{ name: 'Research App', url: 'https://example.com/research/' }],
+        shareSites: ['docs', 'custom_research'],
+        customShareDestinations: [{ key: 'custom_research', label: 'Research', url: 'https://example.com/share/' }],
+        naverBlogId: 'researcher',
         userInfo: { name: 'Tester', major: 'Research' },
         apiKey: 'gemini-secret-value',
         githubToken: 'github-secret-value',
@@ -53,8 +57,11 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
         futureSetting: 'unknown'
     });
     assert.deepEqual(classified.settings.map(function (item) { return item.key; }), [
-        'githubRepo', 'highlightVisible', 'userInfo'
+        'customShareDestinations', 'githubRepo', 'highlightVisible', 'naverBlogId',
+        'shareSites', 'sitesList', 'userInfo'
     ]);
+    assert.equal(classified.settings.find(function (item) { return item.key === 'sitesList'; }).scopeType, 'workspace');
+    assert.equal(classified.settings.find(function (item) { return item.key === 'customShareDestinations'; }).value[0].url, 'https://example.com/share/');
     assert.ok(classified.classification.sensitiveKeys.includes('apiKey'));
     assert.ok(classified.classification.transientKeys.includes('sqliteEnabled'));
     assert.ok(classified.classification.unknownKeys.includes('futureSetting'));

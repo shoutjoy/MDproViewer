@@ -698,6 +698,15 @@
         });
     }
 
+    function getSettingsSnapshot() {
+        const naverInput = getNaverBlogIdInput();
+        return {
+            shareSites: Array.isArray(shareSites) ? shareSites.slice() : DEFAULT_SHARE_SITES.slice(),
+            customShareDestinations: getCustomShareDestinationsForSave(),
+            naverBlogId: String(naverInput && naverInput.value ? naverInput.value : '').trim()
+        };
+    }
+
     function renderCustomShareDestinationSettings() {
         const list = document.getElementById('share-custom-destinations-list');
         if (!list) return;
@@ -1216,6 +1225,7 @@
         buildNaverClipboardContent,
         mathToPlainTextForNaver: convertMathToPlainText,
         shouldShowInViewMode,
+        getSettingsSnapshot,
         resetShareSettingsUI,
         loadShareSettingsUI
     };

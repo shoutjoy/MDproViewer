@@ -32,9 +32,30 @@
     }
     const status = typeof storage.getStatus === "function" ? storage.getStatus() : null;
     if (!status || status.activeMode !== "sqlite") {
-      throw new Error("메인 MD Viewer 설정에서 Sqlite 사용을 먼저 선택하세요.");
+      throw new Error("메인 MD Viewer 설정에서 SQLite 사용을 먼저 선택하세요.");
     }
     return storage;
+  }
+
+  function isSqliteFeatureEnabled() {
+    const host = storageHost();
+    const storage = host && host.MDPStorage;
+    const status = storage && typeof storage.getStatus === "function" ? storage.getStatus() : null;
+    return !!(status && status.activeMode === "sqlite");
+  }
+
+  function applySqliteFeatureButtonVisibility() {
+    const enabled = isSqliteFeatureEnabled();
+    document.querySelectorAll('button[id*="sqlite" i], a[id*="sqlite" i], button[onclick*="sqlite" i], a[onclick*="sqlite" i]')
+      .forEach((element) => {
+        if (!enabled) {
+          if (!element.hidden) element.dataset.sqliteFeatureHidden = "1";
+          element.hidden = true;
+        } else if (element.dataset.sqliteFeatureHidden === "1") {
+          element.hidden = false;
+          delete element.dataset.sqliteFeatureHidden;
+        }
+      });
   }
 
   function isMirrorEnabled() {
@@ -220,6 +241,11 @@
     if (open) open.onclick = openWithNotice;
     if (mirror) mirror.onclick = toggleMirror;
     updateMirrorButton();
+    applySqliteFeatureButtonVisibility();
+  }
+
+  if (typeof global.addEventListener === "function") {
+    global.addEventListener("focus", applySqliteFeatureButtonVisibility);
   }
 
   global.GenSlideSqlite = {
@@ -231,6 +257,7 @@
     captureExport,
     isMirrorEnabled,
     toggleMirror,
+    applySqliteFeatureButtonVisibility,
     bindButtons
   };
 })(window);

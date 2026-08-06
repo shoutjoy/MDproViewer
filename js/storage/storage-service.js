@@ -582,11 +582,6 @@
     }
 
     async function requireSqliteWorkFiles() {
-        if (activeMode !== MODES.SQLITE) {
-            const inactive = new Error('SQLite 저장 모드를 먼저 활성화하세요.');
-            inactive.code = 'SQLITE_MODE_REQUIRED';
-            throw inactive;
-        }
         if (!sqliteHealth || !sqliteHealth.available) await refreshSqliteHealth();
         if (!sqliteHealth.capabilities || sqliteHealth.capabilities.workFiles !== true) {
             const unavailable = new Error('현재 SQLite 서버는 작업파일 저장을 지원하지 않습니다.');
@@ -608,6 +603,103 @@
     async function loadSqliteWorkFile(item) {
         await requireSqliteWorkFiles();
         return callSqlite('downloadWorkFile', [item]);
+    }
+
+    function sqliteWorkFileBackendName(adapter) {
+        if (adapter === sqliteWasmAdapter) return 'wasm-opfs';
+        if (adapter === sqliteApiAdapter) return 'api';
+        return String(adapter && adapter.backend || 'sqlite');
+    }
+
+    function scholarSqliteWorkFileAdapters(preferredBackend) {
+        const all = [sqliteAdapter, sqliteWasmAdapter, sqliteApiAdapter].filter(Boolean);
+        const unique = all.filter(function (adapter, index) { return all.indexOf(adapter) === index; });
+        if (!preferredBackend) return unique;
+        return unique.sort(function (left, right) {
+            const leftPreferred = sqliteWorkFileBackendName(left) === preferredBackend ? 1 : 0;
+            const rightPreferred = sqliteWorkFileBackendName(right) === preferredBackend ? 1 : 0;
+            return rightPreferred - leftPreferred;
+        });
+    }
+
+    async function scholarAdapterSupportsWorkFiles(adapter) {
+        if (!adapter || typeof adapter.health !== 'function') return false;
+        const health = await adapter.health();
+        return !!(health && health.available === true
+            && health.capabilities && health.capabilities.workFiles === true);
+    }
+
+    async function saveScholarSqliteWorkFile(file, options) {
+        if (!initialized) throw new Error('Storage service is not initialized.');
+        const errors = [];
+        const adapters = scholarSqliteWorkFileAdapters();
+        for (let index = 0; index < adapters.length; index++) {
+            const adapter = adapters[index];
+            try {
+                if (!await scholarAdapterSupportsWorkFiles(adapter)) continue;
+                if (typeof adapter.uploadWorkFile !== 'function') continue;
+                const result = await adapter.uploadWorkFile(file, options || {});
+                return Object.assign({}, result || {}, {
+                    storageBackend: sqliteWorkFileBackendName(adapter)
+                });
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+        const failure = errors[errors.length - 1];
+        throw failure || new Error('학술검색용 SQLite 저장소를 사용할 수 없습니다.');
+    }
+
+    async function listScholarSqliteWorkFiles(options) {
+        if (!initialized) throw new Error('Storage service is not initialized.');
+        const config = options || {};
+        const adapters = scholarSqliteWorkFileAdapters();
+        const items = [];
+        const errors = [];
+        let successCount = 0;
+        for (let index = 0; index < adapters.length; index++) {
+            const adapter = adapters[index];
+            try {
+                if (!await scholarAdapterSupportsWorkFiles(adapter)) continue;
+                if (typeof adapter.listWorkFiles !== 'function') continue;
+                const result = await adapter.listWorkFiles(config);
+                const backend = sqliteWorkFileBackendName(adapter);
+                (result && Array.isArray(result.items) ? result.items : []).forEach(function (item) {
+                    items.push(Object.assign({}, item, { storageBackend: backend }));
+                });
+                successCount += 1;
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+        if (!successCount) {
+            const failure = errors[errors.length - 1];
+            throw failure || new Error('학술검색용 SQLite 저장소를 사용할 수 없습니다.');
+        }
+        items.sort(function (left, right) {
+            return Number(right.createdAt || right.modifiedAt || 0) - Number(left.createdAt || left.modifiedAt || 0);
+        });
+        const limit = Math.max(1, Math.min(500, Number(config.limit) || 200));
+        return { items: items.slice(0, limit), total: items.length };
+    }
+
+    async function loadScholarSqliteWorkFile(item) {
+        if (!initialized) throw new Error('Storage service is not initialized.');
+        const preferredBackend = String(item && item.storageBackend || '');
+        const adapters = scholarSqliteWorkFileAdapters(preferredBackend);
+        const errors = [];
+        for (let index = 0; index < adapters.length; index++) {
+            const adapter = adapters[index];
+            try {
+                if (!await scholarAdapterSupportsWorkFiles(adapter)) continue;
+                if (typeof adapter.downloadWorkFile !== 'function') continue;
+                return await adapter.downloadWorkFile(item);
+            } catch (error) {
+                errors.push(error);
+            }
+        }
+        const failure = errors[errors.length - 1];
+        throw failure || new Error('저장된 학술검색 문서를 불러올 수 없습니다.');
     }
 
     root.MDPStorage = {
@@ -682,6 +774,9 @@
         saveSqliteWorkFile: saveSqliteWorkFile,
         listSqliteWorkFiles: listSqliteWorkFiles,
         loadSqliteWorkFile: loadSqliteWorkFile,
+        saveScholarSqliteWorkFile: saveScholarSqliteWorkFile,
+        listScholarSqliteWorkFiles: listScholarSqliteWorkFiles,
+        loadScholarSqliteWorkFile: loadScholarSqliteWorkFile,
         getRecoveryStatus: function () { return { ...recoveryStatus }; },
         listDocuments: function (options) { return callActive('listDocuments', [options]); },
         searchDocuments: function (query, options) { return callActive('searchDocuments', [query, options]); },

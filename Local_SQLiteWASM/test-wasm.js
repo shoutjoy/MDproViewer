@@ -125,6 +125,45 @@
         assert(settings.some(function (item) { return item.key === 'sitesVisible' && item.value === true; }), 'safe setting storage');
         const resolved = await adapter.getResolvedSettings({});
         assert(resolved.values.sitesVisible === true, 'resolved setting precedence');
+        const aiCatalog = {
+            version: 1,
+            updatedAt: new Date().toISOString(),
+            tools: [{
+                id: 'scholarAI', label: 'ScholarAI', enabled: true,
+                provider: 'lmstudio', model: 'local-' + token,
+                prompt: 'SQLite AI prompt ' + token, endpoint: 'http://127.0.0.1:5678/v1',
+                options: {
+                    tonePreset: 'researcher',
+                    models: { lmstudio: 'local-' + token },
+                    lmStudio: { baseUrl: 'http://127.0.0.1:5678/v1', model: 'local-' + token, outputLimit: 8192 }
+                },
+                protection: { configured: false, locked: false, last4: '' }
+            }]
+        };
+        await adapter.putSetting({
+            key: 'toolSettingsCatalog', value: aiCatalog,
+            scopeType: 'profile', scopeId: 'profile_default'
+        });
+        const profileSettings = await adapter.listSettings({ scopeType: 'profile', scopeId: 'profile_default' });
+        const storedAiCatalog = profileSettings.find(function (item) { return item.key === 'toolSettingsCatalog'; });
+        assert(storedAiCatalog && storedAiCatalog.value.tools[0].prompt.indexOf(token) >= 0, 'AI tool settings catalog storage');
+        const addressSettings = [
+            { key: 'sitesList', value: [{ name: 'Research ' + token, url: 'https://example.com/sites/' + token }] },
+            { key: 'shareSites', value: ['docs', 'custom_' + token] },
+            { key: 'customShareDestinations', value: [{ key: 'custom_' + token, label: 'Share ' + token, url: 'https://example.com/share/' + token }] }
+        ];
+        for (let addressIndex = 0; addressIndex < addressSettings.length; addressIndex++) {
+            await adapter.putSetting(Object.assign({}, addressSettings[addressIndex], {
+                scopeType: 'workspace', scopeId: 'workspace_default'
+            }));
+        }
+        const workspaceSettings = await adapter.listSettings({ scopeType: 'workspace', scopeId: 'workspace_default' });
+        assert(workspaceSettings.some(function (item) {
+            return item.key === 'sitesList' && item.value[0].url.indexOf(token) >= 0;
+        }), 'Sites address list storage');
+        assert(workspaceSettings.some(function (item) {
+            return item.key === 'customShareDestinations' && item.value[0].url.indexOf(token) >= 0;
+        }), 'custom Share address storage');
 
         let blockedSetting = null;
         try { await adapter.putSetting({ key: 'apiKey', value: 'secret' }); } catch (error) { blockedSetting = error; }
@@ -137,6 +176,15 @@
             });
         } catch (error) { nestedBlockedSetting = error; }
         assert(nestedBlockedSetting && nestedBlockedSetting.code === 'SENSITIVE_NESTED_SETTING_BLOCKED', 'nested sensitive setting blocked');
+        let catalogSecretBlocked = null;
+        try {
+            await adapter.putSetting({
+                key: 'toolSettingsCatalog',
+                value: Object.assign({}, aiCatalog, { tools: [Object.assign({}, aiCatalog.tools[0], { options: { apiKey: 'secret' } })] }),
+                scopeType: 'profile', scopeId: 'profile_default'
+            });
+        } catch (error) { catalogSecretBlocked = error; }
+        assert(catalogSecretBlocked && catalogSecretBlocked.code === 'SENSITIVE_NESTED_SETTING_BLOCKED', 'AI catalog secret field blocked');
 
         const migratedContent = 'IndexedDB migration body ' + token;
         const migrationBatch = {
@@ -193,6 +241,19 @@
         const downloadedFma = await adapter.downloadWorkFile(workFiles.items.find(function (item) { return item.id === savedFma.id; }));
         assert(downloadedFma.size === fmaBlob.size, 'FMA SQLite BLOB download');
 
+        const scholarMarkdownText = '# Crossref 학술검색 결과\n\n검색: ' + token + '\n';
+        const scholarMarkdownBlob = new Blob([scholarMarkdownText], { type: 'text/markdown' });
+        const savedScholarMarkdown = await adapter.uploadWorkFile(scholarMarkdownBlob, {
+            fileName: 'crossref-' + token + '.md', workType: 'crossref_markdown', appId: 'scholarsearch'
+        });
+        const scholarFiles = await adapter.listWorkFiles({
+            appId: 'scholarsearch', workType: 'crossref_markdown', query: token, limit: 20
+        });
+        const scholarItem = scholarFiles.items.find(function (item) { return item.id === savedScholarMarkdown.id; });
+        assert(scholarItem && scholarItem.extension === 'md', 'Scholar Markdown work-file list');
+        const downloadedScholarMarkdown = await adapter.downloadWorkFile(scholarItem);
+        assert(await downloadedScholarMarkdown.text() === scholarMarkdownText, 'Scholar Markdown SQLite BLOB download');
+
         const explorer = await adapter.getExplorerSnapshot({ query: token, limit: 300 });
         assert(explorer.readOnly === true && explorer.database.path.indexOf('OPFS:') === 0, 'SQLite explorer read-only snapshot');
         assert(explorer.documents.some(function (item) { return item.id === documentId; })
@@ -201,6 +262,8 @@
             && explorer.migrationCheckpoints.length > 0, 'SQLite explorer settings and migration history');
         assert(explorer.fileEntries.some(function (item) { return item.id === savedFma.id; })
             && explorer.sources.some(function (item) { return item.id === 'source_sqlite_workfiles_fmaviewer'; }), 'SQLite explorer FMA source and files');
+        assert(explorer.fileEntries.some(function (item) { return item.id === savedScholarMarkdown.id && item.workType === 'crossref_markdown'; })
+            && explorer.sources.some(function (item) { return item.id === 'source_sqlite_workfiles_scholarsearch'; }), 'SQLite explorer scholar source and files');
         const explorerDocument = await adapter.getExplorerDocument(documentId);
         const explorerVersions = await adapter.listExplorerDocumentVersions(documentId);
         assert(explorerDocument.content.indexOf(token) >= 0 && explorerVersions.length === 3, 'SQLite explorer document detail and versions');
@@ -234,6 +297,15 @@
         await adapter.health();
         const persisted = await adapter.getDocument(documentId);
         assert(persisted.version === 3, 'OPFS persistence after Worker restart');
+        const persistedProfileSettings = await adapter.listSettings({ scopeType: 'profile', scopeId: 'profile_default' });
+        const persistedAiCatalog = persistedProfileSettings.find(function (item) { return item.key === 'toolSettingsCatalog'; });
+        assert(persistedAiCatalog && persistedAiCatalog.value.tools[0].model === 'local-' + token, 'AI settings persistence after Worker restart');
+        const persistedWorkspaceSettings = await adapter.listSettings({ scopeType: 'workspace', scopeId: 'workspace_default' });
+        assert(persistedWorkspaceSettings.some(function (item) {
+            return item.key === 'sitesList' && item.value[0].name === 'Research ' + token;
+        }) && persistedWorkspaceSettings.some(function (item) {
+            return item.key === 'customShareDestinations' && item.value[0].key === 'custom_' + token;
+        }), 'Sites and Share addresses persist after Worker restart');
         const deletedDocument = await adapter.deleteDocument(documentId, 3);
         const visibleAfterDelete = await adapter.listDocuments({ query: token });
         assert(deletedDocument.deleted === true && !visibleAfterDelete.some(function (item) { return item.id === documentId; }), 'document soft delete');

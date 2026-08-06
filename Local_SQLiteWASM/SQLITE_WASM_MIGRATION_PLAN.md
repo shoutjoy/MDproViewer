@@ -236,6 +236,28 @@ OPFS에 가져와야 한다. 설정 화면의 `WASM DB 파일 불러오기`는 �
 - [x] Node 구문·기존 FMA/Python fallback 계약 테스트 통과
 - [x] 실제 Chromium OPFS에서 저장→목록→갤러리→다운로드 통합 검증
 
+### I. AI 도구 설정 SQLite 동기화
+
+- [x] `toolSettingsCatalog`을 ScholarAI·sspimgAI·AI Jena·FMA AI Jena의 안전 설정 스냅샷으로 확장
+- [x] ScholarAI 사전 프롬프트·톤·provider·모델·LM Studio 연결 옵션 저장·복원
+- [x] sspimgAI 프롬프트 2개·모델·비율·텍스트 제외 옵션 저장·복원
+- [x] AI Jena provider·모델·문체·응답 모드·추론 표시·학술 검색·레이아웃 저장·복원
+- [x] FMA AI Jena 업스케일/배경 제거 프롬프트·해상도·기능 상태·영상 길이 저장·복원
+- [x] 설정 변경 시 SQLite 모드에서 debounce 자동 동기화
+- [x] SQLite 모드 시작·전환 시 카탈로그를 로컬 런타임과 열린 AI 패널에 복원
+- [x] API 키·토큰·비밀번호는 카탈로그에서 제외하고 기존 AES-GCM 암호화 보관함만 사용
+- [x] 프롬프트 속 의심 키 패턴 마스킹과 중첩 민감 필드 정책 차단 테스트
+- [x] Node/Python 정책 및 저장·복원 라운드트립 테스트
+
+### J. Sites·Share 주소 SQLite 동기화
+
+- [x] Sites 목록의 이름·URL을 workspace `sitesList` 설정으로 저장·복원
+- [x] Share 선택 대상과 사용자 추가 URL을 `shareSites`·`customShareDestinations`로 저장·복원
+- [x] NaverBlog 대상 ID를 profile `naverBlogId` 설정으로 저장·복원
+- [x] SQLite 모드 시작·전환 시 기존 IndexedDB 주소 설정 자동 백필
+- [x] 설정창 저장과 Sites·Share 항목 변경 시 SQLite 즉시 반영
+- [x] 실제 Chromium OPFS에서 Worker 재시작 후 주소 목록 유지 검증
+
 ## 8. 완료 기준
 
 1. Python 서버가 꺼진 상태에서 `wasm` backend health가 성공한다.
@@ -247,6 +269,8 @@ OPFS에 가져와야 한다. 설정 화면의 `WASM DB 파일 불러오기`는 �
 7. 내보낸 `.sqlite` 파일을 네이티브 SQLite에서 열 수 있다.
 8. FMA/FMA WebP 작업파일은 SQLite보기 파일 탭과 내부 갤러리에서 확인할 수 있다.
 9. 나머지 제외 기능은 숨겨진 성공이 아니라 capability `false` 또는 명시적 오류를 반환한다.
+10. AI 도구의 비밀값이 아닌 설정은 SQLite 모드 재시작 뒤 복원되고 API 키 원문은 카탈로그에 포함되지 않는다.
+11. Sites·Share 사용자 주소 목록은 SQLite 모드 재시작 뒤에도 이름·URL·선택 상태를 유지한다.
 
 ## 9. 구현 및 검증 결과 (2026-08-06)
 
@@ -264,6 +288,8 @@ OPFS에 가져와야 한다. 설정 화면의 `WASM DB 파일 불러오기`는 �
 - 일반 FMA와 `fma_webp` 작업 유형을 OPFS SQLite BLOB으로 저장하고 동일 원본 Asset 중복 제거 확인
 - SQLite보기의 FMA Source·파일 상세·manifest 갤러리·썸네일·다운로드 확인
 - 실제 데스크톱 SQLite 프로그램에서 다운로드 파일을 다시 여는 수동 검증은 후속 확인 항목
+- ScholarAI·sspimgAI·AI Jena·FMA AI Jena 설정을 `toolSettingsCatalog`에 자동 동기화하고 시작 시 복원
+- 설정 카탈로그에는 API 키 원문을 포함하지 않으며, 의심 키 패턴과 중첩 민감 필드는 정책 단계에서 거부
 
 ## 10. 후속 작업
 

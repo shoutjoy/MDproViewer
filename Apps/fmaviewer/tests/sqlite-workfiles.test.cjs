@@ -214,7 +214,7 @@ assert(api, "FMASqliteWorkfiles API was not exported");
     storageMode = "inDB";
     await assert.rejects(
         api.listWorkFiles(),
-        /Sqlite 사용/,
+        /SQLite 사용/,
         "IndexedDB mode must not silently use SQLite work files"
     );
     console.log("FMA Viewer SQLite work-file adapter tests passed");

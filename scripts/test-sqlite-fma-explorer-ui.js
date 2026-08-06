@@ -19,6 +19,6 @@ assert.match(source, /Promise\.all\(\[worker\(\), worker\(\), worker\(\), worker
 assert.match(source, /URL\.revokeObjectURL/, 'FMA preview object URLs must be released');
 assert.match(source, /영상과 큰 원본 이미지는 자동 재생하거나 전체 다운로드하지 않습니다/,
     'FMA lightweight preview notice is missing');
-assert.match(html, /settings-ui\.js\?v=20260806-maintenance-1/, 'FMA explorer cache version is missing');
+assert.match(html, /settings-ui\.js\?v=20260806-lmstudio-status-1/, 'FMA explorer cache version is missing');
 
 console.log('SQLite FMA explorer UI contract tests passed');

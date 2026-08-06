@@ -46,6 +46,20 @@
         }
     }
 
+    function applySqliteFeatureButtonVisibility() {
+        const enabled = isSqliteMode();
+        document.querySelectorAll('button[id*="sqlite" i], a[id*="sqlite" i], button[onclick*="sqlite" i], a[onclick*="sqlite" i]')
+            .forEach((element) => {
+                if (!enabled) {
+                    if (!element.hidden) element.dataset.sqliteFeatureHidden = "1";
+                    element.hidden = true;
+                } else if (element.dataset.sqliteFeatureHidden === "1") {
+                    element.hidden = false;
+                    delete element.dataset.sqliteFeatureHidden;
+                }
+            });
+    }
+
     async function getSession(force = false) {
         if (sessionToken && !force) return sessionToken;
         const response = await fetch(`${API_ROOT}/session`, {
@@ -89,7 +103,7 @@
 
     async function requireSqlite() {
         if (!isSqliteMode()) {
-            throw new Error("메인 MD Viewer 설정에서 ‘Sqlite 사용’을 먼저 선택하세요.");
+            throw new Error("메인 MD Viewer 설정에서 ‘SQLite 사용’을 먼저 선택하세요.");
         }
         const host = await getHostStorageStatus();
         if (host && host.status?.activeMode === "sqlite") {
@@ -101,6 +115,16 @@
         }
         await getSession();
         return null;
+    }
+
+    if (document && typeof document.addEventListener === "function") {
+        document.addEventListener("DOMContentLoaded", applySqliteFeatureButtonVisibility);
+    }
+    if (window && typeof window.addEventListener === "function") {
+        window.addEventListener("focus", applySqliteFeatureButtonVisibility);
+        window.addEventListener("storage", (event) => {
+            if (!event || event.key === STORAGE_MODE_KEY) applySqliteFeatureButtonVisibility();
+        });
     }
 
     async function requireModelAssets() {

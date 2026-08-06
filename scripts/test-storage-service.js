@@ -262,6 +262,18 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     await global.MDPStorage.requestMode('indb');
     assert.equal(global.localStorage.getItem(global.MDPStorage.MODE_KEY), 'indb');
 
+    capabilities.workFiles = true;
+    const directSqliteArtifacts = await global.MDPStorage.listSqliteWorkFiles({
+        appId: 'scholarsearch', workType: 'crossref_markdown', limit: 30
+    });
+    assert.equal(directSqliteArtifacts.items.length, 1);
+    const mergedScholarArtifacts = await global.MDPStorage.listScholarSqliteWorkFiles({
+        appId: 'scholarsearch', workType: 'crossref_markdown', limit: 30
+    });
+    assert.equal(mergedScholarArtifacts.items.length, 1);
+    assert.equal(mergedScholarArtifacts.items[0].storageBackend, 'api');
+    assert.equal(global.MDPStorage.getStatus().activeMode, 'indb', 'explicit SQLite artifacts must not switch document storage mode');
+
     capabilities.documents = true;
     capabilities.documentVersions = true;
     capabilities.folders = true;
@@ -334,17 +346,24 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
         sitesVisible: true,
         githubRepo: 'owner/repo',
         templateCustomList: [{ id: 'custom_1', name: '연구 양식', desc: '', content: '# 연구' }],
+        sitesList: [{ name: 'Research App', url: 'https://example.com/research/' }],
+        shareSites: ['docs', 'custom_research'],
+        customShareDestinations: [{ key: 'custom_research', label: 'Research', url: 'https://example.com/share/' }],
+        naverBlogId: 'researcher',
         githubToken: 'must-never-reach-api',
         sqliteEnabled: true
     });
-    assert.equal(savedSettings.saved, 3);
+    assert.equal(savedSettings.saved, 7);
     const settingWrites = requests.filter(function (request) {
         return request.url.endsWith('/settings') && request.options.method === 'PUT';
     });
-    assert.equal(settingWrites.length, 3);
+    assert.equal(settingWrites.length, 7);
     assert.deepEqual(settingWrites.map(function (request) {
         return JSON.parse(request.options.body).key;
-    }).sort(), ['githubRepo', 'sitesVisible', 'templateCustomList']);
+    }).sort(), [
+        'customShareDestinations', 'githubRepo', 'naverBlogId', 'shareSites',
+        'sitesList', 'sitesVisible', 'templateCustomList'
+    ]);
     assert.equal(JSON.stringify(settingWrites).includes('must-never-reach-api'), false);
     const scholarBlob = new Blob(['# References\n\nTest (2026).'], { type: 'text/markdown' });
     const savedWorkFile = await global.MDPStorage.saveSqliteWorkFile(scholarBlob, {

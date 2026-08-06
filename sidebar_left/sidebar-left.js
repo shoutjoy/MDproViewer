@@ -36,6 +36,7 @@
             '    </div>',
             '  </div>',
             '  <div id="storage-source-tabs" class="hidden items-center gap-1">',
+            '    <button type="button" id="tab-storage-local" onclick="switchStorageSourceTab(\'local\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="로컬 폴더를 탐색기처럼 열기"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i><span>Local</span></button>',
             '    <button type="button" id="tab-storage-indb" onclick="switchStorageSourceTab(\'indb\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">inDB</button>',
             '    <button type="button" id="tab-storage-sqlite" onclick="switchStorageSourceTab(\'sqlite\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="로컬 SQLite 저장소">SQLite</button>',
             '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">github</button>',
@@ -299,10 +300,41 @@
                     folderDiv.className = 'mb-2';
                     const folderHeader = document.createElement('div');
                     folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
-                    const folderDeleteBtn = folder.id === 'root'
-                        ? ''
-                        : '<button onclick="event.stopPropagation(); deleteFolderFromDB(\'' + esc(folder.id) + '\')" class="ml-auto text-[10px] px-1 py-0.5 rounded border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-600 hover:text-white" title="폴더 삭제">x</button>';
-                    folderHeader.innerHTML = '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i><i data-lucide="folder" class="w-3 h-3"></i><span class="sidebar-text">' + esc(folderDisplayName) + '</span>' + folderDeleteBtn;
+                    folderHeader.innerHTML = '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i><i data-lucide="folder" class="w-3 h-3"></i><span class="sidebar-text">' + esc(folderDisplayName) + '</span>';
+
+                    const folderActions = document.createElement('span');
+                    folderActions.className = 'ml-auto flex items-center gap-1 sidebar-text';
+
+                    const folderCreateBtn = document.createElement('button');
+                    folderCreateBtn.type = 'button';
+                    folderCreateBtn.className = 'text-[11px] leading-none px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white';
+                    folderCreateBtn.title = folderDisplayName + ' 폴더에 문서 생성';
+                    folderCreateBtn.setAttribute('aria-label', folderDisplayName + ' 폴더에 문서 생성');
+                    folderCreateBtn.textContent = '+';
+                    folderCreateBtn.addEventListener('click', function (event) {
+                        event.stopPropagation();
+                        if (typeof window.createDocumentInFolder === 'function') {
+                            window.createDocumentInFolder(folder.id);
+                        }
+                    });
+                    folderActions.appendChild(folderCreateBtn);
+
+                    if (folder.id !== 'root') {
+                        const folderDeleteBtn = document.createElement('button');
+                        folderDeleteBtn.type = 'button';
+                        folderDeleteBtn.className = 'text-[10px] px-1 py-0.5 rounded border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-600 hover:text-white';
+                        folderDeleteBtn.title = '폴더 삭제';
+                        folderDeleteBtn.setAttribute('aria-label', folderDisplayName + ' 폴더 삭제');
+                        folderDeleteBtn.textContent = 'x';
+                        folderDeleteBtn.addEventListener('click', function (event) {
+                            event.stopPropagation();
+                            if (typeof window.deleteFolderFromDB === 'function') {
+                                window.deleteFolderFromDB(folder.id);
+                            }
+                        });
+                        folderActions.appendChild(folderDeleteBtn);
+                    }
+                    folderHeader.appendChild(folderActions);
                     folderHeader.addEventListener('click', function () {
                         if (typeof ctx.toggleFolderCollapse === 'function') ctx.toggleFolderCollapse(folder.id);
                     });
