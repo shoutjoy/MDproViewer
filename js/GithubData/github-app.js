@@ -1,6 +1,14 @@
 (function () {
     'use strict';
 
+    const STORAGE_SIDEBAR_VISIBILITY_KEY = 'mdpro_storage_sidebar_visibility_v1';
+    const DEFAULT_STORAGE_SIDEBAR_VISIBILITY = Object.freeze({
+        local: true,
+        indb: true,
+        sqlite: true,
+        github: true
+    });
+
     function parseGithubRepoInput(repoInput) {
         const raw = String(repoInput || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
         const parts = raw.split('/').filter(Boolean);
@@ -81,7 +89,7 @@
 
     function getGithubSettingsFoldedFromLocal() {
         const v = localStorage.getItem(GITHUB_SETTINGS_FOLD_KEY);
-        return v == null ? false : v === '1';
+        return v == null ? true : v === '1';
     }
 
     function setGithubSettingsFoldedToLocal(folded) {
@@ -90,7 +98,10 @@
 
     function applyGithubSettingsFold(folded) {
         const btn = document.getElementById('github-settings-fold-btn');
-        if (btn) btn.textContent = folded ? '펼치기' : '접기';
+        if (btn) {
+            btn.textContent = folded ? '펼치기' : '접기';
+            btn.setAttribute('aria-expanded', folded ? 'false' : 'true');
+        }
         toggleGithubSettingsSection();
     }
 
@@ -101,15 +112,17 @@
     }
 
     function toggleGithubSettingsSection() {
-        const checked = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
         const folded = getGithubSettingsFoldedFromLocal();
         const api = window.GithubDataSettings;
         let result;
         if (api && typeof api.toggleGithubSettingsSection === 'function') {
-            result = api.toggleGithubSettingsSection({ checked: checked, folded: folded });
+            result = api.toggleGithubSettingsSection({ folded: folded });
         } else {
             const body = document.getElementById('github-settings-body');
-            if (body) body.classList.toggle('hidden', !checked || folded);
+            if (body) {
+                body.classList.toggle('hidden', folded);
+                body.setAttribute('aria-hidden', folded ? 'true' : 'false');
+            }
         }
         onStorageFeatureCheckboxChange();
         return result;
@@ -127,6 +140,72 @@
         };
     }
 
+    function getStorageSidebarVisibility() {
+        let stored = null;
+        try {
+            stored = JSON.parse(localStorage.getItem(STORAGE_SIDEBAR_VISIBILITY_KEY) || 'null');
+        } catch (_) {}
+        return Object.keys(DEFAULT_STORAGE_SIDEBAR_VISIBILITY).reduce(function (result, key) {
+            result[key] = !stored || typeof stored[key] !== 'boolean'
+                ? DEFAULT_STORAGE_SIDEBAR_VISIBILITY[key]
+                : stored[key];
+            return result;
+        }, {});
+    }
+
+    function setStorageSidebarVisibility(visibilityInput) {
+        const current = getStorageSidebarVisibility();
+        const input = visibilityInput && typeof visibilityInput === 'object' ? visibilityInput : {};
+        Object.keys(DEFAULT_STORAGE_SIDEBAR_VISIBILITY).forEach(function (key) {
+            if (typeof input[key] === 'boolean') current[key] = input[key];
+        });
+        try { localStorage.setItem(STORAGE_SIDEBAR_VISIBILITY_KEY, JSON.stringify(current)); } catch (_) {}
+        return current;
+    }
+
+    function syncStorageSidebarVisibilitySettingsUI(visibilityInput) {
+        const visibility = visibilityInput || getStorageSidebarVisibility();
+        Object.keys(DEFAULT_STORAGE_SIDEBAR_VISIBILITY).forEach(function (key) {
+            const checkbox = document.getElementById('sidebar-storage-' + key + '-visible');
+            if (checkbox) checkbox.checked = visibility[key] !== false;
+        });
+        return visibility;
+    }
+
+    function applyStorageSidebarVisibility(visibilityInput) {
+        const visibility = visibilityInput || getStorageSidebarVisibility();
+        Object.keys(DEFAULT_STORAGE_SIDEBAR_VISIBILITY).forEach(function (key) {
+            const hidden = visibility[key] === false;
+            const button = document.getElementById('tab-storage-' + key);
+            if (button) button.toggleAttribute('hidden', hidden);
+            if (document.body) {
+                document.body.classList.toggle('sidebar-storage-' + key + '-hidden', hidden);
+            }
+        });
+        const githubLink = document.getElementById('tab-storage-github-link');
+        if (githubLink) githubLink.toggleAttribute('hidden', visibility.github === false);
+        syncStorageSidebarVisibilitySettingsUI(visibility);
+        return visibility;
+    }
+
+    function onStorageSidebarVisibilityChange() {
+        const visibility = {};
+        Object.keys(DEFAULT_STORAGE_SIDEBAR_VISIBILITY).forEach(function (key) {
+            const checkbox = document.getElementById('sidebar-storage-' + key + '-visible');
+            visibility[key] = checkbox ? checkbox.checked : true;
+        });
+        const saved = setStorageSidebarVisibility(visibility);
+        applyStorageSidebarVisibility(saved);
+        const tabsWrap = document.getElementById('storage-source-tabs');
+        if (tabsWrap) {
+            const hasVisibleTab = Object.keys(saved).some(function (key) { return saved[key] !== false; });
+            const shouldShow = !isSidebarCollapsed && hasVisibleTab;
+            tabsWrap.classList.toggle('hidden', !shouldShow);
+            tabsWrap.classList.toggle('flex', shouldShow);
+        }
+        return saved;
+    }
+
     function applyStorageFeatureVisibility(settingsInput) {
         const flags = getStorageFeatureFlags(settingsInput);
         const body = document.body;
@@ -136,15 +215,6 @@
                 body.classList.toggle('feature-' + feature + '-disabled', !flags[feature]);
             });
         }
-
-        const localBtn = document.getElementById('tab-storage-local');
-        const sqliteBtn = document.getElementById('tab-storage-sqlite');
-        const githubBtn = document.getElementById('tab-storage-github');
-        const githubLink = document.getElementById('tab-storage-github-link');
-        if (localBtn) localBtn.toggleAttribute('hidden', !flags.local);
-        if (sqliteBtn) sqliteBtn.toggleAttribute('hidden', !flags.sqlite);
-        if (githubBtn) githubBtn.toggleAttribute('hidden', !flags.github);
-        if (githubLink && !flags.github) githubLink.setAttribute('hidden', '');
 
         const disabledCurrentTab = (currentStorageSourceTab === 'local' && !flags.local)
             || (currentStorageSourceTab === 'sqlite' && !flags.sqlite)
@@ -204,7 +274,11 @@
         const tabsWrap = document.getElementById('storage-source-tabs');
         if (!tabsWrap) return;
         applyStorageFeatureVisibility(settingsInput);
-        const shouldShow = !isSidebarCollapsed;
+        const sidebarVisibility = applyStorageSidebarVisibility();
+        const hasVisibleTab = Object.keys(sidebarVisibility).some(function (key) {
+            return sidebarVisibility[key] !== false;
+        });
+        const shouldShow = !isSidebarCollapsed && hasVisibleTab;
         tabsWrap.classList.toggle('hidden', !shouldShow);
         tabsWrap.classList.toggle('flex', shouldShow);
     }
@@ -1149,6 +1223,11 @@
         toggleGithubSettingsFold: toggleGithubSettingsFold,
         toggleGithubSettingsSection: toggleGithubSettingsSection,
         getStorageFeatureFlags: getStorageFeatureFlags,
+        getStorageSidebarVisibility: getStorageSidebarVisibility,
+        setStorageSidebarVisibility: setStorageSidebarVisibility,
+        syncStorageSidebarVisibilitySettingsUI: syncStorageSidebarVisibilitySettingsUI,
+        applyStorageSidebarVisibility: applyStorageSidebarVisibility,
+        onStorageSidebarVisibilityChange: onStorageSidebarVisibilityChange,
         applyStorageFeatureVisibility: applyStorageFeatureVisibility,
         onStorageFeatureCheckboxChange: onStorageFeatureCheckboxChange,
         updateStorageSourceTabsUI: updateStorageSourceTabsUI,
@@ -1183,6 +1262,11 @@
     window.toggleGithubSettingsFold = toggleGithubSettingsFold;
     window.toggleGithubSettingsSection = toggleGithubSettingsSection;
     window.getStorageFeatureFlags = getStorageFeatureFlags;
+    window.getStorageSidebarVisibility = getStorageSidebarVisibility;
+    window.setStorageSidebarVisibility = setStorageSidebarVisibility;
+    window.syncStorageSidebarVisibilitySettingsUI = syncStorageSidebarVisibilitySettingsUI;
+    window.applyStorageSidebarVisibility = applyStorageSidebarVisibility;
+    window.onStorageSidebarVisibilityChange = onStorageSidebarVisibilityChange;
     window.applyStorageFeatureVisibility = applyStorageFeatureVisibility;
     window.onStorageFeatureCheckboxChange = onStorageFeatureCheckboxChange;
     window.updateStorageSourceTabsUI = updateStorageSourceTabsUI;

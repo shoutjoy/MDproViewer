@@ -21,7 +21,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260807-sqlite-feature-toggle-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260807-sidebar-storage-visibility-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260806-ai-jena-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -100,12 +100,72 @@
             font-size: 13px;
             font-weight: 800;
         }
+        .settings-column-title .settings-container-fold-toggle {
+            margin-left: auto;
+        }
+        .settings-container-fold-toggle {
+            flex: 0 0 auto;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            padding: 4px 8px;
+            color: #475569;
+            background: rgba(255, 255, 255, 0.72);
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+        .settings-container-fold-toggle:hover,
+        .settings-container-fold-toggle:focus-visible {
+            background: #f1f5f9;
+        }
+        .dark .settings-container-fold-toggle {
+            border-color: #475569;
+            color: #cbd5e1;
+            background: rgba(15, 23, 42, 0.72);
+        }
+        .dark .settings-container-fold-toggle:hover,
+        .dark .settings-container-fold-toggle:focus-visible {
+            background: #334155;
+        }
+        .settings-container-folded {
+            align-self: start;
+        }
+        .settings-container-folded > :first-child {
+            margin-bottom: 0 !important;
+        }
+        .settings-card-fold-body > * + * {
+            margin-top: 0.5rem;
+        }
+        #settings-modal-panel.settings-modal-compact #settings-modal-header {
+            flex-wrap: wrap;
+        }
+        #settings-modal-panel.settings-modal-compact #settings-modal-header > .ml-auto {
+            width: 100%;
+            margin-left: 0;
+            justify-content: flex-end;
+        }
+        #settings-modal-panel.settings-modal-compact #settings-modal-header > .ml-auto > button {
+            padding-right: 0.375rem;
+            padding-left: 0.375rem;
+            font-size: 10px;
+        }
+        .settings-dashboard-column.settings-container-folded > .settings-column-title {
+            margin-bottom: -12px !important;
+        }
+        #settings-modal-panel.settings-modal-fullscreen .settings-dashboard-column.settings-container-folded {
+            height: auto;
+            min-height: 0;
+            overflow: hidden;
+        }
         .dark .settings-dashboard-column > .settings-column-title {
             border-color: #334155;
             background: rgba(15, 23, 42, 0.98);
             color: #e2e8f0;
         }
         .settings-dashboard-column > :not(.settings-column-title) + :not(.settings-column-title) {
+            margin-top: 12px;
+        }
+        .settings-dashboard-column-body > * + * {
             margin-top: 12px;
         }
         #settings-modal-panel.settings-modal-fullscreen .settings-dashboard-column {
@@ -117,6 +177,52 @@
         }
         #settings-modal-panel.settings-modal-fullscreen #settings-modal-resize-handle {
             display: none;
+        }
+        .settings-bulk-action-button {
+            display: inline-flex;
+            min-height: 30px;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            padding: 5px 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            background: #fff;
+            color: #475569;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            white-space: nowrap;
+            cursor: pointer;
+            transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+        }
+        .settings-bulk-action-button:hover {
+            border-color: #94a3b8;
+            background: #f1f5f9;
+            color: #1e293b;
+        }
+        .settings-bulk-action-button:active {
+            background: #e2e8f0;
+        }
+        .settings-bulk-action-button:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px #fff, 0 0 0 4px #6366f1;
+        }
+        .dark .settings-bulk-action-button {
+            border-color: #475569;
+            background: #111827;
+            color: #cbd5e1;
+        }
+        .dark .settings-bulk-action-button:hover {
+            border-color: #64748b;
+            background: #1e293b;
+            color: #f8fafc;
+        }
+        .dark .settings-bulk-action-button:active {
+            background: #334155;
+        }
+        .dark .settings-bulk-action-button:focus-visible {
+            box-shadow: 0 0 0 2px #0f172a, 0 0 0 4px #818cf8;
         }
         .settings-fullscreen-shortcuts {
             display: none;
@@ -1153,12 +1259,18 @@
             class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-[min(92vw,420px)] max-h-[90vh] flex flex-col">
             <h3 id="settings-modal-header" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0 select-none">
                 <i data-lucide="settings" class="w-5 h-5"></i> 환경 설정
-                <div class="ml-auto flex items-center gap-2">
+                <div class="ml-auto flex items-center gap-1">
                     <button id="settings-modal-drag-handle" type="button" onclick="toggleSettingsModalCompact()"
                         class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
                         title="우측 Dock/팝업">Dock</button>
+                    <button id="settings-collapse-all-btn" type="button" onclick="setAllSettingsContainersFolded(true)"
+                        class="settings-bulk-action-button"
+                        title="모든 설정 컨테이너 접기">전체접기</button>
+                    <button id="settings-expand-all-btn" type="button" onclick="setAllSettingsContainersFolded(false)"
+                        class="settings-bulk-action-button"
+                        title="모든 설정 컨테이너 펼치기">전체펼치기</button>
                     <button id="settings-modal-fullscreen-btn" type="button" onclick="toggleSettingsModalFullscreen()"
-                        class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                        class="settings-bulk-action-button"
                         title="전체화면 전환">전체화면</button>
                     <button type="button" onclick="closeSettingsModal()"
                         class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
@@ -1441,7 +1553,11 @@
                         AI 연동 설정</h4>
                     <div class="space-y-3">
                         <div id="ai-link-settings-block" class="space-y-3">
-                        <div class="rounded-lg border border-indigo-200 dark:border-indigo-900/70 bg-white/70 dark:bg-slate-900/40 p-3">
+                        <details id="ai-studio-settings-card" class="rounded-lg border border-indigo-300/70 dark:border-indigo-900/70 bg-indigo-50/60 dark:bg-indigo-950/20">
+                            <summary class="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-400">
+                                AI Studio API 설정 (선택)
+                            </summary>
+                            <div class="px-3 pb-3">
                             <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">AI Studio API Key</label>
                             <div class="settings-credential-field">
                                 <input type="password" id="ai-api-key" placeholder="API 키를 입력하세요..." autocomplete="off"
@@ -1464,7 +1580,8 @@
                                     AI Studio 키 저장
                                 </button>
                             </div>
-                        </div>
+                            </div>
+                        </details>
                         <details id="deepseek-settings-card" class="rounded-lg border border-slate-300/70 dark:border-slate-700 bg-slate-100/60 dark:bg-slate-900/30">
                             <summary class="cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                                 DeepSeek 유료 API 설정 (선택)
@@ -1646,11 +1763,16 @@
                             <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 모든 화면의 우측 하단에 AI Jena 버튼이 표시됩니다. 팝업·우측 Dock·전체화면을 지원하고 대화 기록은 IndexedDB에 저장됩니다. ScholarAI와 별도의 일반 멀티턴 대화이며, 위의 LM Studio 연결 설정과 AI Studio API Key를 공유합니다.</p>
                         </div>
                         <div id="sqlite-settings-tool" class="pt-1">
-                            <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                                <input type="checkbox" id="sqlite-enabled" aria-controls="sqlite-runtime-settings-panel" aria-expanded="false"
-                                    class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                <span>SQLite 사용</span>
-                            </label>
+                            <div id="sqlite-settings-fold-header" class="flex items-center justify-between gap-2">
+                                <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                                    <input type="checkbox" id="sqlite-enabled" aria-controls="sqlite-runtime-settings-panel" aria-expanded="false"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span>SQLite 사용</span>
+                                </label>
+                                <button type="button" id="sqlite-settings-fold-btn"
+                                    class="settings-container-fold-toggle"
+                                    title="SQLite 설정 접기/펼치기">펼치기</button>
+                            </div>
                         </div>
                         <div id="local-storage-settings-tool" class="pt-1">
                             <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
@@ -1699,19 +1821,21 @@
                                     title="인공지능 사용 설정 접기/펼치기">접기</button>
                             </div>
                             <div id="ai-password-section" class="hidden space-y-3 pl-6">
-                                <p class="text-xs text-amber-600 dark:text-amber-400">박중희 교수님에게 인증번호를 받으세요.</p>
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <input type="password" id="ai-password-input" placeholder="인증번호 입력"
-                                        class="flex-1 min-w-[120px] px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors border-slate-200 dark:border-slate-600">
-                                    <button type="button" onclick="saveAiPassword()"
-                                        class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700">저장</button>
+                                <div id="ai-authentication-controls" class="hidden space-y-3" aria-hidden="true">
+                                    <p class="text-xs text-amber-600 dark:text-amber-400">박중희 교수님에게 인증번호를 받으세요.</p>
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <input type="password" id="ai-password-input" placeholder="인증번호 입력"
+                                            class="flex-1 min-w-[120px] px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 transition-colors border-slate-200 dark:border-slate-600">
+                                        <button type="button" onclick="saveAiPassword()"
+                                            class="px-3 py-1.5 bg-indigo-600 rounded-md text-xs font-medium text-white hover:bg-indigo-700">저장</button>
+                                    </div>
+                                    <p id="ai-password-feedback" class="text-xs min-h-[1.25rem]" aria-live="polite"></p>
+                                    <button type="button" id="ai-auth-request-mail-button" onclick="sendAuthRequestMail()"
+                                        class="w-full px-3 py-2 bg-slate-600 dark:bg-slate-700 text-white rounded-md text-xs font-semibold hover:bg-slate-700 dark:hover:bg-slate-600">
+                                        인증번호 요청 메일 보내기
+                                    </button>
+                                    <p id="ai-scholar-sspimg-hint" class="text-xs text-amber-600 dark:text-amber-400"></p>
                                 </div>
-                                <p id="ai-password-feedback" class="text-xs min-h-[1.25rem]" aria-live="polite"></p>
-                                <button type="button" id="ai-auth-request-mail-button" onclick="sendAuthRequestMail()"
-                                    class="w-full px-3 py-2 bg-slate-600 dark:bg-slate-700 text-white rounded-md text-xs font-semibold hover:bg-slate-700 dark:hover:bg-slate-600">
-                                    인증번호 요청 메일 보내기
-                                </button>
-                                <p id="ai-scholar-sspimg-hint" class="text-xs text-amber-600 dark:text-amber-400"></p>
                                 <div class="space-y-2 pt-2">
                                     <label class="flex items-center gap-2 cursor-pointer ai-scholar-sspimg-label select-none">
                                         <input type="checkbox" id="ai-scholar-enabled" onclick="setTimeout(onAiFeatureCheckboxChange,0)"
@@ -2581,7 +2705,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260807-calendar-header-actions-1&amp;feature=templates-1&amp;storageVisibility=20260807-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1"
+    src="./js/app.js?v=20260807-calendar-header-actions-1&amp;feature=templates-1&amp;storageVisibility=20260807-2&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1"
     charset="utf-8"
     defer>
 </script>
@@ -2626,7 +2750,7 @@
 
 <!-- GitHub 실제 기능 -->
 <script
-    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260806-1"
+    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260807-2"
     charset="utf-8"
     defer>
 </script>

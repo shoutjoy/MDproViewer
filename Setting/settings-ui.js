@@ -54,10 +54,14 @@
     function setSqliteSettingsPanelVisible(visible) {
         const panel = document.querySelector('[data-sqlite-status-panel]');
         if (!panel) return;
-        panel.classList.toggle('hidden', visible !== true);
-        panel.setAttribute('aria-hidden', visible === true ? 'false' : 'true');
+        const folded = typeof window.isSettingsContainerFolded === 'function'
+            ? window.isSettingsContainerFolded('sqlite-settings-tool')
+            : true;
+        const expanded = visible === true && folded !== true;
+        panel.classList.toggle('hidden', !expanded);
+        panel.setAttribute('aria-hidden', expanded ? 'false' : 'true');
         const checkbox = document.getElementById('sqlite-enabled');
-        if (checkbox) checkbox.setAttribute('aria-expanded', visible === true ? 'true' : 'false');
+        if (checkbox) checkbox.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     }
 
     function getSqliteLaunchInfo() {

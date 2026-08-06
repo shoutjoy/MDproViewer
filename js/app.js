@@ -7,10 +7,13 @@ const FEATURE_DATA_STORE_NAMES = ['ai_chat', 'scholar_ai', 'ssp_image_ai', 'high
 const AI_SETTINGS_KEY = 'ai_settings';
 const AI_SETTINGS_FALLBACK_KEY = 'md_viewer_ai_settings_fallback';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
+// 인증 기능은 보존하되 현재 배포에서는 우회한다. 다시 사용할 때 true로 변경한다.
+const AI_AUTHENTICATION_REQUIRED = false;
 const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
 const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
 const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
+const SETTINGS_CONTAINER_FOLD_STATE_KEY = 'md_viewer_settings_container_fold_state_v1';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const AI_CHAT_SETTINGS_FOLD_KEY = 'md_viewer_ai_chat_settings_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
@@ -868,9 +871,23 @@ function organizeSettingsDashboard() {
         heading.innerHTML =
             '<i data-lucide="' + icon + '" class="w-4 h-4"></i>' +
             '<span>' + title + '</span>';
+        const toggleButton = createSettingsContainerFoldButton(id, title + ' 설정');
+        heading.appendChild(toggleButton);
+
+        const content = document.createElement('div');
+        content.id = id + '-body';
+        content.className = 'settings-dashboard-column-body';
         column.appendChild(heading);
+        column.appendChild(content);
+        configureSettingsFoldContainer(column, content, toggleButton);
         body.appendChild(column);
         return column;
+    }
+
+    function appendToColumn(column, item) {
+        if (!column || !item) return;
+        const content = document.getElementById(column.id + '-body');
+        (content || column).appendChild(item);
     }
 
     const generalColumn = createColumn(
@@ -900,14 +917,32 @@ function organizeSettingsDashboard() {
     const aiUser = document.getElementById('ai-user-settings-card');
     if (aiUser) {
         aiUser.className = 'border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50 space-y-2';
-        generalColumn.appendChild(aiUser);
+        appendToColumn(generalColumn, aiUser);
     }
-    if (googleCalendar) generalColumn.appendChild(googleCalendar);
-    if (codeColors) generalColumn.appendChild(codeColors);
-    if (shortcuts) generalColumn.appendChild(shortcuts);
+    if (googleCalendar) appendToColumn(generalColumn, googleCalendar);
+    if (codeColors) appendToColumn(generalColumn, codeColors);
+    if (shortcuts) appendToColumn(generalColumn, shortcuts);
 
     const githubSettings = document.getElementById('github-settings-slot');
-    if (githubSettings) saveColumn.appendChild(githubSettings);
+
+    const sidebarVisibilitySettings = document.createElement('div');
+    sidebarVisibilitySettings.id = 'storage-sidebar-visibility-settings';
+    sidebarVisibilitySettings.className = 'rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3';
+    sidebarVisibilitySettings.innerHTML = [
+        '<div class="text-xs font-bold text-slate-700 dark:text-slate-200">SIDEBAR 보이기</div>',
+        '<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2" role="group" aria-label="사이드바 저장소 항목 표시">',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-local-visible" data-storage-sidebar-visibility="local" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>Local</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-indb-visible" data-storage-sidebar-visibility="indb" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>inDB</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-sqlite-visible" data-storage-sidebar-visibility="sqlite" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>SQLite</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-github-visible" data-storage-sidebar-visibility="github" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>Github</span></label>',
+        '</div>',
+        '<p class="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">저장 기능은 그대로 유지하고 왼쪽 사이드바의 항목만 표시하거나 숨깁니다.</p>'
+    ].join('');
+    appendToColumn(saveColumn, sidebarVisibilitySettings);
+    if (typeof window.syncStorageSidebarVisibilitySettingsUI === 'function') {
+        window.syncStorageSidebarVisibilitySettingsUI();
+    }
+    if (githubSettings) appendToColumn(saveColumn, githubSettings);
 
     const localSaveTools = document.createElement('div');
     localSaveTools.id = 'settings-local-save-tools';
@@ -929,18 +964,20 @@ function organizeSettingsDashboard() {
     const featureTools = document.getElementById('feature-tools-settings');
     const sqliteTool = document.getElementById('sqlite-settings-tool');
     const localStorageTool = document.getElementById('local-storage-settings-tool');
-    if (featureTools) toolsColumn.appendChild(featureTools);
+    if (featureTools) appendToColumn(toolsColumn, featureTools);
     if (localStorageTool) localSaveTools.appendChild(localStorageTool);
     if (sqliteTool) localSaveTools.appendChild(sqliteTool);
-    if (inDbStatusButton || sqliteExplorerButton || sqliteTool || localStorageTool) saveColumn.appendChild(localSaveTools);
+    if (inDbStatusButton || sqliteExplorerButton || sqliteTool || localStorageTool) appendToColumn(saveColumn, localSaveTools);
 
     const aiMaster = document.getElementById('ai-master-settings-card');
     const aiIntegration = document.getElementById('ai-integration-settings-slot');
-    if (aiMaster) aiColumn.appendChild(aiMaster);
-    if (aiIntegration) aiColumn.appendChild(aiIntegration);
+    if (aiMaster) appendToColumn(aiColumn, aiMaster);
+    if (aiIntegration) appendToColumn(aiColumn, aiIntegration);
 
     const legacyCard = document.getElementById('legacy-ai-settings-card');
     if (legacyCard) legacyCard.classList.add('hidden');
+
+    initializeSettingsContainerFolds();
 }
 
 function initUserSettingsModule() {
@@ -6640,6 +6677,170 @@ function setViewModeEditEnabledToLocal(enabled) {
     else localStorage.removeItem(VIEW_MODE_EDIT_KEY);
 }
 
+function getSettingsContainerFoldState() {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(SETTINGS_CONTAINER_FOLD_STATE_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function isSettingsContainerFolded(containerId) {
+    const id = String(containerId || '');
+    if (!id) return true;
+    const state = getSettingsContainerFoldState();
+    return state[id] !== false;
+}
+
+function setSettingsContainerFoldedToLocal(containerId, folded) {
+    const id = String(containerId || '');
+    if (!id) return;
+    const state = getSettingsContainerFoldState();
+    state[id] = !!folded;
+    try {
+        localStorage.setItem(SETTINGS_CONTAINER_FOLD_STATE_KEY, JSON.stringify(state));
+    } catch (_) {}
+}
+
+function createSettingsContainerFoldButton(containerId, label) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'settings-container-fold-toggle';
+    button.dataset.settingsFoldButton = containerId;
+    button.title = (label || '설정') + ' 접기/펼치기';
+    return button;
+}
+
+function configureSettingsFoldContainer(container, content, button) {
+    if (!container || !content || !button) return;
+    container.dataset.settingsFoldContainer = container.id;
+    container.dataset.settingsFoldBody = content.id;
+    button.dataset.settingsFoldButton = container.id;
+    button.setAttribute('aria-controls', content.id);
+    if (!button.__settingsFoldBound) {
+        button.__settingsFoldBound = true;
+        button.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            toggleSettingsContainerFold(container.id);
+        });
+    }
+    applySettingsContainerFold(container.id, isSettingsContainerFolded(container.id));
+}
+
+function enhanceSettingsCardFold(containerId, headerSelector, bodyId, buttonId, label) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    let header = container.querySelector(headerSelector);
+    if (!header) return;
+    const generatedBodyId = containerId + '-fold-body';
+    let content = bodyId
+        ? document.getElementById(bodyId)
+        : Array.from(container.children).find(function (child) { return child.id === generatedBodyId; }) || null;
+    if (!content) {
+        content = document.createElement('div');
+        content.id = generatedBodyId;
+        content.className = 'settings-card-fold-body';
+        Array.from(container.children).forEach(function (child) {
+            if (child !== header) content.appendChild(child);
+        });
+        container.appendChild(content);
+    } else if (!bodyId) {
+        Array.from(content.querySelectorAll('[id]')).forEach(function (nestedBody) {
+            if (nestedBody.id !== generatedBodyId) return;
+            const parent = nestedBody.parentElement;
+            if (!parent) return;
+            while (nestedBody.firstChild) parent.insertBefore(nestedBody.firstChild, nestedBody);
+            nestedBody.remove();
+        });
+    }
+    const generatedButtons = Array.from(container.querySelectorAll('[data-settings-fold-button]')).filter(function (candidate) {
+        return candidate.dataset.settingsFoldButton === containerId;
+    });
+    let button = buttonId ? document.getElementById(buttonId) : generatedButtons[0] || null;
+    if (!button) {
+        button = createSettingsContainerFoldButton(containerId, label);
+        header.appendChild(button);
+    }
+    generatedButtons.forEach(function (candidate) {
+        if (candidate !== button) candidate.remove();
+    });
+    if (header.classList) {
+        header.classList.add('flex', 'items-center', 'justify-between', 'gap-2');
+    }
+    configureSettingsFoldContainer(container, content, button);
+}
+
+function initializeSettingsContainerFolds() {
+    enhanceSettingsCardFold('ai-user-settings-card', ':scope > p:first-child', '', '', '사용자 정보');
+    enhanceSettingsCardFold('google-calendar-settings-card', ':scope > div:first-child', '', '', 'Google 캘린더');
+    enhanceSettingsCardFold('code-color-settings-card', ':scope > h4:first-child', '', '', '코드 색상');
+    enhanceSettingsCardFold(
+        'sqlite-settings-tool',
+        '#sqlite-settings-fold-header',
+        'sqlite-runtime-settings-panel',
+        'sqlite-settings-fold-btn',
+        'SQLite'
+    );
+    applyAllSettingsContainerFolds();
+}
+
+function applySettingsContainerFold(containerId, folded) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const contentId = container.dataset.settingsFoldBody;
+    const content = contentId ? document.getElementById(contentId) : null;
+    const button = container.querySelector('[data-settings-fold-button="' + containerId + '"]')
+        || document.getElementById(containerId === 'sqlite-settings-tool' ? 'sqlite-settings-fold-btn' : '');
+    const isFolded = !!folded;
+    let hideContent = isFolded;
+    if (containerId === 'sqlite-settings-tool') {
+        const sqliteCheckbox = document.getElementById('sqlite-enabled');
+        hideContent = isFolded || !sqliteCheckbox || sqliteCheckbox.checked !== true;
+    }
+    if (content) {
+        content.classList.toggle('hidden', hideContent);
+        content.setAttribute('aria-hidden', hideContent ? 'true' : 'false');
+    }
+    container.classList.toggle('settings-container-folded', isFolded);
+    if (button) {
+        button.textContent = isFolded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
+        button.setAttribute('aria-expanded', isFolded ? 'false' : 'true');
+    }
+}
+
+function applyAllSettingsContainerFolds() {
+    document.querySelectorAll('[data-settings-fold-container]').forEach(function (container) {
+        applySettingsContainerFold(container.id, isSettingsContainerFolded(container.id));
+    });
+}
+
+function toggleSettingsContainerFold(containerId) {
+    const next = !isSettingsContainerFolded(containerId);
+    setSettingsContainerFoldedToLocal(containerId, next);
+    applySettingsContainerFold(containerId, next);
+}
+
+function setAllSettingsContainersFolded(folded) {
+    const isFolded = !!folded;
+    initializeSettingsContainerFolds();
+    document.querySelectorAll('[data-settings-fold-container]').forEach(function (container) {
+        setSettingsContainerFoldedToLocal(container.id, isFolded);
+        applySettingsContainerFold(container.id, isFolded);
+    });
+    setSettingsShortcutsFoldedToLocal(isFolded);
+    applySettingsShortcutsFold(isFolded);
+    setAiUseFoldedToLocal(isFolded);
+    applyAiUseFold(isFolded);
+    setAiChatSettingsFoldedToLocal(isFolded);
+    applyAiChatSettingsFold(isFolded);
+    setShareSettingsFoldedToLocal(isFolded);
+    applyShareSettingsFold(isFolded);
+    if (typeof setGithubSettingsFoldedToLocal === 'function') setGithubSettingsFoldedToLocal(isFolded);
+    if (typeof applyGithubSettingsFold === 'function') applyGithubSettingsFold(isFolded);
+}
+
 function getSettingsShortcutsFoldedFromLocal() {
     const v = localStorage.getItem(SETTINGS_SHORTCUTS_FOLD_KEY);
     return v == null ? true : v === '1';
@@ -6654,7 +6855,10 @@ function applySettingsShortcutsFold(folded) {
     const btn = document.getElementById('settings-shortcuts-toggle-btn');
     const isFolded = !!folded;
     if (body) body.classList.toggle('hidden', isFolded);
-    if (btn) btn.textContent = isFolded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
+    if (btn) {
+        btn.textContent = isFolded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
+        btn.setAttribute('aria-expanded', isFolded ? 'false' : 'true');
+    }
 }
 
 function toggleSettingsShortcutsFold() {
@@ -6665,7 +6869,7 @@ function toggleSettingsShortcutsFold() {
 
 function getAiUseFoldedFromLocal() {
     const v = localStorage.getItem(AI_USE_FOLD_KEY);
-    return v == null ? false : v === '1';
+    return v == null ? true : v === '1';
 }
 
 function setAiUseFoldedToLocal(folded) {
@@ -6687,7 +6891,7 @@ function toggleAiUseFold() {
 
 function getAiChatSettingsFoldedFromLocal() {
     const v = localStorage.getItem(AI_CHAT_SETTINGS_FOLD_KEY);
-    return v == null ? false : v === '1';
+    return v == null ? true : v === '1';
 }
 
 function setAiChatSettingsFoldedToLocal(folded) {
@@ -8564,6 +8768,18 @@ function setAiPasswordVerifiedUI(state) {
     }
 }
 
+function applyAiAuthenticationControlsVisibility(authenticated) {
+    const controls = document.getElementById('ai-authentication-controls');
+    if (!controls) return;
+    const hidden = !AI_AUTHENTICATION_REQUIRED || authenticated === true;
+    controls.classList.toggle('hidden', hidden);
+    controls.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+}
+
+function isAiAccessVerified(settings) {
+    return !AI_AUTHENTICATION_REQUIRED || !!(settings && settings.verified);
+}
+
 function toggleAiPasswordSection() {
     const check = document.getElementById('ai-use-checkbox');
     const section = document.getElementById('ai-password-section');
@@ -8574,7 +8790,11 @@ function toggleAiPasswordSection() {
         setAiSettings({ aiMasterEnabled: false }).then(() => applyAiFeatureVisibility());
     }
     if (check && check.checked && section && !getAiUseFoldedFromLocal()) {
-        getAiSettings().then(s => updateAiScholarSspimgAvailability(!!(s && s.verified)));
+        getAiSettings().then(s => {
+            const verified = isAiAccessVerified(s);
+            applyAiAuthenticationControlsVisibility(verified);
+            updateAiScholarSspimgAvailability(verified);
+        });
         requestAnimationFrame(() => {
             section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             const pwd = document.getElementById('ai-password-input');
@@ -8583,6 +8803,7 @@ function toggleAiPasswordSection() {
     }
     if (check && !check.checked) {
         updateAiScholarSspimgAvailability(false);
+        getAiSettings().then(s => applyAiAuthenticationControlsVisibility(isAiAccessVerified(s)));
     }
 }
 
@@ -8619,6 +8840,7 @@ async function saveAiPassword() {
     _lastVerifiedSaveAt = Date.now();
     if (input) input.value = '';
     setAiPasswordVerifiedUI('ok');
+    applyAiAuthenticationControlsVisibility(true);
     updateAiScholarSspimgAvailability(true);
     showToast("Verification complete. ScholarAI / sspimgAI are now available.");
     await applyAiFeatureVisibility();
@@ -8656,7 +8878,7 @@ function updateAiScholarSspimgAvailability(verified) {
 
 async function onAiFeatureCheckboxChange() {
     const settings = await getAiSettings();
-    if (!settings || !settings.verified) return;
+    if (!isAiAccessVerified(settings)) return;
     await applyAiFeatureVisibility();
 }
 
@@ -8683,7 +8905,7 @@ async function persistAiSettingsFromModal() {
     if (!db) return;
     const s = await getAiSettings();
     const shareAddressSettings = getShareAddressSettingsSnapshot(s || {});
-    const verified = !!(s && s.verified);
+    const verified = isAiAccessVerified(s);
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
@@ -8773,6 +8995,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     SELECTION_WRAP_KEY,
     VIEW_MODE_EDIT_KEY,
     SETTINGS_SHORTCUTS_FOLD_KEY,
+    SETTINGS_CONTAINER_FOLD_STATE_KEY,
     AI_USE_FOLD_KEY,
     AI_CHAT_SETTINGS_FOLD_KEY,
     SHARE_SETTINGS_FOLD_KEY,
@@ -8787,6 +9010,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     GOOGLE_CALENDAR_ENABLED_KEY,
     GOOGLE_CALENDAR_OPEN_MODE_KEY,
     GOOGLE_CALENDAR_EMAIL_KEY,
+    'mdpro_storage_sidebar_visibility_v1',
     'md_viewer_code_bg',
     'md_viewer_code_text',
     'ss_imgbb_api_key',
@@ -9912,7 +10136,7 @@ function isAiMasterEnabled(settings) {
 async function applyAiFeatureVisibility() {
     if (!db) return;
     const settings = await getAiSettings();
-    const verified = settings && settings.verified === true;
+    const verified = isAiAccessVerified(settings);
     const useMaster = isAiMasterEnabled(settings);
     const scholarEl = document.getElementById('ai-scholar-enabled');
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
@@ -10147,7 +10371,7 @@ function withAiSidebarReady(runFn) {
 
 function openScholarAIFromHeader() {
     getAiSettings().then(function (s) {
-        if (!s || !s.verified) {
+        if (!isAiAccessVerified(s)) {
             showToast('Verification is required first. Open Settings and complete verification.');
             return;
         }
@@ -10199,7 +10423,7 @@ function setScholarAISelectedTextFromExternal(text, options) {
 
 function openScholarAIForExternalContext(afterOpen) {
     getAiSettings().then(function (s) {
-        if (!s || !s.verified) {
+        if (!isAiAccessVerified(s)) {
             showToast('Verification is required first. Open Settings and complete verification.');
             return;
         }
@@ -10219,7 +10443,7 @@ function openScholarAIForExternalContext(afterOpen) {
 
 function openSspimgAIFromHeader() {
     getAiSettings().then(function (s) {
-        if (!s || !s.verified) {
+        if (!isAiAccessVerified(s)) {
             showToast('Verification is required first. Open Settings and complete verification.');
             return;
         }
@@ -12596,7 +12820,9 @@ async function loadAiSettingsToUI() {
             window.GoogleDocs.resetGoogleDocsSettingsUI();
         }
         syncImgbbApiKeyInputs('');
-        updateAiScholarSspimgAvailability(false);
+        const defaultVerified = isAiAccessVerified(null);
+        applyAiAuthenticationControlsVisibility(defaultVerified);
+        updateAiScholarSspimgAvailability(defaultVerified);
         sitesList = DEFAULT_SITES_LIST.slice();
         templateCustomList = [];
         renderSitesPanel();
@@ -12715,10 +12941,11 @@ async function loadAiSettingsToUI() {
     const section = document.getElementById('ai-password-section');
     if (useCheck) {
         if (settings.aiMasterEnabled === false) useCheck.checked = false;
-        else useCheck.checked = !!(settings.verified || settings.passwordHash);
+        else useCheck.checked = isAiAccessVerified(settings);
     }
     if (section) section.classList.toggle('hidden', !useCheck || !useCheck.checked);
-    const verified = !!settings.verified;
+    const verified = isAiAccessVerified(settings);
+    applyAiAuthenticationControlsVisibility(verified);
     setAiPasswordVerifiedUI('neutral');
     const pwdInput = document.getElementById('ai-password-input');
     if (pwdInput) pwdInput.value = '';
@@ -12790,11 +13017,11 @@ async function initAiVisibility() {
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
     const localStorageEl = document.getElementById('local-storage-enabled');
-    const verified = !!(settings && settings.verified);
+    const verified = isAiAccessVerified(settings);
     if (settings) {
         if (useCheck) {
             if (settings.aiMasterEnabled === false) useCheck.checked = false;
-            else useCheck.checked = !!(settings.verified || settings.passwordHash);
+            else useCheck.checked = isAiAccessVerified(settings);
         }
         if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
         if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
@@ -12847,6 +13074,7 @@ function openSettingsModal() {
     applySettingsModalCompactUI();
     applySettingsModalFullscreenUI();
     updateSettingsModalResponsiveLayout();
+    initializeSettingsContainerFolds();
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
@@ -12882,6 +13110,7 @@ function applySettingsModalCompactUI() {
     const panel = document.getElementById('settings-modal-panel');
     const btn = document.getElementById('settings-modal-drag-handle');
     if (!panel) return;
+    panel.classList.toggle('settings-modal-compact', settingsModalCompact && !settingsModalFullscreen);
     if (settingsModalFullscreen) {
         if (btn) btn.textContent = 'Dock';
         return;
@@ -13444,6 +13673,10 @@ window.saveAiPassword = saveAiPassword;
 window.applyAiFeatureVisibility = applyAiFeatureVisibility;
 window.onAiFeatureCheckboxChange = onAiFeatureCheckboxChange;
 window.toggleSettingsShortcutsFold = toggleSettingsShortcutsFold;
+window.toggleSettingsContainerFold = toggleSettingsContainerFold;
+window.setAllSettingsContainersFolded = setAllSettingsContainersFolded;
+window.isSettingsContainerFolded = isSettingsContainerFolded;
+window.applySettingsContainerFold = applySettingsContainerFold;
 window.toggleSettingsModalCompact = toggleSettingsModalCompact;
 window.toggleSettingsModalFullscreen = toggleSettingsModalFullscreen;
 window.openGithubRepositoryShortcut = openGithubRepositoryShortcut;

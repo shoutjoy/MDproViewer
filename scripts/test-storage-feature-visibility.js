@@ -9,6 +9,7 @@ const html = read('index.html');
 const css = read('css', 'style.css');
 const app = read('js', 'app.js');
 const github = read('js', 'GithubData', 'github-app.js');
+const githubSettings = read('js', 'GithubData', 'github-settings.js');
 const sidebar = read('sidebar_left', 'sidebar-left.js');
 const settings = read('Setting', 'settings-ui.js');
 const fmaSqlite = read('Apps', 'fmaviewer', 'js', 'storage', 'sqliteWorkfiles.js');
@@ -24,23 +25,68 @@ assert.match(html, /feature-sqlite-disabled feature-github-disabled feature-loca
 assert.match(sidebar, /id="tab-storage-local"[\s\S]*?<span>Local<\/span>/);
 assert.match(css, /feature-sqlite-disabled button\[id\*="sqlite" i\]/);
 assert.doesNotMatch(css, /feature-sqlite-disabled[^\n]+scholar-sqlite-access/);
-assert.match(css, /feature-github-disabled #tab-storage-github/);
-assert.match(css, /feature-local-disabled #tab-storage-local/);
+assert.doesNotMatch(css, /feature-github-disabled #tab-storage-github/);
+assert.doesNotMatch(css, /feature-local-disabled #tab-storage-local/);
+assert.match(css, /sidebar-storage-local-hidden #tab-storage-local/);
+assert.match(css, /sidebar-storage-indb-hidden #tab-storage-indb/);
+assert.match(css, /sidebar-storage-sqlite-hidden #tab-storage-sqlite/);
+assert.match(css, /sidebar-storage-github-hidden #tab-storage-github/);
 
 assert.match(app, /localEnabled:\s*!!\(localStorageEl && localStorageEl\.checked\)/);
 assert.match(app, /localEnabledCheck\.checked = settings\.localEnabled === true/);
 assert.match(app, /const sqliteEnabled = !!\(sqliteEnabledEl && sqliteEnabledEl\.checked\)/);
 assert.doesNotMatch(app, /sqliteEnabledEl && sqliteEnabledEl\.checked\s*\n\s*&& sqliteStorageStatus/);
 assert.match(github, /function applyStorageFeatureVisibility/);
+assert.match(github, /mdpro_storage_sidebar_visibility_v1/);
+assert.match(github, /local:\s*true,[\s\S]*indb:\s*true,[\s\S]*sqlite:\s*true,[\s\S]*github:\s*true/);
+assert.match(github, /function onStorageSidebarVisibilityChange/);
+assert.match(github, /toggleGithubSettingsSection\(\{ folded: folded \}\)/);
+assert.match(github, /body\.classList\.toggle\('hidden', folded\)/);
+assert.doesNotMatch(
+    github.slice(github.indexOf('function toggleGithubSettingsSection'), github.indexOf('function getStorageFeatureFlags')),
+    /!checked \|\| folded/
+);
+assert.match(github, /button\.toggleAttribute\('hidden', hidden\)/);
+assert.doesNotMatch(
+    github.slice(github.indexOf('function onStorageSidebarVisibilityChange'), github.indexOf('function applyStorageFeatureVisibility')),
+    /currentStorageSourceTab|requestMode|setStorageSourceTabToLocal/
+);
+assert.match(app, /SIDEBAR 보이기/);
+assert.match(app, /sidebar-storage-local-visible/);
+assert.match(app, /sidebar-storage-indb-visible/);
+assert.match(app, /sidebar-storage-sqlite-visible/);
+assert.match(app, /sidebar-storage-github-visible/);
+assert.equal((app.match(/data-storage-sidebar-visibility="(?:local|indb|sqlite|github)"[^>]* checked/g) || []).length, 4);
+assert.match(app, /저장 기능은 그대로 유지하고 왼쪽 사이드바의 항목만 표시하거나 숨깁니다/);
+assert.match(app, /SETTINGS_EXPORT_LOCAL_KEYS[\s\S]*mdpro_storage_sidebar_visibility_v1/);
 assert.match(github, /currentStorageSourceTab = 'indb'/);
 assert.match(github, /next === 'local' && !featureFlags\.local/);
 assert.match(github, /next === 'sqlite' && !featureFlags\.sqlite/);
 assert.match(settings, /notifyStorageFeatureVisibility\(\)/);
+assert.match(githubSettings, /function toggleGithubSettingsSection\(params\)[\s\S]*body\.classList\.toggle\('hidden', folded\)/);
+assert.doesNotMatch(
+    githubSettings.slice(githubSettings.indexOf('function toggleGithubSettingsSection'), githubSettings.indexOf('async function openGithubRepoCreateModal')),
+    /!checked \|\| folded/
+);
 assert.match(settings, /mdpro_sqlite_feature_enabled_v1/);
 assert.match(settings, /<option value="wasm" selected>WASM · OPFS \(기본\)<\/option>/);
 assert.match(settings, /DEFAULT_SQLITE_BACKEND = 'wasm'/);
-assert.match(settings, /panel\.classList\.toggle\('hidden', visible !== true\)/);
+assert.match(settings, /window\.isSettingsContainerFolded\('sqlite-settings-tool'\)/);
+assert.match(settings, /const expanded = visible === true && folded !== true/);
+assert.match(settings, /panel\.classList\.toggle\('hidden', !expanded\)/);
 assert.match(settings, /panel\.id = 'sqlite-runtime-settings-panel'/);
+assert.match(html, /id="sqlite-settings-fold-btn"/);
+assert.match(html, /id="settings-collapse-all-btn"/);
+assert.match(html, /id="settings-expand-all-btn"/);
+assert.match(html, /id="ai-authentication-controls" class="hidden space-y-3" aria-hidden="true"/);
+assert.match(html, /<details id="ai-studio-settings-card"/);
+assert.match(html, /AI Studio API 설정 \(선택\)/);
+assert.match(app, /function setAllSettingsContainersFolded\(folded\)/);
+assert.match(app, /function applyAiAuthenticationControlsVisibility\(authenticated\)/);
+assert.match(app, /const AI_AUTHENTICATION_REQUIRED = false/);
+assert.match(app, /function isAiAccessVerified\(settings\)[\s\S]*!AI_AUTHENTICATION_REQUIRED/);
+assert.match(app, /controls\.classList\.toggle\('hidden', hidden\)/);
+assert.match(app, /const verified = isAiAccessVerified\(settings\);[\s\S]*applyAiAuthenticationControlsVisibility\(verified\)/);
 const checkboxHandler = settings.slice(
     settings.indexOf('async function handleSqliteCheckboxChange'),
     settings.indexOf('async function refreshSqliteStatus')

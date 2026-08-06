@@ -267,11 +267,11 @@
     }
 
     function toggleGithubSettingsSection(params) {
-        const checked = !!(params && params.checked);
         const folded = !!(params && params.folded);
         const body = document.getElementById('github-settings-body');
         if (!body) return;
-        body.classList.toggle('hidden', !checked || folded);
+        body.classList.toggle('hidden', folded);
+        body.setAttribute('aria-hidden', folded ? 'true' : 'false');
     }
 
     async function openGithubRepoCreateModal() {

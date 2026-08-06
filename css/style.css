@@ -888,14 +888,19 @@ html:not(.dark) .settings-credential-error-status {
     .storage-connected-github { animation: none !important; }
 }
 
-/* Storage feature buttons stay absent until their setting checkbox is enabled. */
-body.feature-local-disabled #tab-storage-local,
-body.feature-github-disabled #tab-storage-github,
-body.feature-github-disabled #tab-storage-github-link,
+/* Feature switches control functionality; sidebar visibility has its own switches. */
 body.feature-github-disabled #btn-github-sync,
-body.feature-sqlite-disabled button[id*="sqlite" i],
+body.feature-sqlite-disabled button[id*="sqlite" i]:not(#tab-storage-sqlite),
 body.feature-sqlite-disabled a[id*="sqlite" i],
-body.feature-sqlite-disabled button[onclick*="sqlite" i],
+body.feature-sqlite-disabled button[onclick*="sqlite" i]:not(#tab-storage-sqlite),
 body.feature-sqlite-disabled a[onclick*="sqlite" i] {
+    display: none !important;
+}
+
+body.sidebar-storage-local-hidden #tab-storage-local,
+body.sidebar-storage-indb-hidden #tab-storage-indb,
+body.sidebar-storage-sqlite-hidden #tab-storage-sqlite,
+body.sidebar-storage-github-hidden #tab-storage-github,
+body.sidebar-storage-github-hidden #tab-storage-github-link {
     display: none !important;
 }
