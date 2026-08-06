@@ -124,6 +124,28 @@
         #settings-modal-panel.settings-modal-fullscreen .settings-fullscreen-shortcuts {
             display: flex;
         }
+        .settings-footer-action {
+            display: inline-flex;
+            width: 2.25rem;
+            height: 2.25rem;
+            flex: 0 0 auto;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            padding: 0;
+            white-space: nowrap;
+        }
+        .settings-footer-action .settings-action-label {
+            display: none;
+        }
+        #settings-modal-panel.settings-modal-actions-expanded .settings-footer-action {
+            width: auto;
+            padding-right: 0.75rem;
+            padding-left: 0.75rem;
+        }
+        #settings-modal-panel.settings-modal-actions-expanded .settings-footer-action .settings-action-label {
+            display: inline;
+        }
         #settings-reset-button {
             margin-left: auto;
         }
@@ -1759,17 +1781,33 @@
                 <button type="button" id="btn-open-sqlite-explorer" onclick="SettingUI.openSqliteExplorer()"
                     title="SQLite에 저장된 데이터를 읽기 전용으로 탐색">SQLite보기</button>
             </div>
-            <div id="settings-modal-footer" class="flex flex-wrap items-center gap-2 shrink-0">
+            <div id="settings-modal-footer" class="flex items-center gap-2 shrink-0">
                 <button type="button" onclick="exportSettingsMset()"
-                    class="px-3 py-2 border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50">
-                    set_Export
+                    class="settings-footer-action border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    title="set_Export" aria-label="set_Export">
+                    <i data-lucide="download" class="h-4 w-4" aria-hidden="true"></i>
+                    <span class="settings-action-label">set_Export</span>
                 </button>
                 <button type="button" onclick="triggerImportSettingsMset()"
-                    class="px-3 py-2 border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50">
-                    set_import
+                    class="settings-footer-action border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    title="set_Import" aria-label="set_Import">
+                    <i data-lucide="upload" class="h-4 w-4" aria-hidden="true"></i>
+                    <span class="settings-action-label">set_Import</span>
                 </button>
                 <input type="file" id="settings-import-file" accept=".mset,application/json,.json" class="hidden"
                     onchange="importSettingsMsetFile(event)">
+                <button type="button" id="btn-footer-open-indb-status" onclick="openInDbStatusModal()"
+                    class="settings-footer-action border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+                    title="inDB" aria-label="inDB">
+                    <i data-lucide="database" class="h-4 w-4" aria-hidden="true"></i>
+                    <span class="settings-action-label">inDB</span>
+                </button>
+                <button type="button" id="btn-footer-open-sqlite-explorer" onclick="SettingUI.openSqliteExplorer()"
+                    class="settings-footer-action border border-emerald-600 rounded-md text-xs font-semibold text-emerald-700 bg-white hover:bg-emerald-50 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="SQLite에 저장된 데이터를 읽기 전용으로 탐색" aria-label="SQLite">
+                    <i data-lucide="table-properties" class="h-4 w-4" aria-hidden="true"></i>
+                    <span class="settings-action-label">SQLite</span>
+                </button>
                 <button type="button" id="settings-reset-button" onclick="resetSettingsMset()"
                     class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-amber-500 bg-white text-amber-700 hover:bg-amber-50 dark:bg-slate-800 dark:text-amber-300 dark:hover:bg-slate-700"
                     title="설정을 기본값으로 초기화" aria-label="설정을 기본값으로 초기화">
@@ -1780,15 +1818,6 @@
                         class="px-3 py-2 border border-indigo-500 rounded-md text-xs font-semibold text-indigo-700 bg-white hover:bg-indigo-50 dark:bg-slate-800 dark:text-indigo-300 dark:hover:bg-slate-700"
                         title="설정된 GitHub 저장소를 새 창에서 열기">
                         GitHub 저장소 바로가기
-                    </button>
-                    <button type="button" id="btn-footer-open-indb-status" onclick="openInDbStatusModal()"
-                        class="px-3 py-2 border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
-                        inDB보기
-                    </button>
-                    <button type="button" id="btn-footer-open-sqlite-explorer" onclick="SettingUI.openSqliteExplorer()"
-                        class="px-3 py-2 border border-emerald-600 rounded-md text-xs font-semibold text-emerald-700 bg-white hover:bg-emerald-50 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                        title="SQLite에 저장된 데이터를 읽기 전용으로 탐색">
-                        SQLite보기
                     </button>
                 </div>
                 <button type="button" id="settings-modal-close-footer" onclick="closeSettingsModal()"
@@ -2294,7 +2323,7 @@
 
 <!-- 학술검색 통합 셸 -->
 <script
-    src="./js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-fallback-3"
+    src="./js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-explorer-button-4"
     charset="utf-8"
     defer>
 </script>

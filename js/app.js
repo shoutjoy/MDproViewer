@@ -12885,7 +12885,9 @@ function updateSettingsModalResponsiveLayout() {
     const panel = document.getElementById('settings-modal-panel');
     if (!panel) return;
     const isWide = settingsModalFullscreen || panel.clientWidth >= 840;
+    const showActionLabels = panel.clientWidth >= 660;
     panel.classList.toggle('settings-modal-wide', isWide);
+    panel.classList.toggle('settings-modal-actions-expanded', showActionLabels);
 }
 
 function bindSettingsModalResize() {
@@ -12894,6 +12896,13 @@ function bindSettingsModalResize() {
     const panel = document.getElementById('settings-modal-panel');
     const handle = document.getElementById('settings-modal-resize-handle');
     if (!panel || !handle) return;
+
+    if (typeof ResizeObserver === 'function') {
+        const responsiveObserver = new ResizeObserver(function () {
+            updateSettingsModalResponsiveLayout();
+        });
+        responsiveObserver.observe(panel);
+    }
 
     handle.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return;

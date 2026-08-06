@@ -12,6 +12,8 @@ const styles = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
 
 for (const token of [
     'scholar-search-sqlite-explorer-btn',
+    'scholar-search-sqlite-actions',
+    'SQLite 탐색기 열기',
     'scholar-crossref-sqlite-query',
     'scholar-crossref-sqlite-list',
     'SQLite 저장 검색'
