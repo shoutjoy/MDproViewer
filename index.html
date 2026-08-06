@@ -1258,20 +1258,20 @@
         <div id="settings-modal-panel"
             class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-[min(92vw,420px)] max-h-[90vh] flex flex-col">
             <h3 id="settings-modal-header" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0 select-none">
-                <i data-lucide="settings" class="w-5 h-5"></i> 환경 설정
+                <i data-lucide="settings" class="w-5 h-5"></i> ENV
                 <div class="ml-auto flex items-center gap-1">
                     <button id="settings-modal-drag-handle" type="button" onclick="toggleSettingsModalCompact()"
                         class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"
                         title="우측 Dock/팝업">Dock</button>
                     <button id="settings-collapse-all-btn" type="button" onclick="setAllSettingsContainersFolded(true)"
                         class="settings-bulk-action-button"
-                        title="모든 설정 컨테이너 접기">전체접기</button>
+                        title="모든 설정 컨테이너 접기"><i data-lucide="chevron-up" class="w-4 h-4"></i></button>
                     <button id="settings-expand-all-btn" type="button" onclick="setAllSettingsContainersFolded(false)"
                         class="settings-bulk-action-button"
-                        title="모든 설정 컨테이너 펼치기">전체펼치기</button>
+                        title="모든 설정 컨테이너 펼치기"><i data-lucide="chevron-down" class="w-4 h-4"></i></button>
                     <button id="settings-modal-fullscreen-btn" type="button" onclick="toggleSettingsModalFullscreen()"
                         class="settings-bulk-action-button"
-                        title="전체화면 전환">전체화면</button>
+                        title="전체화면 전환"><i data-lucide="square" class="w-4 h-4"></i></button>
                     <button type="button" onclick="closeSettingsModal()"
                         class="px-2 py-1 text-xs rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                         title="설정 닫기">닫기</button>

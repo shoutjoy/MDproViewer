@@ -13154,14 +13154,16 @@ function applySettingsModalFullscreenUI() {
     if (settingsModalFullscreen) {
         if (compactBtn) compactBtn.disabled = true;
         if (btn) {
-            btn.textContent = '\uCD95\uC18C';
-            btn.title = '\uC804\uCCB4\uD654\uBA74 \uC885\uB8CC';
+            btn.innerHTML = '<i data-lucide="square" class="w-4 h-4"></i>';
+            btn.title = '전체화면 해제';
+            try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch (e) {}
         }
     } else {
         if (compactBtn) compactBtn.disabled = false;
         if (btn) {
-            btn.textContent = '\uC804\uCCB4\uD654\uBA74';
-            btn.title = '\uC804\uCCB4\uD654\uBA74 \uC804\uD658';
+            btn.innerHTML = '<i data-lucide="square" class="w-4 h-4"></i>';
+            btn.title = '전체화면';
+            try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch (e) {}
         }
     }
 }
