@@ -16,6 +16,7 @@
     let sitesPanelSavedWidth = '';
     let sitesPanelSavedHeight = '';
     let editingSiteIndex = -1;
+    let editingPreferencesSiteIndex = -1;
 
     const DEFAULT_SITES_LIST = [
         { name: 'data visualization', url: 'https://parkjoonghee.shinyapps.io/shinyapp2/' },
@@ -63,6 +64,14 @@
                     '</div>',
                     '<div id="sites-settings-body" class="mt-3 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-900/30 overflow-hidden">',
                     '  <div class="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200">Sites 목록</div>',
+                    '  <div class="p-3 border-b border-slate-200 dark:border-slate-700 space-y-2">',
+                    '    <input type="text" id="sites-preferences-name-input" placeholder="사이트 이름 (선택)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addSiteFromPreferencesInput();}" class="w-full px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">',
+                    '    <div class="flex items-center gap-2">',
+                    '      <input type="url" id="sites-preferences-url-input" placeholder="주소 (https://example.com)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addSiteFromPreferencesInput();}" class="min-w-0 flex-1 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">',
+                    '      <button type="button" id="sites-preferences-submit-btn" onclick="addSiteFromPreferencesInput()" class="shrink-0 px-2.5 py-1.5 rounded bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">추가</button>',
+                    '      <button type="button" id="sites-preferences-cancel-btn" onclick="cancelPreferencesSiteEdit()" class="hidden shrink-0 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">취소</button>',
+                    '    </div>',
+                    '  </div>',
                     '  <div id="sites-preferences-list" class="max-h-64 overflow-auto divide-y divide-slate-200 dark:divide-slate-700"></div>',
                     '</div>'
                 ].join('');
@@ -244,7 +253,7 @@
         const listEl = document.getElementById('sites-preferences-list');
         if (!listEl) return;
         listEl.innerHTML = '';
-        sitesList.forEach(function (site) {
+        sitesList.forEach(function (site, idx) {
             const row = document.createElement('div');
             row.className = 'flex items-center gap-2 px-3 py-2';
 
@@ -270,6 +279,20 @@
             open.title = site.url;
             open.onclick = function () { openSiteInNewWindow(site.url); };
             row.appendChild(open);
+
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'shrink-0 px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-[11px] text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20';
+            edit.textContent = '수정';
+            edit.onclick = function () { startPreferencesSiteEdit(idx); };
+            row.appendChild(edit);
+
+            const del = document.createElement('button');
+            del.type = 'button';
+            del.className = 'shrink-0 px-2 py-1 rounded border border-rose-300 dark:border-rose-700 text-[11px] text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20';
+            del.textContent = '삭제';
+            del.onclick = function () { removeSiteAt(idx); };
+            row.appendChild(del);
 
             listEl.appendChild(row);
         });
@@ -540,6 +563,82 @@
         clearSiteEditor();
     }
 
+    function setPreferencesSiteEditorMode(mode) {
+        const submitBtn = document.getElementById('sites-preferences-submit-btn');
+        const cancelBtn = document.getElementById('sites-preferences-cancel-btn');
+        if (submitBtn) submitBtn.textContent = mode === 'edit' ? '저장' : '추가';
+        if (cancelBtn) cancelBtn.classList.toggle('hidden', mode !== 'edit');
+    }
+
+    function clearPreferencesSiteEditor() {
+        const nameInput = document.getElementById('sites-preferences-name-input');
+        const urlInput = document.getElementById('sites-preferences-url-input');
+        if (nameInput) nameInput.value = '';
+        if (urlInput) urlInput.value = '';
+        editingPreferencesSiteIndex = -1;
+        setPreferencesSiteEditorMode('add');
+    }
+
+    function startPreferencesSiteEdit(index) {
+        if (index < 0 || index >= sitesList.length) return;
+        const site = sitesList[index] || {};
+        const nameInput = document.getElementById('sites-preferences-name-input');
+        const urlInput = document.getElementById('sites-preferences-url-input');
+        if (!urlInput) return;
+        if (nameInput) nameInput.value = String(site.name || '');
+        urlInput.value = String(site.url || '');
+        editingPreferencesSiteIndex = index;
+        setPreferencesSiteEditorMode('edit');
+        urlInput.focus();
+        urlInput.select();
+    }
+
+    function cancelPreferencesSiteEdit() {
+        clearPreferencesSiteEditor();
+    }
+
+    async function addSiteFromPreferencesInput() {
+        const nameInput = document.getElementById('sites-preferences-name-input');
+        const urlInput = document.getElementById('sites-preferences-url-input');
+        if (!urlInput) return;
+        const raw = String(urlInput.value || '').trim();
+        if (!raw) {
+            if (typeof showToast === 'function') showToast('사이트 주소를 입력하세요.');
+            urlInput.focus();
+            return;
+        }
+        let normalized = raw;
+        if (!/^https?:\/\//i.test(normalized)) normalized = 'https://' + normalized;
+        try {
+            normalized = new URL(normalized).href;
+        } catch (_) {
+            if (typeof showToast === 'function') showToast('올바른 사이트 주소를 입력하세요.');
+            urlInput.focus();
+            return;
+        }
+        const editing = editingPreferencesSiteIndex >= 0 && editingPreferencesSiteIndex < sitesList.length;
+        const exists = sitesList.some(function (site, index) {
+            if (editing && index === editingPreferencesSiteIndex) return false;
+            return normalizeUrlForCompare(site && site.url) === normalizeUrlForCompare(normalized);
+        });
+        if (exists) {
+            if (typeof showToast === 'function') showToast('이미 등록된 사이트입니다.');
+            urlInput.focus();
+            return;
+        }
+        const displayName = String(nameInput && nameInput.value ? nameInput.value : '').trim()
+            || buildSiteNameFromUrl(normalized);
+        if (editing) {
+            sitesList[editingPreferencesSiteIndex] = { name: displayName, url: normalized };
+        } else {
+            sitesList.push({ name: displayName, url: normalized });
+        }
+        await saveSitesListToSettings();
+        renderSitesPanel();
+        clearPreferencesSiteEditor();
+        if (typeof showToast === 'function') showToast(editing ? '사이트를 수정했습니다.' : '사이트를 추가했습니다.');
+    }
+
     async function addSiteFromInput() {
         const nameInput = document.getElementById('sites-add-name-input');
         const urlInput = document.getElementById('sites-add-url-input');
@@ -586,6 +685,11 @@
         } else if (editingSiteIndex > index) {
             editingSiteIndex -= 1;
         }
+        if (editingPreferencesSiteIndex === index) {
+            clearPreferencesSiteEditor();
+        } else if (editingPreferencesSiteIndex > index) {
+            editingPreferencesSiteIndex -= 1;
+        }
         sitesList.splice(index, 1);
         if (!sitesList.length) sitesList = DEFAULT_SITES_LIST.slice();
         await saveSitesListToSettings();
@@ -619,6 +723,7 @@
     function setSitesList(nextList) {
         sitesList = normalizeSitesList(nextList);
         clearSiteEditor();
+        clearPreferencesSiteEditor();
         renderSitesPanel();
     }
 
@@ -630,6 +735,8 @@ window.toggleSitesPanel = toggleSitesPanel;
 window.closeSitesPanel = closeSitesPanel;
 window.addSiteFromInput = addSiteFromInput;
 window.cancelEditSite = cancelEditSite;
+window.addSiteFromPreferencesInput = addSiteFromPreferencesInput;
+window.cancelPreferencesSiteEdit = cancelPreferencesSiteEdit;
 window.toggleSitesSection = toggleSitesSection;
 window.toggleSitesSettingsFold = toggleSitesSettingsFold;
 window.applySitesSettingsFold = applySitesSettingsFold;

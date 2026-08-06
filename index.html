@@ -21,7 +21,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260806-scholar-sqlite-access-2&amp;storageVisibility=20260806-2" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260807-sqlite-feature-toggle-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260806-ai-jena-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -158,6 +158,18 @@
             margin-left: auto;
             padding: 0.5rem 1rem;
         }
+        #sqlite-explorer-panel.sqlite-explorer-fullscreen {
+            left: 8px !important;
+            top: 8px !important;
+            width: calc(100vw - 16px) !important;
+            height: calc(100vh - 16px) !important;
+            max-width: none !important;
+            max-height: none !important;
+            border-radius: 8px;
+        }
+        #sqlite-explorer-panel.sqlite-explorer-fullscreen #sqlite-explorer-drag-handle {
+            cursor: default;
+        }
         @media (max-width: 1180px) {
             #settings-modal-panel.settings-modal-fullscreen #settings-modal-body {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -282,15 +294,15 @@
             <div id="google-docs-toolbar-slot" class="contents"></div>
             <button type="button" id="btn-html2ppt-panel" onclick="toggleHtml2pptPanel()"
                 class="hidden p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 flex items-center gap-1 shrink-0 border border-slate-300 dark:border-slate-600"
-                title="GenSlide 열기">
+                title="GenSlide 열기" aria-label="GenSlide 열기">
                 <i data-lucide="presentation" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
-                <span class="hidden xl:inline text-sm font-medium">GenSlide</span>
+                <span id="btn-html2ppt-name" class="hidden text-sm font-medium">GenSlide</span>
             </button>
             <button type="button" id="btn-fma-viewer" onclick="openFmaViewer()"
                 class="hidden p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 items-center gap-1 shrink-0 border border-slate-300 dark:border-slate-600"
-                title="이미지전용 FMA Viewer 열기">
+                title="이미지전용 FMA Viewer 열기" aria-label="ImgView 열기">
                 <i data-lucide="images" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
-                <span class="hidden xl:inline text-sm font-medium">ImgView</span>
+                <span id="btn-fma-viewer-name" class="hidden text-sm font-medium">ImgView</span>
             </button>
             <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded-lg p-0.5 sm:p-1 ml-0 sm:ml-1 md:ml-2 shrink-0">
                 <button onclick="toggleMode('edit')" id="btn-edit" title="Alt+1"
@@ -932,7 +944,7 @@
                         title="구글 이미지 검색 열기">구글이미지</button>
                     <button type="button" onclick="openImageInsertExternalLink('imgbb')"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300"
-                        title="imgBB 이미지 저장소 열기">이미지저장소</button>
+                        title="imgBB 이미지 저장소 열기">imageBB</button>
                     <button type="button" onclick="closeModal()"
                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300"
                         title="이미지 삽입 창 닫기">닫기</button>
@@ -1128,9 +1140,11 @@
     </div>
 
     <!-- Toast Notification -->
-    <div id="toast"
-        class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white px-4 py-2 rounded-full shadow-lg text-sm opacity-0 transition-opacity pointer-events-none z-50">
-        알림 메시지
+    <div id="toast" role="status" aria-live="polite" aria-atomic="true" aria-hidden="true"
+        class="fixed top-4 left-1/2 z-[2147483647] flex max-w-[min(92vw,720px)] -translate-x-1/2 items-start gap-3 rounded-lg bg-slate-800 px-4 py-3 text-sm text-white opacity-0 shadow-2xl transition-opacity pointer-events-none dark:bg-slate-700">
+        <span id="toast-message" class="min-w-0 whitespace-normal break-words">알림 메시지</span>
+        <button id="toast-close" type="button" class="hidden -mr-1 shrink-0 rounded px-1.5 py-0.5 text-lg leading-none text-slate-200 hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/70"
+            aria-label="알림 닫기" title="알림 닫기">&times;</button>
     </div>
 
     <!-- Settings Modal -->
@@ -1633,7 +1647,7 @@
                         </div>
                         <div id="sqlite-settings-tool" class="pt-1">
                             <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                                <input type="checkbox" id="sqlite-enabled"
+                                <input type="checkbox" id="sqlite-enabled" aria-controls="sqlite-runtime-settings-panel" aria-expanded="false"
                                     class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                 <span>SQLite 사용</span>
                             </label>
@@ -1734,16 +1748,32 @@
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">양식보이기</span>
                                 </label>
-                                <label class="flex items-center gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="html2ppt-visible" onclick="setTimeout(toggleHtml2pptSection,0)"
-                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">GenSlide 보이기</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="fma-viewer-visible" onclick="setTimeout(toggleFmaViewerSection,0)"
-                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">이미지전용 Viewer</span>
-                                </label>
+                                <div class="flex items-center gap-4 flex-wrap">
+                                    <span class="min-w-24 text-sm font-medium text-slate-700 dark:text-slate-300">GenSlide</span>
+                                    <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input type="checkbox" id="html2ppt-visible" checked onclick="setTimeout(toggleHtml2pptSection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm text-slate-700 dark:text-slate-300">버튼</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input type="checkbox" id="html2ppt-name-visible" onclick="setTimeout(toggleHtml2pptSection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm text-slate-700 dark:text-slate-300">이름</span>
+                                    </label>
+                                </div>
+                                <div class="flex items-center gap-4 flex-wrap">
+                                    <span class="min-w-24 text-sm font-medium text-slate-700 dark:text-slate-300">ImgView</span>
+                                    <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input type="checkbox" id="fma-viewer-visible" checked onclick="setTimeout(toggleFmaViewerSection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm text-slate-700 dark:text-slate-300">버튼</span>
+                                    </label>
+                                    <label class="flex items-center gap-1.5 cursor-pointer select-none">
+                                        <input type="checkbox" id="fma-viewer-name-visible" onclick="setTimeout(toggleFmaViewerSection,0)"
+                                            class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm text-slate-700 dark:text-slate-300">이름</span>
+                                    </label>
+                                </div>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="image-upload-enabled" onclick="setTimeout(toggleImageUploadSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
@@ -1841,9 +1871,12 @@
                     <i data-lucide="calendar-days" class="h-4 w-4 text-indigo-500"></i>
                     <strong class="min-w-0 flex-1 truncate text-sm">Google 캘린더 · 내부 창</strong>
                     <span id="google-calendar-internal-account" class="max-w-[280px] truncate text-[11px] text-slate-500 dark:text-slate-400"></span>
+                    <button type="button" onclick="openGoogleCalendarAddWindow()"
+                        class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-700"
+                        title="표시된 캘린더를 Google Calendar에 추가">Google Calendar에 추가</button>
                     <button type="button" onclick="openGoogleCalendarExternalWindow()"
                         class="rounded border border-slate-300 px-2 py-1 text-xs font-semibold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-700"
-                        title="브라우저 새 창으로 열기">새 창</button>
+                        title="브라우저 새 창에서 일정 작성">일정작성(새창)</button>
                     <button type="button" id="google-calendar-internal-maximize" onclick="toggleGoogleCalendarInternalMaximize()"
                         class="h-7 w-8 rounded border border-slate-300 text-sm font-bold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-700"
                         title="최대화/복원">□</button>
@@ -1900,6 +1933,9 @@
                 <span class="rounded-full border border-emerald-500 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">읽기 전용</span>
                 <button type="button" id="sqlite-explorer-refresh" onclick="SettingUI.refreshSqliteExplorer()"
                     class="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">새로고침</button>
+                <button type="button" id="sqlite-explorer-fullscreen" onclick="SettingUI.toggleSqliteExplorerFullscreen()"
+                    class="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                    aria-pressed="false" title="SQLite 탐색 창 전체화면">전체화면</button>
                 <button type="button" onclick="SettingUI.closeSqliteExplorer()"
                     class="h-8 w-8 rounded border border-red-300 text-lg font-bold text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/50" aria-label="SQLite 탐색 창 닫기">×</button>
             </header>
@@ -2116,6 +2152,9 @@
         <div id="template-panel-header" class="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-700 cursor-move select-none">
             <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100">양식</h3>
             <div class="flex items-center gap-1.5">
+                <button type="button" id="template-panel-fullscreen-btn" onclick="toggleTemplatePanelFullscreen()"
+                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    aria-pressed="false" title="양식 창 전체화면">전체화면</button>
                 <button type="button" id="template-panel-compact-btn" onclick="toggleTemplateCompactMode()"
                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">>></button>
                 <button type="button" onclick="closeTemplatePanel()"
@@ -2423,7 +2462,7 @@
 
 <!-- 공유 사이트 표시 -->
 <script
-    src="./ShareSites/sitesshow/sitesshow.js?v=20260806-1"
+    src="./ShareSites/sitesshow/sitesshow.js?v=20260807-settings-add-1"
     charset="utf-8"
     defer>
 </script>
@@ -2455,7 +2494,7 @@
     defer>
 </script>
 <script
-    src="./js/storage/storage-service.js?v=20260807-backend-switch-1"
+    src="./js/storage/storage-service.js?v=20260807-wasm-opfs-default-1"
     charset="utf-8"
     defer>
 </script>
@@ -2474,7 +2513,7 @@
 
 <!-- 설정 UI -->
 <script
-    src="./Setting/settings-ui.js?v=20260807-backend-switch-1&amp;feature=templates-1&amp;storageVisibility=20260806-1"
+    src="./Setting/settings-ui.js?v=20260807-local-server-toast-3&amp;feature=templates-2&amp;storageVisibility=20260807-1&amp;sqliteFullscreen=20260807-1"
     charset="utf-8"
     defer>
 </script>
@@ -2542,7 +2581,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260806-local-folder-1&amp;feature=templates-1&amp;storageVisibility=20260806-1"
+    src="./js/app.js?v=20260807-calendar-header-actions-1&amp;feature=templates-1&amp;storageVisibility=20260807-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1"
     charset="utf-8"
     defer>
 </script>

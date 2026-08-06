@@ -893,9 +893,9 @@ body.feature-local-disabled #tab-storage-local,
 body.feature-github-disabled #tab-storage-github,
 body.feature-github-disabled #tab-storage-github-link,
 body.feature-github-disabled #btn-github-sync,
-body.feature-sqlite-disabled button[id*="sqlite" i]:not(.scholar-sqlite-access):not(#btn-footer-open-sqlite-explorer),
+body.feature-sqlite-disabled button[id*="sqlite" i],
 body.feature-sqlite-disabled a[id*="sqlite" i],
-body.feature-sqlite-disabled button[onclick*="sqlite" i]:not(.scholar-sqlite-access):not(#btn-footer-open-sqlite-explorer),
+body.feature-sqlite-disabled button[onclick*="sqlite" i],
 body.feature-sqlite-disabled a[onclick*="sqlite" i] {
     display: none !important;
 }

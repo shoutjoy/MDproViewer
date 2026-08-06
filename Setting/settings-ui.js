@@ -9,6 +9,8 @@
     let sqliteExplorerLoading = false;
     let sqliteExplorerDragBound = false;
     let sqliteExplorerPositioned = false;
+    let sqliteExplorerFullscreen = false;
+    let sqliteExplorerRestorePosition = null;
     let sqliteExplorerSelectedSettingIndex = -1;
     let sqliteExplorerSelectedBackupId = '';
     let sqliteExplorerFileDetailToken = 0;
@@ -34,6 +36,29 @@
     let lastSqliteRestorePreview = null;
     let lastPreRestoreBackup = null;
     const LOCAL_SQLITE_APP_URL = 'http://127.0.0.1:8765/';
+    const SQLITE_FEATURE_KEY = 'mdpro_sqlite_feature_enabled_v1';
+    const DEFAULT_SQLITE_BACKEND = 'wasm';
+
+    function readSqliteFeatureEnabled(fallback) {
+        try {
+            const stored = window.localStorage.getItem(SQLITE_FEATURE_KEY);
+            if (stored != null) return stored === '1';
+        } catch (_) {}
+        return fallback === true;
+    }
+
+    function writeSqliteFeatureEnabled(enabled) {
+        try { window.localStorage.setItem(SQLITE_FEATURE_KEY, enabled === true ? '1' : '0'); } catch (_) {}
+    }
+
+    function setSqliteSettingsPanelVisible(visible) {
+        const panel = document.querySelector('[data-sqlite-status-panel]');
+        if (!panel) return;
+        panel.classList.toggle('hidden', visible !== true);
+        panel.setAttribute('aria-hidden', visible === true ? 'false' : 'true');
+        const checkbox = document.getElementById('sqlite-enabled');
+        if (checkbox) checkbox.setAttribute('aria-expanded', visible === true ? 'true' : 'false');
+    }
 
     function getSqliteLaunchInfo() {
         const locationInfo = window.location || {};
@@ -85,7 +110,95 @@
         const link = document.getElementById('sqlite-open-local-app');
         if (!link) return;
         link.href = LOCAL_SQLITE_APP_URL;
-        link.classList.toggle('hidden', visible !== true);
+        link.classList.remove('hidden');
+        link.dataset.serverNeeded = visible === true ? '1' : '0';
+    }
+
+    function getFileProtocolProjectDirectory() {
+        const locationInfo = window.location || {};
+        if (String(locationInfo.protocol || '') !== 'file:') return '';
+        try {
+            let pathname = decodeURIComponent(new URL('.', String(locationInfo.href || '')).pathname || '');
+            if (/^\/[a-zA-Z]:\//.test(pathname)) pathname = pathname.slice(1);
+            return pathname.replace(/\//g, '\\').replace(/\\$/, '');
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function buildLocalSqliteServerCommand(projectDirectory) {
+        const directory = String(projectDirectory || '');
+        if (!directory) return '';
+        return 'cmd.exe /k py -3 "' + directory + '\\run.py"';
+    }
+
+    async function copyLocalServerCommand(command) {
+        if (!command) return false;
+        try {
+            if (window.navigator && window.navigator.clipboard
+                && typeof window.navigator.clipboard.writeText === 'function') {
+                await window.navigator.clipboard.writeText(command);
+                return true;
+            }
+        } catch (_) {}
+        const textarea = document.createElement('textarea');
+        textarea.value = command;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        let copied = false;
+        try { copied = document.execCommand('copy') === true; } catch (_) {}
+        textarea.remove();
+        return copied;
+    }
+
+    async function startLocalSqliteServer() {
+        const button = document.getElementById('sqlite-start-local-server');
+        if (button) button.disabled = true;
+        try {
+            if (getSqliteLaunchInfo().isExpectedPort) {
+                setSqliteStatus('Python 서버 실행 중', 'success', LOCAL_SQLITE_APP_URL + '에서 이미 실행 중입니다.');
+                await refreshSqliteStatus();
+                return;
+            }
+            if (window.api && typeof window.api.startLocalSqliteServer === 'function') {
+                await window.api.startLocalSqliteServer();
+                window.open(LOCAL_SQLITE_APP_URL, '_blank', 'noopener');
+                return;
+            }
+            const projectDirectory = getFileProtocolProjectDirectory();
+            const command = buildLocalSqliteServerCommand(projectDirectory);
+            if (command && await copyLocalServerCommand(command)) {
+                setSqliteStatus(
+                    'Python 서버 실행 명령 복사됨',
+                    'warning',
+                    'Windows 키+R을 누르고 Ctrl+V, Enter를 차례로 누르세요. '
+                        + 'run.py가 SQLite API와 웹 서버를 시작하고 ' + LOCAL_SQLITE_APP_URL + '를 자동으로 엽니다. '
+                        + '또는 앱 폴더의 start-md-viewer-server.cmd를 직접 실행할 수 있습니다.'
+                );
+                if (typeof window.showToast === 'function') {
+                    window.showToast(
+                        '실행 명령을 복사했습니다. Windows 키+R → Ctrl+V → Enter',
+                        { tone: 'info', persistent: true, dismissible: true }
+                    );
+                }
+                return;
+            }
+            if (command && typeof window.prompt === 'function') {
+                window.prompt('아래 명령을 복사하여 Windows 실행(Windows 키+R)에 붙여넣으세요.', command);
+                return;
+            }
+            const message = 'VS Code에서 “터미널 → 작업 실행 → MD Viewer: Python SQLite 서버”를 선택하거나 '
+                + 'md_viewer 폴더에서 start-md-viewer-server.cmd를 실행해 주세요.';
+            setSqliteStatus('Python 서버 실행 안내', 'warning', message);
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, { tone: 'info', persistent: true, dismissible: true });
+            }
+        } finally {
+            if (button) button.disabled = false;
+        }
     }
 
     function sqliteOfflineDetails(error, state) {
@@ -125,22 +238,27 @@
 
         if (!wrap.querySelector('[data-sqlite-status-panel]')) {
             const panel = document.createElement('div');
-            panel.className = 'mt-1 pl-6 space-y-1';
+            panel.className = 'hidden mt-1 pl-6 space-y-1';
+            panel.id = 'sqlite-runtime-settings-panel';
             panel.dataset.sqliteStatusPanel = '1';
             panel.innerHTML = [
                 '<div class="flex items-center gap-2">',
                 '  <span id="sqlite-connection-status" class="text-[11px] text-slate-500 dark:text-slate-400">서버 상태 확인 전</span>',
                 '  <button type="button" id="sqlite-status-refresh" class="px-1.5 py-0.5 text-[10px] rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700">다시 확인</button>',
-                '  <a id="sqlite-open-local-app" href="http://127.0.0.1:8765/" target="_blank" rel="noopener noreferrer" class="hidden px-1.5 py-0.5 text-[10px] rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30">로컬 앱 열기</a>',
                 '</div>',
                 '<div class="flex flex-wrap items-center gap-2">',
                 '  <label for="sqlite-backend-select" class="text-[10px] text-slate-500 dark:text-slate-400">SQLite 실행 방식</label>',
                 '  <select id="sqlite-backend-select" class="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] dark:border-slate-600 dark:bg-slate-800">',
-                '    <option value="auto">자동 (API → WASM)</option>',
+                '    <option value="wasm" selected>WASM · OPFS (기본)</option>',
                 '    <option value="api">Python API</option>',
-                '    <option value="wasm" selected>WASM · OPFS</option>',
+                '    <option value="auto">자동 (API → WASM)</option>',
                 '  </select>',
                 '</div>',
+                '<div class="flex flex-wrap items-center gap-2">',
+                '  <button type="button" id="sqlite-start-local-server" class="px-2 py-1 text-[10px] rounded border border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60">Python 서버 실행</button>',
+                '  <a id="sqlite-open-local-app" href="http://127.0.0.1:8765/" target="_blank" rel="noopener noreferrer" class="px-2 py-1 text-[10px] rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950/30">127.0.0.1:8765 열기</a>',
+                '</div>',
+                '<p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">Python API는 <code>run.py</code> 서버를 사용합니다. <code>file://</code>에서는 실행 버튼이 명령을 복사하므로 <b>Windows 키+R → Ctrl+V → Enter</b>로 시작하세요. WASM · OPFS는 Live Server 같은 localhost 주소에서도 동작합니다.</p>',
                 '<p id="sqlite-connection-details" class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-500"></p>',
                 '<div class="flex flex-wrap items-center gap-2 pt-1">',
                 '  <button type="button" id="sqlite-migration-preview" disabled class="px-2 py-1 text-[10px] rounded border border-cyan-300 dark:border-cyan-700 text-cyan-700 dark:text-cyan-300 disabled:opacity-40">inDB 이관 미리보기</button>',
@@ -190,6 +308,8 @@
             if (refresh) refresh.addEventListener('click', function () { refreshSqliteStatus(); });
             const backendSelect = panel.querySelector('#sqlite-backend-select');
             if (backendSelect) backendSelect.addEventListener('change', handleSqliteBackendChange);
+            const serverStart = panel.querySelector('#sqlite-start-local-server');
+            if (serverStart) serverStart.addEventListener('click', startLocalSqliteServer);
             const migrationPreview = panel.querySelector('#sqlite-migration-preview');
             if (migrationPreview) migrationPreview.addEventListener('click', runSqliteMigrationPreview);
             const integrityCheck = panel.querySelector('#sqlite-integrity-check-run');
@@ -213,6 +333,9 @@
             if (restorePreview) restorePreview.addEventListener('click', runSqliteRestorePreview);
             if (restoreApply) restoreApply.addEventListener('click', runSqliteRestoreApply);
         }
+
+        sqliteCheckbox.checked = readSqliteFeatureEnabled(sqliteCheckbox.checked);
+        setSqliteSettingsPanelVisible(sqliteCheckbox.checked);
 
         if (!sqliteChangeBound) {
             sqliteCheckbox.addEventListener('change', handleSqliteCheckboxChange);
@@ -345,20 +468,35 @@
         const listSetting = settings.find(function (item) {
             return item && item.key === 'templateCustomList';
         }) || null;
-        const rawTemplates = listSetting && Array.isArray(listSetting.value) ? listSetting.value : [];
-        const templates = rawTemplates.map(function (item, index) {
+        const rawBuiltInTemplates = typeof TMPLS !== 'undefined' && Array.isArray(TMPLS) ? TMPLS : [];
+        const builtInTemplates = rawBuiltInTemplates.map(function (item, index) {
+            return {
+                id: 'builtin_' + index,
+                name: String(item && item.name ? item.name : ('기본 양식 ' + (index + 1))),
+                desc: String(item && item.desc ? item.desc : ''),
+                content: String(item && item.content ? item.content : ''),
+                source: 'builtin',
+                isCustom: false
+            };
+        }).filter(function (item) { return item.content.trim().length > 0; });
+        const rawCustomTemplates = listSetting && Array.isArray(listSetting.value) ? listSetting.value : [];
+        const customTemplates = rawCustomTemplates.map(function (item, index) {
             return {
                 id: String(item && item.id ? item.id : ('custom_' + index)),
                 name: String(item && item.name ? item.name : ('사용자 양식 ' + (index + 1))),
                 desc: String(item && item.desc ? item.desc : ''),
-                content: String(item && item.content ? item.content : '')
+                content: String(item && item.content ? item.content : ''),
+                source: 'sqlite',
+                isCustom: true
             };
         });
         return {
             visibleSetting: visibleSetting,
             listSetting: listSetting,
             visible: visibleSetting ? visibleSetting.value === true : null,
-            templates: templates,
+            builtInTemplates: builtInTemplates,
+            customTemplates: customTemplates,
+            templates: builtInTemplates.concat(customTemplates),
             updatedAt: Math.max(
                 Number(visibleSetting && visibleSetting.updatedAt || 0),
                 Number(listSetting && listSetting.updatedAt || 0)
@@ -372,7 +510,9 @@
         const state = getSqliteExplorerTemplateState();
         const names = state.templates.map(function (item) {
             return '<li class="rounded border border-slate-200 px-2 py-1 dark:border-slate-700">'
-                + '<b>' + escapeMigrationText(item.name) + '</b>'
+                + '<div class="flex items-center justify-between gap-2"><b>' + escapeMigrationText(item.name) + '</b>'
+                + '<span class="shrink-0 text-[10px] ' + (item.isCustom ? 'text-violet-600 dark:text-violet-400' : 'text-sky-600 dark:text-sky-400') + '">'
+                + (item.isCustom ? '사용자 추가' : '기본 제공') + '</span></div>'
                 + (item.desc ? '<br><span class="text-[10px] text-slate-500">' + escapeMigrationText(item.desc) + '</span>' : '')
                 + '</li>';
         }).join('');
@@ -380,16 +520,17 @@
         detail.innerHTML = [
             '<p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">SQLite 양식 설정</p>',
             '<h3 class="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">저장된 양식 모아보기</h3>',
-            '<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40 sm:grid-cols-3">',
+            '<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40 sm:grid-cols-4">',
             '<span>양식 버튼 표시<br><b>' + escapeMigrationText(visibleLabel) + '</b></span>',
-            '<span>추가된 양식<br><b>' + state.templates.length + '개</b></span>',
+            '<span>기본 양식<br><b>' + state.builtInTemplates.length + '개</b></span>',
+            '<span>사용자 추가<br><b>' + state.customTemplates.length + '개</b></span>',
             '<span>최근 저장<br><b>' + escapeMigrationText(formatExplorerDate(state.updatedAt)) + '</b></span>',
             '</div>',
             '<div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">',
             '<b>SQLite 저장 항목</b><p class="mt-1"><code>templateVisible</code>에는 표시 설정을, <code>templateCustomList</code>에는 추가한 양식의 이름·설명·본문을 저장합니다.</p>',
             '</div>',
-            '<h4 class="mt-5 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">추가된 양식 목록</h4>',
-            '<ul class="mt-2 space-y-2">' + (names || '<li class="text-xs text-slate-500">추가된 사용자 양식이 없습니다.</li>') + '</ul>',
+            '<h4 class="mt-5 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">전체 양식 목록</h4>',
+            '<ul class="mt-2 space-y-2">' + (names || '<li class="text-xs text-slate-500">표시할 양식이 없습니다.</li>') + '</ul>',
             '<p class="mt-3 text-[10px] text-slate-400">왼쪽 목록에서 양식을 선택하면 저장된 전체 본문을 읽을 수 있습니다.</p>'
         ].join('');
     }
@@ -399,6 +540,8 @@
         const state = getSqliteExplorerTemplateState();
         const item = state.templates[index];
         if (!detail || !item) return;
+        const lineCount = item.content ? item.content.split(/\r?\n/).length : 0;
+        const sourceLabel = item.isCustom ? 'SQLite 사용자 추가' : '앱 기본 제공';
         document.querySelectorAll('[data-sqlite-template-index]').forEach(function (button) {
             const selected = Number(button.dataset.sqliteTemplateIndex) === index;
             button.classList.toggle('border-emerald-600', selected);
@@ -407,16 +550,20 @@
             button.setAttribute('aria-pressed', selected ? 'true' : 'false');
         });
         detail.innerHTML = [
-            '<p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">SQLite에 저장된 사용자 양식</p>',
+            '<p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">양식 세부사항</p>',
             '<h3 class="mt-1 break-all text-lg font-bold text-slate-900 dark:text-slate-100">' + escapeMigrationText(item.name) + '</h3>',
             '<p class="mt-1 text-xs text-slate-500 dark:text-slate-400">' + escapeMigrationText(item.desc || '설명 없음') + '</p>',
-            '<div class="mt-3 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40">',
+            '<div class="mt-3 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40 sm:grid-cols-4">',
+            '<span>출처<br><b>' + escapeMigrationText(sourceLabel) + '</b></span>',
             '<span>양식 ID<br><b class="break-all">' + escapeMigrationText(item.id) + '</b></span>',
-            '<span>저장 시각<br><b>' + escapeMigrationText(formatExplorerDate(state.listSetting && state.listSetting.updatedAt)) + '</b></span>',
+            '<span>본문 크기<br><b>' + item.content.length.toLocaleString() + '자 · ' + lineCount.toLocaleString() + '줄</b></span>',
+            '<span>' + (item.isCustom ? 'SQLite 저장 시각' : '제공 방식') + '<br><b>'
+                + (item.isCustom ? escapeMigrationText(formatExplorerDate(state.listSetting && state.listSetting.updatedAt)) : 'templates.js 기본 내장') + '</b></span>',
             '</div>',
             '<h4 class="mt-5 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">저장된 양식 본문</h4>',
             '<pre id="sqlite-explorer-template-content" class="mt-2 min-h-40 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"></pre>',
-            '<p class="mt-2 text-[10px] text-slate-400">읽기 전용 · 양식 추가·편집·Import 시 이 내용이 SQLite에 다시 저장됩니다.</p>'
+            '<p class="mt-2 text-[10px] text-slate-400">읽기 전용 · '
+                + (item.isCustom ? '사용자 양식은 추가·편집·Import 시 SQLite에 다시 저장됩니다.' : '기본 양식은 앱에 내장되어 항상 함께 표시됩니다.') + '</p>'
         ].join('');
         const content = document.getElementById('sqlite-explorer-template-content');
         if (content) content.textContent = item.content;
@@ -575,13 +722,16 @@
             target.innerHTML = '<button type="button" data-sqlite-template-overview="1" '
                 + 'class="mb-2 block w-full rounded-lg border border-emerald-500 bg-emerald-50 p-3 text-left hover:bg-emerald-100 dark:bg-emerald-950/30">'
                 + '<div class="flex items-center justify-between gap-2"><b>양식 설정</b><span class="text-[10px] text-emerald-600">' + escapeMigrationText(visibleLabel) + '</span></div>'
-                + '<p class="mt-1 text-[10px] text-slate-500">추가 양식 ' + state.templates.length + '개 · 이름·설명·본문을 SQLite에 저장</p>'
+                + '<p class="mt-1 text-[10px] text-slate-500">전체 ' + state.templates.length + '개 · 기본 ' + state.builtInTemplates.length
+                + '개 · 사용자 추가 ' + state.customTemplates.length + '개</p>'
                 + '<p class="mt-1 text-[10px] text-slate-400">최근 저장 ' + escapeMigrationText(formatExplorerDate(state.updatedAt)) + '</p></button>'
                 + state.templates.map(function (item, index) {
                     const preview = item.content.replace(/\s+/g, ' ').trim().slice(0, 140);
                     return '<button type="button" data-sqlite-template-index="' + index + '" '
                         + 'class="mb-2 block w-full rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-emerald-500 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-emerald-950/20">'
-                        + '<div class="flex items-center justify-between gap-2"><b class="truncate">' + escapeMigrationText(item.name) + '</b><span class="text-[10px] text-violet-600 dark:text-violet-400">사용자 양식</span></div>'
+                        + '<div class="flex items-center justify-between gap-2"><b class="truncate">' + escapeMigrationText(item.name) + '</b><span class="text-[10px] '
+                        + (item.isCustom ? 'text-violet-600 dark:text-violet-400' : 'text-sky-600 dark:text-sky-400') + '">'
+                        + (item.isCustom ? '사용자 추가' : '기본 양식') + '</span></div>'
                         + '<p class="mt-1 text-[10px] text-slate-500">' + escapeMigrationText(item.desc || '설명 없음') + '</p>'
                         + '<p class="mt-2 line-clamp-3 whitespace-pre-wrap break-words rounded bg-slate-50 p-2 text-[10px] dark:bg-slate-950">' + escapeMigrationText(preview || '(빈 본문)') + '</p></button>';
                 }).join('');
@@ -1324,6 +1474,39 @@
         modal.classList.add('hidden');
     }
 
+    function updateSqliteExplorerFullscreenButton() {
+        const button = document.getElementById('sqlite-explorer-fullscreen');
+        if (!button) return;
+        button.textContent = sqliteExplorerFullscreen ? '복원' : '전체화면';
+        button.title = sqliteExplorerFullscreen ? 'SQLite 탐색 창 크기 복원' : 'SQLite 탐색 창 전체화면';
+        button.setAttribute('aria-pressed', sqliteExplorerFullscreen ? 'true' : 'false');
+    }
+
+    function toggleSqliteExplorerFullscreen() {
+        const panel = document.getElementById('sqlite-explorer-panel');
+        if (!panel) return;
+        if (!sqliteExplorerFullscreen) {
+            sqliteExplorerRestorePosition = {
+                left: panel.style.left,
+                top: panel.style.top
+            };
+            sqliteExplorerFullscreen = true;
+            panel.classList.add('sqlite-explorer-fullscreen');
+            panel.style.left = '8px';
+            panel.style.top = '8px';
+        } else {
+            sqliteExplorerFullscreen = false;
+            panel.classList.remove('sqlite-explorer-fullscreen');
+            panel.style.left = sqliteExplorerRestorePosition && sqliteExplorerRestorePosition.left
+                ? sqliteExplorerRestorePosition.left : '8px';
+            panel.style.top = sqliteExplorerRestorePosition && sqliteExplorerRestorePosition.top
+                ? sqliteExplorerRestorePosition.top : '8px';
+            sqliteExplorerRestorePosition = null;
+            requestAnimationFrame(clampSqliteExplorerPosition);
+        }
+        updateSqliteExplorerFullscreenButton();
+    }
+
     function clampSqliteExplorerPosition() {
         const panel = document.getElementById('sqlite-explorer-panel');
         if (!panel || !sqliteExplorerPositioned) return;
@@ -1359,6 +1542,7 @@
 
         handle.addEventListener('pointerdown', function (event) {
             if (event.button !== 0) return;
+            if (sqliteExplorerFullscreen) return;
             const target = event.target;
             if (target && target.closest && target.closest('button,input,textarea,select,a,label')) return;
             const rect = panel.getBoundingClientRect();
@@ -1998,43 +2182,21 @@
 
     async function handleSqliteCheckboxChange(event) {
         const checkbox = event && event.currentTarget ? event.currentTarget : document.getElementById('sqlite-enabled');
-        if (!checkbox || !window.MDPStorage) return;
-        checkbox.disabled = true;
-        setLocalAppLinkVisible(false);
-        setSqliteStatus('SQLite 저장소 확인 중...', 'info', '');
-        try {
-            const targetMode = checkbox.checked ? 'sqlite' : 'indb';
-            const state = await window.MDPStorage.requestMode(targetMode);
-            checkbox.checked = state.activeMode === 'sqlite';
-            await refreshSqliteStatus();
-        } catch (error) {
-            checkbox.checked = false;
-            const code = error && error.code ? error.code : '';
-            if (code === 'SQLITE_STORAGE_NOT_READY') {
-                setSqliteStatus(
-                    'SQLite 앱 연결됨 · 활성화 검증 중',
-                    'warning',
-                    '현재 문서는 계속 inDB에 저장됩니다. 자동저장 복구 검증이 완료되기 전에는 SQLite 모드를 켤 수 없습니다.'
-                );
-            } else if (code === 'RECOVERY_BUFFER_UNAVAILABLE') {
-                setSqliteStatus('SQLite 복구 버퍼 사용 불가', 'error', error.message);
-            } else {
-                setLocalAppLinkVisible(true);
-                const state = window.MDPStorage.getStatus();
-                setSqliteStatus(sqliteOfflineStatus(state), 'error', sqliteOfflineDetails(error, state));
-            }
-        } finally {
-            checkbox.disabled = false;
-            notifyStorageFeatureVisibility();
-        }
+        if (!checkbox) return;
+        const enabled = checkbox.checked === true;
+        writeSqliteFeatureEnabled(enabled);
+        setSqliteSettingsPanelVisible(enabled);
+        notifyStorageFeatureVisibility();
+        if (enabled) await refreshSqliteStatus();
     }
 
     async function refreshSqliteStatus() {
         installSqliteControl();
         const elements = sqliteStatusElements();
         if (!elements.checkbox) return null;
+        elements.checkbox.checked = readSqliteFeatureEnabled(elements.checkbox.checked);
+        setSqliteSettingsPanelVisible(elements.checkbox.checked);
         if (!window.MDPStorage || typeof window.MDPStorage.getStatus !== 'function') {
-            elements.checkbox.checked = false;
             notifyStorageFeatureVisibility();
             setSqliteStatus('저장 모듈 로드 대기 중', 'info', '');
             return null;
@@ -2045,10 +2207,13 @@
             await window.MDPStorage.refreshSqliteHealth();
             state = window.MDPStorage.getStatus();
         }
-        elements.checkbox.checked = state.activeMode === 'sqlite';
         notifyStorageFeatureVisibility();
         const backendSelect = document.getElementById('sqlite-backend-select');
-        if (backendSelect) backendSelect.value = state.sqliteBackendPreference || 'wasm';
+        if (backendSelect) {
+            backendSelect.value = state.sqliteBackendPreference
+                || (window.MDPStorage && window.MDPStorage.DEFAULT_SQLITE_BACKEND)
+                || DEFAULT_SQLITE_BACKEND;
+        }
         const health = state.sqliteHealth;
         if (!health) {
             setMigrationPreviewAvailable(false);
@@ -2098,13 +2263,15 @@
         return state;
     }
 
-    function syncSqliteCheckbox() {
+    function syncSqliteCheckbox(featureEnabled) {
         const elements = sqliteStatusElements();
         if (!elements.checkbox) return;
-        const state = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
-            ? window.MDPStorage.getStatus()
-            : null;
-        elements.checkbox.checked = !!(state && state.activeMode === 'sqlite');
+        const enabled = typeof featureEnabled === 'boolean'
+            ? featureEnabled
+            : readSqliteFeatureEnabled(elements.checkbox.checked);
+        elements.checkbox.checked = enabled;
+        writeSqliteFeatureEnabled(enabled);
+        setSqliteSettingsPanelVisible(enabled);
         notifyStorageFeatureVisibility();
     }
 
@@ -2138,6 +2305,7 @@
         ,runSqliteIntegrityCheck: runSqliteIntegrityCheck
         ,openSqliteExplorer: openSqliteExplorer
         ,closeSqliteExplorer: closeSqliteExplorer
+        ,toggleSqliteExplorerFullscreen: toggleSqliteExplorerFullscreen
         ,refreshSqliteExplorer: refreshSqliteExplorer
         ,setSqliteExplorerTab: setSqliteExplorerTab
         ,openSqliteExplorerDocument: openSqliteExplorerDocument
@@ -2151,5 +2319,6 @@
         ,renderSqliteRestorePreview: renderSqliteRestorePreview
         ,runSqliteRestoreApply: runSqliteRestoreApply
         ,runSqlitePreRestoreBackupDownload: runSqlitePreRestoreBackupDownload
+        ,startLocalSqliteServer: startLocalSqliteServer
     };
 })();

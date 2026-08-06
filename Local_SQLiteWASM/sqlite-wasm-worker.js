@@ -1309,9 +1309,15 @@ function exportDatabase(options) {
     const config = options || {};
     const sourceName = config.preMigration === true ? MIGRATION_BACKUP_NAME : DATABASE_NAME;
     const bytes = poolUtil.exportFile(sourceName);
+    const exportedAt = new Date();
+    const exportDate = String(exportedAt.getFullYear())
+        + String(exportedAt.getMonth() + 1).padStart(2, '0')
+        + String(exportedAt.getDate()).padStart(2, '0');
     return {
         bytes: bytes,
-        fileName: config.preMigration === true ? 'mdpro-pre-migration.sqlite' : 'mdpro.sqlite',
+        fileName: config.preMigration === true
+            ? 'mdpro-pre-migration.sqlite'
+            : 'mdpro' + exportDate + '.sqlite',
         mimeType: 'application/vnd.sqlite3',
         sizeBytes: bytes.byteLength
     };

@@ -146,7 +146,8 @@ try:
 
     with httpd:
         port = httpd.server_address[1]
-        url = f"http://localhost:{port}"
+        browser_host = "127.0.0.1" if HOST in {"0.0.0.0", "::"} else HOST
+        url = f"http://{browser_host}:{port}/"
         print(f"서버 실행: {url}")
         print(f"바인딩: {HOST}:{port}")
         print("종료: Ctrl+C")

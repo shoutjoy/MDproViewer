@@ -668,6 +668,7 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     });
     assert.equal(defaultBackendState.sqliteBackendPreference, 'wasm');
     assert.equal(defaultBackendState.sqliteBackend, 'wasm-opfs');
+    assert.equal(global.MDPStorage.DEFAULT_SQLITE_BACKEND, 'wasm');
 
     const switchState = await global.MDPStorage.initialize({
         getIndexedDb: function () { return {}; },
@@ -695,6 +696,11 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     assert.equal(autoSwitchState.sqliteBackend, 'wasm-opfs', 'auto must fall back from an offline API to WASM');
     assert.equal(autoSwitchState.sqliteHealth.available, true);
     assert.equal(values.get(global.MDPStorage.SQLITE_BACKEND_KEY), 'auto');
+
+    const invalidSwitchState = await global.MDPStorage.requestSqliteBackend('invalid-backend');
+    assert.equal(invalidSwitchState.sqliteBackendPreference, 'wasm');
+    assert.equal(invalidSwitchState.sqliteBackend, 'wasm-opfs');
+    assert.equal(values.get(global.MDPStorage.SQLITE_BACKEND_KEY), 'wasm');
     console.log('Storage service tests passed.');
 })().catch(function (error) {
     console.error(error);

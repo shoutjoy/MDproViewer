@@ -3,6 +3,7 @@
 
     const MODE_KEY = 'mdpro_storage_mode_v1';
     const SQLITE_BACKEND_KEY = 'mdpro_sqlite_backend_v1';
+    const DEFAULT_SQLITE_BACKEND = 'wasm';
     const MODES = Object.freeze({ INDB: 'indb', SQLITE: 'sqlite' });
     const listeners = new Set();
     let initialized = false;
@@ -12,7 +13,7 @@
     let sqliteAdapter = null;
     let sqliteApiAdapter = null;
     let sqliteWasmAdapter = null;
-    let sqliteBackendPreference = 'wasm';
+    let sqliteBackendPreference = DEFAULT_SQLITE_BACKEND;
     let sqliteBackend = null;
     let recoveryBuffer = null;
     let recoveryFlushPromise = null;
@@ -41,10 +42,10 @@
 
     function readSqliteBackendPreference() {
         try {
-            const value = String(root.localStorage.getItem(SQLITE_BACKEND_KEY) || 'wasm').toLowerCase();
-            return value === 'auto' || value === 'api' || value === 'wasm' ? value : 'wasm';
+            const value = String(root.localStorage.getItem(SQLITE_BACKEND_KEY) || DEFAULT_SQLITE_BACKEND).toLowerCase();
+            return value === 'auto' || value === 'api' || value === 'wasm' ? value : DEFAULT_SQLITE_BACKEND;
         } catch (_) {
-            return 'wasm';
+            return DEFAULT_SQLITE_BACKEND;
         }
     }
 
@@ -192,7 +193,9 @@
     }
 
     async function requestSqliteBackend(backend) {
-        const requested = backend === 'api' || backend === 'wasm' ? backend : 'auto';
+        const requested = backend === 'auto' || backend === 'api' || backend === 'wasm'
+            ? backend
+            : DEFAULT_SQLITE_BACKEND;
         sqliteBackendPreference = requested;
         writeSqliteBackendPreference(requested);
         let health = null;
@@ -724,6 +727,7 @@
         MODES: MODES,
         MODE_KEY: MODE_KEY,
         SQLITE_BACKEND_KEY: SQLITE_BACKEND_KEY,
+        DEFAULT_SQLITE_BACKEND: DEFAULT_SQLITE_BACKEND,
         initialize: initialize,
         requestMode: requestMode,
         requestSqliteBackend: requestSqliteBackend,

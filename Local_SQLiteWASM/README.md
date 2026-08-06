@@ -7,7 +7,7 @@ MD Viewer의 Python SQLite HTTP API를 단계적으로 대체하는 브라우저
 - 데이터 저장: 브라우저 OPFS
 - DB 가상 경로: `/mdpro.sqlite`
 - 기본 VFS: `opfs-sahpool`
-- DB 이동: 설정의 `WASM DB 파일 내보내기` / `WASM DB 파일 불러오기`
+- DB 이동: 설정의 `WASM DB 파일 내보내기` / `WASM DB 파일 불러오기` (내보내기 이름: `mdproYYYYMMDD.sqlite`)
 - FMA 작업파일: 일반 FMA·WebP FMA를 SQLite BLOB으로 저장·불러오기
 - FMA 탐색: 설정의 `SQLite보기` 파일 탭에서 manifest 요약과 내부 이미지 갤러리 제공
 - AI 도구 설정: ScholarAI·sspimgAI·AI Jena·FMA AI Jena의 비밀값이 아닌 실행 설정을 profile `toolSettingsCatalog`에 자동 저장·복원

@@ -148,6 +148,8 @@ let templatePanelResizeBound = false;
 let templatePanelResizing = false;
 let templatePanelSavedWidth = '';
 let templatePanelSavedHeight = '';
+let templatePanelFullscreen = false;
+let templatePanelRestoreState = null;
 let html2pptPanelOpen = false;
 let html2pptDockRight = true;
 let html2pptDragBound = false;
@@ -5678,11 +5680,41 @@ function sanitizeUiMessage(msg) {
     return bad ? 'Message unavailable due to encoding issue.' : text;
 }
 
-function showToast(msg) {
+let toastHideTimer = null;
+
+function hideToast() {
     const toast = document.getElementById('toast');
-    toast.textContent = sanitizeUiMessage(msg);
-    toast.style.opacity = "1";
-    setTimeout(() => { toast.style.opacity = "0"; }, 3000);
+    if (!toast) return;
+    if (toastHideTimer !== null) {
+        clearTimeout(toastHideTimer);
+        toastHideTimer = null;
+    }
+    toast.style.opacity = '0';
+    toast.style.pointerEvents = 'none';
+    toast.style.display = 'none';
+    toast.setAttribute('aria-hidden', 'true');
+}
+
+function showToast(msg, options) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    const config = options && typeof options === 'object' ? options : {};
+    const message = document.getElementById('toast-message');
+    const closeButton = document.getElementById('toast-close');
+    if (message) message.textContent = sanitizeUiMessage(msg);
+    if (closeButton) {
+        closeButton.classList.toggle('hidden', config.dismissible !== true);
+        closeButton.onclick = hideToast;
+    }
+    if (toastHideTimer !== null) clearTimeout(toastHideTimer);
+    toastHideTimer = null;
+    toast.style.display = 'flex';
+    toast.style.opacity = '1';
+    toast.style.pointerEvents = config.dismissible === true ? 'auto' : 'none';
+    toast.setAttribute('aria-hidden', 'false');
+    if (config.persistent !== true) {
+        toastHideTimer = setTimeout(hideToast, 3000);
+    }
 }
 
 function getActiveScrollTarget() {
@@ -5869,6 +5901,15 @@ function buildGoogleCalendarExternalUrl() {
     return url.href;
 }
 
+function buildGoogleCalendarAddUrl() {
+    const email = getGoogleCalendarEmailFromLocal();
+    if (!email) return buildGoogleCalendarExternalUrl();
+    const url = new URL(GOOGLE_CALENDAR_URL);
+    url.searchParams.set('cid', email);
+    url.searchParams.set('authuser', email);
+    return url.href;
+}
+
 function buildGoogleCalendarEmbedUrl(email) {
     const url = new URL('https://calendar.google.com/calendar/embed');
     const safeEmail = String(email || '').trim();
@@ -5882,6 +5923,16 @@ function buildGoogleCalendarEmbedUrl(email) {
 
 function openGoogleCalendarExternalWindow() {
     const opened = window.open(buildGoogleCalendarExternalUrl(), '_blank');
+    if (!opened) {
+        showToast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.');
+        return false;
+    }
+    try { opened.opener = null; } catch (_) {}
+    return true;
+}
+
+function openGoogleCalendarAddWindow() {
+    const opened = window.open(buildGoogleCalendarAddUrl(), '_blank');
     if (!opened) {
         showToast('팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.');
         return false;
@@ -7086,8 +7137,12 @@ function getTemplateVisibleFromSettings(settings) {
 }
 
 function getHtml2pptVisibleFromSettings(settings) {
-    if (!settings) return false;
-    return settings.html2pptVisible === true;
+    if (!settings || typeof settings.html2pptVisible !== 'boolean') return true;
+    return settings.html2pptVisible;
+}
+
+function getHtml2pptNameVisibleFromSettings(settings) {
+    return !!(settings && settings.html2pptNameVisible === true);
 }
 
 function getDeepseekApiState() {
@@ -7149,8 +7204,12 @@ async function verifyDeepseekApiKeyConnection(apiKey, baseUrl) {
 }
 
 function getFmaViewerVisibleFromSettings(settings) {
-    if (!settings) return false;
-    return settings.fmaViewerVisible === true;
+    if (!settings || typeof settings.fmaViewerVisible !== 'boolean') return true;
+    return settings.fmaViewerVisible;
+}
+
+function getFmaViewerNameVisibleFromSettings(settings) {
+    return !!(settings && settings.fmaViewerNameVisible === true);
 }
 
 function getMacroVisibleFromSettings(settings) {
@@ -7536,8 +7595,53 @@ function applyTemplatePanelMode() {
     const panel = document.getElementById('template-panel');
     const body = document.getElementById('template-panel-body');
     const compactBtn = document.getElementById('template-panel-compact-btn');
+    const fullscreenBtn = document.getElementById('template-panel-fullscreen-btn');
     const resizer = document.getElementById('template-panel-resizer');
+    const preview = document.getElementById('template-preview');
     if (!panel || !body) return;
+
+    if (fullscreenBtn) {
+        fullscreenBtn.textContent = templatePanelFullscreen ? '복원' : '전체화면';
+        fullscreenBtn.setAttribute('aria-pressed', templatePanelFullscreen ? 'true' : 'false');
+        fullscreenBtn.title = templatePanelFullscreen ? '양식 창 크기 복원' : '양식 창 전체화면';
+    }
+
+    if (templatePanelFullscreen) {
+        panel.style.left = '8px';
+        panel.style.top = '8px';
+        panel.style.right = '8px';
+        panel.style.bottom = '8px';
+        panel.style.width = 'auto';
+        panel.style.height = 'auto';
+        panel.style.maxWidth = 'none';
+        panel.style.maxHeight = 'none';
+        body.classList.remove('hidden');
+        body.style.display = 'flex';
+        body.style.flexDirection = 'column';
+        body.style.flex = '1 1 auto';
+        body.style.minHeight = '0';
+        body.style.overflow = 'auto';
+        if (preview) {
+            preview.style.flex = '1 1 auto';
+            preview.style.height = 'auto';
+            preview.style.minHeight = '160px';
+        }
+        if (compactBtn) compactBtn.disabled = true;
+        if (resizer) resizer.style.display = 'none';
+        return;
+    }
+
+    body.style.display = '';
+    body.style.flexDirection = '';
+    body.style.flex = '';
+    body.style.minHeight = '';
+    body.style.overflow = '';
+    if (preview) {
+        preview.style.flex = '';
+        preview.style.height = '';
+        preview.style.minHeight = '';
+    }
+    if (compactBtn) compactBtn.disabled = false;
 
     if (templatePanelCompact) {
         if (panel.style.width) templatePanelSavedWidth = panel.style.width;
@@ -7575,8 +7679,50 @@ function applyTemplatePanelMode() {
 }
 
 function toggleTemplateCompactMode() {
+    if (templatePanelFullscreen) return;
     templatePanelCompact = !templatePanelCompact;
     applyTemplatePanelMode();
+}
+
+function setTemplatePanelFullscreen(enabled) {
+    const panel = document.getElementById('template-panel');
+    if (!panel) return;
+    const next = !!enabled;
+    if (next === templatePanelFullscreen) {
+        applyTemplatePanelMode();
+        return;
+    }
+
+    if (next) {
+        templatePanelRestoreState = {
+            left: panel.style.left,
+            top: panel.style.top,
+            right: panel.style.right,
+            bottom: panel.style.bottom,
+            width: panel.style.width,
+            height: panel.style.height,
+            maxWidth: panel.style.maxWidth,
+            maxHeight: panel.style.maxHeight
+        };
+    }
+
+    templatePanelFullscreen = next;
+    if (!next && templatePanelRestoreState) {
+        panel.style.left = templatePanelRestoreState.left;
+        panel.style.top = templatePanelRestoreState.top;
+        panel.style.right = templatePanelRestoreState.right;
+        panel.style.bottom = templatePanelRestoreState.bottom;
+        panel.style.width = templatePanelRestoreState.width;
+        panel.style.height = templatePanelRestoreState.height;
+        panel.style.maxWidth = templatePanelRestoreState.maxWidth;
+        panel.style.maxHeight = templatePanelRestoreState.maxHeight;
+        templatePanelRestoreState = null;
+    }
+    applyTemplatePanelMode();
+}
+
+function toggleTemplatePanelFullscreen() {
+    setTemplatePanelFullscreen(!templatePanelFullscreen);
 }
 
 function bindTemplatePanelDrag() {
@@ -7586,7 +7732,7 @@ function bindTemplatePanelDrag() {
     const header = document.getElementById('template-panel-header');
     if (!panel || !header) return;
     enableTouchModalDrag(panel, header, {
-        canStart: function () { return !templatePanelCompact && !templatePanelResizing; },
+        canStart: function () { return !templatePanelCompact && !templatePanelResizing && !templatePanelFullscreen; },
         onStart: function () {
             panel.style.right = 'auto';
             panel.style.bottom = 'auto';
@@ -7595,7 +7741,7 @@ function bindTemplatePanelDrag() {
     });
 
     header.addEventListener('mousedown', function (e) {
-        if (templatePanelResizing) return;
+        if (templatePanelResizing || templatePanelFullscreen) return;
         const target = e.target;
         if (target && target.closest && target.closest('button,input,textarea,select,a')) return;
         if (templatePanelCompact) return;
@@ -7608,7 +7754,7 @@ function bindTemplatePanelDrag() {
     });
     document.addEventListener('mousemove', function (e) {
         if (templatePanelResizing) return;
-        if (!templatePanelDragging || templatePanelCompact) return;
+        if (!templatePanelDragging || templatePanelCompact || templatePanelFullscreen) return;
         const x = Math.max(0, e.clientX - templatePanelDragOffsetX);
         const y = Math.max(0, e.clientY - templatePanelDragOffsetY);
         panel.style.left = x + 'px';
@@ -7628,13 +7774,13 @@ function bindTemplatePanelResize() {
     if (!panel || !handle) return;
 
     handle.addEventListener('mousedown', function (e) {
-        if (templatePanelCompact) return;
+        if (templatePanelCompact || templatePanelFullscreen) return;
         e.preventDefault();
         e.stopPropagation();
         templatePanelResizing = true;
     });
     document.addEventListener('mousemove', function (e) {
-        if (!templatePanelResizing || templatePanelCompact) return;
+        if (!templatePanelResizing || templatePanelCompact || templatePanelFullscreen) return;
         const rect = panel.getBoundingClientRect();
         const minW = 420;
         const minH = 260;
@@ -7677,6 +7823,7 @@ function openTemplatePanel() {
 function closeTemplatePanel() {
     const panel = document.getElementById('template-panel');
     if (!panel) return;
+    if (templatePanelFullscreen) setTemplatePanelFullscreen(false);
     panel.classList.add('hidden');
     panel.classList.remove('flex');
     templatePanelOpen = false;
@@ -7938,26 +8085,35 @@ function toggleHtml2pptPanel() {
 
 function applyHtml2pptVisibility(settings) {
     const enabled = getHtml2pptVisibleFromSettings(settings || {});
+    const nameVisible = getHtml2pptNameVisibleFromSettings(settings || {});
     const btn = document.getElementById('btn-html2ppt-panel');
     if (btn) btn.classList.toggle('hidden', !enabled);
+    const name = document.getElementById('btn-html2ppt-name');
+    if (name) name.classList.toggle('hidden', !nameVisible);
     if (!enabled) closeHtml2pptPanel();
 }
 
 async function toggleHtml2pptSection() {
     const check = document.getElementById('html2ppt-visible');
+    const nameCheck = document.getElementById('html2ppt-name-visible');
     const enabled = !!(check && check.checked);
-    applyHtml2pptVisibility({ html2pptVisible: enabled });
-    try { await setAiSettings({ html2pptVisible: enabled }); } catch (e) { console.error(e); }
+    const nameVisible = !!(nameCheck && nameCheck.checked);
+    const nextSettings = { html2pptVisible: enabled, html2pptNameVisible: nameVisible };
+    applyHtml2pptVisibility(nextSettings);
+    try { await setAiSettings(nextSettings); } catch (e) { console.error(e); }
 }
 
 function applyFmaViewerVisibility(settings) {
     const enabled = getFmaViewerVisibleFromSettings(settings || {});
+    const nameVisible = getFmaViewerNameVisibleFromSettings(settings || {});
     fmaViewerFeatureEnabled = enabled;
     const btn = document.getElementById('btn-fma-viewer');
     if (btn) {
         btn.classList.toggle('hidden', !enabled);
         btn.classList.toggle('flex', enabled);
     }
+    const name = document.getElementById('btn-fma-viewer-name');
+    if (name) name.classList.toggle('hidden', !nameVisible);
     const menuItems = [
         document.getElementById('open-image-folder-menu-item'),
         document.getElementById('open-fma-viewer-menu-item')
@@ -7971,9 +8127,12 @@ function applyFmaViewerVisibility(settings) {
 
 async function toggleFmaViewerSection() {
     const check = document.getElementById('fma-viewer-visible');
+    const nameCheck = document.getElementById('fma-viewer-name-visible');
     const enabled = !!(check && check.checked);
-    applyFmaViewerVisibility({ fmaViewerVisible: enabled });
-    try { await setAiSettings({ fmaViewerVisible: enabled }); } catch (e) { console.error(e); }
+    const nameVisible = !!(nameCheck && nameCheck.checked);
+    const nextSettings = { fmaViewerVisible: enabled, fmaViewerNameVisible: nameVisible };
+    applyFmaViewerVisibility(nextSettings);
+    try { await setAiSettings(nextSettings); } catch (e) { console.error(e); }
 }
 
 window.addEventListener('message', function (event) {
@@ -8333,6 +8492,7 @@ function applyImageUploadFeatureVisibility(settings) {
     const section = document.getElementById('image-upload-settings');
     const check = document.getElementById('image-upload-enabled');
     if (section && check) section.classList.toggle('hidden', !check.checked);
+    setInputModalImagePanelToggleState();
 }
 
 async function toggleImageUploadSection() {
@@ -8554,11 +8714,7 @@ async function persistAiSettingsFromModal() {
     const imgbbKeyInput = document.getElementById('ai-imgbb-api-key');
     const imgbbKey = (imgbbKeyInput && imgbbKeyInput.value) ? imgbbKeyInput.value.trim() : '';
     const sqliteEnabledEl = document.getElementById('sqlite-enabled');
-    const sqliteStorageStatus = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
-        ? window.MDPStorage.getStatus()
-        : null;
-    const sqliteEnabled = !!(sqliteEnabledEl && sqliteEnabledEl.checked
-        && sqliteStorageStatus && sqliteStorageStatus.activeMode === 'sqlite');
+    const sqliteEnabled = !!(sqliteEnabledEl && sqliteEnabledEl.checked);
     await setAiSettings({
         scholarAI: !!scholarOn,
         sspimgAI: !!sspimgOn,
@@ -8777,7 +8933,7 @@ function deleteAiSettingsRecord() {
 
 async function resetSettingsMset() {
     const confirmed = window.confirm(
-        '환경설정을 기본값으로 초기화할까요?\n\n문서, 이미지, 자동저장 데이터는 삭제되지 않습니다.'
+        '환경설정을 기본값으로 초기화하시겠습니까?\n\n초기화한 설정은 되돌릴 수 없습니다.\n문서, 이미지, 자동저장 데이터는 삭제되지 않습니다.'
     );
     if (!confirmed) return;
 
@@ -12393,9 +12549,13 @@ async function loadAiSettingsToUI() {
         const templateCheckEmpty = document.getElementById('template-visible');
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
-        if (html2pptCheckEmpty) html2pptCheckEmpty.checked = false;
+        if (html2pptCheckEmpty) html2pptCheckEmpty.checked = true;
+        const html2pptNameCheckEmpty = document.getElementById('html2ppt-name-visible');
+        if (html2pptNameCheckEmpty) html2pptNameCheckEmpty.checked = false;
         const fmaViewerCheckEmpty = document.getElementById('fma-viewer-visible');
-        if (fmaViewerCheckEmpty) fmaViewerCheckEmpty.checked = false;
+        if (fmaViewerCheckEmpty) fmaViewerCheckEmpty.checked = true;
+        const fmaViewerNameCheckEmpty = document.getElementById('fma-viewer-name-visible');
+        if (fmaViewerNameCheckEmpty) fmaViewerNameCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
         const localEnterBr = getEnterButtonInsertBrFromLocal();
         if (enterBrCheckEmpty) enterBrCheckEmpty.checked = localEnterBr;
@@ -12413,7 +12573,11 @@ async function loadAiSettingsToUI() {
         const openaiInputEmpty = document.getElementById('openai-api-key');
         if (openaiInputEmpty) openaiInputEmpty.value = getProtectedAiCredential('openai', 'ss_openai_api_key');
         const sqliteEnabledEmpty = document.getElementById('sqlite-enabled');
-        if (sqliteEnabledEmpty) sqliteEnabledEmpty.checked = false;
+        if (window.SettingUI && typeof window.SettingUI.syncSqliteCheckbox === 'function') {
+            window.SettingUI.syncSqliteCheckbox(false);
+        } else if (sqliteEnabledEmpty) {
+            sqliteEnabledEmpty.checked = false;
+        }
         const localEnabledEmpty = document.getElementById('local-storage-enabled');
         if (localEnabledEmpty) localEnabledEmpty.checked = false;
         const githubEnabledEmpty = document.getElementById('ai-github-enabled');
@@ -12444,8 +12608,8 @@ async function loadAiSettingsToUI() {
         applySitesVisibility({ sitesVisible: false });
         applyMacroVisibility({ macroVisible: false });
         applyTemplateVisibility({ templateVisible: false });
-        applyHtml2pptVisibility({ html2pptVisible: false });
-        applyFmaViewerVisibility({ fmaViewerVisible: false });
+        applyHtml2pptVisibility({ html2pptVisible: true, html2pptNameVisible: false });
+        applyFmaViewerVisibility({ fmaViewerVisible: true, fmaViewerNameVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
         applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
         applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -12488,9 +12652,13 @@ async function loadAiSettingsToUI() {
     const templateCheck = document.getElementById('template-visible');
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
     const html2pptCheck = document.getElementById('html2ppt-visible');
-    if (html2pptCheck) html2pptCheck.checked = settings.html2pptVisible === true;
+    if (html2pptCheck) html2pptCheck.checked = getHtml2pptVisibleFromSettings(settings);
+    const html2pptNameCheck = document.getElementById('html2ppt-name-visible');
+    if (html2pptNameCheck) html2pptNameCheck.checked = getHtml2pptNameVisibleFromSettings(settings);
     const fmaViewerCheck = document.getElementById('fma-viewer-visible');
-    if (fmaViewerCheck) fmaViewerCheck.checked = settings.fmaViewerVisible === true;
+    if (fmaViewerCheck) fmaViewerCheck.checked = getFmaViewerVisibleFromSettings(settings);
+    const fmaViewerNameCheck = document.getElementById('fma-viewer-name-visible');
+    if (fmaViewerNameCheck) fmaViewerNameCheck.checked = getFmaViewerNameVisibleFromSettings(settings);
     const enterBrCheck = document.getElementById('enter-button-insert-br');
     const enterBrEnabled = settings.enterButtonInsertBr === true || getEnterButtonInsertBrFromLocal();
     if (enterBrCheck) enterBrCheck.checked = enterBrEnabled;
@@ -12659,8 +12827,8 @@ async function initAiVisibility() {
     applySitesVisibility(settings || { sitesVisible: false });
     applyMacroVisibility(settings || { macroVisible: false });
     applyTemplateVisibility(settings || { templateVisible: false });
-    applyHtml2pptVisibility(settings || { html2pptVisible: false });
-    applyFmaViewerVisibility(settings || { fmaViewerVisible: false });
+    applyHtml2pptVisibility(settings || { html2pptVisible: true, html2pptNameVisible: false });
+    applyFmaViewerVisibility(settings || { fmaViewerVisible: true, fmaViewerNameVisible: false });
     applyEditToolsVisibilityByMode();
     await applyGithubUiState(settings || { githubEnabled: false, githubCacheDocs: [] });
     await applyAiFeatureVisibility();
@@ -13194,6 +13362,7 @@ configureScholarSearchShellBridge();
 window.toggleTemplatePanel = toggleTemplatePanel;
 window.closeTemplatePanel = closeTemplatePanel;
 window.toggleTemplateCompactMode = toggleTemplateCompactMode;
+window.toggleTemplatePanelFullscreen = toggleTemplatePanelFullscreen;
 window.onTemplateSelectChange = onTemplateSelectChange;
 window.saveEditedTemplate = saveEditedTemplate;
 window.addTemplateFromCurrentContent = addTemplateFromCurrentContent;
@@ -13286,6 +13455,7 @@ window.toggleGoogleCalendarSetting = toggleGoogleCalendarSetting;
 window.openGoogleCalendarWindow = openGoogleCalendarWindow;
 window.saveGoogleCalendarOptions = saveGoogleCalendarOptions;
 window.openGoogleCalendarExternalWindow = openGoogleCalendarExternalWindow;
+window.openGoogleCalendarAddWindow = openGoogleCalendarAddWindow;
 window.closeGoogleCalendarInternalWindow = closeGoogleCalendarInternalWindow;
 window.toggleGoogleCalendarInternalMaximize = toggleGoogleCalendarInternalMaximize;
 window.onGoogleCalendarInternalFrameLoad = onGoogleCalendarInternalFrameLoad;

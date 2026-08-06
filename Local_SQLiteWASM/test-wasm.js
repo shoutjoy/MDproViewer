@@ -287,8 +287,12 @@
         const integrity = await adapter.integrityCheck();
         assert(integrity.ok === true, 'integrity and foreign key checks');
 
+        const exportStartedAt = new Date();
         const exported = await adapter.exportDatabase();
-        assert(exported.blob.size > 0 && exported.fileName.endsWith('.sqlite'), 'SQLite database export');
+        const expectedExportName = 'mdpro' + String(exportStartedAt.getFullYear())
+            + String(exportStartedAt.getMonth() + 1).padStart(2, '0')
+            + String(exportStartedAt.getDate()).padStart(2, '0') + '.sqlite';
+        assert(exported.blob.size > 0 && exported.fileName === expectedExportName, 'dated SQLite database export');
         const exportHeader = new TextDecoder().decode(new Uint8Array(await exported.blob.slice(0, 16).arrayBuffer()));
         assert(exportHeader === 'SQLite format 3\u0000', 'exported file SQLite header');
 

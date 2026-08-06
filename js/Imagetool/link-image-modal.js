@@ -8,6 +8,7 @@
     var pendingLeft = 0;
     var pendingTop = 0;
     var dragFrame = 0;
+    var currentMode = '';
 
     function getPanel() {
         return document.getElementById('input-modal-panel');
@@ -104,13 +105,23 @@
 
     function setImagePanelToggleState() {
         var btn = document.getElementById('input-modal-image-panel-toggle');
+        var footer = document.getElementById('input-modal-image-panel-footer');
+        var uploadCheck = document.getElementById('image-upload-enabled');
+        var enabled = !!(uploadCheck && uploadCheck.checked);
+        if (footer) footer.classList.toggle('hidden', currentMode !== 'image' || !enabled);
         if (!btn) return;
         var imageModal = document.getElementById('image-insert-modal');
         var open = !!(imageModal && !imageModal.classList.contains('hidden'));
         btn.textContent = open ? '이미지 업로드 창 접기' : '이미지 업로드 창 열기';
+        btn.disabled = !enabled;
     }
 
     function toggleImagePanel() {
+        var uploadCheck = document.getElementById('image-upload-enabled');
+        if (!uploadCheck || !uploadCheck.checked) {
+            setImagePanelToggleState();
+            return;
+        }
         var imageModal = document.getElementById('image-insert-modal');
         var open = !!(imageModal && !imageModal.classList.contains('hidden'));
         if (open) {
@@ -130,6 +141,7 @@
         var isLink = mode === 'link';
         var isImage = mode === 'image';
         var isId = mode === 'id';
+        currentMode = mode;
         document.getElementById('modal-title').textContent = isLink ? 'Insert Link' : (isImage ? 'Insert Image' : 'Insert ID Anchor');
         document.getElementById('label-text').textContent = isLink ? 'Display text' : (isImage ? 'Image description' : 'ID');
 
@@ -145,9 +157,6 @@
             }
         }
         if (urlWrap) urlWrap.classList.toggle('hidden', isId);
-
-        var imagePanelFooter = document.getElementById('input-modal-image-panel-footer');
-        if (imagePanelFooter) imagePanelFooter.classList.toggle('hidden', !isImage);
 
         document.getElementById('input-display-text').value = editorTextarea.value.substring(editorTextarea.selectionStart, editorTextarea.selectionEnd).trim();
         document.getElementById('input-url').value = isId ? '' : '';

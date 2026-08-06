@@ -37,6 +37,7 @@ assert.doesNotMatch(storage, /SQLITE_MODE_REQUIRED/);
 assert.match(storage, /saveScholarSqliteWorkFile/);
 assert.match(storage, /listScholarSqliteWorkFiles/);
 assert.match(storage, /loadScholarSqliteWorkFile/);
-assert.match(styles, /:not\(\.scholar-sqlite-access\)/);
+assert.match(styles, /body\.feature-sqlite-disabled button\[id\*="sqlite" i\]/);
+assert.doesNotMatch(styles, /:not\(\.scholar-sqlite-access\)/);
 
 console.log('Scholar SQLite explorer integration checks passed.');

@@ -12,6 +12,20 @@
     <div class="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200">
         Sites 목록
     </div>
+    <div class="p-3 border-b border-slate-200 dark:border-slate-700 space-y-2">
+        <input type="text" id="sites-preferences-name-input" placeholder="사이트 이름 (선택)"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addSiteFromPreferencesInput();}"
+            class="w-full px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
+        <div class="flex items-center gap-2">
+            <input type="url" id="sites-preferences-url-input" placeholder="주소 (https://example.com)"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();addSiteFromPreferencesInput();}"
+                class="min-w-0 flex-1 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-xs">
+            <button type="button" id="sites-preferences-submit-btn" onclick="addSiteFromPreferencesInput()"
+                class="shrink-0 px-2.5 py-1.5 rounded bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">추가</button>
+            <button type="button" id="sites-preferences-cancel-btn" onclick="cancelPreferencesSiteEdit()"
+                class="hidden shrink-0 px-2.5 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">취소</button>
+        </div>
+    </div>
     <div id="sites-preferences-list"
         class="max-h-64 overflow-auto divide-y divide-slate-200 dark:divide-slate-700"></div>
 </div>
