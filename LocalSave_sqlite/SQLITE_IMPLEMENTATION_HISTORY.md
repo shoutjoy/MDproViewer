@@ -900,3 +900,758 @@ SQLite 작업 외에 추가로 감지된 다음 변경은 수정하거나 스냅
 
 - 경로: `backup/sqlite_conflict_ui_20260806_0620`
 - DB online backup SHA-256: `8CE4ADF9FAD44C78D0DEA4FBAE4D045B23A52CB7233B2D36D0F0749A0FB4C6F5`
+
+---
+
+## 2026-08-06 06:49 KST — 작업 011 — Phase 4A IndexedDB 이관 미리보기
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_migration_preview_start_20260806_0638`
+- DB online backup SHA-256: `8CE4ADF9FAD44C78D0DEA4FBAE4D045B23A52CB7233B2D36D0F0749A0FB4C6F5`
+
+### 단계 범위와 안전 정책
+
+- 이번 단계는 읽기 전용 미리보기까지만 구현하고 실제 SQLite 이관은 실행하지 않는다.
+- 브라우저는 `MarkdownProDB`의 `documents`, `folders` 두 store만 readonly transaction으로 읽는다.
+- `ai_settings`, 토큰, API key, 비밀번호와 다른 IndexedDB store는 batch에 포함하지 않는다.
+- 서버가 ID·제목·본문 크기·폴더 관계·SHA-256을 다시 검증하므로 브라우저 입력을 그대로 신뢰하지 않는다.
+
+### 실제 구현
+
+1. 브라우저 정규화 batch
+   - `js/storage/indexeddb-migration.js`를 추가했다.
+   - Date와 문자열 시각을 epoch millisecond로 정규화하고, 누락된 최상위 폴더 관계는 `root`로 정규화한다.
+   - 각 문서 본문 SHA-256을 계산해 `source`, `folders`, `documents` JSON만 서버로 보낸다.
+
+2. SQLite 읽기 전용 비교 서비스
+   - `LocalSave_sqlite/server/migrations.py`를 추가했다.
+   - ID가 없으면 신규, 같은 ID·제목·폴더·checksum이면 중복, 같은 ID의 내용이 다르면 충돌로 분류한다.
+   - 잘못된 ID, 원본 내 중복 ID, checksum 불일치, 없는 부모 폴더, 폴더 cycle은 제외로 분류한다.
+   - 같은 부모의 폴더 이름 충돌도 실제 적용 전에 미리 표시한다.
+   - preview 메서드에는 INSERT·UPDATE·DELETE가 없으며 결과에 `previewOnly=true`를 반환한다.
+
+3. API·저장 파사드 연결
+   - `POST /api/sqlite/migrations/indexeddb/preview`를 세션 보호 쓰기 요청으로 추가했다.
+   - capability `migrationPreview=true`를 추가하고 실제 적용 capability `migration=false`는 유지했다.
+   - SQLite 모드가 아닌 현재 inDB 상태에서도 SQLite adapter로 미리보기만 요청할 수 있게 했다.
+
+4. 설정 화면
+   - SQLite 상태 아래에 `inDB 이관 미리보기` 버튼을 추가했다.
+   - 원본·신규·중복·충돌·제외 수와 문서·폴더 원본 수를 표시한다.
+   - 화면에 `읽기 전용 비교 · 아직 이관하지 않음`과 SQLite에 쓰지 않았다는 안내를 표시한다.
+
+5. 실제 로컬 서버 반영
+   - 기존 PID `10368`을 정확히 확인한 뒤 서버를 재기동했다.
+   - 새 서버 PID `38472`, schema v3, WAL, `migrationPreview=true`를 확인했다.
+
+### 검증
+
+- Python 구문 및 기존 SQLite server core 테스트: 통과
+- 읽기 전용 이관 분류 테스트: 신규·중복·충돌·제외 및 preview 전후 레코드 수 동일 확인
+- 브라우저 batch 테스트: documents·folders만 읽고 SHA-256과 폴더 관계 정규화 확인
+- 세션 없는 preview 요청 403 차단과 실제 HTTP preview 응답: 통과
+- storage service와 SQLite adapter 요청 연결: 통과
+- 설정 화면 결과 항목·캐시 버전·민감 store 미참조 정적 검사: 통과
+- 기존 Crossref/Markdown/Mermaid/APA 회귀 테스트 4종: 통과
+- 실행 중 서버의 빈 batch preview: `previewOnly=true`, source 0건
+- 운영 DB 무결성: `integrity_check=ok`, FK 위반 0건, 활성 문서 2건 유지
+- 서버 재기동 시 기존 초기화 로직이 `app_meta.local_storage`의 `updated_at`을 갱신했지만 사용자 문서·폴더·버전은 이관하거나 수정하지 않았다.
+
+### 브라우저 UI 검증 제한
+
+- 연결된 외부 브라우저에서 로컬 앱 탭 생성과 열린 탭 조회가 각각 응답 시간 초과되어 실제 버튼 클릭 화면 검증은 완료하지 못했다.
+- 같은 경로의 브라우저 batch 단위 테스트, 설정 UI 정적 검사, 실행 중 HTTP API 검증은 통과했다.
+- 이 제한은 실제 데이터나 서버 상태를 변경하지 않았으며 다음 브라우저 연결 가능 시 버튼 클릭 결과를 추가 확인한다.
+
+### 오류와 보완
+
+- 최초 테스트에서 원본에 중복된 폴더 ID가 있으면 나중의 제외 항목이 정상 첫 항목의 상태를 덮어써 문서도 제외되는 문제가 발견됐다.
+- 폴더 ID별 첫 정상 항목 상태만 관계 판단에 사용하도록 수정했고 같은 회귀 테스트로 통과했다.
+
+### 복구 방법
+
+- `backup/sqlite_migration_preview_start_20260806_0638`의 같은 상대 경로 파일로 복원한다.
+- 새 파일 `LocalSave_sqlite/server/migrations.py`, `js/storage/indexeddb-migration.js`는 복원 시 별도 보존 후 제거한다.
+- 서버를 재기동해 이전 API capability를 다시 반영한다.
+- 이번 작업은 운영 사용자 문서·폴더를 변경하지 않았다. DB 전체를 복구해야 하면 현재 파일을 별도 보존한 뒤 작업 전 online backup을 사용한다.
+
+### 완료 복구 지점
+
+- 경로: `backup/sqlite_migration_preview_20260806_0649`
+- DB online backup SHA-256: `38A17A9A92A433D4385FEDC91D594D31328EEBE20B1B45FFD4BE785F7F112BA2`
+
+---
+
+## 2026-08-06 07:01 KST — 작업 012 — Phase 4B IndexedDB 문서·폴더 안전 이관
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_migration_apply_start_20260806_0652`
+- DB online backup SHA-256: `38A17A9A92A433D4385FEDC91D594D31328EEBE20B1B45FFD4BE785F7F112BA2`
+
+### 단계 범위와 실행 정책
+
+- Phase 4A 미리보기 결과에서 충돌·제외가 0건일 때만 실제 이관 버튼을 제공한다.
+- 사용자가 확인 대화상자에서 승인한 경우에만 `online backup → 실제 이관`을 실행한다.
+- 운영 DB에는 자동 테스트 문서를 쓰거나 실제 IndexedDB 이관을 자동 실행하지 않았다.
+- `mdpro-indb-v1/files` 이관은 이번 단계에 섞지 않고 Phase 4C로 남긴다.
+
+### 실제 구현
+
+1. SQLite online backup
+   - `DatabaseManager.create_online_backup('pre_migration')`을 추가했다.
+   - 프로세스 write lock 안에서 Python SQLite online backup API를 사용하므로 WAL 파일을 단순 복사하지 않는다.
+   - backup 자체의 `integrity_check`, `foreign_key_check`, SHA-256, 크기를 확인한다.
+   - 완성된 파일만 `backup_history`에 `completed`로 기록한다.
+   - 저장 위치는 SQLite data root 내부 `backups/`로 제한한다.
+
+2. 미리보기와 실제 batch 동일성 보호
+   - 문서·폴더·source 정규화 JSON의 SHA-256 fingerprint와 안정적인 migration ID를 미리보기 응답에 추가했다.
+   - 실제 이관 직전에 브라우저가 IndexedDB를 다시 readonly로 읽는다.
+   - 내용이 미리보기 이후 달라지면 `MIGRATION_PREVIEW_STALE`로 차단한다.
+   - 충돌·제외가 하나라도 있으면 `MIGRATION_PREVIEW_HAS_BLOCKERS`로 backup 생성 전 차단한다.
+
+3. 문서·폴더 실제 이관
+   - 부모 폴더를 먼저 삽입하도록 관계 순서로 정렬하고 ROOT는 기존 항목을 재사용한다.
+   - 신규 문서는 `source_mode='legacy_indb'`, version 1로 저장한다.
+   - 각 신규 문서에 `change_type='migration'`인 최초 `document_versions`를 함께 생성한다.
+   - 브라우저의 생성·수정 시각, 폴더 관계, 제목, 본문을 보존한다.
+
+4. 원자적 검증과 checkpoint
+   - 폴더·문서·최초 버전·checkpoint를 하나의 transaction에서 처리한다.
+   - commit 전에 문서 수, 제목, 폴더 ID, 본문 SHA-256, 최초 version checksum을 다시 비교한다.
+   - `app_meta/indexeddb_migration:<migrationId>`에 fingerprint, backup, 적용 수, 검증 수, 상태를 기록한다.
+   - backup 생성 뒤 중단된 상태는 `backup_created` checkpoint로 남고 재실행 시 같은 backup을 재사용한다.
+
+5. idempotent 재실행
+   - 같은 ID와 제목·폴더·checksum이 같으면 duplicate로 건너뛴다.
+   - 완료 checkpoint와 같은 fingerprint를 다시 적용하면 0건 적용과 `idempotent=true`를 반환한다.
+   - 다른 내용의 같은 ID는 덮어쓰지 않고 미리보기 충돌로 유지한다.
+
+6. 설정 화면
+   - 신규 항목이 있고 충돌·제외가 없으며 서버가 migration·onlineBackup capability를 제공할 때만 `online backup 후 실제 이관` 버튼을 표시한다.
+   - 실제 실행 전에 backup과 IndexedDB 원본 보존을 명시한 확인 대화상자를 표시한다.
+   - 완료 후 적용·검증·중복 건수와 backup 경로를 표시한다.
+   - IndexedDB 삭제·정리 버튼이나 코드 경로는 추가하지 않았다.
+
+7. 실제 서버 반영
+   - 기존 PID `38472`를 확인한 후 새 코드로 재기동했다.
+   - 새 PID `31012`, schema v3, WAL, `migration=true`, `onlineBackup=true`를 확인했다.
+
+### 자동 검증
+
+- online backup 파일 생성·SHA-256·무결성 및 이관 전 문서만 포함: 통과
+- 중첩 폴더 부모 순서와 ROOT 관계 보존: 통과
+- 문서 본문·source mode·최초 version·checksum·시각 보존: 통과
+- commit 전 문서·폴더·version 검증: 통과
+- 충돌 batch의 backup 전 차단과 stale fingerprint 차단: 통과
+- 같은 batch 두 번째 적용 0건 및 중복 미생성: 통과
+- `backup_created` checkpoint 재개 시 기존 backup 재사용: 통과
+- 세션 보호 HTTP preview/apply와 idempotent 재호출: 통과
+- 브라우저가 실제 적용 직전 IndexedDB를 다시 읽고 fingerprint를 전달: 통과
+- storage service·adapter, SQLite server/API 테스트: 통과
+- 기존 Crossref/Markdown/Mermaid/APA 회귀 테스트 4종: 통과
+- 설정 UI 적용 버튼·확인·원본 보존·정리 기능 부재 정적 검사: 통과
+
+### 운영 서버 읽기 검증
+
+- 빈 batch 미리보기: `previewOnly=true`
+- 잘못된 fingerprint 실제 적용: `MIGRATION_PREVIEW_STALE`로 차단
+- 운영 DB: `integrity_check=ok`, FK 위반 0건, 활성 문서 2건 유지
+- 테스트 시점 production `LocalSave_sqlite/data/backups` 파일: 0건
+- 실제 IndexedDB 이관과 pre-migration backup은 사용자가 화면에서 확인하기 전에는 실행하지 않았다.
+- 서버 재기동으로 기존 초기화 로직의 `app_meta.local_storage.updated_at`은 갱신됐지만 사용자 문서·폴더·버전은 변경하지 않았다.
+
+### 오류와 복구 기록
+
+- 첫 이관 테스트 종료 때 backup 검사용 SQLite 연결이 열린 채 남아 Windows 임시 디렉터리 정리가 실패했다.
+- 검사 연결을 `finally`에서 명시적으로 닫도록 수정한 후 같은 테스트를 재실행해 통과했다.
+- 실패한 테스트의 정확한 임시 경로 2개를 data root 밖이 아님을 확인하고 삭제했다. 운영 DB와 backup 경로는 삭제하지 않았다.
+
+### 복구 방법
+
+- `backup/sqlite_migration_apply_start_20260806_0652`의 같은 상대 경로 파일로 코드와 문서를 복원한다.
+- 서버를 재기동해 이전 capability와 API를 다시 반영한다.
+- 새로 생성되는 실제 pre-migration backup은 이관 직전 일관된 사본이므로 이관 실패 때 삭제하지 않고 우선 보존한다.
+- 운영 DB 전체 복구가 필요하면 현재 DB를 별도 보존하고 작업 전 online backup을 사용한다.
+
+### 완료 복구 지점
+
+- 경로: `backup/sqlite_migration_apply_20260806_0701`
+- DB online backup SHA-256: `0E559E17C4252B2C9172F13620465FAAC63278D884A14CD28D4A38DE3E3F22EA`
+
+---
+
+## 2026-08-06 10:01 KST — 작업 013 — SQLite 읽기 전용 데이터 탐색 창
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_explorer_start_20260806_1001`
+- SQLite online backup: `LocalSave_sqlite/data/backups/pre_update_1785978105589_ae7f3002.sqlite`
+- DB backup SHA-256: `E5F04C84D8BD93572AD60E4F1E7E2FE88E9A09458B5C3BD30AD6466EA98F489C`
+- backup 생성은 Python SQLite online backup API를 사용했고 자체 `integrity_check`와 `foreign_key_check`를 통과했다.
+
+### 단계 범위와 안전 정책
+
+- 기존 `inDB보기`와 별도의 `SQLite보기` 창을 추가한다.
+- 이번 창은 조회 전용이며 문서·폴더·백업·이관 기록의 변경 또는 삭제 기능을 넣지 않는다.
+- 목록 응답에는 문서 본문을 포함하지 않고 사용자가 문서를 선택할 때만 단건 본문을 읽는다.
+- explorer는 활성 저장 모드와 분리해 현재 inDB 모드여도 SQLite 서버 연결만 정상이라면 읽을 수 있게 한다.
+- 자동 테스트는 임시 DB에서만 쓰기를 수행하고 운영 DB에는 테스트 문서를 만들지 않는다.
+
+### 실제 구현
+
+1. 읽기 전용 repository와 API
+   - `StorageRepository.get_explorer_snapshot()`을 추가했다.
+   - 활성/삭제 문서, 폴더, 버전, 백업, IndexedDB 이관 checkpoint의 전체 건수를 제공한다.
+   - 문서 목록은 제목·ID·폴더 이름으로 검색하고 최대 500건으로 제한한다.
+   - 목록에는 본문이 없고 checksum, source mode, 폴더 이름, 현재 버전과 시각만 포함한다.
+   - `GET /api/sqlite/explorer?q=&limit=`와 `capabilities.explorer=true`를 추가했다.
+
+2. 저장 adapter와 파사드
+   - `SqliteApiAdapter`에 explorer snapshot, 단건 문서, 버전 기록 조회를 추가했다.
+   - `MDPStorage`에 활성 adapter와 무관하게 SQLite adapter를 직접 읽는 전용 메서드를 추가했다.
+   - explorer 요청은 모두 GET이며 SQL 문자열이나 테이블 이름을 브라우저가 전달하지 않는다.
+
+3. 설정 UI
+   - 설정 footer의 `inDB보기` 옆에 `SQLite보기` 버튼을 추가했다.
+   - 문서·폴더·백업·이관 기록 탭, 검색, 전체 건수 요약, DB 경로/schema/WAL 정보를 표시한다.
+   - 문서를 누르면 오른쪽 상세 영역에 본문과 버전 번호·변경 종류·생성 시각을 표시한다.
+   - 본문은 `textContent`, 나머지 동적 문자열은 HTML escaping을 사용해 표시한다.
+   - 서버가 explorer capability를 제공하지 않거나 연결되지 않으면 버튼을 비활성화한다.
+   - 모달에 변경·복원·삭제 버튼은 추가하지 않았다.
+
+4. 실제 서버 반영
+   - 기존 `127.0.0.1:8765` PID `31012`가 이 프로젝트의 `python run.py`인지 확인했다.
+   - 새 코드로 재기동하여 PID `34980`에서 explorer API와 새 HTML cache version을 확인했다.
+
+### 자동 검증
+
+- Python 구문 검사 `repositories.py`, `api.py`: 통과
+- Node 구문 검사 `sqlite-api-adapter.js`, `storage-service.js`, `settings-ui.js`: 통과
+- SQLite server core explorer count·검색·본문 비노출: 통과
+- HTTP explorer capability·백업·checkpoint·본문 비노출: 통과
+- storage service explorer 전용 호출과 문서 버전 조회: 통과
+- IndexedDB migration Python/브라우저 테스트: 통과
+- 기존 Crossref/Markdown/Mermaid/APA 회귀 테스트 4종: 통과
+
+### 운영 서버 읽기 검증
+
+- explorer capability: `true`
+- DB: schema v3, WAL, `readOnly=true`
+- 활성 문서 2건, 폴더 1건, 버전 2건 유지
+- 탐색 목록의 문서 2건 모두 `content` 필드 없음
+- 작업 전 안전 backup 1건이 `backup_history`에서 조회됨
+- 이관 checkpoint 0건은 아직 실제 IndexedDB 이관을 실행하지 않은 현재 운영 상태와 일치함
+- 운영 DB에는 테스트 문서·폴더·checkpoint를 추가하지 않았다.
+
+### 오류와 복구 기록
+
+- 최초 작업 전 snapshot 목록에서 테스트 파일 경로를 `LocalSave_sqlite/tests`로 예상했으나 실제 위치는 `scripts/`였다.
+- 코드 변경 전에 실제 경로를 다시 탐색하고 `scripts/test-sqlite-server.py`, `scripts/test-sqlite-http-api.py`, `scripts/test-storage-service.js`를 같은 시작 snapshot에 보완 복사했다.
+- 첫 정적 검사 명령의 PowerShell 문자열 인용이 잘못되어 `rg`만 실패했다. 파일 구문 오류는 아니었고 인용을 수정한 뒤 전체 구문 검사를 통과했다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_explorer_start_20260806_1001`의 같은 상대 경로 파일을 사용한다.
+- DB 복구가 필요하면 현재 DB를 먼저 별도 보존하고 위 `pre_update` online backup의 무결성과 SHA-256을 다시 확인한 뒤 복원한다.
+- 이전 코드로 복구할 때 PID `34980`을 종료하고 `run.py`를 다시 시작해 이전 API capability를 반영한다.
+- 이번 기능은 운영 문서·폴더·버전 내용을 수정하지 않았다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_explorer_20260806_1009`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785978582519_5815c5a4.sqlite`
+- DB backup SHA-256: `7922A34861C767857719C01EEAD2AE16D934975DC6BDB7135E329E7DDB1BA77B`
+- 완료 backup도 자체 `integrity_check`와 `foreign_key_check`를 통과했다.
+- 최종 운영 검증은 `integrity_check=ok`, FK 위반 0건, 문서 2건·폴더 1건·버전 2건 유지, 기록된 backup 2건으로 통과했다.
+- SQLite 탐색 모달 범위에 delete/remove 실행 handler가 없음을 정적 검사했다.
+
+---
+
+## 2026-08-06 10:53 KST — 작업 014 — Phase 4C `mdpro-indb-v1/files` 안전 이관
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_files_migration_start_20260806_1038`
+- SQLite online backup: `LocalSave_sqlite/data/backups/pre_update_1785980305043_112be51e.sqlite`
+- DB backup SHA-256: `ADCA65AC29772ED96EC8CB8D879BE8924217D06A3713F7FB6B29B217D5374631`
+- backup 자체 `integrity_check`와 `foreign_key_check`를 통과했다.
+
+### 단계 범위와 안전 정책
+
+- 브라우저는 `mdpro-indb-v1`의 `files`와 `meta/root`를 readonly transaction으로만 읽는다.
+- 파일 DB가 없을 때 빈 IndexedDB를 새로 남기지 않도록 최초 생성 upgrade transaction을 중단한다.
+- `MarkdownProDB`가 없어도 `mdpro-indb-v1/files`만 존재하면 파일 전용 이관이 가능하다.
+- preview는 파일 경로·UTF-8 byte 크기·본문 SHA-256을 SQLite와 비교하지만 응답에 본문을 포함하지 않는다.
+- 실제 쓰기는 사용자가 미리보기 후 확인 대화상자를 승인했을 때만 `online backup → 단일 transaction` 순서로 수행한다.
+- 기존 IndexedDB 원본은 이관 성공 후에도 삭제하거나 수정하지 않는다.
+- 운영 DB에서는 실제 파일 이관 apply를 자동 실행하지 않는다.
+
+### 실제 구현
+
+1. 브라우저 파일 batch
+   - `indexeddb-migration.js`가 `mdpro-indb-v1/files`의 primary key, `path`, `name`, `ext`, `content`, `modified`를 정규화한다.
+   - 역슬래시·중복 slash·선행 slash를 일관된 상대 경로로 바꾸고 UTF-8 byte 크기와 SHA-256을 계산한다.
+   - `meta/root`의 folder name, 저장 시각, memo, 선언 파일 수를 비민감 source metadata로 전달한다.
+   - 실제 적용 직전 두 IndexedDB를 다시 readonly로 읽으므로 preview 이후 변경은 fingerprint 불일치로 차단된다.
+
+2. 서버 미리보기 분류
+   - 고정 source ID `source_mdpro_indb_v1`, source type `legacy_indb`, root URI `indexeddb://mdpro-indb-v1/files`를 사용한다.
+   - 파일 경로에서 중간 폴더 entry를 결정적으로 생성하고 folder/file ID는 type과 path의 SHA-256으로 만든다.
+   - source, 파생 경로 폴더, 파일을 각각 신규·중복·충돌·제외로 분류한다.
+   - `..`, 빈 segment, NUL, 2,048자 초과 경로, 20MB 초과 파일, checksum·size 불일치를 제외한다.
+   - 같은 path의 다른 본문이나 folder/file type 충돌은 덮어쓰지 않고 blocker로 처리한다.
+   - 파일 최대 5,000건, migration request 전체 최대 50MB로 제한한다.
+
+3. 원자적 실제 이관과 검증
+   - `workspace_sources` 1건을 먼저 만들고 파생 폴더를 깊이 순서대로 삽입한 뒤 파일을 저장한다.
+   - `file_entries`에 parent 관계, extension, MIME, `content_text`, UTF-8 크기, modified time, checksum/base checksum을 보존한다.
+   - 같은 batch 재실행은 완료 checkpoint와 fingerprint로 0건 적용을 반환하며 중복 source/file entry를 만들지 않는다.
+   - commit 전에 source type/root URI, 모든 path/type/name, 파일 크기와 SHA-256을 다시 조회해 검증한다.
+   - 충돌·제외가 있으면 online backup 생성 전 실제 적용을 차단한다.
+
+4. 설정 및 SQLite 탐색 UI
+   - 이관 미리보기에 파일 원본 수, 생성 경로 폴더 수, source와 file entry 상태 수를 표시한다.
+   - 완료 화면에 적용·검증된 file source, 경로 폴더, 파일 건수를 표시한다.
+   - 확인 문구와 진행 상태를 문서·폴더·inDB 파일 범위로 변경했다.
+   - `SQLite 데이터 탐색`에 파일 탭과 source/file entry 건수를 추가했다.
+   - 파일 목록은 본문을 제외하고 경로·source·크기·수정 시각만 제공하며 파일을 선택할 때만 본문을 GET으로 읽는다.
+
+5. 실제 서버 반영
+   - 기존 PID `34980`이 이 프로젝트의 `python run.py`인지 확인한 후 새 코드로 재기동했다.
+   - 새 PID `22984`에서 Phase 4C preview와 `20260806-files-migration-1` cache version을 확인했다.
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- source 1건·파생 폴더 2건·파일 3건 원자적 이관: 통과
+- 중첩 파일 parent 관계와 UTF-8 본문·크기·수정 시각·SHA-256 보존: 통과
+- preview 응답과 explorer 파일 목록의 본문 비노출: 통과
+- explorer 파일 단건 본문 조회: 통과
+- 같은 파일 batch 재실행 0건 및 entry 중복 없음: 통과
+- 같은 path의 다른 checksum 충돌 및 backup 생성 전 apply 차단: 통과
+- 경로 이탈과 checksum 불일치 제외: 통과
+- MarkdownProDB 없이 file DB만 존재하는 브라우저 batch: 통과
+- SQLite server core, HTTP API, storage service, IndexedDB migration Python/브라우저 테스트: 통과
+- 기존 Crossref/Markdown/Mermaid/APA 회귀 테스트 4종: 통과
+
+### 운영 서버 읽기 검증
+
+- 실제 적용이 아닌 합성 파일 1건 preview만 실행했다.
+- 결과: `previewOnly=true`, source file 1건, 파생 폴더 1건, 신규 3건, 충돌 0건, 제외 0건.
+- preview 전후 운영 DB의 문서 3건, source 0건, file entry 0건, checkpoint 0건, backup 3건이 각각 동일했다.
+- `integrity_check=ok`, FK 위반 0건을 확인했다.
+- 이번 단계에서 운영 `workspace_sources`, `file_entries`, migration checkpoint에는 쓰지 않았다.
+
+### 오류와 복구 기록
+
+- 첫 운영 preview 검증 명령에서 현재 PowerShell/.NET이 정적 `SHA256.HashData()`를 지원하지 않아 checksum 생성 한 줄이 실패했다.
+- 이 요청은 빈 checksum으로 preview만 처리되어 DB를 변경하지 않았고 source/file/checkpoint/backup 건수도 동일했다.
+- `SHA256.Create().ComputeHash()` 방식으로 올바른 checksum을 생성해 같은 preview를 다시 실행했고 전후 불변을 재확인했다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_files_migration_start_20260806_1038`의 같은 상대 경로 파일을 사용한다.
+- DB 복구가 필요하면 현재 DB를 먼저 별도 보존하고 위 `pre_update` online backup의 SHA-256과 무결성을 확인한 뒤 복원한다.
+- 이전 코드로 복구할 때 PID `22984`를 종료하고 `run.py`를 다시 시작해 이전 API와 cache version을 반영한다.
+- 사용자가 실제 파일 이관을 실행한 뒤 복구해야 한다면 checkpoint의 `backup.filePath`에 기록된 pre-migration online backup을 우선 보존한다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_files_migration_20260806_1054`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785981292651_522db3e5.sqlite`
+- DB backup SHA-256: `30EB09448823582352DEBDECF9DC6E63B8E97CC9E5BBF7CC695E88F70610AEEB`
+- 완료 backup도 자체 `integrity_check`와 `foreign_key_check`를 통과했다.
+- 최종 운영 검증은 문서 3건 유지, source/file entry/checkpoint 0건 유지, 기록된 backup 4건, `integrity_check=ok`, FK 위반 0건으로 통과했다.
+
+---
+
+## 2026-08-06 11:06 KST — 작업 015 — 구현 계획 체크 상태 동기화
+
+상태: 완료
+
+### 복구 지점
+
+- `backup/sqlite_plan_check_sync_20260806_1106`
+- 문서 체크 상태만 변경했으며 코드와 SQLite DB는 변경하지 않았다.
+
+### 완료 근거를 재확인해 추가 체크한 항목
+
+- 실행 중 SQLite를 Python online backup API로 일관되게 복사하고 backup 자체 무결성·SHA-256을 검증함.
+- IndexedDB 원본, 자동저장 초안, pending operation을 이관 과정에서 삭제하지 않음.
+- 서버 재시작 후 같은 DB 경로와 기존 문서 목록을 다시 조회함.
+- 폴더 이동·삭제 뒤 `foreign_key_check` 위반 0건을 자동 테스트함.
+- 문서 최초 저장·수정·복원 때 예상 버전 생성과 version 증가를 자동 테스트함.
+- 이관 transaction 안에서 문서 수·본문 SHA-256·최초 version checksum을 비교함.
+- 같은 migration batch의 두 번째 적용이 0건이고 문서·폴더·파일 entry 중복이 없음을 자동 테스트함.
+
+### 미체크로 유지한 범위
+
+- 실제 브라우저 IndexedDB baseline sample 수집 3건
+- 설정 화면의 수동 backup·무결성 버튼
+- Phase 5 비민감 설정 이관 전체
+- Phase 6 `.mdpbackup` 패키징·다운로드·복원·다른 PC 검증과 인스턴스 lock
+- Phase 7 기능별 데이터 확장
+- 보안 로그 audit, DB lock·disk full·readonly 오류 분류, WAL/backup 경합 시험
+- 1,000/10,000건 성능, emoji·긴 Markdown 왕복, GitHub/WebDAV 전체 흐름, 다른 PC 복원 시나리오
+
+아직 구현 또는 명시적 검증 근거가 없는 항목은 완료로 표시하지 않았다.
+
+---
+
+## 2026-08-06 11:34 KST — 작업 016 — Phase 5 비민감 `ai_settings` SQLite 이관·복원
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_settings_migration_start_20260806_1118`
+- SQLite online backup: `LocalSave_sqlite/data/backups/pre_update_1785982736182_f98bbf3a.sqlite`
+- DB backup SHA-256: `3826C336E978B77A252F6685C2FDEECD89755198B152C4505DCD91E1EE97E406`
+- 작업 전 snapshot에는 서버·저장 adapter·설정 UI·앱 설정 함수·테스트·계획서·작업 이력의 같은 상대 경로 파일을 보존했다.
+
+### 실제 키 조사와 분류 정책
+
+- `MarkdownProDB/ai_settings`의 실제 저장 호출을 조사해 기능 표시, 편집 옵션, 사이트·양식 목록, 사용자 정보, GitHub 저장소 경로, Google Docs Client ID 등을 비민감 허용 대상으로 확정했다.
+- `apiKey`, `deepseekApiKey`, `openaiApiKey`, `imgbbApiKey`, `googlePickerApiKey`, `githubToken`, `passwordHash`는 민감 설정으로 분류했다.
+- `id`, `sqliteEnabled`, `githubCacheDocs`, `githubLastPulledAt`, `verified`는 레코드 식별자·장치 선택·캐시·일시 인증 상태이므로 공유 설정에서 제외했다.
+- 알 수 없는 새 키는 자동 허용하지 않고 `unknownKeys`로 분류해 향후 명시적 검토 후에만 허용한다.
+- 현행 테마와 기본 AI 모델은 `ai_settings`가 아니라 별도 `localStorage` 키이므로 장치 부트스트랩 동작을 유지하고 이번 이관 범위에는 포함하지 않았다.
+
+### 실제 구현
+
+1. 서버 보안 정책과 설정 repository
+   - 새 `LocalSave_sqlite/server/settings_policy.py`에 비민감 키별 group, 기본 scope, 허용 JSON type, 최대 byte 크기를 명시했다.
+   - 설정 키 이름뿐 아니라 허용된 object/array 내부의 `token`, `apiKey`, `password`, `credential` 같은 중첩 필드도 재귀 검사해 차단한다.
+   - `GET/PUT /api/sqlite/settings`, `GET /api/sqlite/settings/resolved`를 구현하고 health의 `settings=true`를 활성화했다.
+   - 모든 PUT은 로컬 세션 토큰을 요구하고 SQL parameter binding을 사용한다.
+   - 범위 병합은 `global → profile → workspace → feature → document` 순서로 뒤 범위가 앞 범위를 덮도록 구현했다.
+
+2. IndexedDB 설정 batch와 안전 이관
+   - 문서·폴더 readonly transaction에 선택적으로 `ai_settings`를 포함하고 `ai_settings` 단일 레코드를 읽는다.
+   - 브라우저 batch의 `settings`에는 허용된 비민감 값만 넣는다. 민감·일시·미분류 값은 키 이름별 분류 수만 전달하며 원래 값은 직렬화하지 않는다.
+   - 서버가 브라우저 분류를 신뢰하지 않고 같은 허용 목록·중첩 비밀 검사를 다시 수행한다.
+   - preview에서 설정을 신규·중복·충돌·제외로 분류하고, 실제 apply는 online backup 후 같은 transaction에서 삽입·JSON 값 검증·checkpoint 기록을 수행한다.
+   - 같은 fingerprint를 다시 적용하면 설정을 포함해 0건 적용하는 idempotent 결과를 반환한다.
+
+3. SQLite 모드 설정 저장·복원
+   - SQLite 모드의 `getAiSettings()`는 로컬 IndexedDB/폴백 값을 먼저 읽고 SQLite의 resolved 비민감 설정만 덮어쓴다. 로컬에만 있는 비밀값은 SQLite 응답으로 제거되지 않는다.
+   - `setAiSettings()`는 기존 IndexedDB 저장을 유지한 뒤 변경 데이터 중 허용된 비민감 키만 SQLite PUT으로 미러링한다.
+   - 새 PC처럼 로컬 비밀값이 없는 환경에서는 일반 설정만 복원되며 미리보기 UI가 API Key·토큰을 다시 입력해야 한다고 안내한다.
+
+4. SQLite 탐색 UI
+   - `SQLite 데이터 탐색`에 `설정` 탭과 설정 건수를 추가했다.
+   - scope, group, key, JSON type, 수정 시각과 비민감 값만 읽기 전용으로 표시한다.
+   - 이관 미리보기에 비민감 설정, 민감 제외, 장치/일시 제외, 미분류 제외 수와 재입력 대상 키 이름을 표시한다.
+   - 완료 화면에 적용·검증 설정 수와 비밀값 비저장 정책을 표시한다.
+
+5. HTTP 거부 연결 안정화
+   - 세션 없이 본문이 있는 POST/PUT을 거부할 때 Windows에서 응답 소켓이 간헐적으로 reset되는 현상을 확인했다.
+   - 최대 50MB 제한 안의 거부 요청 본문을 작은 chunk로 비운 뒤 403을 응답하도록 보강했다.
+   - 전체 HTTP API 테스트를 3회 연속 실행해 같은 오류가 재발하지 않음을 확인했다.
+
+### 변경 파일
+
+- 추가: `LocalSave_sqlite/server/settings_policy.py`
+- 변경: `LocalSave_sqlite/server/repositories.py`
+- 변경: `LocalSave_sqlite/server/migrations.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `js/storage/indexeddb-migration.js`
+- 변경: `js/storage/sqlite-api-adapter.js`
+- 변경: `js/storage/storage-service.js`
+- 변경: `js/app.js`
+- 변경: `Setting/settings-ui.js`
+- 변경: `index.html`
+- 변경: `scripts/test-indexeddb-migration.py`
+- 변경: `scripts/test-indexeddb-migration.js`
+- 변경: `scripts/test-sqlite-server.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `scripts/test-storage-service.js`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- `ai_settings` 혼합 레코드에서 비민감 값만 browser batch에 포함: 통과
+- Gemini/OpenAI/DeepSeek/imgbb/Google Picker/GitHub 비밀값이 batch JSON에 포함되지 않음: 통과
+- 서버의 최상위 민감 키와 허용 object 내부 중첩 token 차단 및 오류 응답 값 비노출: 통과
+- 설정 신규 apply·commit 전 값 검증·checkpoint·재실행 0건: 통과
+- global/profile/workspace/feature/document 우선순위: 통과
+- online backup을 별도 `DatabaseManager` DB로 열어 일반 설정 복원 및 비밀 키 부재 확인: 통과
+- settings HTTP 세션 보호·목록·resolved·PUT: 통과
+- storage adapter의 안전 설정 PUT과 비밀값 미전송: 통과
+- SQLite server core, IndexedDB migration Python/브라우저, HTTP API, storage service 전체 테스트: 통과
+- 기존 Crossref/Markdown/Mermaid/APA 회귀 테스트 4종: 통과
+
+### 운영 서버 검증
+
+- 기존 PID `22984`가 이 프로젝트의 `python run.py`인지 확인한 뒤 새 코드로 재기동했고 PID `42320`에서 schema v3, `settings=true`, `available=true`를 확인했다.
+- 합성 비민감 설정 1건과 민감 키 이름 2건을 사용해 preview만 실행했다.
+- 결과: `previewOnly=true`, 비민감 신규 1건, 민감 제외 2건, 재입력 대상 `apiKey, githubToken`.
+- preview 전후 설정 2건, migration checkpoint 0건이 동일해 preview가 운영 DB를 변경하지 않았다.
+- 열린 앱이 정상 실행 중 비민감 `scholarAI=false`, `sspimgAI=false` 2건을 SQLite에 미러링했다.
+- 운영 `settings` 전체를 readonly로 재검사한 결과 민감 키·중첩 민감 필드 위반은 0건이었다.
+- 최종 `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+- HTTP 안정화 코드까지 반영하기 위해 서버를 최종 PID `26648`로 다시 시작했다. 열린 앱이 허용 목록의 실제 일반 설정을 동기화하여 최종 설정은 23건이며, 전체 키와 중첩 JSON을 다시 검사한 결과 민감 위반은 여전히 0건이다.
+- 최종 운영 상태는 문서 3건, migration checkpoint 0건, schema v3, `settings=true`, `integrity_check=ok`이다.
+
+### 오류와 복구 기록
+
+- 최초 실제 키 탐색 명령은 존재하지 않는 `js/user.js`도 함께 조회해 `rg`가 exit 1을 반환했다. 실제 파일은 `Setting/user.js`였으며 읽힌 결과와 후속 정확한 경로 조사로 분류를 완료했다. 코드·DB 변경은 없었다.
+- 전체 회귀 재실행 중 HTTP 임시 서버 테스트가 Windows `WinError 10053`으로 한 번 중단됐다. 단독 1회는 통과하고 연속 두 번째에 재현되어, 세션 거부 본문 미소비가 원인임을 확인하고 위 HTTP 안정화 수정을 적용했다.
+- 운영 DB에는 합성 설정 apply를 실행하지 않았다. 현재 설정 2건은 실제 열린 앱의 비민감 설정 동기화 결과이며 보안 정책 검사를 통과했다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_settings_migration_start_20260806_1118`의 같은 상대 경로 파일로 되돌린다.
+- 새 파일 `LocalSave_sqlite/server/settings_policy.py`는 다른 변경 파일을 시작 snapshot으로 복원한 뒤 제거한다.
+- DB 복구가 필요하면 현재 DB를 먼저 별도 online backup하고, 작업 전 `pre_update_1785982736182_f98bbf3a.sqlite`의 SHA-256과 무결성을 다시 확인한 뒤 복원한다.
+- 이전 코드로 되돌린 뒤 실행 중 로컬 서버를 재시작해야 이전 capability와 브라우저 cache version이 반영된다.
+- 실제 설정 이관을 사용자가 적용한 뒤 복구해야 한다면 migration checkpoint의 `backup.filePath`에 기록된 pre-migration backup을 우선 보존한다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_settings_migration_20260806_1134`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785983640523_e400dc22.sqlite`
+- DB backup SHA-256: `EC036B50950F984F84E1DC78775F84353B684ACE6F10A4D963E24B0BED773AE6`
+- 완료 backup 생성 직전 운영 DB는 `integrity_check=ok`, foreign key 위반 0건이었다.
+
+---
+
+## 2026-08-06 12:09 KST — 작업 017 — Phase 6A `.mdpbackup` 생성·검증·다운로드
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_backup_package_start_20260806_1159`
+- SQLite online backup: `LocalSave_sqlite/data/backups/pre_update_1785985151535_b80cf589.sqlite`
+- DB backup SHA-256: `BB93C2FB8E74E6E1F738ACD477DFE05B731DF2B8A61C4B194BE8B3842FA5152D`
+- 작업 전 snapshot에는 서버 DB/API, storage adapter/service, 설정 UI, HTML, 테스트, 계획서와 작업 이력 11개 파일을 보존했다.
+
+### 단계 범위와 복원 안전선
+
+- 이번 단계는 일관된 공유 패키지 생성·자체 검증·다운로드까지만 구현했다.
+- 업로드한 패키지로 운영 DB를 교체하는 복원 apply는 아직 구현하지 않았고 health capability도 `restore=false`로 유지했다.
+- 다음 Phase 6B에서 파일 선택, 복원 미리보기, 임시 검증 공간을 먼저 만들고 실제 교체는 자동 pre-restore backup과 원자적 전환 뒤에만 허용한다.
+
+### 실제 구현
+
+1. `.mdpbackup` 패키지 형식
+   - 새 `LocalSave_sqlite/server/backup_packages.py`를 추가했다.
+   - ZIP 기반 `.mdpbackup` 루트에 `manifest.json`, `mdpro.sqlite`, `assets/`를 고정 배치한다.
+   - manifest format은 `mdviewer-sqlite-backup`, format version은 `1`이다.
+   - manifest에 생성 시각, workspace, DB schema/크기/SHA-256/integrity/FK 결과, 자산별 상대 경로·크기·SHA-256·참조 ID를 기록한다.
+   - 자산이 없어도 빈 `assets/` entry를 포함해 복원 규격을 일정하게 유지한다.
+
+2. DB와 자산 일관성
+   - 실행 중 DB 파일을 직접 복사하지 않고 기존 Python SQLite online backup API로 먼저 일관된 DB 사본을 만든다.
+   - online backup과 filesystem 자산 메타데이터 수집 동안 process write lock을 유지한다.
+   - `assets`의 filesystem 항목과 `asset_variants.relative_path`를 `LocalSave_sqlite/data/assets` 아래에서만 해석한다.
+   - 누락 파일, root 이탈, DB 메타데이터와 다른 자산 checksum/크기는 패키지 생성 전에 차단한다.
+   - 같은 자산 경로를 여러 레코드가 참조하면 checksum이 같을 때 한 파일과 여러 reference로 manifest에 기록한다.
+
+3. 패키지 자체 검증
+   - 생성 직후 패키지를 다시 열어 필수 entry, 중복 entry, 미선언 파일, `..`·absolute·backslash·NUL 경로를 검사한다.
+   - entry 수, 압축 해제 총량, 단일 DB/자산 크기, 비정상 압축률을 제한해 ZIP bomb 위험을 낮췄다.
+   - manifest와 실제 DB·자산의 집합, byte 크기, SHA-256을 전부 비교한다.
+   - DB를 data root의 임시 파일로만 풀어 `schema_migrations` 버전, `PRAGMA integrity_check`, `PRAGMA foreign_key_check`를 실행한 뒤 즉시 제거한다.
+   - manifest와 DB schema 불일치, 현재 앱보다 미래 schema를 모두 차단한다.
+   - 검증 실패 중간 `.tmp`와 완성 패키지는 제거하며 현재 운영 DB는 변경하지 않는다.
+
+4. 세션 보호 API와 다운로드
+   - health capability에 `backup=true`, `backupPackage=true`, `restore=false`를 명시했다.
+   - `POST /api/sqlite/backups/packages`로 패키지를 만들고 `POST /api/sqlite/backups/packages/validate`로 서버 생성 패키지를 재검증한다.
+   - 다운로드는 `GET /api/sqlite/backups/packages/{고정형식 파일명}`만 허용한다.
+   - exports root 밖 경로, 임의 확장자·파일명은 거부하고 다운로드 GET도 실행 세션 헤더를 필수로 검사한다.
+   - binary 응답은 전용 MIME, attachment filename, 정확한 Content-Length와 `nosniff`를 사용한다.
+
+5. 설정 UI
+   - SQLite 설정 영역에 `공유 백업 만들기`를 추가했다.
+   - 생성 전에 모든 문서 본문·일반 설정·연결 자산이 포함되며 문서에 직접 적은 비밀 내용도 포함될 수 있음을 확인 대화상자로 표시한다.
+   - 생성 후 파일명, schema, DB/자산 크기, integrity/FK 결과, package SHA-256을 먼저 표시한다.
+   - 사용자가 포함 범위와 검증 결과를 본 다음 `검증된 백업 다운로드`를 눌러 session-protected binary를 받는다.
+
+### 변경 파일
+
+- 추가: `LocalSave_sqlite/server/backup_packages.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `js/storage/sqlite-api-adapter.js`
+- 변경: `js/storage/storage-service.js`
+- 변경: `Setting/settings-ui.js`
+- 변경: `index.html`
+- 추가: `scripts/test-backup-packages.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `scripts/test-storage-service.js`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- 문서·일반 설정·filesystem 자산 1건 패키징과 manifest/ZIP entry 검증: 통과
+- 패키지 DB를 별도 `DatabaseManager`로 열어 문서 본문·설정 복원: 통과
+- 자산 byte와 checksum 왕복: 통과
+- package 전체 SHA-256과 다운로드 binary SHA-256 일치: 통과
+- 세션 없는 다운로드 403과 세션 다운로드 성공: 통과
+- 손상 DB checksum/size 차단: 통과
+- ZIP `../` 경로 이탈과 임의 package filename 차단: 통과
+- DB 메타데이터와 다른 자산 내용 차단: 통과
+- 미래 schema v999 차단: 통과
+- SQLite server core, IndexedDB migration Python/브라우저, HTTP API, storage service 전체 테스트: 통과
+- 기존 Crossref/Markdown/Mermaid/APA 회귀 테스트 4종: 통과
+
+### 운영 서버 검증
+
+- 기존 PID `26648`이 이 프로젝트의 `python run.py`인지 확인하고 새 코드로 PID `33328`에서 재기동했다.
+- schema v3, `backup=true`, `backupPackage=true`, `restore=false`, `available=true`를 확인했다.
+- 실제 운영 패키지 `mdviewer_1785985668831_514057443816.mdpbackup`을 생성하고 서버 재검증 및 session 다운로드를 실행했다.
+- package 크기: `6,643,968` bytes.
+- package/download SHA-256: `5D122497DD0D29E41DFDB455983ED2D25E6FBEE1CF64DB9357B3F8B568D1B7F9`로 일치.
+- 검증 결과: schema v3, `integrity_check=ok`, foreign key 위반 0건, filesystem 자산 0건.
+- 생성 전후 운영 문서 3건, 일반 설정 23건, migration checkpoint 0건은 동일했다.
+- online backup 이력만 7건에서 8건으로 1건 증가했으며 문서·설정 원장은 변경하지 않았다.
+- 다운로드 검증 사본은 `C:\Tmp\mdviewer_1785985668831_514057443816.mdpbackup`에 보존했다.
+
+### 오류와 복구 기록
+
+- 첫 패키지 단위 테스트에서 DB schema를 `PRAGMA user_version`으로 읽어 0이 반환되어 manifest의 v3와 불일치했다.
+- 이 프로젝트의 실제 schema 기준은 `schema_migrations.MAX(version)`임을 재확인해 validator를 같은 기준으로 수정했다.
+- 오류가 발생한 패키지는 임시 테스트 data root 안에서 자동 삭제되었고 운영 DB에는 접근하지 않았다.
+- 수정 후 정상·손상·경로 이탈·자산 불일치·미래 schema 테스트와 전체 회귀를 모두 통과했다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_backup_package_start_20260806_1159`의 같은 상대 경로 파일로 되돌린다.
+- 새 파일 `LocalSave_sqlite/server/backup_packages.py`, `scripts/test-backup-packages.py`는 다른 변경 파일 복원 뒤 제거한다.
+- DB 복구가 필요하면 현재 DB를 먼저 별도 보존하고 작업 전 `pre_update_1785985151535_b80cf589.sqlite`의 SHA-256과 무결성을 확인한 뒤 복원한다.
+- Phase 6A는 운영 DB 교체 기능이 없으므로 생성된 `.mdpbackup` 또는 `exports/` 파일을 제거하지 않아도 앱 저장 동작에는 영향을 주지 않는다.
+- 이전 코드로 복구한 뒤 PID `33328` 서버를 재시작해야 이전 capability와 cache version이 반영된다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_backup_package_20260806_1209`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785985757003_3c42986a.sqlite`
+- DB backup SHA-256: `8FEBDF94FA93DE3A4C90372CC2C19186C0ED63422408C409A776BBF3D1EFAA29`
+- 완료 backup 생성 전 `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+---
+
+## 2026-08-06 12:18 KST — 작업 018 — Phase 6B 복원 파일 선택·격리 검증 미리보기
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_restore_preview_start_20260806_1211`
+- SQLite online backup: `LocalSave_sqlite/data/backups/pre_update_1785985909627_f5b166ff.sqlite`
+- DB backup SHA-256: `41E90CE194FFC71F4489552B05A46B27FD98239115AA0B057B1C5DF41367E496`
+- server package/API, adapter/service, 설정 UI, HTML, 테스트, 계획서·이력 11개 파일을 작업 전 snapshot에 보존했다.
+
+### 단계 범위와 안전 정책
+
+- 사용자가 선택한 `.mdpbackup`을 검증하고 복원 대상 수량을 보여주는 미리보기까지만 구현했다.
+- 업로드 패키지는 원래 PC 경로나 파일명을 서버 저장 경로로 사용하지 않고 `LocalSave_sqlite/data/imports` 아래의 UUID 기반 `restore_*` ID로 staging한다.
+- 검증 실패 패키지와 임시 upload 파일은 즉시 제거한다.
+- 정상 패키지는 다음 단계의 명시적 복원 확인에 사용할 수 있도록 패키지와 JSON metadata 두 파일로 보존한다.
+- 현재 DB·WAL·assets를 교체하는 코드와 복원 실행 버튼은 추가하지 않았고 `restore=false`를 유지했다.
+
+### 실제 구현
+
+1. streaming upload와 격리 staging
+   - `stage_restore_preview()`가 HTTP body를 최대 1MB chunk로 직접 staging 파일에 기록해 전체 패키지를 서버 메모리에 올리지 않는다.
+   - Content-Length 누락·0 byte·8GB 초과·전송 중단·`.mdpbackup`이 아닌 파일명을 차단한다.
+   - 브라우저 파일명은 URL encoding한 표시용 header로만 전달하고 slash/backslash 앞부분을 제거해 basename만 metadata에 남긴다.
+   - 서버가 만든 `restore_<32 hex>` ID와 data root 내부 고정 imports root만 사용하므로 사용자 입력으로 임의 경로를 열 수 없다.
+
+2. 복원 전 검증과 미리보기 데이터
+   - Phase 6A validator를 그대로 재사용해 ZIP 경로, 필수/미선언/중복 entry, manifest format, DB·자산 크기와 SHA-256을 검사한다.
+   - 임시 DB에서 `schema_migrations.MAX(version)`, `integrity_check`, `foreign_key_check`를 확인한다.
+   - 현재 앱과 다른 미래 schema, checksum·size 불일치, 손상 DB, 자산 집합 불일치를 staging 완료 전에 차단한다.
+   - 검증된 DB의 활성 문서·폴더, 문서 버전, 설정, 자산, file entry 건수를 readonly로 집계해 미리보기 응답에 포함한다.
+   - 응답은 package checksum, DB 크기, manifest 자산 수와 검증 결과를 포함하지만 문서 본문이나 자산 byte는 포함하지 않는다.
+
+3. 세션 보호 API와 storage 연결
+   - health에 `restorePreview=true`, `restore=false`를 명시했다.
+   - `POST /api/sqlite/backups/restore/preview`는 실행 세션과 전용 backup MIME 또는 octet-stream만 허용한다.
+   - `SqliteApiAdapter.previewBackupRestore(File)`과 `MDPStorage.previewBackupRestore()`를 연결했다.
+   - adapter는 File/Blob만 허용하고 binary body, encoded 표시 파일명, 로컬 세션 header를 전송한다.
+
+4. 설정 UI
+   - SQLite 설정 영역에 `.mdpbackup` 전용 `복원 파일 선택`과 `복원 미리보기`를 추가했다.
+   - 선택 전에는 서버 capability와 파일 유무에 따라 버튼을 비활성화한다.
+   - 검증 성공 시 문서·폴더·버전·설정·자산·파일 수, schema, DB/자산 크기, SHA-256, integrity/FK 결과를 표시한다.
+   - 화면에 staging만 완료되었고 현재 DB/assets는 바뀌지 않았으며 실제 복원 버튼은 없다고 명시한다.
+   - 실패 시 staging 제거와 현재 DB 불변을 안내한다.
+
+### 변경 파일
+
+- 변경: `LocalSave_sqlite/server/backup_packages.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `js/storage/sqlite-api-adapter.js`
+- 변경: `js/storage/storage-service.js`
+- 변경: `Setting/settings-ui.js`
+- 변경: `index.html`
+- 변경: `scripts/test-backup-packages.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `scripts/test-storage-service.js`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- 정상 package streaming staging과 package/metadata 생성: 통과
+- 한글 표시 파일명 보존과 서버 UUID 경로 사용: 통과
+- staging DB의 문서·설정·자산 수량 미리보기: 통과
+- 손상 package 업로드 차단 후 staging 잔여 파일 0: 통과
+- 잘못된 확장자와 Content-Length보다 짧은 upload 차단: 통과
+- 세션 없는 binary upload 403, 세션 upload 성공: 통과
+- 복원 미리보기 전후 live 문서·폴더·설정·backup·checkpoint 수 불변: 통과
+- UI에 파일 선택·미리보기·실제 복원 비활성 안내 존재: 통과
+- SQLite backup package/server core/IndexedDB migration/HTTP/storage service 전체 테스트: 통과
+- 기존 Crossref/Markdown/Mermaid/APA 회귀 테스트 4종: 통과
+
+### 운영 서버 검증
+
+- 기존 PID `33328`이 이 프로젝트 `run.py`인지 확인하고 새 코드로 PID `23492`에서 재기동했다.
+- schema v3, `restorePreview=true`, `restore=false`, `available=true`를 확인했다.
+- Phase 6A 운영 package `mdviewer_1785985668831_514057443816.mdpbackup`을 `운영-복원-미리보기.mdpbackup` 이름으로 preview upload했다.
+- staging ID: `restore_54301ab81e61426a973d3f2dc90a3aad`.
+- package SHA-256: `5D122497DD0D29E41DFDB455983ED2D25E6FBEE1CF64DB9357B3F8B568D1B7F9`.
+- package 결과: schema v3, `integrity_check=ok`, FK 위반 0, 문서 3, 폴더 1, 버전 3, 설정 23, 자산 0.
+- preview 전후 live 문서 3, 설정 23, backup 10, migration checkpoint 0이 각각 동일했다.
+- live DB도 다시 `integrity_check=ok`를 확인했다.
+- 정상 staging 결과로 package와 metadata 2개 파일만 imports root에 추가되었으며 live DB/assets는 수정하지 않았다.
+
+### 오류와 복구 기록
+
+- 이번 단계의 구문·단위·HTTP·storage·운영 preview에서 새 오류는 발생하지 않았다.
+- 정상 staging 파일은 실패 잔여물이 아니라 다음 단계 복원 확인을 위한 검증 완료 입력이다.
+- 실제 복원 기능이 없으므로 이번 단계에서 DB 교체·rollback 오류 가능성은 발생하지 않는다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_restore_preview_start_20260806_1211`의 같은 상대 경로 파일을 사용한다.
+- DB 복구가 필요하면 현재 DB를 먼저 별도 보존하고 작업 전 `pre_update_1785985909627_f5b166ff.sqlite`의 SHA-256과 무결성을 확인한 뒤 복원한다.
+- 이번 단계에서 live DB는 변경하지 않았으므로 일반적으로 코드 복원과 서버 재시작만 필요하다.
+- staging을 정리해야 할 때는 먼저 다음 단계 복원에 필요하지 않은지 확인한 뒤 `LocalSave_sqlite/data/imports/restore_54301ab81e61426a973d3f2dc90a3aad.*` 두 파일만 대상으로 한다.
+- 이전 코드로 복구한 뒤 PID `23492` 서버를 재시작해야 이전 capability와 cache version이 반영된다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_restore_preview_20260806_1218`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785986278798_b698d492.sqlite`
+- DB backup SHA-256: `3949E42D2759C394114FB743C21BF2F395A3A0B4D893AA234C555D169E1AB9BD`
+- 완료 backup 생성 전 `integrity_check=ok`, foreign key 위반 0건을 확인했다.

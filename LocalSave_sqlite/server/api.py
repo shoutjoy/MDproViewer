@@ -10,13 +10,14 @@ import traceback
 import uuid
 from pathlib import Path
 from typing import Any, Dict
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from .database import (
     DatabaseConfigurationError,
     DatabaseInitializationError,
     DatabaseManager,
 )
+from .backup_packages import BackupPackageService
 from .migrations import IndexedDbMigrationService
 from .repositories import RepositoryError, StorageRepository
 
@@ -30,11 +31,16 @@ class SqliteApiRouter:
         "documents": True,
         "documentVersions": True,
         "folders": True,
-        "settings": False,
+        "settings": True,
         "search": True,
-        "migration": False,
+        "migration": True,
         "migrationPreview": True,
-        "backup": False,
+        "onlineBackup": True,
+        "explorer": True,
+        "backup": True,
+        "backupPackage": True,
+        "restorePreview": True,
+        "restore": True,
         "storageModeActivation": True,
     }
 
@@ -42,6 +48,7 @@ class SqliteApiRouter:
         self.manager = manager or DatabaseManager(app_root)
         self.repository = StorageRepository(self.manager)
         self.migration_service = IndexedDbMigrationService(self.manager, self.repository)
+        self.backup_package_service = BackupPackageService(self.manager)
         self._session_token = secrets.token_urlsafe(32)
 
     @staticmethod
@@ -60,6 +67,19 @@ class SqliteApiRouter:
         handler.send_header("X-Content-Type-Options", "nosniff")
         handler.end_headers()
         handler.wfile.write(encoded)
+
+    @staticmethod
+    def _send_download(handler: Any, path: Path) -> None:
+        size_bytes = path.stat().st_size
+        handler.send_response(200)
+        handler.send_header("Content-Type", "application/vnd.mdviewer.backup+zip")
+        handler.send_header("Content-Disposition", f'attachment; filename="{path.name}"')
+        handler.send_header("Content-Length", str(size_bytes))
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.end_headers()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                handler.wfile.write(chunk)
 
     def handle(self, handler: Any, method: str) -> bool:
         parsed_url = urlsplit(handler.path)
@@ -85,7 +105,29 @@ class SqliteApiRouter:
             return True
 
         try:
+            package_download = re.fullmatch(r"/api/sqlite/backups/packages/([^/]+\.mdpbackup)", path)
+            if method == "GET" and package_download:
+                if not self._has_valid_session(handler):
+                    self._send_json(
+                        handler,
+                        403,
+                        {
+                            "ok": False,
+                            "error": {
+                                "code": "INVALID_SESSION",
+                                "message": "A valid local application session is required.",
+                            },
+                            "requestId": request_id,
+                        },
+                    )
+                    return True
+                package_path = self.backup_package_service.resolve_package_path(
+                    package_download.group(1)
+                )
+                self._send_download(handler, package_path)
+                return True
             if method not in {"GET", "HEAD"} and not self._has_valid_session(handler):
+                self._discard_request_body(handler)
                 self._send_json(
                     handler,
                     403,
@@ -156,6 +198,21 @@ class SqliteApiRouter:
         return bool(supplied) and secrets.compare_digest(supplied, self._session_token)
 
     @staticmethod
+    def _discard_request_body(handler: Any, max_bytes: int = 50 * 1024 * 1024) -> None:
+        """Drain a rejected local write so Windows does not reset the response socket."""
+        try:
+            remaining = int(str(handler.headers.get("Content-Length") or "0"))
+        except ValueError:
+            remaining = 0
+        if remaining <= 0 or remaining > max_bytes:
+            return
+        while remaining > 0:
+            chunk = handler.rfile.read(min(remaining, 64 * 1024))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+
+    @staticmethod
     def _read_json(handler: Any, max_bytes: int = 10 * 1024 * 1024) -> Dict[str, Any]:
         raw_length = str(handler.headers.get("Content-Length") or "0")
         try:
@@ -163,7 +220,12 @@ class SqliteApiRouter:
         except ValueError as error:
             raise RepositoryError("INVALID_CONTENT_LENGTH", "Content-Length is invalid.") from error
         if content_length < 0 or content_length > max_bytes:
-            raise RepositoryError("REQUEST_TOO_LARGE", "JSON request exceeds 10 MB.", 413)
+            max_megabytes = max(1, max_bytes // (1024 * 1024))
+            raise RepositoryError(
+                "REQUEST_TOO_LARGE",
+                f"JSON request exceeds {max_megabytes} MB.",
+                413,
+            )
         if content_length == 0:
             return {}
         raw_body = handler.rfile.read(content_length)
@@ -198,10 +260,73 @@ class SqliteApiRouter:
             }
         if method == "GET" and path == "/api/sqlite/bootstrap":
             return self.manager.bootstrap()
+        if method == "GET" and path == "/api/sqlite/explorer":
+            raw_limit = self._query_value(query, "limit", "200")
+            try:
+                limit = int(raw_limit)
+            except (TypeError, ValueError) as error:
+                raise RepositoryError("INVALID_LIMIT", "limit must be an integer.") from error
+            return self.repository.get_explorer_snapshot(
+                query=str(self._query_value(query, "q", "")),
+                limit=limit,
+            )
+        explorer_file_match = re.fullmatch(r"/api/sqlite/explorer/files/([^/]+)", path)
+        if method == "GET" and explorer_file_match:
+            return self.repository.get_explorer_file_entry(explorer_file_match.group(1))
         if method == "POST" and path == "/api/sqlite/maintenance/integrity-check":
             return self.manager.integrity_check()
+        if method == "POST" and path == "/api/sqlite/backups/packages":
+            return self.backup_package_service.create_package()
+        if method == "POST" and path == "/api/sqlite/backups/packages/validate":
+            payload = self._read_json(handler, max_bytes=1024 * 1024)
+            package_path = self.backup_package_service.resolve_package_path(payload.get("fileName"))
+            return self.backup_package_service.validate_package(package_path)
+        if method == "POST" and path == "/api/sqlite/backups/restore/preview":
+            content_type = str(handler.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if content_type not in {
+                "application/vnd.mdviewer.backup+zip",
+                "application/octet-stream",
+            }:
+                raise RepositoryError(
+                    "RESTORE_CONTENT_TYPE_INVALID",
+                    "Restore preview requires a .mdpbackup binary upload.",
+                    415,
+                )
+            return self.backup_package_service.stage_restore_preview(
+                handler.rfile,
+                handler.headers.get("Content-Length"),
+                unquote(str(handler.headers.get("X-MDViewer-Backup-Name") or "backup.mdpbackup")),
+            )
+        if method == "POST" and path == "/api/sqlite/backups/restore/apply":
+            payload = self._read_json(handler, max_bytes=1024 * 1024)
+            return self.backup_package_service.apply_staged_restore(
+                payload.get("importId"),
+                payload.get("expectedPackageChecksumSha256"),
+                payload.get("confirmation"),
+            )
         if method == "POST" and path == "/api/sqlite/migrations/indexeddb/preview":
-            return self.migration_service.preview(self._read_json(handler))
+            return self.migration_service.preview(self._read_json(handler, max_bytes=50 * 1024 * 1024))
+        if method == "POST" and path == "/api/sqlite/migrations/indexeddb/apply":
+            return self.migration_service.apply(self._read_json(handler, max_bytes=50 * 1024 * 1024))
+
+        if method == "GET" and path == "/api/sqlite/settings/resolved":
+            return self.repository.get_resolved_settings(
+                profile_id=self._query_value(query, "profileId"),
+                workspace_id=self._query_value(query, "workspaceId"),
+                document_id=self._query_value(query, "documentId"),
+                feature_id=self._query_value(query, "featureId"),
+            )
+        if path == "/api/sqlite/settings":
+            if method == "GET":
+                return {
+                    "items": self.repository.list_settings(
+                        scope_type=self._query_value(query, "scopeType"),
+                        scope_id=self._query_value(query, "scopeId"),
+                        setting_group=self._query_value(query, "group"),
+                    )
+                }
+            if method == "PUT":
+                return self.repository.put_setting(self._read_json(handler, max_bytes=5 * 1024 * 1024))
 
         if method == "GET" and path == "/api/sqlite/documents":
             raw_limit = self._query_value(query, "limit", "200")

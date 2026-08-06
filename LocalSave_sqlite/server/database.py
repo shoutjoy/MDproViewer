@@ -12,6 +12,7 @@ import os
 import sqlite3
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterator, Optional
@@ -51,6 +52,9 @@ class DatabaseManager:
         self.db_path = candidate.resolve()
         self._assert_path_is_allowed(self.db_path)
 
+        # Every connection participates in this lock so a restore can wait for
+        # in-flight readers/writers to close before replacing the live files.
+        self._access_lock = threading.RLock()
         self._init_lock = threading.RLock()
         self._write_lock = threading.RLock()
         self._initialized = False
@@ -106,7 +110,7 @@ class DatabaseManager:
         return connection
 
     def initialize(self) -> Dict[str, Any]:
-        with self._init_lock:
+        with self._access_lock, self._init_lock:
             if self._initialized:
                 return self.health()
 
@@ -207,19 +211,20 @@ class DatabaseManager:
 
     @contextmanager
     def connection(self) -> Iterator[sqlite3.Connection]:
-        if not self._initialized:
-            self.initialize()
-        connection = self._open_connection()
-        try:
-            yield connection
-        finally:
-            connection.close()
+        with self._access_lock:
+            if not self._initialized:
+                self.initialize()
+            connection = self._open_connection()
+            try:
+                yield connection
+            finally:
+                connection.close()
 
     @contextmanager
     def write_transaction(self) -> Iterator[sqlite3.Connection]:
-        if not self._initialized:
-            self.initialize()
-        with self._write_lock:
+        with self._access_lock, self._write_lock:
+            if not self._initialized:
+                self.initialize()
             connection = self._open_connection()
             try:
                 connection.execute("BEGIN IMMEDIATE")
@@ -233,6 +238,118 @@ class DatabaseManager:
                 raise
             finally:
                 connection.close()
+
+    @contextmanager
+    def exclusive_write(self) -> Iterator[None]:
+        """Hold the process write lock across backup and a related transaction."""
+        with self._access_lock, self._write_lock:
+            yield
+
+    @contextmanager
+    def exclusive_maintenance(self) -> Iterator[None]:
+        """Wait for all DB users and block new connections during file replacement."""
+        with self._access_lock, self._write_lock:
+            yield
+
+    def checkpoint_for_replacement(self) -> None:
+        """Flush WAL content while the caller holds (or acquires) maintenance access."""
+        with self._access_lock, self._write_lock:
+            connection = self._open_connection()
+            try:
+                result = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                if result and int(result[0]) != 0:
+                    raise DatabaseInitializationError("SQLite WAL checkpoint remained busy.")
+            finally:
+                connection.close()
+
+    def reload_replaced_database(self) -> Dict[str, Any]:
+        """Forget cached schema state and validate the database now at ``db_path``."""
+        with self._access_lock, self._write_lock:
+            self._initialized = False
+            self._schema_version = None
+            return self.initialize()
+
+    def create_online_backup(self, backup_type: str = "pre_migration") -> Dict[str, Any]:
+        if backup_type not in {"manual", "daily", "weekly", "pre_migration", "pre_update"}:
+            raise DatabaseConfigurationError("SQLite backup type is invalid.")
+        if not self._initialized:
+            self.initialize()
+
+        now_ms = int(time.time() * 1000)
+        backup_id = f"backup_{uuid.uuid4().hex}"
+        backup_dir = (self.data_root / "backups").resolve()
+        try:
+            backup_dir.relative_to(self.data_root)
+        except ValueError as error:
+            raise DatabaseConfigurationError("SQLite backup path is outside the data root.") from error
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_path = backup_dir / f"{backup_type}_{now_ms}_{backup_id[-8:]}.sqlite"
+
+        with self._access_lock, self._write_lock:
+            source = self._open_connection()
+            destination = sqlite3.connect(str(backup_path), timeout=5.0, isolation_level=None)
+            try:
+                source.backup(destination)
+                integrity = destination.execute("PRAGMA integrity_check").fetchone()
+                foreign_keys = destination.execute("PRAGMA foreign_key_check").fetchall()
+                if not integrity or str(integrity[0]).lower() != "ok" or foreign_keys:
+                    raise DatabaseInitializationError("SQLite online backup verification failed.")
+            except Exception:
+                destination.close()
+                source.close()
+                if backup_path.is_file():
+                    backup_path.unlink()
+                raise
+            else:
+                destination.close()
+                source.close()
+
+            digest = hashlib.sha256()
+            with backup_path.open("rb") as backup_file:
+                for chunk in iter(lambda: backup_file.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            checksum = digest.hexdigest()
+            size_bytes = backup_path.stat().st_size
+            try:
+                display_path = backup_path.relative_to(self.app_root).as_posix()
+            except ValueError:
+                display_path = backup_path.name
+            manifest = {
+                "backupId": backup_id,
+                "backupType": backup_type,
+                "databasePath": self._display_path(),
+                "schemaVersion": int(self._schema_version or 0),
+                "createdAt": now_ms,
+            }
+            with self.write_transaction() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO backup_history
+                        (id, workspace_id, backup_type, file_path, checksum_sha256,
+                         size_bytes, schema_version, manifest_json, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)
+                    """,
+                    (
+                        backup_id,
+                        self.DEFAULT_WORKSPACE_ID,
+                        backup_type,
+                        display_path,
+                        checksum,
+                        size_bytes,
+                        int(self._schema_version or 0),
+                        json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
+                        now_ms,
+                    ),
+                )
+        return {
+            "id": backup_id,
+            "type": backup_type,
+            "filePath": display_path,
+            "checksumSha256": checksum,
+            "sizeBytes": size_bytes,
+            "schemaVersion": int(self._schema_version or 0),
+            "createdAt": now_ms,
+        }
 
     def _display_path(self) -> str:
         try:

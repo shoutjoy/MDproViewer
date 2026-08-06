@@ -24,8 +24,14 @@ const capabilities = {
     folders: false,
     settings: false,
     search: false,
-    migration: false,
-    backup: false,
+    migration: true,
+    migrationPreview: true,
+    onlineBackup: true,
+    explorer: false,
+    backup: true,
+    backupPackage: true,
+    restorePreview: true,
+    restore: false,
     storageModeActivation: false
 };
 
@@ -42,12 +48,72 @@ global.fetch = async function (url, options) {
     requests.push({ url: String(url), options: options || {}, boundToWindow: this === global });
     const pathname = String(url);
     const method = String(options && options.method || 'GET').toUpperCase();
+    if (pathname.endsWith('/backups/packages/mdviewer_1785985000000_aaaaaaaaaaaa.mdpbackup') && method === 'GET') {
+        assert.equal(options.headers['X-MDViewer-Session'], 'test-session');
+        return {
+            ok: true,
+            status: 200,
+            headers: {
+                get(name) {
+                    return String(name).toLowerCase() === 'content-disposition'
+                        ? 'attachment; filename="mdviewer_1785985000000_aaaaaaaaaaaa.mdpbackup"'
+                        : null;
+                }
+            },
+            async blob() { return new Blob(['PK-backup']); }
+        };
+    }
     let data = pathname.endsWith('/session')
         ? { token: 'test-session', capabilities }
         : pathname.endsWith('/health')
             ? { available: true, schemaVersion: 3, journalMode: 'wal', capabilities }
             : { ok: true };
     if (pathname.endsWith('/documents/doc_retry') && method === 'GET') data = { ...retryDocument };
+    if (pathname.endsWith('/documents/doc_retry/versions') && method === 'GET') data = { items: [] };
+    if (pathname.endsWith('/explorer/files/legacy_file_test') && method === 'GET') data = {
+        id: 'legacy_file_test', entryType: 'file', path: 'docs/test.md', content: 'file body'
+    };
+    if ((pathname.includes('/explorer?') || pathname.endsWith('/explorer')) && method === 'GET') data = {
+        readOnly: true,
+        counts: { documents: 1, folders: 1, versions: 1, backups: 0, migrationCheckpoints: 0 },
+        database: { path: 'LocalSave_sqlite/data/mdpro.sqlite', schemaVersion: 3, journalMode: 'wal' },
+        documents: [{ id: 'doc_retry', title: 'Retry', version: 1 }],
+        folders: [],
+        backups: [],
+        migrationCheckpoints: []
+    };
+    if (pathname.includes('/settings/resolved') && method === 'GET') data = {
+        precedence: ['global', 'profile', 'workspace', 'feature', 'document'],
+        values: { sitesVisible: true, githubRepo: 'owner/repo' },
+        items: []
+    };
+    if ((pathname.includes('/settings?') || pathname.endsWith('/settings')) && method === 'GET') {
+        data = { items: [{ key: 'sitesVisible', value: true, scopeType: 'global' }] };
+    }
+    if (pathname.endsWith('/settings') && method === 'PUT') data = JSON.parse(options.body);
+    if (pathname.endsWith('/backups/packages') && method === 'POST') data = {
+        fileName: 'mdviewer_1785985000000_aaaaaaaaaaaa.mdpbackup',
+        checksumSha256: 'package-checksum',
+        sizeBytes: 9,
+        validation: { ok: true },
+        manifest: { database: { schemaVersion: 3 }, assets: { count: 0, totalBytes: 0 } }
+    };
+    if (pathname.endsWith('/backups/packages/validate') && method === 'POST') data = {
+        ok: true,
+        schemaVersion: 3
+    };
+    if (pathname.endsWith('/backups/restore/preview') && method === 'POST') data = {
+        importId: 'restore_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        originalName: '다른PC.mdpbackup',
+        status: 'validated_preview',
+        validation: {
+            ok: true,
+            schemaVersion: 3,
+            integrityCheck: ['ok'],
+            foreignKeyViolations: 0,
+            databaseCounts: { documents: 1, settings: 2 }
+        }
+    };
     if (pathname.endsWith('/documents/doc_retry') && method === 'PUT') {
         const body = JSON.parse(options.body);
         retryDocument = { ...retryDocument, ...body, version: retryDocument.version + 1 };
@@ -76,6 +142,7 @@ const root = path.resolve(__dirname, '..');
 require(path.join(root, 'js', 'storage', 'indexeddb-adapter.js'));
 require(path.join(root, 'js', 'storage', 'sqlite-api-adapter.js'));
 require(path.join(root, 'js', 'storage', 'storage-service.js'));
+require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
 
 (async function () {
     const recoveryDrafts = new Map();
@@ -138,6 +205,8 @@ require(path.join(root, 'js', 'storage', 'storage-service.js'));
     capabilities.documentVersions = true;
     capabilities.folders = true;
     capabilities.search = true;
+    capabilities.explorer = true;
+    capabilities.settings = true;
     capabilities.storageModeActivation = true;
     const sqliteState = await global.MDPStorage.requestMode('sqlite');
     assert.equal(sqliteState.activeMode, 'sqlite');
@@ -155,6 +224,86 @@ require(path.join(root, 'js', 'storage', 'storage-service.js'));
     assert.ok(requests.some(function (request) {
         return request.url.endsWith('/folders/tree');
     }), 'active SQLite adapter must receive folder list requests');
+    const explorer = await global.MDPStorage.getSqliteExplorerSnapshot({ query: 'HTTP', limit: 25 });
+    assert.equal(explorer.readOnly, true);
+    await global.MDPStorage.getSqliteExplorerDocument('doc_retry');
+    await global.MDPStorage.listSqliteExplorerDocumentVersions('doc_retry');
+    const explorerFile = await global.MDPStorage.getSqliteExplorerFileEntry('legacy_file_test');
+    assert.equal(explorerFile.content, 'file body');
+    assert.ok(requests.some(function (request) {
+        return request.url.endsWith('/explorer?q=HTTP&limit=25');
+    }), 'SQLite explorer must use its read-only endpoint');
+    assert.ok(requests.some(function (request) {
+        return request.url.endsWith('/documents/doc_retry/versions');
+    }), 'SQLite explorer must load version metadata on document selection');
+    assert.ok(requests.some(function (request) {
+        return request.url.endsWith('/explorer/files/legacy_file_test');
+    }), 'SQLite explorer must load file content only on file selection');
+    const resolvedSettings = await global.MDPStorage.getResolvedSqliteSettings();
+    assert.equal(resolvedSettings.values.githubRepo, 'owner/repo');
+    const savedSettings = await global.MDPStorage.saveSqliteSafeSettings({
+        sitesVisible: true,
+        githubRepo: 'owner/repo',
+        githubToken: 'must-never-reach-api',
+        sqliteEnabled: true
+    });
+    assert.equal(savedSettings.saved, 2);
+    const settingWrites = requests.filter(function (request) {
+        return request.url.endsWith('/settings') && request.options.method === 'PUT';
+    });
+    assert.equal(settingWrites.length, 2);
+    assert.deepEqual(settingWrites.map(function (request) {
+        return JSON.parse(request.options.body).key;
+    }).sort(), ['githubRepo', 'sitesVisible']);
+    assert.equal(JSON.stringify(settingWrites).includes('must-never-reach-api'), false);
+    const backupPackage = await global.MDPStorage.createBackupPackage();
+    assert.equal(backupPackage.validation.ok, true);
+    const backupValidation = await global.MDPStorage.validateBackupPackage(backupPackage.fileName);
+    assert.equal(backupValidation.schemaVersion, 3);
+    const backupDownload = await global.MDPStorage.downloadBackupPackage(backupPackage.fileName);
+    assert.equal(backupDownload.fileName, backupPackage.fileName);
+    assert.equal(await backupDownload.blob.text(), 'PK-backup');
+    assert.ok(requests.some(function (request) {
+        return request.url.endsWith('/backups/packages') && request.options.method === 'POST';
+    }), 'backup package creation must use a protected POST');
+    const restoreBlob = new Blob(['PK-restore-preview'], {
+        type: 'application/vnd.mdviewer.backup+zip'
+    });
+    Object.defineProperty(restoreBlob, 'name', { value: '다른PC.mdpbackup' });
+    const restorePreview = await global.MDPStorage.previewBackupRestore(restoreBlob);
+    assert.equal(restorePreview.status, 'validated_preview');
+    assert.equal(restorePreview.validation.databaseCounts.documents, 1);
+    const restoreRequest = requests.find(function (request) {
+        return request.url.endsWith('/backups/restore/preview');
+    });
+    assert.ok(restoreRequest, 'restore preview upload request missing');
+    assert.equal(restoreRequest.options.method, 'POST');
+    assert.equal(restoreRequest.options.body, restoreBlob);
+    assert.equal(
+        decodeURIComponent(restoreRequest.options.headers['X-MDViewer-Backup-Name']),
+        '다른PC.mdpbackup'
+    );
+    assert.equal(restoreRequest.options.headers['X-MDViewer-Session'], 'test-session');
+    await global.MDPStorage.previewIndexedDbMigration({
+        source: { database: 'MarkdownProDB', version: 5 },
+        folders: [],
+        documents: []
+    });
+    assert.ok(requests.some(function (request) {
+        return request.url.endsWith('/migrations/indexeddb/preview')
+            && request.options.method === 'POST';
+    }), 'migration preview must use the SQLite API even while preserving IndexedDB');
+    await global.MDPStorage.applyIndexedDbMigration({
+        source: { database: 'MarkdownProDB', version: 5 },
+        folders: [],
+        documents: [],
+        previewFingerprint: 'fingerprint',
+        migrationId: 'indb_fingerprint'
+    });
+    assert.ok(requests.some(function (request) {
+        return request.url.endsWith('/migrations/indexeddb/apply')
+            && request.options.method === 'POST';
+    }), 'migration apply must use the SQLite API with online backup capability');
 
     await global.MDPStorage.saveDocumentDraft({
         documentId: 'unsaved_current',

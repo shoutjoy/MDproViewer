@@ -225,6 +225,83 @@
         return sqliteAdapter.previewIndexedDbMigration(batch);
     }
 
+    async function applyIndexedDbMigration(batch) {
+        if (!sqliteHealth || !sqliteHealth.available) await refreshSqliteHealth();
+        const capabilities = sqliteHealth && sqliteHealth.capabilities;
+        if (!capabilities || capabilities.migration !== true || capabilities.onlineBackup !== true) {
+            const unavailable = new Error('SQLite IndexedDB migration apply is not available.');
+            unavailable.code = 'SQLITE_MIGRATION_APPLY_NOT_READY';
+            throw unavailable;
+        }
+        return sqliteAdapter.applyIndexedDbMigration(batch);
+    }
+
+    async function getResolvedSqliteSettings(options) {
+        if (!sqliteHealth || !sqliteHealth.available) await refreshSqliteHealth();
+        const capabilities = sqliteHealth && sqliteHealth.capabilities;
+        if (!capabilities || capabilities.settings !== true) {
+            const unavailable = new Error('SQLite settings are not available.');
+            unavailable.code = 'SQLITE_SETTINGS_NOT_READY';
+            throw unavailable;
+        }
+        return sqliteAdapter.getResolvedSettings(options || {});
+    }
+
+    async function saveSqliteSafeSettings(settingsRecord) {
+        if (activeMode !== MODES.SQLITE) return { saved: 0, skipped: true };
+        if (!root.MDPIndexedDbMigration
+            || typeof root.MDPIndexedDbMigration.classifyAiSettings !== 'function') {
+            const unavailable = new Error('SQLite setting policy is not ready.');
+            unavailable.code = 'SQLITE_SETTING_POLICY_NOT_READY';
+            throw unavailable;
+        }
+        const classified = root.MDPIndexedDbMigration.classifyAiSettings(settingsRecord || {});
+        const settings = Array.isArray(classified.settings) ? classified.settings : [];
+        for (let index = 0; index < settings.length; index++) {
+            await sqliteAdapter.putSetting(settings[index]);
+        }
+        return {
+            saved: settings.length,
+            classification: classified.classification
+        };
+    }
+
+    async function requireBackupPackageCapability() {
+        if (!sqliteHealth || !sqliteHealth.available) await refreshSqliteHealth();
+        const capabilities = sqliteHealth && sqliteHealth.capabilities;
+        if (!capabilities || capabilities.backupPackage !== true || capabilities.onlineBackup !== true) {
+            const unavailable = new Error('SQLite backup package is not available.');
+            unavailable.code = 'SQLITE_BACKUP_PACKAGE_NOT_READY';
+            throw unavailable;
+        }
+    }
+
+    async function createBackupPackage() {
+        await requireBackupPackageCapability();
+        return sqliteAdapter.createBackupPackage();
+    }
+
+    async function validateBackupPackage(fileName) {
+        await requireBackupPackageCapability();
+        return sqliteAdapter.validateBackupPackage(fileName);
+    }
+
+    async function downloadBackupPackage(fileName) {
+        await requireBackupPackageCapability();
+        return sqliteAdapter.downloadBackupPackage(fileName);
+    }
+
+    async function previewBackupRestore(file) {
+        if (!sqliteHealth || !sqliteHealth.available) await refreshSqliteHealth();
+        const capabilities = sqliteHealth && sqliteHealth.capabilities;
+        if (!capabilities || capabilities.restorePreview !== true) {
+            const unavailable = new Error('SQLite restore preview is not available.');
+            unavailable.code = 'SQLITE_RESTORE_PREVIEW_NOT_READY';
+            throw unavailable;
+        }
+        return sqliteAdapter.previewBackupRestore(file);
+    }
+
     function createConflictError(currentVersion) {
         const error = new Error('Pending SQLite save conflicts with the current document version.');
         error.code = 'VERSION_CONFLICT';
@@ -412,6 +489,16 @@
         return adapter[method].apply(adapter, args || []);
     }
 
+    function callSqlite(method, args) {
+        if (!initialized || !sqliteAdapter) throw new Error('Storage service is not initialized.');
+        if (typeof sqliteAdapter[method] !== 'function') {
+            const unsupported = new Error('The SQLite storage adapter does not support ' + method + '.');
+            unsupported.code = 'SQLITE_METHOD_NOT_SUPPORTED';
+            throw unsupported;
+        }
+        return sqliteAdapter[method].apply(sqliteAdapter, args || []);
+    }
+
     root.MDPStorage = {
         MODES: MODES,
         MODE_KEY: MODE_KEY,
@@ -432,6 +519,31 @@
         },
         deleteRecoveryDraft: deleteRecoveryDraft,
         previewIndexedDbMigration: previewIndexedDbMigration,
+        applyIndexedDbMigration: applyIndexedDbMigration,
+        getResolvedSqliteSettings: getResolvedSqliteSettings,
+        saveSqliteSafeSettings: saveSqliteSafeSettings,
+        listSqliteSettings: function (options) {
+            return callSqlite('listSettings', [options]);
+        },
+        putSqliteSetting: function (setting) {
+            return callSqlite('putSetting', [setting]);
+        },
+        createBackupPackage: createBackupPackage,
+        validateBackupPackage: validateBackupPackage,
+        downloadBackupPackage: downloadBackupPackage,
+        previewBackupRestore: previewBackupRestore,
+        getSqliteExplorerSnapshot: function (options) {
+            return callSqlite('getExplorerSnapshot', [options]);
+        },
+        getSqliteExplorerDocument: function (id) {
+            return callSqlite('getExplorerDocument', [id]);
+        },
+        listSqliteExplorerDocumentVersions: function (id) {
+            return callSqlite('listExplorerDocumentVersions', [id]);
+        },
+        getSqliteExplorerFileEntry: function (id) {
+            return callSqlite('getExplorerFileEntry', [id]);
+        },
         getRecoveryStatus: function () { return { ...recoveryStatus }; },
         listDocuments: function (options) { return callActive('listDocuments', [options]); },
         searchDocuments: function (query, options) { return callActive('searchDocuments', [query, options]); },

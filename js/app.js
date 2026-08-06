@@ -5812,17 +5812,41 @@ async function getAiSettings() {
             return null;
         }
     }
-    if (!db) return readFallback();
+    async function mergeSqliteSettings(localSettings) {
+        try {
+            if (!window.MDPStorage || typeof window.MDPStorage.getStatus !== 'function'
+                || typeof window.MDPStorage.getResolvedSqliteSettings !== 'function') {
+                return localSettings;
+            }
+            const status = window.MDPStorage.getStatus();
+            if (!status || status.activeMode !== 'sqlite'
+                || !status.sqliteHealth || !status.sqliteHealth.capabilities
+                || status.sqliteHealth.capabilities.settings !== true) {
+                return localSettings;
+            }
+            const resolved = await window.MDPStorage.getResolvedSqliteSettings();
+            const values = resolved && resolved.values && typeof resolved.values === 'object'
+                ? resolved.values
+                : {};
+            // SQLite contains allow-listed values only. Locally stored credentials remain local.
+            return { ...(localSettings || {}), ...values, id: AI_SETTINGS_KEY };
+        } catch (error) {
+            console.warn('SQLite settings restore skipped:', error && error.message ? error.message : error);
+            return localSettings;
+        }
+    }
+    if (!db) return await mergeSqliteSettings(readFallback());
     try {
-        return await new Promise((res) => {
+        const localSettings = await new Promise((res) => {
             const tx = db.transaction('ai_settings', 'readonly');
             const req = tx.objectStore('ai_settings').get(AI_SETTINGS_KEY);
             req.onsuccess = () => res(req.result || null);
             req.onerror = () => res(readFallback());
             tx.onabort = () => res(readFallback());
         });
+        return await mergeSqliteSettings(localSettings);
     } catch (_) {
-        return readFallback();
+        return await mergeSqliteSettings(readFallback());
     }
 }
 
@@ -5843,18 +5867,33 @@ async function setAiSettings(data) {
     const existing = await getAiSettings();
     const payload = { id: AI_SETTINGS_KEY, ...(existing || {}), ...data };
     writeFallback(payload);
-    if (!db) return;
+    async function mirrorSafeSettings() {
+        try {
+            if (window.MDPStorage && typeof window.MDPStorage.saveSqliteSafeSettings === 'function') {
+                await window.MDPStorage.saveSqliteSafeSettings(data || {});
+            }
+        } catch (error) {
+            console.warn('SQLite safe settings mirror failed:', error && error.message ? error.message : error);
+        }
+    }
+    if (!db) {
+        await mirrorSafeSettings();
+        return;
+    }
     try {
-        return await new Promise((res, rej) => {
+        await new Promise((res, rej) => {
             const tx = db.transaction('ai_settings', 'readwrite');
             const req = tx.objectStore('ai_settings').put(payload);
             req.onsuccess = () => res();
             req.onerror = () => rej(req.error);
             tx.onabort = () => rej(tx.error || new Error('ai_settings transaction aborted'));
         });
+        await mirrorSafeSettings();
+        return;
     } catch (e) {
         const fb = readFallback() || {};
         writeFallback({ ...fb, ...payload, id: AI_SETTINGS_KEY });
+        await mirrorSafeSettings();
         return;
     }
 }

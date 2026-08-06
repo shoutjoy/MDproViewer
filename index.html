@@ -1736,6 +1736,11 @@
                     class="px-4 py-2 border-2 border-slate-700 rounded-md text-sm font-medium text-slate-800 bg-white hover:bg-slate-50">
                     inDB보기
                 </button>
+                <button type="button" id="btn-open-sqlite-explorer" onclick="SettingUI.openSqliteExplorer()"
+                    class="px-4 py-2 border-2 border-emerald-700 rounded-md text-sm font-medium text-emerald-800 bg-white hover:bg-emerald-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="SQLite 서버에 저장된 데이터를 읽기 전용으로 탐색">
+                    SQLite보기
+                </button>
                 <button type="button" onclick="exportSettingsMset()"
                     class="px-3 py-2 border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50">
                     set_Export
@@ -1814,6 +1819,50 @@
                     class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">닫기</button>
             </div>
         </div>
+    </div>
+
+    <!-- SQLite read-only explorer -->
+    <div id="sqlite-explorer-modal"
+        class="fixed inset-0 hidden items-center justify-center bg-slate-950/65 p-3 z-[2147483647] no-print backdrop-blur-sm"
+        onclick="if(event.target===this) SettingUI.closeSqliteExplorer()">
+        <section class="flex h-[min(820px,94vh)] w-[min(1280px,97vw)] min-h-[480px] flex-col overflow-hidden rounded-xl border border-emerald-700 bg-white shadow-2xl dark:bg-slate-900"
+            role="dialog" aria-modal="true" aria-labelledby="sqlite-explorer-title">
+            <header class="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-300 bg-slate-100 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
+                <div class="min-w-0 flex-1">
+                    <h2 id="sqlite-explorer-title" class="text-base font-bold text-slate-900 dark:text-slate-100">SQLite 데이터 탐색</h2>
+                    <p id="sqlite-explorer-database" class="truncate text-[11px] text-slate-500 dark:text-slate-400">연결 확인 전</p>
+                </div>
+                <span class="rounded-full border border-emerald-500 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">읽기 전용</span>
+                <button type="button" id="sqlite-explorer-refresh" onclick="SettingUI.refreshSqliteExplorer()"
+                    class="rounded border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-white disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">새로고침</button>
+                <button type="button" onclick="SettingUI.closeSqliteExplorer()"
+                    class="h-8 w-8 rounded border border-red-300 text-lg font-bold text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/50" aria-label="SQLite 탐색 창 닫기">×</button>
+            </header>
+            <div class="shrink-0 border-b border-slate-200 p-3 dark:border-slate-700">
+                <div class="flex gap-2">
+                    <input id="sqlite-explorer-query" type="search" maxlength="500" placeholder="문서·폴더·파일·설정 검색..."
+                        class="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 outline-none focus:border-emerald-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100">
+                    <button type="button" onclick="SettingUI.refreshSqliteExplorer()"
+                        class="rounded-md bg-emerald-700 px-4 py-1.5 text-sm font-semibold text-white hover:bg-emerald-800">검색</button>
+                </div>
+                <div id="sqlite-explorer-counts" class="mt-2 grid grid-cols-3 gap-1 text-center text-[10px] sm:grid-cols-9"></div>
+            </div>
+            <nav class="flex shrink-0 gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-3 pt-2 dark:border-slate-700 dark:bg-slate-950/40" aria-label="SQLite 데이터 종류">
+                <button type="button" data-sqlite-explorer-tab="documents" onclick="SettingUI.setSqliteExplorerTab('documents')" class="rounded-t px-3 py-1.5 text-xs font-semibold">문서</button>
+                <button type="button" data-sqlite-explorer-tab="folders" onclick="SettingUI.setSqliteExplorerTab('folders')" class="rounded-t px-3 py-1.5 text-xs font-semibold">폴더</button>
+                <button type="button" data-sqlite-explorer-tab="files" onclick="SettingUI.setSqliteExplorerTab('files')" class="rounded-t px-3 py-1.5 text-xs font-semibold">파일</button>
+                <button type="button" data-sqlite-explorer-tab="settings" onclick="SettingUI.setSqliteExplorerTab('settings')" class="rounded-t px-3 py-1.5 text-xs font-semibold">설정</button>
+                <button type="button" data-sqlite-explorer-tab="backups" onclick="SettingUI.setSqliteExplorerTab('backups')" class="rounded-t px-3 py-1.5 text-xs font-semibold">백업</button>
+                <button type="button" data-sqlite-explorer-tab="migrations" onclick="SettingUI.setSqliteExplorerTab('migrations')" class="rounded-t px-3 py-1.5 text-xs font-semibold">이관 기록</button>
+            </nav>
+            <div class="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(320px,42%)_1fr]">
+                <div id="sqlite-explorer-list" class="min-h-0 overflow-auto border-b border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/30 md:border-b-0 md:border-r"></div>
+                <div id="sqlite-explorer-detail" class="min-h-0 overflow-auto bg-white p-4 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                    <p class="text-slate-500 dark:text-slate-400">문서를 선택하면 본문과 버전 기록을 확인할 수 있습니다.</p>
+                </div>
+            </div>
+            <footer id="sqlite-explorer-status" class="shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-1.5 text-[11px] text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400" aria-live="polite">SQLite 서버 연결 대기 중</footer>
+        </section>
     </div>
 
     <div id="scholar-search-slot"></div>
@@ -2325,7 +2374,7 @@
     defer>
 </script>
 <script
-    src="./js/storage/sqlite-api-adapter.js?v=20260806-migration-preview-1"
+    src="./js/storage/sqlite-api-adapter.js?v=20260806-restore-preview-1"
     charset="utf-8"
     defer>
 </script>
@@ -2335,20 +2384,20 @@
     defer>
 </script>
 <script
-    src="./js/storage/storage-service.js?v=20260806-migration-preview-1"
+    src="./js/storage/storage-service.js?v=20260806-restore-preview-1"
     charset="utf-8"
     defer>
 </script>
 
 <script
-    src="./js/storage/indexeddb-migration.js?v=20260806-migration-preview-1"
+    src="./js/storage/indexeddb-migration.js?v=20260806-settings-migration-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 설정 UI -->
 <script
-    src="./Setting/settings-ui.js?v=20260806-migration-preview-1"
+    src="./Setting/settings-ui.js?v=20260806-restore-preview-1"
     charset="utf-8"
     defer>
 </script>
@@ -2411,7 +2460,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260806-openai-1"
+    src="./js/app.js?v=20260806-settings-migration-1"
     charset="utf-8"
     defer>
 </script>

@@ -69,6 +69,48 @@
             return payload.data;
         }
 
+        async _download(path, sessionRetryAttempted) {
+            await this.ensureSession();
+            let response;
+            try {
+                response = await this.fetchImpl(this.baseUrl + path, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        'Accept': 'application/vnd.mdviewer.backup+zip',
+                        'X-MDViewer-Session': this.sessionToken
+                    }
+                });
+            } catch (_) {
+                throw new SqliteApiError('SQLITE_SERVER_OFFLINE', '로컬 SQLite 서버에 연결할 수 없습니다.', 0);
+            }
+            if (!response.ok) {
+                let payload = null;
+                try { payload = await response.json(); } catch (_) {}
+                if (response.status === 403 && sessionRetryAttempted !== true) {
+                    this.sessionToken = '';
+                    return this._download(path, true);
+                }
+                const apiError = payload && payload.error ? payload.error : {};
+                throw new SqliteApiError(
+                    apiError.code || 'SQLITE_DOWNLOAD_ERROR',
+                    apiError.message || ('SQLite backup download HTTP ' + response.status),
+                    response.status,
+                    apiError.details,
+                    payload && payload.requestId
+                );
+            }
+            const disposition = String(response.headers && response.headers.get
+                ? response.headers.get('Content-Disposition') || ''
+                : '');
+            const match = /filename="([^"]+)"/i.exec(disposition);
+            return {
+                blob: await response.blob(),
+                fileName: match ? match[1] : 'mdviewer-backup.mdpbackup'
+            };
+        }
+
         _jsonOptions(method, payload) {
             return {
                 method: method,
@@ -108,8 +150,59 @@
             return this._request('/bootstrap', { method: 'GET' });
         }
 
+        getExplorerSnapshot(options) {
+            const config = options || {};
+            return this._request('/explorer' + this._query({
+                q: config.query,
+                limit: config.limit
+            }), { method: 'GET' });
+        }
+
+        getExplorerDocument(id) {
+            return this.getDocument(id);
+        }
+
+        listExplorerDocumentVersions(id) {
+            return this.listDocumentVersions(id);
+        }
+
+        getExplorerFileEntry(id) {
+            return this._request('/explorer/files/' + encodeURIComponent(String(id)), { method: 'GET' });
+        }
+
         integrityCheck() {
             return this._request('/maintenance/integrity-check', { method: 'POST' });
+        }
+
+        createBackupPackage() {
+            return this._request('/backups/packages', this._jsonOptions('POST', {}));
+        }
+
+        validateBackupPackage(fileName) {
+            return this._request(
+                '/backups/packages/validate',
+                this._jsonOptions('POST', { fileName: fileName })
+            );
+        }
+
+        downloadBackupPackage(fileName) {
+            return this._download('/backups/packages/' + encodeURIComponent(String(fileName)));
+        }
+
+        previewBackupRestore(file) {
+            if (!file || typeof file.size !== 'number' || typeof file.arrayBuffer !== 'function') {
+                throw new TypeError('previewBackupRestore requires a File or Blob.');
+            }
+            const fileName = String(file.name || 'backup.mdpbackup');
+            return this._request('/backups/restore/preview', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/vnd.mdviewer.backup+zip',
+                    'X-MDViewer-Backup-Name': encodeURIComponent(fileName)
+                },
+                body: file
+            });
         }
 
         previewIndexedDbMigration(batch) {
@@ -117,6 +210,37 @@
                 '/migrations/indexeddb/preview',
                 this._jsonOptions('POST', batch)
             );
+        }
+
+        applyIndexedDbMigration(batch) {
+            return this._request(
+                '/migrations/indexeddb/apply',
+                this._jsonOptions('POST', batch)
+            );
+        }
+
+        async listSettings(options) {
+            const config = options || {};
+            const data = await this._request('/settings' + this._query({
+                scopeType: config.scopeType,
+                scopeId: config.scopeId,
+                group: config.group
+            }), { method: 'GET' });
+            return data && Array.isArray(data.items) ? data.items : [];
+        }
+
+        getResolvedSettings(options) {
+            const config = options || {};
+            return this._request('/settings/resolved' + this._query({
+                profileId: config.profileId,
+                workspaceId: config.workspaceId,
+                documentId: config.documentId,
+                featureId: config.featureId
+            }), { method: 'GET' });
+        }
+
+        putSetting(setting) {
+            return this._request('/settings', this._jsonOptions('PUT', setting));
         }
 
         async listDocuments(options) {

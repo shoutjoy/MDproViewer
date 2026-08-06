@@ -2,7 +2,7 @@
 
 작성일: 2026-08-06  
 대상: `C:\CusorApps\md-viewerVscode\md_viewer`  
-상태: Phase 3E 문서 버전 충돌 비교·선택 UI 완료
+상태: Phase 6B `.mdpbackup` 파일 선택·격리 staging·복원 미리보기 완료
 
 진행 현황:
 
@@ -16,8 +16,16 @@
 - Hotfix 3C-1: 다른 origin/file 주소에서 SQLite 선택이 되돌아갈 때 현재 주소와 정상 로컬 앱 링크 표시
 - Phase 3D: SQLite 문서 카드의 GitHub push 버튼과 SQLite 본문·폴더 읽기 연결 완료
 - Phase 3E: 서버본·로컬 복구본 비교와 서버본 유지·로컬 새 버전·복구 문서 생성 선택 완료
+- Phase 4A: IndexedDB 문서·폴더 정규화 batch와 SQLite 신규·중복·충돌·제외 미리보기 완료
+- Phase 4B: 이관 전 online backup, checkpoint, idempotent 문서·폴더 실제 이관과 검증 완료
+- Phase 4B-1: 설정의 `SQLite보기`에서 문서·폴더·버전·백업·이관 기록 읽기 전용 탐색 완료
+- Phase 4C: `mdpro-indb-v1/files`를 `workspace_sources`·`file_entries`로 안전 이관하고 파일 탐색 연결 완료
+- Phase 5: `ai_settings` 허용 목록, 비밀값 이중 차단, 범위 우선순위, SQLite 설정 API·복원·탐색 완료
+- Phase 6A: SQLite online backup과 연결 자산을 manifest·checksum으로 묶은 `.mdpbackup` 생성·검증·다운로드 완료
+- Phase 6B: 선택한 `.mdpbackup`을 격리 staging에서 검증하고 복원 데이터 수량을 미리보는 UI/API 완료
+- Phase 6A 선행 기반: 실행 중 DB를 단순 복사하지 않는 SQLite online backup 코어와 무결성 검증 완료
 - `storageModeActivation=true`: 설정과 좌측 SQLite 탭에서 실제 저장 모드 전환 가능
-- 다음 단계: IndexedDB 데이터 이관 preview
+- 다음 단계: Phase 6C 복원 전 현재 DB 자동 backup·원자적 DB/assets 교체·실패 rollback 구현
 
 ## 1. 목표
 
@@ -110,6 +118,8 @@ js/storage/
 
 - `GET /api/sqlite/health`: 서버, DB 경로, 스키마 버전, 읽기/쓰기 가능 여부
 - `GET /api/sqlite/bootstrap`: 기본 프로필·워크스페이스·루트 폴더와 기능 상태
+- `GET /api/sqlite/explorer?q=&limit=`: 본문을 제외한 문서·폴더·버전·백업·이관 checkpoint 읽기 전용 요약
+- `GET /api/sqlite/explorer/files/{id}`: 선택한 SQLite file entry의 본문을 읽기 전용으로 조회
 - `POST /api/sqlite/maintenance/integrity-check`: 무결성 검사
 
 ### 문서·폴더
@@ -182,6 +192,9 @@ js/storage/
 - [x] 설정 화면에 `서버 연결`, DB 상대 경로, schema, WAL, 현재 inDB 유지 상태를 표시한다.
 - [x] 사이드바에 `연결됨`, `복구 버퍼 저장`, `동기화 대기`, `충돌` 상태를 표시한다.
 - [x] 현재 SQLite 설치 다운로드 링크를 로컬 서버 상태·데이터 경로 UI로 교체한다.
+- [x] 설정 하단 `SQLite보기`에서 문서·폴더·버전·백업·이관 기록을 읽기 전용으로 탐색한다.
+- [x] SQLite 탐색 목록은 본문을 제외하고 문서를 선택했을 때만 단건 본문과 버전 기록을 읽는다.
+- [x] 이관된 `workspace_sources`·`file_entries`를 파일 탭에 표시하고 선택한 파일 본문만 단건 조회한다.
 - [ ] 설정 화면에 백업·무결성 검사 실행 버튼을 연결한다.
 
 완료 조건: 체크 해제 시 기존 IndexedDB가 그대로 동작하고, 체크 시 서버 연결 상태와 SQLite 빈 목록이 정확히 표시됨.
@@ -207,42 +220,46 @@ js/storage/
 
 ### Phase 4. 기존 IndexedDB 데이터 이관
 
-- [ ] 브라우저가 IndexedDB를 읽어 정규화한 batch JSON만 서버로 보낸다.
-- [ ] `MarkdownProDB/documents`를 `documents`와 최초 `document_versions`로 이관한다.
-- [ ] `MarkdownProDB/folders`의 관계와 루트 폴더를 보존한다.
-- [ ] `mdpro-indb-v1/files`는 `workspace_sources`와 `file_entries`로 이관한다.
-- [ ] 이관 전에 SQLite online backup을 자동 생성한다.
-- [ ] preview 화면에서 원본 수, 신규, 중복, 충돌, 제외 수를 보여준다.
-- [ ] batch별 checkpoint를 저장하여 중단 후 재개할 수 있게 한다.
-- [ ] 동일 ID 재실행이 중복 레코드를 만들지 않게 한다.
-- [ ] 문서 본문 SHA-256, 레코드 수, 폴더 관계를 비교한다.
-- [ ] 성공 후에도 기존 IndexedDB는 자동 삭제하지 않고 읽기 전용 원본으로 남긴다.
-- [ ] 사용자가 별도로 확인하기 전에는 정리 버튼을 제공하지 않는다.
+- [x] 브라우저가 IndexedDB를 읽어 정규화한 batch JSON만 서버로 보낸다.
+- [x] `MarkdownProDB/documents`를 `documents`와 최초 `document_versions`로 이관한다.
+- [x] `MarkdownProDB/folders`의 관계와 루트 폴더를 보존한다.
+- [x] `mdpro-indb-v1/files`는 `workspace_sources`와 `file_entries`로 이관한다.
+- [x] 이관 전에 SQLite online backup을 자동 생성한다.
+- [x] preview 화면에서 원본 수, 신규, 중복, 충돌, 제외 수를 보여준다.
+- [x] batch별 checkpoint를 저장하여 중단 후 재개할 수 있게 한다.
+- [x] 동일 ID 재실행이 중복 레코드를 만들지 않게 한다.
+- [x] 문서 본문 SHA-256, 레코드 수, 폴더 관계를 비교한다.
+- [x] 성공 후에도 기존 IndexedDB를 자동 삭제하지 않고 이관 과정에서는 readonly 원본으로 다룬다.
+- [x] 사용자가 별도로 확인하기 전에는 정리 버튼을 제공하지 않는다.
 
 완료 조건: 샘플 및 실제 백업 데이터에서 문서 수·본문 checksum·폴더 관계가 일치하고 재실행도 안전함.
 
 ### Phase 5. 비민감 설정 이관
 
-- [ ] `ai_settings`의 키를 민감/비민감/일시 UI 상태로 분류한다.
-- [ ] 테마, 기능 표시, 기본 모델명, 사이트 목록, 양식 목록 등 비민감 값만 `settings`에 저장한다.
-- [ ] GitHub 토큰, AI API Key, imgBB Key, WebDAV 비밀번호는 SQLite 이관 대상에서 제외한다.
-- [ ] 설정 범위(global/profile/workspace/document)의 우선순위를 구현한다.
-- [ ] SQLite 모드에서 다른 PC로 복원했을 때 비민감 설정이 재현되는지 확인한다.
-- [ ] 비밀값 누락은 정상 상태로 안내하고 새 PC에서 다시 입력하게 한다.
+- [x] `ai_settings`의 키를 민감/비민감/일시 UI 상태로 분류한다.
+- [x] 기능 표시, 편집 옵션, 사이트 목록, 양식 목록, 비밀이 아닌 연동 기본값만 `settings`에 저장한다.
+- [x] GitHub 토큰, AI API Key, imgBB Key, Google Picker Key, 비밀번호·인증 해시는 SQLite 이관 대상에서 제외한다.
+- [x] 설정 범위(global/profile/workspace/feature/document)의 우선순위를 구현한다.
+- [x] SQLite online backup을 별도 DB 인스턴스로 열어 비민감 설정이 재현되는지 확인한다.
+- [x] 비밀값 누락은 정상 상태로 안내하고 새 PC에서 다시 입력하게 한다.
+
+구현 범위 메모: 현재 테마와 기본 AI 모델은 `ai_settings`가 아니라 `localStorage`의 별도 키로 관리된다. Phase 5는 계획의 기준 저장소인 `MarkdownProDB/ai_settings`를 대상으로 완료했으며, 장치 부트스트랩용 `localStorage` 값은 기존 로컬 동작을 유지한다.
 
 완료 조건: 공유·복원된 DB에서 일반 설정은 유지되지만 비밀값은 평문으로 포함되지 않음.
 
 ### Phase 6. 다른 PC 공유, 백업, 복원
 
-- [ ] 열려 있는 DB 파일을 단순 복사하지 않고 SQLite online backup으로 일관된 사본을 만든다.
-- [ ] `manifest.json`, `mdpro.sqlite`, `assets/`, checksum을 묶은 `.mdpbackup` 형식을 구현한다.
-- [ ] 백업 다운로드와 복원 파일 선택 UI를 제공한다.
-- [ ] 복원 전 스키마 버전, SHA-256, `integrity_check`, `foreign_key_check`를 검사한다.
+- [x] 열려 있는 DB 파일을 단순 복사하지 않고 SQLite online backup으로 일관된 사본을 만든다.
+- [x] `manifest.json`, `mdpro.sqlite`, `assets/`, checksum을 묶은 `.mdpbackup` 형식을 구현한다.
+- [x] 설정 화면에서 백업을 생성하고 검증 결과·포함 범위를 확인한 뒤 다운로드한다.
+- [x] `.mdpbackup` 복원 파일 선택과 복원 미리보기 UI를 제공한다.
+- [x] 복원 전 스키마 버전, SHA-256, `integrity_check`, `foreign_key_check`를 검사한다.
 - [ ] 복원 전에 현재 데이터의 자동 백업을 만든다.
 - [ ] 다른 PC에서 복원 후 문서·폴더·검색·설정·자산 경로를 검증한다.
 - [ ] 직접 DB 경로 열기는 서버 시작 옵션으로만 허용하고, 한 시점에 한 앱 인스턴스만 쓰도록 lock을 둔다.
 - [ ] OneDrive/NAS/공유 폴더의 SQLite 파일을 여러 PC가 동시에 쓰는 방식은 지원하지 않는다고 UI와 문서에 명시한다.
 - [ ] 실시간 다중 PC 사용이 필요해지면 별도의 상시 실행 호스트 서버, 인증, TLS, 사용자별 충돌 정책을 다음 단계로 분리한다.
+- [ ] FMA , FMA(webp)저장이 가능하게 하고 불러오기도 되게 조절 
 
 완료 조건: PC A의 백업을 PC B에서 복원하여 같은 데이터를 검색·편집할 수 있고, 손상된 백업은 적용 전에 차단됨.
 
@@ -272,8 +289,8 @@ js/storage/
 - [x] JSON 요청 본문과 문서 본문 크기 제한을 둔다.
 - [ ] 오류 응답에 DB 절대 경로, SQL, 비밀값을 노출하지 않는다.
 - [ ] 서버 로그에서 문서 본문과 API Key를 마스킹한다.
-- [ ] SQLite에는 토큰·비밀번호·API Key를 평문 저장하지 않는다.
-- [ ] 백업 파일에 포함되는 데이터 범위를 복원/다운로드 전에 표시한다.
+- [x] SQLite 설정 쓰기·이관 경로에는 토큰·비밀번호·API Key를 평문 저장하지 않는다.
+- [x] 백업 파일에 포함되는 데이터 범위를 다운로드 전에 표시한다.
 - [ ] DB 잠금, 디스크 부족, 읽기 전용, 스키마 불일치 오류를 각각 구분한다.
 - [ ] WAL checkpoint 및 백업 중 쓰기 경합을 테스트한다.
 
@@ -283,15 +300,15 @@ js/storage/
 
 - [x] SQLite 체크 해제 상태에서 기존 inDB 문서 CRUD가 이전과 동일하다.
 - [ ] `mdpro-indb-v1` 백업, GitHub, WebDAV 흐름이 깨지지 않는다.
-- [ ] 기존 자동저장과 복구 데이터가 삭제되지 않는다.
+- [x] 기존 자동저장과 복구 데이터가 삭제되지 않는다.
 
 ### SQLite 정상 동작
 
 - [ ] 문서 1개/1,000개/10,000개 목록과 검색 성능을 측정한다.
 - [ ] 한글 제목, 한글 본문, 이모지, 긴 Markdown을 왕복 저장해 내용이 동일하다.
-- [ ] 앱 재시작 후 마지막 DB와 목록이 복원된다.
-- [ ] 폴더 이동·삭제 후 FK 위반이 없다.
-- [ ] 수동 저장마다 예상한 문서 버전이 생성된다.
+- [x] 앱 재시작 후 마지막 DB와 목록이 복원된다.
+- [x] 폴더 이동·삭제 후 FK 위반이 없다.
+- [x] 수동 저장마다 예상한 문서 버전이 생성된다.
 
 ### 장애·충돌
 
@@ -304,10 +321,10 @@ js/storage/
 
 ### 이관·백업·공유
 
-- [ ] 이관 전후 문서 수와 본문 SHA-256이 일치한다.
-- [ ] 이관을 두 번 실행해도 중복이 없다.
+- [x] 이관 전후 문서 수와 본문 SHA-256이 일치한다.
+- [x] 이관을 두 번 실행해도 중복이 없다.
 - [ ] 백업을 다른 PC에서 복원하고 검색할 수 있다.
-- [ ] 손상된 DB, 잘못된 checksum, 지원하지 않는 미래 스키마를 차단한다.
+- [x] 손상된 DB, 잘못된 checksum, 지원하지 않는 미래 스키마를 복원 미리보기 단계에서 차단한다.
 - [ ] 복원 실패 시 기존 DB가 그대로 유지된다.
 
 ## 9. 단계별 중단 기준

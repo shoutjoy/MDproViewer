@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 import time
@@ -10,6 +11,7 @@ import uuid
 from typing import Any, Dict, List, Optional
 
 from .database import DatabaseManager
+from .settings_policy import SCOPE_PRIORITY, SettingPolicyError, validate_setting
 
 
 class RepositoryError(RuntimeError):
@@ -34,6 +36,125 @@ class StorageRepository:
 
     def __init__(self, manager: DatabaseManager) -> None:
         self.manager = manager
+
+    @staticmethod
+    def _setting_result(row: sqlite3.Row) -> Dict[str, Any]:
+        try:
+            value = json.loads(str(row["value_json"]))
+        except (TypeError, json.JSONDecodeError) as error:
+            raise RepositoryError("INVALID_STORED_SETTING", "Stored setting JSON is invalid.", 500) from error
+        return {
+            "scopeType": row["scope_type"],
+            "scopeId": row["scope_id"],
+            "group": row["setting_group"],
+            "key": row["setting_key"],
+            "value": value,
+            "valueType": row["value_type"],
+            "updatedAt": row["updated_at"],
+        }
+
+    def _validated_setting(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise RepositoryError("INVALID_PAYLOAD", "Setting payload must be an object.")
+        try:
+            return validate_setting(
+                payload.get("key", payload.get("settingKey")),
+                payload.get("value"),
+                scope_type=payload.get("scopeType"),
+                scope_id=payload.get("scopeId"),
+                profile_id=self.manager.DEFAULT_PROFILE_ID,
+                workspace_id=self.manager.DEFAULT_WORKSPACE_ID,
+            )
+        except SettingPolicyError as error:
+            raise RepositoryError(error.code, str(error)) from error
+
+    def list_settings(
+        self,
+        scope_type: Optional[str] = None,
+        scope_id: Optional[str] = None,
+        setting_group: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        clauses: List[str] = []
+        values: List[Any] = []
+        if scope_type:
+            normalized_scope = str(scope_type).strip().lower()
+            if normalized_scope not in SCOPE_PRIORITY:
+                raise RepositoryError("INVALID_SETTING_SCOPE", "Setting scope is invalid.")
+            clauses.append("scope_type = ?")
+            values.append(normalized_scope)
+        if scope_id is not None:
+            clauses.append("scope_id = ?")
+            values.append(str(scope_id).strip())
+        if setting_group:
+            clauses.append("setting_group = ?")
+            values.append(str(setting_group).strip())
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        priority_sql = "CASE scope_type " + " ".join(
+            f"WHEN '{scope}' THEN {index}" for index, scope in enumerate(SCOPE_PRIORITY)
+        ) + " ELSE 99 END"
+        with self.manager.connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT scope_type, scope_id, setting_group, setting_key,
+                       value_json, value_type, updated_at
+                FROM settings{where}
+                ORDER BY {priority_sql}, setting_group, setting_key, scope_id
+                """,
+                values,
+            ).fetchall()
+        return [self._setting_result(row) for row in rows]
+
+    def put_setting(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        setting = self._validated_setting(payload)
+        updated_at = self._now_ms()
+        with self.manager.write_transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO settings
+                    (scope_type, scope_id, setting_group, setting_key,
+                     value_json, value_type, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(scope_type, scope_id, setting_group, setting_key)
+                DO UPDATE SET value_json = excluded.value_json,
+                              value_type = excluded.value_type,
+                              updated_at = excluded.updated_at
+                """,
+                (
+                    setting["scopeType"], setting["scopeId"], setting["group"],
+                    setting["key"], setting["valueJson"], setting["valueType"], updated_at,
+                ),
+            )
+        return {**setting, "updatedAt": updated_at, "valueJson": None}
+
+    def get_resolved_settings(
+        self,
+        profile_id: Optional[str] = None,
+        workspace_id: Optional[str] = None,
+        document_id: Optional[str] = None,
+        feature_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        scope_ids = {
+            "global": "",
+            "profile": str(profile_id or self.manager.DEFAULT_PROFILE_ID).strip(),
+            "workspace": str(workspace_id or self.manager.DEFAULT_WORKSPACE_ID).strip(),
+            "feature": str(feature_id or "").strip(),
+            "document": str(document_id or "").strip(),
+        }
+        selected: Dict[tuple[str, str], Dict[str, Any]] = {}
+        for scope_type in SCOPE_PRIORITY:
+            scope_id = scope_ids[scope_type]
+            if scope_type not in {"global"} and not scope_id:
+                continue
+            for item in self.list_settings(scope_type=scope_type, scope_id=scope_id):
+                selected[(str(item["group"]), str(item["key"]))] = item
+        items = list(selected.values())
+        items.sort(key=lambda item: (str(item["group"]), str(item["key"])))
+        return {
+            "precedence": list(SCOPE_PRIORITY),
+            "scopeIds": scope_ids,
+            "values": {str(item["key"]): item["value"] for item in items},
+            "items": items,
+        }
 
     @staticmethod
     def _now_ms() -> int:
@@ -509,6 +630,327 @@ class StorageRepository:
                 (self.manager.DEFAULT_WORKSPACE_ID,),
             ).fetchall()
         return [self._folder_result(row) for row in rows]
+
+    def get_explorer_snapshot(self, query: str = "", limit: int = 200) -> Dict[str, Any]:
+        """Return a read-only, content-free overview for the SQLite explorer UI."""
+        normalized_query = str(query or "").strip()
+        if len(normalized_query) > self.MAX_SEARCH_QUERY_LENGTH:
+            raise RepositoryError("SEARCH_QUERY_TOO_LONG", "Search query is too long.")
+        safe_limit = max(1, min(int(limit or 200), 500))
+        escaped = normalized_query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+
+        document_where = "d.workspace_id = ? AND d.deleted_at IS NULL"
+        document_values: List[Any] = [self.manager.DEFAULT_WORKSPACE_ID]
+        if normalized_query:
+            document_where += (
+                " AND (d.title LIKE ? ESCAPE '\\' OR d.id LIKE ? ESCAPE '\\'"
+                " OR COALESCE(f.name, '') LIKE ? ESCAPE '\\')"
+            )
+            document_values.extend([pattern, pattern, pattern])
+        document_values.append(safe_limit)
+
+        folder_where = "workspace_id = ? AND deleted_at IS NULL"
+        folder_values: List[Any] = [self.manager.DEFAULT_WORKSPACE_ID]
+        if normalized_query:
+            folder_where += " AND (name LIKE ? ESCAPE '\\' OR id LIKE ? ESCAPE '\\')"
+            folder_values.extend([pattern, pattern])
+        folder_values.append(safe_limit)
+
+        with self.manager.connection() as connection:
+            count_row = connection.execute(
+                """
+                SELECT
+                    (SELECT COUNT(*) FROM documents
+                     WHERE workspace_id = ? AND deleted_at IS NULL) AS documents,
+                    (SELECT COUNT(*) FROM documents
+                     WHERE workspace_id = ? AND deleted_at IS NOT NULL) AS deleted_documents,
+                    (SELECT COUNT(*) FROM folders
+                     WHERE workspace_id = ? AND deleted_at IS NULL) AS folders,
+                    (SELECT COUNT(*) FROM document_versions AS v
+                     JOIN documents AS d ON d.id = v.document_id
+                     WHERE d.workspace_id = ?) AS versions,
+                    (SELECT COUNT(*) FROM backup_history
+                     WHERE workspace_id = ? OR workspace_id IS NULL) AS backups,
+                    (SELECT COUNT(*) FROM app_meta
+                     WHERE key LIKE 'indexeddb_migration:%') AS migration_checkpoints,
+                    (SELECT COUNT(*) FROM workspace_sources
+                     WHERE workspace_id = ?) AS sources,
+                    (SELECT COUNT(*) FROM file_entries AS e
+                     JOIN workspace_sources AS s ON s.id = e.source_id
+                     WHERE s.workspace_id = ? AND e.deleted_at IS NULL) AS file_entries,
+                    (SELECT COUNT(*) FROM settings) AS settings
+                """,
+                (
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                    self.manager.DEFAULT_WORKSPACE_ID,
+                ),
+            ).fetchone()
+            document_rows = connection.execute(
+                f"""
+                SELECT d.id, d.workspace_id, d.folder_id, d.title, d.content_format,
+                       d.document_type, d.status, d.word_count, d.version, d.checksum,
+                       d.source_mode, d.created_at, d.updated_at, d.last_opened_at,
+                       f.name AS folder_name
+                FROM documents AS d
+                LEFT JOIN folders AS f ON f.id = d.folder_id AND f.deleted_at IS NULL
+                WHERE {document_where}
+                ORDER BY d.updated_at DESC, d.id ASC
+                LIMIT ?
+                """,
+                document_values,
+            ).fetchall()
+            folder_rows = connection.execute(
+                f"""
+                SELECT id, workspace_id, parent_id, name, sort_order, is_expanded,
+                       created_at, updated_at,
+                       (SELECT COUNT(*) FROM documents AS d
+                        WHERE d.folder_id = folders.id AND d.deleted_at IS NULL) AS document_count
+                FROM folders
+                WHERE {folder_where}
+                ORDER BY CASE WHEN id = 'root' THEN 0 ELSE 1 END, sort_order, name, id
+                LIMIT ?
+                """,
+                folder_values,
+            ).fetchall()
+            backup_rows = connection.execute(
+                """
+                SELECT id, backup_type, file_path, checksum_sha256, size_bytes,
+                       schema_version, status, error_message, created_at
+                FROM backup_history
+                WHERE workspace_id = ? OR workspace_id IS NULL
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (self.manager.DEFAULT_WORKSPACE_ID, safe_limit),
+            ).fetchall()
+            checkpoint_rows = connection.execute(
+                """
+                SELECT key, value_json, updated_at
+                FROM app_meta
+                WHERE key LIKE 'indexeddb_migration:%'
+                ORDER BY updated_at DESC, key DESC
+                LIMIT ?
+                """,
+                (safe_limit,),
+            ).fetchall()
+            source_rows = connection.execute(
+                """
+                SELECT id, source_type, name, root_uri, sync_direction, is_enabled,
+                       status, last_synced_at, created_at, updated_at
+                FROM workspace_sources
+                WHERE workspace_id = ?
+                ORDER BY updated_at DESC, id ASC
+                LIMIT ?
+                """,
+                (self.manager.DEFAULT_WORKSPACE_ID, safe_limit),
+            ).fetchall()
+            file_values: List[Any] = [self.manager.DEFAULT_WORKSPACE_ID]
+            file_where = "s.workspace_id = ? AND e.deleted_at IS NULL"
+            if normalized_query:
+                file_where += (
+                    " AND (e.path LIKE ? ESCAPE '\\' OR e.name LIKE ? ESCAPE '\\'"
+                    " OR s.name LIKE ? ESCAPE '\\')"
+                )
+                file_values.extend([pattern, pattern, pattern])
+            file_values.append(safe_limit)
+            file_rows = connection.execute(
+                f"""
+                SELECT e.id, e.source_id, s.name AS source_name, e.parent_id,
+                       e.entry_type, e.path, e.name, e.extension, e.mime_type,
+                       e.size_bytes, e.modified_at, e.checksum, e.sync_status,
+                       e.created_at, e.updated_at
+                FROM file_entries AS e
+                JOIN workspace_sources AS s ON s.id = e.source_id
+                WHERE {file_where}
+                ORDER BY CASE WHEN e.entry_type = 'folder' THEN 0 ELSE 1 END,
+                         e.path, e.id
+                LIMIT ?
+                """,
+                file_values,
+            ).fetchall()
+            setting_values: List[Any] = []
+            setting_where = ""
+            if normalized_query:
+                setting_where = (
+                    "WHERE setting_key LIKE ? ESCAPE '\\' OR setting_group LIKE ? ESCAPE '\\'"
+                    " OR scope_type LIKE ? ESCAPE '\\' OR scope_id LIKE ? ESCAPE '\\'"
+                )
+                setting_values.extend([pattern, pattern, pattern, pattern])
+            setting_values.append(safe_limit)
+            setting_rows = connection.execute(
+                f"""
+                SELECT scope_type, scope_id, setting_group, setting_key,
+                       value_json, value_type, updated_at
+                FROM settings
+                {setting_where}
+                ORDER BY updated_at DESC, setting_group, setting_key
+                LIMIT ?
+                """,
+                setting_values,
+            ).fetchall()
+
+        documents = []
+        for row in document_rows:
+            item = self._document_summary(row)
+            item.update(
+                {
+                    "checksum": row["checksum"],
+                    "sourceMode": row["source_mode"],
+                    "folderName": row["folder_name"],
+                }
+            )
+            documents.append(item)
+
+        folders = []
+        for row in folder_rows:
+            item = self._folder_result(row)
+            item["documentCount"] = int(row["document_count"] or 0)
+            folders.append(item)
+
+        backups = [
+            {
+                "id": row["id"],
+                "type": row["backup_type"],
+                "filePath": row["file_path"],
+                "checksumSha256": row["checksum_sha256"],
+                "sizeBytes": row["size_bytes"],
+                "schemaVersion": row["schema_version"],
+                "status": row["status"],
+                "errorMessage": row["error_message"],
+                "createdAt": row["created_at"],
+            }
+            for row in backup_rows
+        ]
+
+        checkpoints = []
+        for row in checkpoint_rows:
+            try:
+                value = json.loads(row["value_json"])
+            except (TypeError, json.JSONDecodeError):
+                value = {"status": "invalid_metadata"}
+            checkpoints.append(
+                {
+                    "key": row["key"],
+                    "migrationId": str(row["key"]).split(":", 1)[-1],
+                    "status": value.get("status"),
+                    "fingerprint": value.get("fingerprint"),
+                    "applied": value.get("applied"),
+                    "verified": value.get("verified"),
+                    "backup": value.get("backup"),
+                    "completedAt": value.get("completedAt"),
+                    "updatedAt": row["updated_at"],
+                }
+            )
+
+        sources = [
+            {
+                "id": row["id"],
+                "type": row["source_type"],
+                "name": row["name"],
+                "rootUri": row["root_uri"],
+                "syncDirection": row["sync_direction"],
+                "isEnabled": bool(row["is_enabled"]),
+                "status": row["status"],
+                "lastSyncedAt": row["last_synced_at"],
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+            }
+            for row in source_rows
+        ]
+        file_entries = [
+            {
+                "id": row["id"],
+                "sourceId": row["source_id"],
+                "sourceName": row["source_name"],
+                "parentId": row["parent_id"],
+                "entryType": row["entry_type"],
+                "path": row["path"],
+                "name": row["name"],
+                "extension": row["extension"],
+                "mimeType": row["mime_type"],
+                "sizeBytes": row["size_bytes"],
+                "modifiedAt": row["modified_at"],
+                "checksum": row["checksum"],
+                "syncStatus": row["sync_status"],
+                "createdAt": row["created_at"],
+                "updatedAt": row["updated_at"],
+            }
+            for row in file_rows
+        ]
+        settings = [self._setting_result(row) for row in setting_rows]
+
+        health = self.manager.health()
+        return {
+            "readOnly": True,
+            "query": normalized_query,
+            "limit": safe_limit,
+            "database": {
+                "path": health.get("databasePath"),
+                "schemaVersion": health.get("schemaVersion"),
+                "sqliteVersion": health.get("sqliteVersion"),
+                "journalMode": health.get("journalMode"),
+            },
+            "counts": {
+                "documents": int(count_row["documents"] or 0),
+                "deletedDocuments": int(count_row["deleted_documents"] or 0),
+                "folders": int(count_row["folders"] or 0),
+                "versions": int(count_row["versions"] or 0),
+                "backups": int(count_row["backups"] or 0),
+                "migrationCheckpoints": int(count_row["migration_checkpoints"] or 0),
+                "sources": int(count_row["sources"] or 0),
+                "fileEntries": int(count_row["file_entries"] or 0),
+                "settings": int(count_row["settings"] or 0),
+            },
+            "documents": documents,
+            "folders": folders,
+            "backups": backups,
+            "migrationCheckpoints": checkpoints,
+            "sources": sources,
+            "fileEntries": file_entries,
+            "settings": settings,
+        }
+
+    def get_explorer_file_entry(self, entry_id: str) -> Dict[str, Any]:
+        normalized_id = self._validate_id(entry_id, "fileEntryId")
+        with self.manager.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT e.id, e.source_id, s.name AS source_name, e.parent_id,
+                       e.entry_type, e.path, e.name, e.extension, e.mime_type,
+                       e.content_text, e.size_bytes, e.modified_at, e.checksum,
+                       e.sync_status, e.created_at, e.updated_at
+                FROM file_entries AS e
+                JOIN workspace_sources AS s ON s.id = e.source_id
+                WHERE e.id = ? AND s.workspace_id = ? AND e.deleted_at IS NULL
+                """,
+                (normalized_id, self.manager.DEFAULT_WORKSPACE_ID),
+            ).fetchone()
+        if not row:
+            raise RepositoryError("FILE_ENTRY_NOT_FOUND", "File entry not found.", 404)
+        return {
+            "id": row["id"],
+            "sourceId": row["source_id"],
+            "sourceName": row["source_name"],
+            "parentId": row["parent_id"],
+            "entryType": row["entry_type"],
+            "path": row["path"],
+            "name": row["name"],
+            "extension": row["extension"],
+            "mimeType": row["mime_type"],
+            "content": row["content_text"],
+            "sizeBytes": row["size_bytes"],
+            "modifiedAt": row["modified_at"],
+            "checksum": row["checksum"],
+            "syncStatus": row["sync_status"],
+            "createdAt": row["created_at"],
+            "updatedAt": row["updated_at"],
+        }
 
     def create_folder(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(payload, dict):

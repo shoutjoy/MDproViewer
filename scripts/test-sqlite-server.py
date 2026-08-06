@@ -73,6 +73,68 @@ def main() -> None:
         require(len(short_results) == 1, "one-character Korean LIKE fallback must work")
         require(repository.search_documents("테", limit=1)[0]["id"] == "doc_test", "search limit failed")
 
+        repository.put_setting({"key": "sitesVisible", "value": False, "scopeType": "global"})
+        repository.put_setting(
+            {
+                "key": "sitesVisible",
+                "value": True,
+                "scopeType": "workspace",
+                "scopeId": "workspace_default",
+            }
+        )
+        repository.put_setting(
+            {
+                "key": "sitesVisible",
+                "value": False,
+                "scopeType": "feature",
+                "scopeId": "feature_test",
+            }
+        )
+        repository.put_setting(
+            {
+                "key": "sitesVisible",
+                "value": True,
+                "scopeType": "document",
+                "scopeId": "doc_test",
+            }
+        )
+        resolved_workspace = repository.get_resolved_settings()
+        require(resolved_workspace["values"]["sitesVisible"] is True, "workspace setting precedence failed")
+        resolved_feature = repository.get_resolved_settings(feature_id="feature_test")
+        require(resolved_feature["values"]["sitesVisible"] is False, "feature setting precedence failed")
+        resolved_document = repository.get_resolved_settings(
+            feature_id="feature_test", document_id="doc_test"
+        )
+        require(resolved_document["values"]["sitesVisible"] is True, "document setting precedence failed")
+        require(
+            resolved_document["precedence"] == ["global", "profile", "workspace", "feature", "document"],
+            "setting precedence metadata failed",
+        )
+        try:
+            repository.put_setting({"key": "githubToken", "value": "must-not-store"})
+        except RepositoryError as error:
+            require(error.code == "SENSITIVE_SETTING_BLOCKED", "secret key rejection code mismatch")
+        else:
+            raise AssertionError("secret setting write must be rejected")
+        try:
+            repository.put_setting(
+                {"key": "userInfo", "value": {"name": "x", "accessToken": "nested-secret"}}
+            )
+        except RepositoryError as error:
+            require(error.code == "SENSITIVE_NESTED_SETTING_BLOCKED", "nested secret rejection failed")
+        else:
+            raise AssertionError("nested secret setting write must be rejected")
+
+        explorer = repository.get_explorer_snapshot(query="SQLite", limit=25)
+        require(explorer["readOnly"] is True, "explorer must be explicitly read-only")
+        require(explorer["counts"]["documents"] == 1, "explorer document count failed")
+        require(explorer["counts"]["folders"] == 2, "explorer folder count failed")
+        require(explorer["counts"]["settings"] == 4, "explorer setting count failed")
+        require(len(explorer["documents"]) == 1, "explorer query failed")
+        require("content" not in explorer["documents"][0], "explorer list leaked document content")
+        require(explorer["documents"][0]["folderName"] == "테스트 폴더", "folder label missing")
+        require(explorer["database"]["schemaVersion"] == 3, "explorer database metadata missing")
+
         updated = repository.update_document(
             "doc_test",
             {
@@ -100,6 +162,8 @@ def main() -> None:
 
         versions = repository.list_document_versions("doc_test")
         require([item["version"] for item in versions] == [2, 1], "document versions are incorrect")
+        version_explorer = repository.get_explorer_snapshot()
+        require(version_explorer["counts"]["versions"] == 2, "explorer version count failed")
 
         restored = repository.restore_document_version("doc_test", 1, 2)
         require(restored["version"] == 3, "restore must create a new version")
