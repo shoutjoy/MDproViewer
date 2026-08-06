@@ -75,9 +75,14 @@
         const text = document.getElementById('github-connection-text');
         if (!wrap || !dot || !text) return;
         const s = String(state || 'idle').toLowerCase();
-        text.textContent = String(message || '');
+        const connected = s === 'ok';
+        window.githubStorageConnectionVerified = connected;
+        if (typeof window.setStorageConnectionButtonGlow === 'function') {
+            window.setStorageConnectionButtonGlow('tab-storage-github', 'github', connected);
+        }
+        text.textContent = connected ? '' : String(message || '');
         if (s === 'ok') {
-            wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs text-emerald-700 dark:text-emerald-300';
+            wrap.className = 'hidden items-center gap-2 px-2 py-1.5 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs text-emerald-700 dark:text-emerald-300';
             dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,.18)]';
         } else if (s === 'checking') {
             wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-cyan-200 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-950/40 text-xs text-cyan-700 dark:text-cyan-300';
@@ -90,10 +95,10 @@
             dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-slate-400';
         }
         const tokenInput = document.getElementById('github-token-input');
-        wrap.classList.toggle('settings-connection-glow', s === 'ok');
-        dot.classList.toggle('settings-connected-dot', s === 'ok');
+        wrap.classList.remove('settings-connection-glow');
+        dot.classList.toggle('settings-connected-dot', connected);
         if (tokenInput) {
-            tokenInput.classList.toggle('settings-credential-connected', s === 'ok' && !!String(tokenInput.value || '').trim());
+            tokenInput.classList.toggle('settings-credential-connected', connected && !!String(tokenInput.value || '').trim());
             tokenInput.classList.toggle('settings-credential-error', s === 'error' && !!String(tokenInput.value || '').trim());
         }
     }
@@ -465,7 +470,7 @@
         });
         await applyGithubUiState();
         const connected = await checkGithubConnectionFromModal();
-        setGithubFeedback(connected ? 'GitHub settings saved. Connection verified.' : 'GitHub settings saved. Check connection message.', connected ? 'ok' : 'error');
+        setGithubFeedback(connected ? '' : 'GitHub settings saved. Check connection message.', connected ? '' : 'error');
         showToast('GitHub settings saved.');
     }
 

@@ -11,6 +11,8 @@ import urllib.parse
 import urllib.request
 
 from LocalSave_sqlite.server.api import SqliteApiRouter
+from LocalSave_sqlite.server.database import DatabaseManager
+from LocalSave_sqlite.server.instance_lock import SqliteInstanceLock, SqliteInstanceLockError
 
 PREFERRED_PORT = int(os.environ.get("MD_VIEWER_PORT", "8765"))
 DIR = os.path.dirname(os.path.abspath(__file__))
@@ -19,7 +21,20 @@ OPEN_BROWSER = os.environ.get("MD_VIEWER_NO_BROWSER", "").strip().lower() not in
 
 os.chdir(DIR)
 
-SQLITE_API = SqliteApiRouter(DIR)
+SQLITE_MANAGER = DatabaseManager(DIR)
+SQLITE_INSTANCE_LOCK = SqliteInstanceLock(
+    SQLITE_MANAGER.data_root / "mdviewer.instance.lock",
+    SQLITE_MANAGER.db_path.name,
+)
+try:
+    SQLITE_INSTANCE_LOCK.acquire()
+except SqliteInstanceLockError as error:
+    raise SystemExit(
+        "SQLite 서버 시작 차단: 같은 데이터 폴더를 사용하는 MD Viewer가 이미 실행 중입니다. "
+        "기존 앱을 사용하거나 종료한 뒤 다시 실행하세요."
+    ) from error
+
+SQLITE_API = SqliteApiRouter(DIR, manager=SQLITE_MANAGER)
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     IMAGE_PROXY_PATH = "/__mdviewer_image_proxy"
@@ -124,16 +139,19 @@ class ReusableTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     daemon_threads = True
 
 try:
-    httpd = ReusableTCPServer((HOST, PREFERRED_PORT), Handler)
-except OSError:
-    httpd = ReusableTCPServer((HOST, 0), Handler)
+    try:
+        httpd = ReusableTCPServer((HOST, PREFERRED_PORT), Handler)
+    except OSError:
+        httpd = ReusableTCPServer((HOST, 0), Handler)
 
-with httpd:
-    port = httpd.server_address[1]
-    url = f"http://localhost:{port}"
-    print(f"서버 실행: {url}")
-    print(f"바인딩: {HOST}:{port}")
-    print("종료: Ctrl+C")
-    if OPEN_BROWSER:
-        webbrowser.open(url)
-    httpd.serve_forever()
+    with httpd:
+        port = httpd.server_address[1]
+        url = f"http://localhost:{port}"
+        print(f"서버 실행: {url}")
+        print(f"바인딩: {HOST}:{port}")
+        print("종료: Ctrl+C")
+        if OPEN_BROWSER:
+            webbrowser.open(url)
+        httpd.serve_forever()
+finally:
+    SQLITE_INSTANCE_LOCK.release()

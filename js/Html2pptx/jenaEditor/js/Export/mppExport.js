@@ -48,18 +48,22 @@ async function restoreIndexedDbImagesFromMpp(images) {
   }
 }
 
-async function exportMpp() {
+async function buildGenSlideMppPayload() {
   let images = [];
   try { images = await collectIndexedDbImagesForMpp(slides); } catch (_) { images = []; }
-  const payload = {
+  return {
     format: "genslide-html2pptx-mpp",
     version: 2,
     exportedAt: new Date().toISOString(),
     currentIndex: cur,
-    slides,
+    slides: slides.map((slide) => ({ html: String((slide && slide.html) || "") })),
     images
   };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+}
+
+async function exportMpp() {
+  const payload = await buildGenSlideMppPayload();
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/vnd.genslide.mpp+json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -68,6 +72,9 @@ async function exportMpp() {
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  if (window.GenSlideSqlite && typeof window.GenSlideSqlite.captureExport === "function") {
+    window.GenSlideSqlite.captureExport(blob, "jena-editor-slides.mpp").catch(() => {});
+  }
 }
 
 async function importMpp(file) {

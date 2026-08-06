@@ -7075,3 +7075,114 @@ html[data-theme="light"] .fma-exit-guard__actions button:not(.fma-exit-guard__le
     color: #172334;
     background: #edf2f7;
 }
+/* SQLite work-file vault -------------------------------------------------- */
+.sqlite-workfiles-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 10200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(2, 6, 18, .82);
+    backdrop-filter: blur(8px);
+}
+
+.sqlite-workfiles-dialog {
+    width: min(820px, 96vw);
+    max-height: min(760px, 92vh);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid rgba(112, 132, 255, .45);
+    border-radius: 16px;
+    background: #121827;
+    color: #eef2ff;
+    box-shadow: 0 24px 80px rgba(0, 0, 0, .55);
+}
+
+.sqlite-workfiles-dialog > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, .1);
+}
+
+.sqlite-workfiles-dialog h2,
+.sqlite-workfiles-dialog p { margin: 0; }
+.sqlite-workfiles-dialog p { margin-top: 6px; color: #9ca9c7; font-size: 12px; }
+#btnCloseSqliteWorkfiles { min-width: 36px; font-size: 22px; }
+
+.sqlite-workfiles-toolbar {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 170px auto;
+    gap: 8px;
+    padding: 14px 20px 8px;
+}
+
+.sqlite-workfiles-toolbar input,
+.sqlite-workfiles-toolbar select {
+    min-width: 0;
+    padding: 9px 11px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 8px;
+    background: #1c2639;
+    color: inherit;
+}
+
+.sqlite-workfiles-status {
+    min-height: 20px;
+    padding: 4px 20px 10px;
+    color: #75e6bd;
+    font-size: 12px;
+}
+
+.sqlite-workfiles-status.error { color: #ff7f91; }
+
+.sqlite-workfiles-list {
+    overflow: auto;
+    padding: 0 20px 20px;
+}
+
+.sqlite-workfile-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    margin-top: 8px;
+    padding: 12px;
+    border: 1px solid rgba(255, 255, 255, .11);
+    border-radius: 10px;
+    background: #192235;
+}
+
+.sqlite-workfile-item strong,
+.sqlite-workfile-item small { display: block; overflow-wrap: anywhere; }
+.sqlite-workfile-item small { margin-top: 5px; color: #9ba8c5; }
+.sqlite-workfile-kind {
+    display: inline-block;
+    margin-right: 7px;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, .25);
+    color: #bfc6ff;
+    font-size: 11px;
+}
+.sqlite-workfile-actions { display: flex; gap: 6px; }
+.sqlite-workfile-empty { padding: 32px; text-align: center; color: #99a5be; }
+
+html[data-theme="light"] .sqlite-workfiles-dialog {
+    background: #f8faff;
+    color: #172039;
+    box-shadow: 0 24px 80px rgba(38, 52, 90, .24);
+}
+html[data-theme="light"] .sqlite-workfiles-toolbar input,
+html[data-theme="light"] .sqlite-workfiles-toolbar select,
+html[data-theme="light"] .sqlite-workfile-item { background: #edf2fb; color: #172039; }
+
+@media (max-width: 640px) {
+    .sqlite-workfiles-toolbar { grid-template-columns: 1fr; }
+    .sqlite-workfile-item { grid-template-columns: 1fr; }
+}

@@ -1,0 +1,60 @@
+{
+  "format": "md-viewer-indexeddb-baseline",
+  "version": 1,
+  "createdAt": "2026-08-06T09:00:00.000Z",
+  "synthetic": true,
+  "containsSecrets": false,
+  "databases": {
+    "MarkdownProDB": {
+      "version": 5,
+      "stores": {
+        "folders": [
+          { "id": "root", "name": "ROOT", "parentId": null },
+          { "id": "folder_baseline", "name": "기준선", "parentId": "root" }
+        ],
+        "documents": [
+          {
+            "id": "doc_baseline",
+            "title": "IndexedDB 기준 문서",
+            "content": "baseline body\n한글 😀",
+            "folderId": "folder_baseline",
+            "googleDocId": "sample-google-doc-id-not-a-secret",
+            "createdAt": "2026-08-06T09:00:00.000Z",
+            "updatedAt": "2026-08-06T09:05:00.000Z"
+          }
+        ],
+        "ai_settings": [
+          {
+            "id": "ai_settings",
+            "githubRepo": "sample-owner/sample-repo",
+            "githubBranch": "main",
+            "templateVisible": true
+          }
+        ]
+      }
+    },
+    "mdpro-indb-v1": {
+      "version": 1,
+      "stores": {
+        "meta": [
+          {
+            "id": "root",
+            "folderName": "기준 파일",
+            "fileCount": 1,
+            "savedAtIso": "2026-08-06T09:10:00.000Z"
+          }
+        ],
+        "files": [
+          {
+            "path": "docs/baseline.md",
+            "name": "baseline.md",
+            "ext": "md",
+            "content": "# IndexedDB file baseline\n",
+            "modified": "2026-08-06T09:10:00.000Z"
+          }
+        ]
+      }
+    }
+  }
+}
+

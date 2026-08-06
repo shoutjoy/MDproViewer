@@ -1,4 +1,4 @@
-"""Tests for portable .mdpbackup creation and read-only validation."""
+"""Tests for portable .mdpbackup creation, validation, and safe restore."""
 
 from __future__ import annotations
 
@@ -28,6 +28,11 @@ def require(condition: bool, message: str) -> None:
 
 def sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+class RollbackTestBackupPackageService(BackupPackageService):
+    def _after_restore_files_replaced(self, import_id: str) -> None:
+        raise RuntimeError(f"injected failure for {import_id}")
 
 
 def main() -> None:
@@ -85,6 +90,86 @@ def main() -> None:
         require((data_root / "imports" / f"{staged['importId']}.mdpbackup").is_file(), "staged package missing")
         require((data_root / "imports" / f"{staged['importId']}.json").is_file(), "staged metadata missing")
         require(repository.get_document("doc_package")["checksum"] == before_document["checksum"], "restore preview changed live DB")
+
+        try:
+            service.apply_staged_restore(staged["importId"], staged["packageChecksumSha256"], "not-confirmed")
+        except RepositoryError as error:
+            require(error.code == "RESTORE_CONFIRMATION_REQUIRED", "restore confirmation error mismatch")
+        else:
+            raise AssertionError("restore without explicit confirmation must be rejected")
+
+        changed_asset = b"live-content-after-preview"
+        repository.update_document(
+            "doc_package",
+            {"expectedVersion": 1, "title": "변경 문서", "content": "복원 전 변경된 본문"},
+        )
+        repository.put_setting({"key": "sitesVisible", "value": False})
+        asset_path.write_bytes(changed_asset)
+        with manager.write_transaction() as connection:
+            connection.execute(
+                "UPDATE assets SET size_bytes = ?, checksum_sha256 = ? WHERE id = ?",
+                (len(changed_asset), sha256(changed_asset), "asset_package"),
+            )
+        applied = service.apply_staged_restore(
+            staged["importId"],
+            staged["packageChecksumSha256"],
+            "RESTORE_VALIDATED_BACKUP",
+        )
+        require(applied["status"] == "applied", "restore apply status mismatch")
+        require(applied["reloadRequired"] is True, "restore reload flag missing")
+        require(applied["verification"]["databaseCounts"]["documents"] == 1, "restored document count mismatch")
+        require(repository.get_document("doc_package")["content"] == "공유 DB 복원 본문", "live document was not restored")
+        require(repository.get_resolved_settings()["values"]["sitesVisible"] is True, "live setting was not restored")
+        require(asset_path.read_bytes() == asset_content, "live asset was not restored")
+        pre_restore = applied["preRestoreBackup"]
+        require((APP_ROOT / pre_restore["filePath"]).is_file(), "automatic pre-restore package missing")
+        require(pre_restore["sourceBackup"]["type"] == "pre_update", "pre-restore online backup type mismatch")
+        applied_metadata = json.loads(
+            (data_root / "imports" / f"{staged['importId']}.json").read_text(encoding="utf-8")
+        )
+        require(applied_metadata["status"] == "applied", "restore metadata was not finalized")
+        try:
+            service.apply_staged_restore(
+                staged["importId"], staged["packageChecksumSha256"], "RESTORE_VALIDATED_BACKUP"
+            )
+        except RepositoryError as error:
+            require(error.code == "RESTORE_STAGING_NOT_READY", "repeated restore error mismatch")
+        else:
+            raise AssertionError("applied staging must not be reusable")
+
+        rollback_source = service.create_package()
+        rollback_bytes = service.resolve_package_path(rollback_source["fileName"]).read_bytes()
+        rollback_stage = service.stage_restore_preview(
+            io.BytesIO(rollback_bytes), len(rollback_bytes), "rollback-test.mdpbackup"
+        )
+        rollback_document = repository.update_document(
+            "doc_package",
+            {"expectedVersion": 1, "title": "롤백 보존", "content": "실패하면 유지할 본문"},
+        )
+        rollback_asset = b"asset-state-that-must-survive-rollback"
+        asset_path.write_bytes(rollback_asset)
+        with manager.write_transaction() as connection:
+            connection.execute(
+                "UPDATE assets SET size_bytes = ?, checksum_sha256 = ? WHERE id = ?",
+                (len(rollback_asset), sha256(rollback_asset), "asset_package"),
+            )
+        failing_service = RollbackTestBackupPackageService(manager)
+        try:
+            failing_service.apply_staged_restore(
+                rollback_stage["importId"],
+                rollback_stage["packageChecksumSha256"],
+                "RESTORE_VALIDATED_BACKUP",
+            )
+        except RepositoryError as error:
+            require(error.code == "RESTORE_APPLY_FAILED", "rollback failure result mismatch")
+        else:
+            raise AssertionError("injected restore failure must be reported")
+        require(
+            repository.get_document("doc_package")["checksum"] == rollback_document["checksum"],
+            "automatic rollback did not restore the previous document",
+        )
+        require(asset_path.read_bytes() == rollback_asset, "automatic rollback did not restore the previous asset")
+        require(manager.integrity_check()["ok"] is True, "database was invalid after automatic rollback")
 
         with zipfile.ZipFile(package_path, "r") as archive:
             names = set(archive.namelist())
@@ -209,9 +294,10 @@ def main() -> None:
         require("sqlite-backup-package-download" in settings_ui, "backup package download UI missing")
         require("sqlite-restore-package-file" in settings_ui, "restore file selection UI missing")
         require("sqlite-restore-package-preview" in settings_ui, "restore preview UI missing")
-        require("실제 복원 버튼은 아직 제공하지 않습니다" in settings_ui, "restore preview safety notice missing")
+        require("sqlite-restore-package-apply" in settings_ui, "restore apply UI missing")
+        require("실패하면 자동 rollback" in settings_ui, "restore rollback safety notice missing")
         require("모든 문서 본문" in settings_ui, "backup data scope warning missing")
-        require("20260806-restore-preview-1" in index_html, "restore preview cache version missing")
+        require("20260806-maintenance-1" in index_html, "current SQLite UI cache version missing")
 
     print("SQLite backup package tests passed.")
 

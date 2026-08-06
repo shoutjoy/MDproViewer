@@ -7,7 +7,7 @@
     <title>FMA Viewer Ultra</title>
 
     <!-- Project Styles -->
-    <link rel="stylesheet" href="css/styles.css?v=20260806-document-insert-1">
+    <link rel="stylesheet" href="css/styles.css?v=20260806-sqlite-workfiles-1">
     <link rel="stylesheet" href="Auth/auth.css?v=20260804-6">
 
     <!-- JSZip CDN -->
@@ -36,6 +36,9 @@
                 <button id="btnSave" type="button"><span>◇</span> Save FMA</button>
                 <button id="btnSaveCompact" type="button"
                     title="PNG/JPEG/BMP 이미지를 WebP 품질 82로 변환해 더 작게 저장"><span>◈</span> Save FMA (WebP 압축)</button>
+                <button id="btnSaveFmaSqlite" type="button"><span>DB</span> SQLite에 FMA 저장</button>
+                <button id="btnSaveFmaWebpSqlite" type="button"><span>DB</span> SQLite에 FMA(WebP) 저장</button>
+                <button id="btnOpenSqliteWorkfiles" type="button"><span>⌕</span> SQLite 작업파일 열기</button>
                 <button id="btnZip" type="button"><span>ZIP</span> Download ZIP</button>
                 <button id="btnAddImg" type="button"><span>＋</span> Add Image</button>
                 <button id="btnOpenFolder" type="button"><span>▤</span> Open Folder</button>
@@ -46,6 +49,7 @@
                 aria-expanded="false" aria-controls="saveDbDropdown">SaveDB ▾</button>
             <div id="saveDbDropdown" class="header-dropdown-menu" style="display:none;">
                 <button id="btnSaveDbSnapshot" type="button"><span>▣</span> 현재 상태 SaveDB</button>
+                <button id="btnSaveDbSqlite" type="button"><span>DB</span> SQLite SaveDB 저장</button>
                 <button id="btnOpenDbHistory" type="button"><span>◷</span> DB 히스토리</button>
             </div>
         </div>
@@ -647,7 +651,7 @@
                         <div id="onnxBgRemoveSettings" class="onnx-bg-remove-settings" style="display:none;">
                             <div class="settings-warning">
                                 앱 폴더의 <code>image_model/u2net_human_seg.onnx</code> 파일을 우선 사용합니다.
-                                파일이 없으면 원본 서버에서 약 176MB 모델을 내려받아 브라우저 저장소에 자동 연결합니다.
+                                SQLite 모드에서는 저장된 모델을 DB에서 불러오며, 없으면 원본 서버에서 약 176MB 모델을 내려받아 SQLite에 저장합니다.
                                 자동 연결이 실패한 경우에만 ONNX 파일을 수동 선택하세요. 이미지는 외부 처리 서버로 전송되지 않습니다.
                             </div>
                             <div class="bg-model-actions">
@@ -660,7 +664,7 @@
                                     download="u2net_human_seg.onnx">수동 다운로드 링크 ↗</a>
                             </div>
                             <div id="bgModelLocation" class="bg-model-location">
-                                자동 확인: <code>image_model/</code>, <code>Image_model/</code>, 브라우저 저장 모델
+                                자동 확인: <code>image_model/</code>, <code>Image_model/</code>, SQLite 저장 모델, 브라우저 저장 모델
                             </div>
                         </div>
                     </div>
@@ -1053,6 +1057,13 @@
                                     <button id="btnLoadAiJenaReferencesDb" type="button">DB 불러오기</button>
                                     <button id="btnDeleteAiJenaReferencesDb" class="danger-subtle" type="button">삭제</button>
                                 </div>
+                                <label><span>SQLite 세팅</span><select id="aiJenaReferenceSqliteList">
+                                        <option value="">저장된 SQLite 세팅 없음</option>
+                                    </select></label>
+                                <div class="ai-jena-reference-storage-actions">
+                                    <button id="btnSaveAiJenaReferencesSqlite" type="button">SQLite 저장</button>
+                                    <button id="btnLoadAiJenaReferencesSqlite" type="button">SQLite 불러오기</button>
+                                </div>
                                 <small id="aiJenaReferenceStorageStatus" aria-live="polite">패널을 열어 세팅을 관리하세요.</small>
                             </div>
                         </details>
@@ -1208,6 +1219,8 @@
                     </button>
                     <button id="btnExportImageEditorProject" type="button" title="현재 편집 프로젝트를 .fme로 내보내기">FME 저장</button>
                     <button id="btnImportImageEditorProject" type="button" title=".fme 편집 프로젝트 불러오기">FME 불러오기</button>
+                    <button id="btnSaveFmeSqlite" type="button" title="현재 FME 프로젝트를 SQLite에 저장">FME SQLite 저장</button>
+                    <button id="btnOpenFmeSqlite" type="button" title="SQLite에서 FME 프로젝트 불러오기">FME SQLite 불러오기</button>
                     <input id="imageEditorProjectFileInput" type="file" accept=".fme,application/json"
                         hidden>
                     <button id="btnImageEditorReset" type="button">전체 초기화</button>
@@ -1901,6 +1914,33 @@
         </div>
     </div>
 
+    <div id="sqliteWorkfilesModal" class="sqlite-workfiles-modal" role="dialog" aria-modal="true"
+        aria-labelledby="sqliteWorkfilesTitle" style="display:none;">
+        <div class="sqlite-workfiles-dialog">
+            <header>
+                <div>
+                    <h2 id="sqliteWorkfilesTitle">SQLite 작업파일</h2>
+                    <p>FMA·FMA(WebP)·FME·SaveDB·AI Jena 참고 세팅을 검색하고 다시 엽니다.</p>
+                </div>
+                <button id="btnCloseSqliteWorkfiles" type="button" aria-label="SQLite 작업파일 닫기">×</button>
+            </header>
+            <div class="sqlite-workfiles-toolbar">
+                <input id="sqliteWorkfilesSearch" type="search" placeholder="파일명 검색…" autocomplete="off">
+                <select id="sqliteWorkfilesType" aria-label="작업파일 형식">
+                    <option value="">전체 형식</option>
+                    <option value="fma">FMA 원본</option>
+                    <option value="fma_webp">FMA WebP</option>
+                    <option value="fma_snapshot">SaveDB 스냅샷</option>
+                    <option value="fme">FME</option>
+                    <option value="ai_jena_preset">AI Jena 참고 세팅</option>
+                </select>
+                <button id="btnRefreshSqliteWorkfiles" type="button">새로고침</button>
+            </div>
+            <div id="sqliteWorkfilesStatus" class="sqlite-workfiles-status" role="status"></div>
+            <div id="sqliteWorkfilesList" class="sqlite-workfiles-list"></div>
+        </div>
+    </div>
+
     <!-- Loading Overlay -->
     <div id="loadingOverlay"
         style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:10100; flex-direction:column; align-items:center; justify-content:center; backdrop-filter:blur(5px);">
@@ -1953,11 +1993,11 @@
     <script src="js/video/videoEditor.js?v=20260802-1"></script>
     <script src="js/image/crop.js?v=20260802-1"></script>
     <script src="js/image/imageUpscale.js?v=20260802-2"></script>
-    <script src="js/ai/aiJena.js?v=20260802-1"></script>
+    <script src="js/ai/aiJena.js?v=20260806-sqlite-presets-1"></script>
     <script src="js/image/imageEditor.js?v=20260802-1"></script>
     <script src="js/image/backgroundMaskEditor.js?v=20260802-1"></script>
-    <script src="js/image/backgroundRemove.js?v=20260806-onnx-cache-2"></script>
-    <script src="js/files/fileHandlers.js?v=20260804-2"></script>
+    <script src="js/image/backgroundRemove.js?v=20260806-sqlite-onnx-1"></script>
+    <script src="js/files/fileHandlers.js?v=20260806-sqlite-workfiles-1"></script>
     <script src="js/integrations/externalApps.js?v=20260804-1"></script>
     <script src="js/core/interaction.js?v=20260802-1"></script>
     <script src="AuthData/deployment-mode.js?v=20260805-1"></script>
@@ -1965,6 +2005,7 @@
     <script src="AuthData/auth-bootstrap.js?v=20260805-1"></script>
     <script src="js/core/navigationGuard.js?v=20260802-1"></script>
     <script src="js/core/app.js?v=20260804-1"></script>
+    <script src="js/storage/sqliteWorkfiles.js?v=20260806-sqlite-presets-1"></script>
     <script src="js/integrations/mdViewerBridge.js?v=20260806-import-choice-2"></script>
 </body>
 

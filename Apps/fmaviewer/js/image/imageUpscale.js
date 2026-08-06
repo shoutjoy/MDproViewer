@@ -204,6 +204,18 @@ function getAiUpscaleResolution() {
 }
 
 function getAiStudioApiKey() {
+    try {
+        const vault = window.parent && window.parent !== window ? window.parent.MDPCredentialVault : window.MDPCredentialVault;
+        if (vault && typeof vault.getSecret === "function") {
+            const protectedKey = String(vault.getSecret("fmaGemini") || vault.getSecret("gemini") || "").trim();
+            if (protectedKey) return protectedKey;
+            const status = vault.getStatus();
+            if (status && status.locked && Array.isArray(status.entries)
+                && status.entries.some(item => (item.id === "fmaGemini" || item.id === "gemini") && item.configured)) return "";
+        }
+    } catch (error) {
+        console.warn("Encrypted API key lookup failed:", error);
+    }
     return readUpscaleSetting(AI_API_KEY_STORAGE, "").trim();
 }
 

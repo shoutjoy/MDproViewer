@@ -97,6 +97,9 @@ function downloadBlob(blob, fileName) {
   setTimeout(() => {
     try { URL.revokeObjectURL(url); } catch (_) {}
   }, 300);
+  if (window.GenSlideSqlite && typeof window.GenSlideSqlite.captureExport === "function") {
+    window.GenSlideSqlite.captureExport(blob, fileName).catch(() => {});
+  }
 }
 
 async function dataUrlToBlob(dataUrl) {
@@ -220,4 +223,3 @@ async function exportImage() {
     imageExportInProgress = false;
   }
 }
-

@@ -780,8 +780,9 @@ class StorageRepository:
                 setting_where = (
                     "WHERE setting_key LIKE ? ESCAPE '\\' OR setting_group LIKE ? ESCAPE '\\'"
                     " OR scope_type LIKE ? ESCAPE '\\' OR scope_id LIKE ? ESCAPE '\\'"
+                    " OR value_json LIKE ? ESCAPE '\\'"
                 )
-                setting_values.extend([pattern, pattern, pattern, pattern])
+                setting_values.extend([pattern, pattern, pattern, pattern, pattern])
             setting_values.append(safe_limit)
             setting_rows = connection.execute(
                 f"""

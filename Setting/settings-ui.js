@@ -7,11 +7,23 @@
     let sqliteExplorerSnapshot = null;
     let sqliteExplorerTab = 'documents';
     let sqliteExplorerLoading = false;
+    let sqliteExplorerDragBound = false;
+    let sqliteExplorerPositioned = false;
+    let sqliteExplorerSelectedSettingIndex = -1;
+    let sqliteExplorerSelectedBackupId = '';
+    let sqliteExplorerFileDetailToken = 0;
+    let sqliteExplorerPreviewUrls = [];
+    let sqliteIntegrityCheckRunning = false;
+    let sqliteDatabaseExportRunning = false;
     let sqliteBackupPackageRunning = false;
     let lastSqliteBackupPackage = null;
     let sqliteRestorePreviewRunning = false;
     let sqliteRestorePreviewAvailable = false;
+    let sqliteRestoreApplyRunning = false;
+    let sqliteRestoreApplyAvailable = false;
     let selectedSqliteRestoreFile = null;
+    let lastSqliteRestorePreview = null;
+    let lastPreRestoreBackup = null;
     const LOCAL_SQLITE_APP_URL = 'http://127.0.0.1:8765/';
 
     function getSqliteLaunchInfo() {
@@ -94,12 +106,34 @@
                 '  <button type="button" id="sqlite-status-refresh" class="px-1.5 py-0.5 text-[10px] rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700">다시 확인</button>',
                 '  <a id="sqlite-open-local-app" href="http://127.0.0.1:8765/" target="_blank" rel="noopener noreferrer" class="hidden px-1.5 py-0.5 text-[10px] rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30">로컬 앱 열기</a>',
                 '</div>',
+                '<div class="flex flex-wrap items-center gap-2">',
+                '  <label for="sqlite-backend-select" class="text-[10px] text-slate-500 dark:text-slate-400">SQLite 실행 방식</label>',
+                '  <select id="sqlite-backend-select" class="rounded border border-slate-300 bg-white px-1.5 py-0.5 text-[10px] dark:border-slate-600 dark:bg-slate-800">',
+                '    <option value="auto">자동 (API → WASM)</option>',
+                '    <option value="api">Python API</option>',
+                '    <option value="wasm">WASM · OPFS</option>',
+                '  </select>',
+                '</div>',
                 '<p id="sqlite-connection-details" class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-500"></p>',
                 '<div class="flex flex-wrap items-center gap-2 pt-1">',
                 '  <button type="button" id="sqlite-migration-preview" disabled class="px-2 py-1 text-[10px] rounded border border-cyan-300 dark:border-cyan-700 text-cyan-700 dark:text-cyan-300 disabled:opacity-40">inDB 이관 미리보기</button>',
                 '  <span class="text-[10px] text-slate-500 dark:text-slate-400">읽기 전용 비교 · 아직 이관하지 않음</span>',
                 '</div>',
                 '<div id="sqlite-migration-preview-result" class="hidden rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/50 p-2 text-[10px] text-slate-600 dark:text-slate-300"></div>'
+                ,'<div class="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">'
+                ,'  <div class="flex flex-wrap items-center gap-2">'
+                ,'    <button type="button" id="sqlite-integrity-check-run" disabled class="px-2 py-1 text-[10px] rounded border border-emerald-400 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 disabled:opacity-40">DB 무결성 검사</button>'
+                ,'    <span class="text-[10px] text-slate-500 dark:text-slate-400">현재 DB를 변경하지 않고 integrity·FK를 검사</span>'
+                ,'  </div>'
+                ,'  <div id="sqlite-integrity-check-result" class="hidden mt-2 rounded border p-2 text-[10px]"></div>'
+                ,'</div>'
+                ,'<div class="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">'
+                ,'  <div class="flex flex-wrap items-center gap-2">'
+                ,'    <button type="button" id="sqlite-wasm-db-export" disabled class="px-2 py-1 text-[10px] rounded border border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300 disabled:opacity-40">WASM DB 파일 내보내기</button>'
+                ,'    <span class="text-[10px] text-slate-500 dark:text-slate-400">OPFS의 SQLite DB만 브라우저 다운로드 · 자산 ZIP 제외</span>'
+                ,'  </div>'
+                ,'  <div id="sqlite-wasm-db-export-result" class="hidden mt-2 rounded border p-2 text-[10px]"></div>'
+                ,'</div>'
                 ,'<div class="mt-2 border-t border-slate-200 pt-2 dark:border-slate-700">'
                 ,'  <div class="flex flex-wrap items-center gap-2">'
                 ,'    <button type="button" id="sqlite-backup-package-create" disabled class="px-2 py-1 text-[10px] rounded border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 disabled:opacity-40">공유 백업 만들기</button>'
@@ -112,24 +146,36 @@
                 ,'    <input type="file" id="sqlite-restore-package-file" accept=".mdpbackup,application/vnd.mdviewer.backup+zip" class="hidden">'
                 ,'    <button type="button" id="sqlite-restore-package-select" disabled class="px-2 py-1 text-[10px] rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 disabled:opacity-40">복원 파일 선택</button>'
                 ,'    <button type="button" id="sqlite-restore-package-preview" disabled class="px-2 py-1 text-[10px] rounded border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 disabled:opacity-40">복원 미리보기</button>'
-                ,'    <span id="sqlite-restore-package-name" class="max-w-full truncate text-[10px] text-slate-500 dark:text-slate-400">선택된 파일 없음 · 실제 복원은 아직 비활성</span>'
+                ,'    <button type="button" id="sqlite-restore-package-apply" disabled class="px-2 py-1 text-[10px] rounded bg-red-700 text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-40">검증된 백업 복원</button>'
+                ,'    <span id="sqlite-restore-package-name" class="max-w-full truncate text-[10px] text-slate-500 dark:text-slate-400">선택된 파일 없음</span>'
                 ,'  </div>'
                 ,'  <div id="sqlite-restore-package-result" class="hidden mt-2 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950/50 p-2 text-[10px] text-slate-600 dark:text-slate-300"></div>'
+                ,'</div>'
+                ,'<div class="mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[10px] leading-relaxed text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">'
+                ,'  <b>다른 PC 공유 안내</b><br>SQLite DB 파일을 OneDrive·NAS·공유 폴더에서 여러 PC가 동시에 열어 쓰는 방식은 지원하지 않습니다. PC 간 이동은 검증된 <b>.mdpbackup</b>을 사용하세요. 실시간 공동 사용은 상시 실행 호스트 서버·인증·TLS·충돌 정책이 필요한 별도 기능입니다.'
                 ,'</div>'
             ].join('');
             wrap.appendChild(panel);
             const refresh = panel.querySelector('#sqlite-status-refresh');
             if (refresh) refresh.addEventListener('click', function () { refreshSqliteStatus(); });
+            const backendSelect = panel.querySelector('#sqlite-backend-select');
+            if (backendSelect) backendSelect.addEventListener('change', handleSqliteBackendChange);
             const migrationPreview = panel.querySelector('#sqlite-migration-preview');
             if (migrationPreview) migrationPreview.addEventListener('click', runSqliteMigrationPreview);
+            const integrityCheck = panel.querySelector('#sqlite-integrity-check-run');
+            if (integrityCheck) integrityCheck.addEventListener('click', runSqliteIntegrityCheck);
+            const databaseExport = panel.querySelector('#sqlite-wasm-db-export');
+            if (databaseExport) databaseExport.addEventListener('click', runSqliteWasmDatabaseExport);
             const backupCreate = panel.querySelector('#sqlite-backup-package-create');
             if (backupCreate) backupCreate.addEventListener('click', runSqliteBackupPackageCreate);
             const restoreFile = panel.querySelector('#sqlite-restore-package-file');
             const restoreSelect = panel.querySelector('#sqlite-restore-package-select');
             const restorePreview = panel.querySelector('#sqlite-restore-package-preview');
+            const restoreApply = panel.querySelector('#sqlite-restore-package-apply');
             if (restoreSelect && restoreFile) restoreSelect.addEventListener('click', function () { restoreFile.click(); });
             if (restoreFile) restoreFile.addEventListener('change', handleSqliteRestoreFileSelection);
             if (restorePreview) restorePreview.addEventListener('click', runSqliteRestorePreview);
+            if (restoreApply) restoreApply.addEventListener('click', runSqliteRestoreApply);
         }
 
         if (!sqliteChangeBound) {
@@ -162,15 +208,57 @@
             : 'SQLite 백업 패키지 기능이 준비되지 않았습니다.';
     }
 
+    function setSqliteIntegrityCheckAvailable(available) {
+        const button = document.getElementById('sqlite-integrity-check-run');
+        if (!button) return;
+        button.disabled = available !== true || sqliteIntegrityCheckRunning;
+        button.title = available === true
+            ? '현재 SQLite DB의 integrity_check와 foreign_key_check 실행'
+            : 'SQLite 로컬 서버 연결 후 사용할 수 있습니다.';
+    }
+
+    function setSqliteDatabaseExportAvailable(available) {
+        const button = document.getElementById('sqlite-wasm-db-export');
+        if (!button) return;
+        button.disabled = available !== true || sqliteDatabaseExportRunning;
+        button.title = available === true
+            ? '현재 OPFS SQLite DB를 단일 .sqlite 파일로 다운로드'
+            : 'SQLite WASM 백엔드에 연결된 경우 사용할 수 있습니다.';
+    }
+
+    async function handleSqliteBackendChange(event) {
+        const select = event && event.currentTarget
+            ? event.currentTarget : document.getElementById('sqlite-backend-select');
+        if (!select || !window.MDPStorage || typeof window.MDPStorage.requestSqliteBackend !== 'function') return;
+        select.disabled = true;
+        try {
+            await window.MDPStorage.requestSqliteBackend(select.value);
+        } catch (error) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('SQLite 실행 방식 전환 실패: ' + (error && error.message ? error.message : error), 'error');
+            }
+        } finally {
+            select.disabled = false;
+            await refreshSqliteStatus();
+        }
+    }
+
     function setSqliteRestorePreviewAvailable(available) {
         sqliteRestorePreviewAvailable = available === true;
         const selectButton = document.getElementById('sqlite-restore-package-select');
         const previewButton = document.getElementById('sqlite-restore-package-preview');
+        const applyButton = document.getElementById('sqlite-restore-package-apply');
         if (selectButton) selectButton.disabled = !sqliteRestorePreviewAvailable || sqliteRestorePreviewRunning;
         if (previewButton) {
             previewButton.disabled = !sqliteRestorePreviewAvailable
                 || sqliteRestorePreviewRunning
                 || !selectedSqliteRestoreFile;
+        }
+        if (applyButton) {
+            applyButton.disabled = !sqliteRestoreApplyAvailable
+                || sqliteRestorePreviewRunning
+                || sqliteRestoreApplyRunning
+                || !lastSqliteRestorePreview;
         }
     }
 
@@ -200,6 +288,114 @@
     function explorerEmpty(message) {
         return '<div class="rounded border border-dashed border-slate-300 p-5 text-center text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">'
             + escapeMigrationText(message) + '</div>';
+    }
+
+    function releaseSqliteExplorerPreviewUrls() {
+        sqliteExplorerPreviewUrls.forEach(function (url) {
+            try { URL.revokeObjectURL(url); } catch (_) {}
+        });
+        sqliteExplorerPreviewUrls = [];
+        sqliteExplorerFileDetailToken += 1;
+    }
+
+    function renderExplorerFileHeader(item, entryId) {
+        return [
+            '<h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">' + escapeMigrationText(item.name || '(이름 없음)') + '</h3>',
+            '<p class="mt-1 break-all font-mono text-[10px] text-slate-400">' + escapeMigrationText(item.path || '') + '</p>',
+            '<div class="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">',
+            '<span>Source<br><b>' + escapeMigrationText(item.sourceName || item.sourceId || '-') + '</b></span>',
+            '<span>형식<br><b>' + escapeMigrationText(item.mimeType || item.extension || '-') + '</b></span>',
+            '<span>크기<br><b>' + escapeMigrationText(formatExplorerBytes(item.sizeBytes)) + '</b></span>',
+            '<span>수정<br><b>' + escapeMigrationText(formatExplorerDate(item.modifiedAt)) + '</b></span>',
+            '</div>',
+            '<p class="mt-3 break-all font-mono text-[9px] text-slate-400">SHA-256 ' + escapeMigrationText(item.checksum || '-') + '</p>'
+        ].join('');
+    }
+
+    function renderExplorerFmaSummary(summary) {
+        const counts = summary && summary.counts ? summary.counts : {};
+        const countCards = [
+            ['갤러리 항목', counts.galleryItems],
+            ['고유 미디어', counts.uniqueMedia],
+            ['이미지', counts.images],
+            ['영상', counts.videos],
+            ['오디오', counts.audio],
+            ['기타', counts.other]
+        ];
+        const mimeCounts = summary && summary.mimeCounts ? summary.mimeCounts : {};
+        const mimeHtml = Object.keys(mimeCounts).map(function (mime) {
+            return '<span class="rounded-full border border-slate-300 bg-slate-50 px-2 py-1 text-[10px] dark:border-slate-700 dark:bg-slate-950">'
+                + escapeMigrationText(mime) + ' <b>' + Number(mimeCounts[mime] || 0) + '</b></span>';
+        }).join('');
+        const gallery = Array.isArray(summary && summary.gallery) ? summary.gallery : [];
+        const galleryHtml = gallery.map(function (item) {
+            const placeholder = item.previewAvailable
+                ? '<span class="text-[10px] text-slate-400">미리보기 불러오는 중…</span>'
+                : '<span class="text-3xl" aria-hidden="true">' + (item.mediaType === 'video' ? '🎬' : item.mediaType === 'audio' ? '🎵' : '🖼️') + '</span>';
+            return '<article class="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/60">'
+                + '<div class="flex aspect-[4/3] items-center justify-center overflow-hidden bg-slate-200/70 dark:bg-slate-800" '
+                + (item.previewAvailable
+                    ? 'data-fma-preview-slot data-fma-media-id="' + escapeMigrationText(item.mediaId) + '"'
+                    : '') + '>' + placeholder + '</div>'
+                + '<div class="p-2"><p class="truncate text-[11px] font-bold" title="' + escapeMigrationText(item.name || '') + '">'
+                + escapeMigrationText(item.name || ('미디어 ' + (Number(item.index) + 1))) + '</p>'
+                + '<p class="mt-1 truncate text-[9px] text-slate-500">' + escapeMigrationText(item.mimeType || item.mediaType || '-')
+                + ' · ' + escapeMigrationText(formatExplorerBytes(item.sizeBytes)) + '</p></div></article>';
+        }).join('');
+        const hiddenCount = Math.max(0, Number(counts.galleryItems || 0) - gallery.length);
+        const modeMessage = summary.previewMode === 'webpThumbnail'
+            ? '최대 240px WebP 썸네일'
+            : '2MB 이하 이미지만 제한 미리보기';
+        return [
+            '<h4 class="mt-4 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">FMA 파일 내용</h4>',
+            '<div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">',
+            countCards.map(function (card) {
+                return '<div class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center dark:border-slate-700 dark:bg-slate-950/50">'
+                    + '<b class="block text-lg text-emerald-700 dark:text-emerald-300">' + Number(card[1] || 0) + '</b>'
+                    + '<span class="text-[10px] text-slate-500">' + escapeMigrationText(card[0]) + '</span></div>';
+            }).join(''),
+            '</div>',
+            '<div class="mt-3 flex flex-wrap gap-1">' + (mimeHtml || '<span class="text-xs text-slate-500">MIME 정보 없음</span>') + '</div>',
+            '<div class="mt-3 flex flex-wrap items-center justify-between gap-2">',
+            '<h4 class="text-xs font-bold">경량 갤러리 ' + gallery.length + '개</h4>',
+            '<span class="text-[10px] text-slate-400">' + escapeMigrationText(modeMessage)
+                + (hiddenCount ? ' · 나머지 ' + hiddenCount + '개 생략' : '') + '</span>',
+            '</div>',
+            '<div id="sqlite-explorer-fma-gallery" class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-4">',
+            galleryHtml || explorerEmpty('표시할 갤러리 항목이 없습니다.'),
+            '</div>',
+            '<p class="mt-2 text-[10px] text-slate-400">읽기 전용 · 영상과 큰 원본 이미지는 자동 재생하거나 전체 다운로드하지 않습니다.</p>'
+        ].join('');
+    }
+
+    async function hydrateExplorerFmaGallery(entryId, token) {
+        const detail = document.getElementById('sqlite-explorer-detail');
+        if (!detail || !window.MDPStorage) return;
+        const slots = Array.from(detail.querySelectorAll('[data-fma-preview-slot]'));
+        let cursor = 0;
+        async function worker() {
+            while (cursor < slots.length) {
+                const slot = slots[cursor++];
+                const mediaId = slot.dataset.fmaMediaId;
+                try {
+                    const blob = await window.MDPStorage.getSqliteExplorerFmaThumbnail(entryId, mediaId);
+                    if (token !== sqliteExplorerFileDetailToken || !slot.isConnected) return;
+                    const url = URL.createObjectURL(blob);
+                    sqliteExplorerPreviewUrls.push(url);
+                    const image = document.createElement('img');
+                    image.src = url;
+                    image.alt = 'FMA 미리보기';
+                    image.loading = 'lazy';
+                    image.className = 'h-full w-full object-contain';
+                    slot.replaceChildren(image);
+                } catch (_) {
+                    if (token === sqliteExplorerFileDetailToken && slot.isConnected) {
+                        slot.innerHTML = '<span class="text-[10px] text-slate-400">미리보기 없음</span>';
+                    }
+                }
+            }
+        }
+        await Promise.all([worker(), worker(), worker(), worker()]);
     }
 
     function renderSqliteExplorerCounts(snapshot) {
@@ -304,29 +500,48 @@
         }
 
         if (sqliteExplorerTab === 'settings') {
-            target.innerHTML = items.map(function (item) {
+            const visibleSettings = items.map(function (item, index) { return { item: item, index: index }; })
+                .filter(function (entry) { return entry.item && entry.item.key !== 'encryptedToolVault'; });
+            target.innerHTML = '<button type="button" data-sqlite-tool-overview="1" '
+                + 'class="mb-2 block w-full rounded-lg border border-emerald-500 bg-emerald-50 p-3 text-left hover:bg-emerald-100 dark:bg-emerald-950/30">'
+                + '<div class="flex items-center justify-between gap-2"><b>도구 설정 모아보기</b><span class="text-[10px] text-emerald-600">보안 요약</span></div>'
+                + '<p class="mt-1 text-[10px] text-slate-500">ScholarAI · sspimgAI · AI Jena · imgBB · 모델 · 프롬프트 · 암호화 키 상태</p></button>'
+                + visibleSettings.map(function (entry) {
+                const item = entry.item;
+                const index = entry.index;
                 let renderedValue = '';
                 try { renderedValue = JSON.stringify(item.value); } catch (_) { renderedValue = '[표시할 수 없음]'; }
-                return '<div class="mb-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">'
+                return '<button type="button" data-sqlite-setting-index="' + index + '" '
+                    + 'class="mb-2 block w-full rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-emerald-500 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-emerald-950/20">'
                     + '<div class="flex items-center justify-between gap-2"><b class="truncate">' + escapeMigrationText(item.key) + '</b>'
                     + '<span class="text-[10px] text-violet-600 dark:text-violet-400">' + escapeMigrationText(item.scopeType) + '</span></div>'
                     + '<p class="mt-1 text-[10px] text-slate-500">' + escapeMigrationText(item.group) + ' · '
                     + escapeMigrationText(item.scopeId || '(global)') + ' · ' + escapeMigrationText(item.valueType) + '</p>'
                     + '<pre class="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded bg-slate-50 p-2 text-[10px] dark:bg-slate-950">'
                     + escapeMigrationText(renderedValue) + '</pre>'
-                    + '<p class="mt-1 text-[10px] text-slate-400">' + escapeMigrationText(formatExplorerDate(item.updatedAt)) + '</p></div>';
+                    + '<p class="mt-1 text-[10px] text-slate-400">' + escapeMigrationText(formatExplorerDate(item.updatedAt)) + '</p></button>';
             }).join('');
+            const overview = target.querySelector('[data-sqlite-tool-overview]');
+            if (overview) overview.addEventListener('click', openSqliteExplorerToolOverview);
+            target.querySelectorAll('[data-sqlite-setting-index]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    openSqliteExplorerSetting(Number(button.dataset.sqliteSettingIndex));
+                });
+            });
             return;
         }
 
         if (sqliteExplorerTab === 'backups') {
             target.innerHTML = items.map(function (item) {
-                return '<div class="mb-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900">'
+                return '<button type="button" data-sqlite-backup-id="' + escapeMigrationText(item.id) + '" class="mb-2 block w-full rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-emerald-500 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-emerald-950/20">'
                     + '<div class="flex items-center justify-between gap-2"><b>' + escapeMigrationText(item.type) + '</b><span class="text-[10px] text-emerald-600">' + escapeMigrationText(item.status) + '</span></div>'
                     + '<p class="mt-1 break-all text-[10px] text-slate-500">' + escapeMigrationText(item.filePath) + '</p>'
                     + '<p class="mt-1 text-[10px] text-slate-500">' + escapeMigrationText(formatExplorerBytes(item.sizeBytes)) + ' · schema v' + Number(item.schemaVersion || 0) + ' · ' + escapeMigrationText(formatExplorerDate(item.createdAt)) + '</p>'
-                    + '<p class="mt-1 truncate font-mono text-[9px] text-slate-400" title="' + escapeMigrationText(item.checksumSha256 || '') + '">' + escapeMigrationText(item.checksumSha256 || '-') + '</p></div>';
+                    + '<p class="mt-1 truncate font-mono text-[9px] text-slate-400" title="' + escapeMigrationText(item.checksumSha256 || '') + '">' + escapeMigrationText(item.checksumSha256 || '-') + '</p></button>';
             }).join('');
+            target.querySelectorAll('[data-sqlite-backup-id]').forEach(function (button) {
+                button.addEventListener('click', function () { openSqliteExplorerBackup(button.dataset.sqliteBackupId); });
+            });
             return;
         }
 
@@ -344,17 +559,185 @@
 
     function setSqliteExplorerTab(tab) {
         if (['documents', 'folders', 'files', 'settings', 'backups', 'migrations'].indexOf(tab) < 0) return;
+        releaseSqliteExplorerPreviewUrls();
         sqliteExplorerTab = tab;
+        sqliteExplorerSelectedSettingIndex = -1;
+        sqliteExplorerSelectedBackupId = '';
         renderSqliteExplorerList();
         const detail = document.getElementById('sqlite-explorer-detail');
-        if (detail && tab !== 'documents') {
+        if (!detail) return;
+        if (tab === 'documents') {
+            detail.innerHTML = '<p class="text-slate-500 dark:text-slate-400">문서를 선택하면 본문과 버전 기록을 확인할 수 있습니다.</p>';
+        } else if (tab === 'files') {
+            detail.innerHTML = '<p class="text-slate-500 dark:text-slate-400">파일을 선택하면 저장된 내용을 확인할 수 있습니다.</p>';
+        } else if (tab === 'settings') {
+            openSqliteExplorerToolOverview();
+        } else if (tab === 'backups') {
+            detail.innerHTML = '<p class="text-slate-500 dark:text-slate-400">백업을 선택하면 무결성, 저장 개수와 항목 목록을 확인하고 삭제할 수 있습니다.</p>';
+        } else {
             detail.innerHTML = '<p class="text-slate-500 dark:text-slate-400">이 목록은 읽기 전용입니다. 변경·삭제 기능은 제공하지 않습니다.</p>';
         }
+    }
+
+    function formatExplorerSettingValue(value) {
+        try {
+            const rendered = JSON.stringify(value, null, 2);
+            return rendered === undefined ? String(value) : rendered;
+        } catch (_) {
+            return String(value == null ? '' : value);
+        }
+    }
+
+    function getExplorerSettingByKey(key) {
+        const settings = sqliteExplorerSnapshot && Array.isArray(sqliteExplorerSnapshot.settings)
+            ? sqliteExplorerSnapshot.settings : [];
+        return settings.find(function (item) { return item && item.key === key; }) || null;
+    }
+
+    function toolProtectionLabel(protection) {
+        const item = protection || {};
+        if (!item.configured) return '키 없음';
+        return (item.locked ? '잠김' : '잠금 해제') + (item.last4 ? ' · 끝 ' + item.last4 : '');
+    }
+
+    function renderToolSettingCard(tool) {
+        const options = tool && tool.options && typeof tool.options === 'object' ? tool.options : {};
+        const optionText = Object.keys(options).filter(function (key) { return options[key] !== ''; }).map(function (key) {
+            return key + ': ' + String(options[key]);
+        }).join(' · ');
+        return [
+            '<article class="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">',
+            '<div class="flex flex-wrap items-center justify-between gap-2"><h4 class="font-bold text-slate-900 dark:text-slate-100">' + escapeMigrationText(tool.label || tool.id || '-') + '</h4>',
+            '<span class="rounded-full px-2 py-0.5 text-[10px] font-bold ' + (tool.enabled ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-slate-200 text-slate-500 dark:bg-slate-800') + '">' + (tool.enabled ? '사용' : '꺼짐') + '</span></div>',
+            '<div class="mt-2 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">',
+            '<span>공급자<br><b>' + escapeMigrationText(tool.provider || '-') + '</b></span>',
+            '<span>모델<br><b class="break-all">' + escapeMigrationText(tool.model || '-') + '</b></span>',
+            '<span>API 키<br><b>' + escapeMigrationText(toolProtectionLabel(tool.protection)) + '</b></span>',
+            '</div>',
+            tool.endpoint ? '<p class="mt-2 break-all text-[10px] text-slate-500">Endpoint: ' + escapeMigrationText(tool.endpoint) + '</p>' : '',
+            optionText ? '<p class="mt-1 break-all text-[10px] text-slate-500">' + escapeMigrationText(optionText) + '</p>' : '',
+            '<details class="mt-2"><summary class="cursor-pointer text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">프롬프트 보기</summary>',
+            '<pre class="mt-1 max-h-36 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-200 bg-white p-2 text-[10px] dark:border-slate-700 dark:bg-slate-900">' + escapeMigrationText(tool.prompt || '저장된 프롬프트 없음') + '</pre></details>',
+            '</article>'
+        ].join('');
+    }
+
+    function setToolVaultMessage(message, isError) {
+        const target = document.getElementById('sqlite-tool-vault-message');
+        if (!target) return;
+        target.textContent = String(message || '');
+        target.className = 'mt-2 text-[11px] ' + (isError ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400');
+    }
+
+    async function runToolVaultAction(action) {
+        if (!window.MDPCredentialVault) return setToolVaultMessage('암호화 보관함 모듈이 준비되지 않았습니다.', true);
+        const password = document.getElementById('sqlite-tool-vault-password');
+        const next = document.getElementById('sqlite-tool-vault-new-password');
+        const confirmation = document.getElementById('sqlite-tool-vault-confirmation');
+        try {
+            if (action === 'create') await window.MDPCredentialVault.create(password && password.value, confirmation && confirmation.value);
+            if (action === 'unlock') await window.MDPCredentialVault.unlock(password && password.value);
+            if (action === 'lock') window.MDPCredentialVault.lock();
+            if (action === 'import') await window.MDPCredentialVault.importCurrent(password && password.value);
+            if (action === 'change') await window.MDPCredentialVault.changePassword(password && password.value, next && next.value, confirmation && confirmation.value);
+            await refreshSqliteExplorer();
+            setToolVaultMessage(action === 'lock' ? 'API 키 보관함을 잠갔습니다.' : 'API 키 보관함 작업을 완료했습니다.', false);
+        } catch (error) {
+            setToolVaultMessage(error && error.message ? error.message : 'API 키 보관함 작업에 실패했습니다.', true);
+        }
+    }
+
+    function bindToolVaultButtons() {
+        document.querySelectorAll('[data-tool-vault-action]').forEach(function (button) {
+            button.addEventListener('click', function () { runToolVaultAction(button.dataset.toolVaultAction); });
+        });
+    }
+
+    function openSqliteExplorerToolOverview() {
+        const detail = document.getElementById('sqlite-explorer-detail');
+        if (!detail) return;
+        sqliteExplorerSelectedSettingIndex = -2;
+        document.querySelectorAll('[data-sqlite-setting-index]').forEach(function (button) {
+            button.classList.remove('border-emerald-600', 'ring-2', 'ring-emerald-500/30');
+            button.setAttribute('aria-pressed', 'false');
+        });
+        const catalogSetting = getExplorerSettingByKey('toolSettingsCatalog');
+        const catalog = catalogSetting && catalogSetting.value && typeof catalogSetting.value === 'object'
+            ? catalogSetting.value : { tools: [] };
+        const vaultSetting = getExplorerSettingByKey('encryptedToolVault');
+        let vaultStatus = { exists: !!vaultSetting, locked: !!vaultSetting, unlocked: false, entries: [] };
+        try {
+            if (window.MDPCredentialVault) vaultStatus = window.MDPCredentialVault.getStatus();
+        } catch (_) {}
+        const tools = Array.isArray(catalog.tools) ? catalog.tools : [];
+        const entrySummary = Array.isArray(vaultStatus.entries) ? vaultStatus.entries.filter(function (item) { return item.configured; }).map(function (item) {
+            return escapeMigrationText(item.label) + ' (••••' + escapeMigrationText(item.last4 || '') + ')';
+        }).join(' · ') : '';
+        detail.innerHTML = [
+            '<div class="flex flex-wrap items-start justify-between gap-2"><div><p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600">도구 설정 통합 보기</p>',
+            '<h3 class="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">AI·이미지 도구 설정</h3></div>',
+            '<span class="rounded-full border px-2 py-0.5 text-[10px] font-bold ' + (vaultStatus.unlocked ? 'border-emerald-500 text-emerald-600' : 'border-amber-500 text-amber-600') + '">' + (vaultStatus.exists ? (vaultStatus.unlocked ? '보관함 잠금 해제' : '보관함 잠김') : '보관함 없음') + '</span></div>',
+            '<section class="mt-4 rounded-lg border border-amber-300 bg-amber-50/70 p-3 dark:border-amber-900 dark:bg-amber-950/20">',
+            '<h4 class="text-sm font-bold text-slate-800 dark:text-slate-100">SQLite API 키 암호화 보관함</h4>',
+            '<p class="mt-1 text-[10px] leading-relaxed text-slate-600 dark:text-slate-400">비밀번호는 저장되지 않으며 AES-GCM 암호문만 SQLite에 저장됩니다. 비밀번호를 잊으면 복구할 수 없습니다.</p>',
+            '<p class="mt-1 text-[10px] text-slate-500">' + (entrySummary || '암호화하여 저장된 API 키가 없습니다.') + '</p>',
+            '<div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">',
+            '<input id="sqlite-tool-vault-password" type="password" autocomplete="current-password" placeholder="현재 또는 새 비밀번호 (8자 이상)" class="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900">',
+            '<input id="sqlite-tool-vault-new-password" type="password" autocomplete="new-password" placeholder="변경할 새 비밀번호" class="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900">',
+            '<input id="sqlite-tool-vault-confirmation" type="password" autocomplete="new-password" placeholder="새 비밀번호 확인" class="rounded border border-slate-300 bg-white px-2 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-900">',
+            '</div><div class="mt-2 flex flex-wrap gap-2">',
+            vaultStatus.exists ? '' : '<button data-tool-vault-action="create" class="rounded bg-emerald-700 px-2 py-1 text-[11px] font-bold text-white">현재 키 암호화 저장</button>',
+            vaultStatus.exists && !vaultStatus.unlocked ? '<button data-tool-vault-action="unlock" class="rounded bg-indigo-700 px-2 py-1 text-[11px] font-bold text-white">잠금 해제</button>' : '',
+            vaultStatus.unlocked ? '<button data-tool-vault-action="import" class="rounded bg-emerald-700 px-2 py-1 text-[11px] font-bold text-white">현재 입력 키 다시 암호화</button><button data-tool-vault-action="lock" class="rounded border border-slate-400 px-2 py-1 text-[11px] font-bold">잠그기</button><button data-tool-vault-action="change" class="rounded border border-indigo-500 px-2 py-1 text-[11px] font-bold text-indigo-600">비밀번호 변경</button>' : '',
+            '</div><p id="sqlite-tool-vault-message" class="mt-2 text-[11px] text-slate-500"></p></section>',
+            '<div class="mt-4 grid grid-cols-1 gap-3 xl:grid-cols-2">',
+            tools.length ? tools.map(renderToolSettingCard).join('') : explorerEmpty('도구 설정 카탈로그가 아직 없습니다. 새로고침하면 현재 설정을 SQLite에 동기화합니다.'),
+            '</div>',
+            '<p class="mt-3 text-[10px] text-slate-400">API 키 원문은 이 화면에 표시하지 않습니다. 모델·프롬프트·일반 옵션만 읽기 전용으로 확인할 수 있습니다.</p>'
+        ].join('');
+        bindToolVaultButtons();
+    }
+
+    function openSqliteExplorerSetting(index) {
+        const detail = document.getElementById('sqlite-explorer-detail');
+        const settings = sqliteExplorerSnapshot && Array.isArray(sqliteExplorerSnapshot.settings)
+            ? sqliteExplorerSnapshot.settings
+            : [];
+        const item = settings[index];
+        if (!detail || !item) return;
+        if (item.key === 'encryptedToolVault') return openSqliteExplorerToolOverview();
+        sqliteExplorerSelectedSettingIndex = index;
+        document.querySelectorAll('[data-sqlite-setting-index]').forEach(function (button) {
+            const selected = Number(button.dataset.sqliteSettingIndex) === sqliteExplorerSelectedSettingIndex;
+            button.classList.toggle('border-emerald-600', selected);
+            button.classList.toggle('ring-2', selected);
+            button.classList.toggle('ring-emerald-500/30', selected);
+            button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+        detail.innerHTML = [
+            '<div class="flex flex-wrap items-start justify-between gap-2">',
+            '<div class="min-w-0"><p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">저장된 설정</p>',
+            '<h3 class="mt-1 break-all text-lg font-bold text-slate-900 dark:text-slate-100">' + escapeMigrationText(item.key || '(키 없음)') + '</h3></div>',
+            '<span class="rounded-full border border-violet-300 px-2 py-0.5 text-[10px] font-bold text-violet-600 dark:border-violet-800 dark:text-violet-300">' + escapeMigrationText(item.scopeType || '-') + '</span>',
+            '</div>',
+            '<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40 sm:grid-cols-4">',
+            '<span>그룹<br><b>' + escapeMigrationText(item.group || '-') + '</b></span>',
+            '<span>범위<br><b>' + escapeMigrationText(item.scopeId || '(global)') + '</b></span>',
+            '<span>값 형식<br><b>' + escapeMigrationText(item.valueType || '-') + '</b></span>',
+            '<span>저장 시각<br><b>' + escapeMigrationText(formatExplorerDate(item.updatedAt)) + '</b></span>',
+            '</div>',
+            '<h4 class="mt-5 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">저장된 내용</h4>',
+            '<pre id="sqlite-explorer-setting-value" class="mt-2 min-h-32 overflow-auto whitespace-pre-wrap break-words rounded border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"></pre>',
+            '<p class="mt-2 text-[10px] text-slate-400">읽기 전용 · 이 화면에서는 설정을 변경하거나 삭제하지 않습니다.</p>'
+        ].join('');
+        const value = document.getElementById('sqlite-explorer-setting-value');
+        if (value) value.textContent = formatExplorerSettingValue(item.value);
     }
 
     async function openSqliteExplorerDocument(documentId) {
         const detail = document.getElementById('sqlite-explorer-detail');
         if (!detail || !window.MDPStorage) return;
+        releaseSqliteExplorerPreviewUrls();
         detail.innerHTML = '<p class="text-slate-500">문서와 버전 기록을 불러오는 중...</p>';
         try {
             const results = await Promise.all([
@@ -391,19 +774,24 @@
     async function openSqliteExplorerFile(entryId) {
         const detail = document.getElementById('sqlite-explorer-detail');
         if (!detail || !window.MDPStorage) return;
+        releaseSqliteExplorerPreviewUrls();
+        const detailToken = sqliteExplorerFileDetailToken;
         detail.innerHTML = '<p class="text-slate-500">파일 내용을 불러오는 중...</p>';
         try {
             const item = await window.MDPStorage.getSqliteExplorerFileEntry(entryId);
-            detail.innerHTML = [
-                '<h3 class="text-lg font-bold text-slate-900 dark:text-slate-100">' + escapeMigrationText(item.name || '(이름 없음)') + '</h3>',
-                '<p class="mt-1 break-all font-mono text-[10px] text-slate-400">' + escapeMigrationText(item.path || '') + '</p>',
-                '<div class="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">',
-                '<span>Source<br><b>' + escapeMigrationText(item.sourceName || item.sourceId || '-') + '</b></span>',
-                '<span>형식<br><b>' + escapeMigrationText(item.mimeType || item.extension || '-') + '</b></span>',
-                '<span>크기<br><b>' + escapeMigrationText(formatExplorerBytes(item.sizeBytes)) + '</b></span>',
-                '<span>수정<br><b>' + escapeMigrationText(formatExplorerDate(item.modifiedAt)) + '</b></span>',
-                '</div>',
-                '<p class="mt-3 break-all font-mono text-[9px] text-slate-400">SHA-256 ' + escapeMigrationText(item.checksum || '-') + '</p>',
+            if (detailToken !== sqliteExplorerFileDetailToken) return;
+            const isFma = String(item.extension || '').toLowerCase() === 'fma'
+                || String(item.mimeType || '').toLowerCase() === 'application/vnd.fma+zip';
+            if (isFma && typeof window.MDPStorage.getSqliteExplorerFmaPreview === 'function') {
+                detail.innerHTML = renderExplorerFileHeader(item, entryId)
+                    + '<div class="mt-4">' + explorerEmpty('FMA manifest와 경량 미리보기를 읽는 중...') + '</div>';
+                const summary = await window.MDPStorage.getSqliteExplorerFmaPreview(entryId);
+                if (detailToken !== sqliteExplorerFileDetailToken) return;
+                detail.innerHTML = renderExplorerFileHeader(item, entryId) + renderExplorerFmaSummary(summary);
+                hydrateExplorerFmaGallery(entryId, detailToken);
+                return;
+            }
+            detail.innerHTML = renderExplorerFileHeader(item, entryId) + [
                 '<h4 class="mt-4 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">파일 내용</h4>',
                 '<pre id="sqlite-explorer-file-content" class="mt-2 max-h-[55vh] overflow-auto whitespace-pre-wrap break-words rounded border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-800 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"></pre>'
             ].join('');
@@ -414,8 +802,135 @@
         }
     }
 
+    function markSqliteExplorerBackupSelected(backupId) {
+        sqliteExplorerSelectedBackupId = String(backupId || '');
+        document.querySelectorAll('[data-sqlite-backup-id]').forEach(function (button) {
+            const selected = button.dataset.sqliteBackupId === sqliteExplorerSelectedBackupId;
+            button.classList.toggle('border-emerald-600', selected);
+            button.classList.toggle('ring-2', selected);
+            button.classList.toggle('ring-emerald-500/30', selected);
+            button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+    }
+
+    function renderSqliteBackupRows(title, rows, renderer, totalCount, sampleLimit) {
+        const items = Array.isArray(rows) ? rows : [];
+        const total = Number(totalCount || 0);
+        const omitted = Math.max(0, total - items.length);
+        return [
+            '<details class="rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50">',
+            '<summary class="cursor-pointer px-3 py-2 text-xs font-bold">' + escapeMigrationText(title) + ' (' + total + ')</summary>',
+            '<div class="max-h-52 space-y-1 overflow-auto border-t border-slate-200 p-2 dark:border-slate-700">',
+            items.length ? items.map(renderer).join('') : '<p class="p-2 text-[10px] text-slate-500">저장된 항목이 없습니다.</p>',
+            omitted ? '<p class="p-1 text-[10px] text-amber-600">전체 중 ' + items.length + '개만 표시 · ' + omitted + '개 생략 (최대 ' + Number(sampleLimit || 0) + '개)</p>' : '',
+            '</div></details>'
+        ].join('');
+    }
+
+    function renderSqliteExplorerBackup(detailData) {
+        const item = detailData || {};
+        const counts = item.counts || {};
+        const integrity = Array.isArray(item.integrity) ? item.integrity.join(', ') : '-';
+        const countCards = [
+            ['문서', counts.documents], ['폴더', counts.folders], ['버전', counts.documentVersions],
+            ['Source', counts.sources], ['파일', counts.fileEntries], ['설정', counts.settings],
+            ['자산', counts.assets], ['백업기록', counts.backupHistory]
+        ];
+        const rowClass = 'rounded border border-slate-200 bg-white px-2 py-1.5 text-[10px] dark:border-slate-700 dark:bg-slate-900';
+        return [
+            '<div class="flex flex-wrap items-start justify-between gap-3">',
+            '<div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><h3 class="text-lg font-bold">' + escapeMigrationText(item.type || 'backup') + '</h3>',
+            '<span class="rounded-full px-2 py-0.5 text-[10px] font-bold ' + (item.ok ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300') + '">' + (item.ok ? '검증 정상' : '검증 주의') + '</span></div>',
+            '<p class="mt-1 break-all font-mono text-[10px] text-slate-400">' + escapeMigrationText(item.id || '') + '</p></div>',
+            '<button type="button" id="sqlite-explorer-backup-delete" class="rounded border border-red-500 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-40 dark:text-red-400 dark:hover:bg-red-950/30">백업 지우기</button>',
+            '</div>',
+            '<div class="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-[10px] leading-relaxed text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">',
+            '읽기 전용 검사 결과입니다. 문서 본문·설정값·API 키·암호문은 표시하지 않습니다. 삭제하면 목록에서 제거되고 파일은 <b>data/backups/trash</b>로 이동하여 수동 복구할 수 있습니다.</div>',
+            '<div class="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">',
+            '<span>생성<br><b>' + escapeMigrationText(formatExplorerDate(item.createdAt)) + '</b></span>',
+            '<span>크기<br><b>' + escapeMigrationText(formatExplorerBytes(item.sizeBytes)) + '</b></span>',
+            '<span>Schema<br><b>v' + Number(item.schemaVersion || 0) + '</b></span>',
+            '<span>상태<br><b>' + escapeMigrationText(item.status || '-') + '</b></span>',
+            '</div>',
+            '<p class="mt-2 break-all text-[10px] text-slate-500">파일: ' + escapeMigrationText(item.filePath || item.fileName || '-') + '</p>',
+            '<p class="mt-1 break-all font-mono text-[9px] text-slate-400">SHA-256 ' + escapeMigrationText(item.checksumSha256 || '-') + '</p>',
+            '<div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">',
+            '<div class="rounded border p-2 text-center ' + (item.checksumMatches ? 'border-emerald-500' : 'border-red-500') + '"><b class="block">' + (item.checksumMatches ? '일치' : '불일치') + '</b><span class="text-[10px] text-slate-500">checksum</span></div>',
+            '<div class="rounded border p-2 text-center ' + (item.sizeMatches ? 'border-emerald-500' : 'border-red-500') + '"><b class="block">' + (item.sizeMatches ? '일치' : '불일치') + '</b><span class="text-[10px] text-slate-500">파일 크기</span></div>',
+            '<div class="rounded border p-2 text-center ' + (integrity === 'ok' ? 'border-emerald-500' : 'border-red-500') + '"><b class="block truncate" title="' + escapeMigrationText(integrity) + '">' + escapeMigrationText(integrity) + '</b><span class="text-[10px] text-slate-500">integrity</span></div>',
+            '<div class="rounded border p-2 text-center ' + (Number(item.foreignKeyViolations || 0) === 0 ? 'border-emerald-500' : 'border-red-500') + '"><b class="block">' + Number(item.foreignKeyViolations || 0) + '</b><span class="text-[10px] text-slate-500">FK 오류</span></div>',
+            '</div>',
+            '<h4 class="mt-4 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">저장 개수</h4>',
+            '<div class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">' + countCards.map(function (card) {
+                return '<div class="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center dark:border-slate-700 dark:bg-slate-950/50"><b class="block text-lg text-emerald-700 dark:text-emerald-300">' + Number(card[1] || 0) + '</b><span class="text-[10px] text-slate-500">' + escapeMigrationText(card[0]) + '</span></div>';
+            }).join('') + '</div>',
+            '<div class="mt-3 space-y-2">',
+            renderSqliteBackupRows('문서 메타데이터', item.documents, function (row) {
+                return '<div class="' + rowClass + '"><b>' + escapeMigrationText(row.title || '(제목 없음)') + '</b><span class="float-right">v' + Number(row.version || 0) + '</span><p class="mt-1 text-slate-500">' + escapeMigrationText(row.contentFormat || '-') + ' · 본문 길이 ' + Number(row.contentBytes || 0) + ' · ' + escapeMigrationText(formatExplorerDate(row.updatedAt)) + '</p></div>';
+            }, counts.documents, item.sampleLimit),
+            renderSqliteBackupRows('폴더 메타데이터', item.folders, function (row) {
+                return '<div class="' + rowClass + '"><b>' + escapeMigrationText(row.name || '-') + '</b><p class="mt-1 font-mono text-slate-500">' + escapeMigrationText(row.id || '') + ' · 상위 ' + escapeMigrationText(row.parentId || 'ROOT') + '</p></div>';
+            }, counts.folders, item.sampleLimit),
+            renderSqliteBackupRows('파일 메타데이터', item.files, function (row) {
+                return '<div class="' + rowClass + '"><b>' + escapeMigrationText(row.path || row.name || '-') + '</b><p class="mt-1 text-slate-500">' + escapeMigrationText(row.mimeType || row.extension || '-') + ' · ' + escapeMigrationText(formatExplorerBytes(row.sizeBytes)) + '</p></div>';
+            }, counts.fileEntries, item.sampleLimit),
+            renderSqliteBackupRows('설정 키 메타데이터', item.settings, function (row) {
+                return '<div class="' + rowClass + '"><b>' + escapeMigrationText(row.key || '-') + '</b><p class="mt-1 text-slate-500">' + escapeMigrationText(row.group || '-') + ' · ' + escapeMigrationText(row.scopeType || '-') + '/' + escapeMigrationText(row.scopeId || 'global') + ' · ' + escapeMigrationText(row.valueType || '-') + '</p></div>';
+            }, counts.settings, item.sampleLimit),
+            renderSqliteBackupRows('자산 메타데이터', item.assets, function (row) {
+                return '<div class="' + rowClass + '"><b>' + escapeMigrationText(row.originalName || row.id || '-') + '</b><p class="mt-1 text-slate-500">' + escapeMigrationText(row.assetType || row.mimeType || '-') + ' · ' + escapeMigrationText(formatExplorerBytes(row.sizeBytes)) + '</p></div>';
+            }, counts.assets, item.sampleLimit),
+            '</div>'
+        ].join('');
+    }
+
+    async function openSqliteExplorerBackup(backupId) {
+        const detail = document.getElementById('sqlite-explorer-detail');
+        if (!detail || !window.MDPStorage) return;
+        const normalizedId = String(backupId || '');
+        markSqliteExplorerBackupSelected(normalizedId);
+        detail.innerHTML = '<p class="text-slate-500">백업을 읽기 전용으로 검사하는 중...</p>';
+        try {
+            const item = await window.MDPStorage.getSqliteExplorerBackup(normalizedId);
+            if (sqliteExplorerSelectedBackupId !== normalizedId) return;
+            detail.innerHTML = renderSqliteExplorerBackup(item);
+            const deleteButton = document.getElementById('sqlite-explorer-backup-delete');
+            if (deleteButton) deleteButton.addEventListener('click', function () { deleteSqliteExplorerBackup(normalizedId); });
+        } catch (error) {
+            if (sqliteExplorerSelectedBackupId !== normalizedId) return;
+            detail.innerHTML = explorerEmpty(error && error.message ? error.message : '백업 내용을 확인하지 못했습니다.')
+                + '<button type="button" id="sqlite-explorer-backup-delete" class="mt-3 rounded border border-red-500 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-50 dark:text-red-400">등록된 백업 지우기</button>';
+            const deleteButton = document.getElementById('sqlite-explorer-backup-delete');
+            if (deleteButton) deleteButton.addEventListener('click', function () { deleteSqliteExplorerBackup(normalizedId); });
+        }
+    }
+
+    async function deleteSqliteExplorerBackup(backupId) {
+        const detail = document.getElementById('sqlite-explorer-detail');
+        if (!detail || !window.MDPStorage) return;
+        const normalizedId = String(backupId || '');
+        const typedId = window.prompt('삭제할 백업 ID를 정확히 입력하세요.\n\n' + normalizedId, '');
+        if (typedId === null) return;
+        if (typedId.trim() !== normalizedId) {
+            window.alert('백업 ID가 일치하지 않아 삭제하지 않았습니다.');
+            return;
+        }
+        if (!window.confirm('이 백업을 목록에서 제거하고 파일을 관리 휴지통으로 이동할까요?\n\n현재 SQLite DB와 다른 백업은 변경되지 않습니다.')) return;
+        const deleteButton = document.getElementById('sqlite-explorer-backup-delete');
+        if (deleteButton) deleteButton.disabled = true;
+        try {
+            const result = await window.MDPStorage.deleteSqliteExplorerBackup(normalizedId);
+            sqliteExplorerSelectedBackupId = '';
+            await refreshSqliteExplorer();
+            detail.innerHTML = '<div class="rounded-lg border border-emerald-500 bg-emerald-50 p-4 text-sm text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200"><b>백업을 목록에서 지웠습니다.</b><p class="mt-2 break-all text-[11px]">' + (result.recoverable ? '복구 가능 휴지통: ' + escapeMigrationText(result.trashPath || '-') : '원본 파일이 이미 없어 남아 있던 목록 기록만 제거했습니다.') + '</p></div>';
+        } catch (error) {
+            detail.innerHTML = explorerEmpty(error && error.message ? error.message : '백업을 지우지 못했습니다.');
+        }
+    }
+
     async function refreshSqliteExplorer() {
         if (sqliteExplorerLoading) return;
+        releaseSqliteExplorerPreviewUrls();
         const status = document.getElementById('sqlite-explorer-status');
         const refreshButton = document.getElementById('sqlite-explorer-refresh');
         const queryElement = document.getElementById('sqlite-explorer-query');
@@ -429,12 +944,22 @@
             if (!window.MDPStorage || typeof window.MDPStorage.getSqliteExplorerSnapshot !== 'function') {
                 throw new Error('SQLite 탐색 모듈이 아직 준비되지 않았습니다.');
             }
+            if (window.MDPCredentialVault) {
+                try {
+                    await window.MDPCredentialVault.load();
+                    await window.MDPCredentialVault.syncCatalog();
+                } catch (vaultError) {
+                    console.warn('SQLite tool settings catalog sync skipped:', vaultError && vaultError.message ? vaultError.message : vaultError);
+                }
+            }
             sqliteExplorerSnapshot = await window.MDPStorage.getSqliteExplorerSnapshot({
                 query: queryElement ? queryElement.value.trim() : '',
                 limit: 300
             });
+            sqliteExplorerSelectedSettingIndex = -1;
             renderSqliteExplorerCounts(sqliteExplorerSnapshot);
             renderSqliteExplorerList();
+            if (sqliteExplorerTab === 'settings') openSqliteExplorerToolOverview();
             const db = sqliteExplorerSnapshot.database || {};
             if (database) database.textContent = (db.path || '-') + ' · schema v' + (db.schemaVersion || '-')
                 + ' · ' + String(db.journalMode || '').toUpperCase() + ' · SQLite ' + (db.sqliteVersion || '-');
@@ -456,7 +981,8 @@
         const modal = document.getElementById('sqlite-explorer-modal');
         if (!modal) return;
         modal.classList.remove('hidden');
-        modal.classList.add('flex');
+        positionSqliteExplorer();
+        bindSqliteExplorerDrag();
         sqliteExplorerTab = 'documents';
         refreshSqliteExplorer();
         const query = document.getElementById('sqlite-explorer-query');
@@ -466,8 +992,69 @@
     function closeSqliteExplorer() {
         const modal = document.getElementById('sqlite-explorer-modal');
         if (!modal) return;
+        releaseSqliteExplorerPreviewUrls();
         modal.classList.add('hidden');
-        modal.classList.remove('flex');
+    }
+
+    function clampSqliteExplorerPosition() {
+        const panel = document.getElementById('sqlite-explorer-panel');
+        if (!panel || !sqliteExplorerPositioned) return;
+        const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
+        const maxTop = Math.max(8, window.innerHeight - Math.min(panel.offsetHeight, window.innerHeight - 16) - 8);
+        const left = Math.max(8, Math.min(maxLeft, parseFloat(panel.style.left) || 8));
+        const top = Math.max(8, Math.min(maxTop, parseFloat(panel.style.top) || 8));
+        panel.style.left = left + 'px';
+        panel.style.top = top + 'px';
+    }
+
+    function positionSqliteExplorer() {
+        const panel = document.getElementById('sqlite-explorer-panel');
+        if (!panel) return;
+        if (!sqliteExplorerPositioned) {
+            const rect = panel.getBoundingClientRect();
+            panel.style.left = Math.max(8, (window.innerWidth - rect.width) / 2) + 'px';
+            panel.style.top = Math.max(8, (window.innerHeight - rect.height) / 2) + 'px';
+            sqliteExplorerPositioned = true;
+        }
+        clampSqliteExplorerPosition();
+    }
+
+    function bindSqliteExplorerDrag() {
+        if (sqliteExplorerDragBound) return;
+        const panel = document.getElementById('sqlite-explorer-panel');
+        const handle = document.getElementById('sqlite-explorer-drag-handle');
+        if (!panel || !handle) return;
+        sqliteExplorerDragBound = true;
+        let pointerId = null;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        handle.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0) return;
+            const target = event.target;
+            if (target && target.closest && target.closest('button,input,textarea,select,a,label')) return;
+            const rect = panel.getBoundingClientRect();
+            pointerId = event.pointerId;
+            offsetX = event.clientX - rect.left;
+            offsetY = event.clientY - rect.top;
+            handle.setPointerCapture(pointerId);
+            event.preventDefault();
+        });
+        handle.addEventListener('pointermove', function (event) {
+            if (pointerId !== event.pointerId) return;
+            const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
+            const maxTop = Math.max(8, window.innerHeight - Math.min(panel.offsetHeight, window.innerHeight - 16) - 8);
+            panel.style.left = Math.max(8, Math.min(maxLeft, event.clientX - offsetX)) + 'px';
+            panel.style.top = Math.max(8, Math.min(maxTop, event.clientY - offsetY)) + 'px';
+        });
+        function stopDrag(event) {
+            if (pointerId !== event.pointerId) return;
+            if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+            pointerId = null;
+        }
+        handle.addEventListener('pointerup', stopDrag);
+        handle.addEventListener('pointercancel', stopDrag);
+        window.addEventListener('resize', clampSqliteExplorerPosition);
     }
 
     function renderMigrationPreviewResult(result) {
@@ -569,14 +1156,113 @@
         if (downloadButton) downloadButton.addEventListener('click', runSqliteBackupPackageDownload);
     }
 
+    async function runSqliteIntegrityCheck() {
+        if (sqliteIntegrityCheckRunning) return;
+        const button = document.getElementById('sqlite-integrity-check-run');
+        const element = document.getElementById('sqlite-integrity-check-result');
+        sqliteIntegrityCheckRunning = true;
+        if (button) {
+            button.disabled = true;
+            button.textContent = '검사 중...';
+        }
+        if (element) {
+            element.className = 'mt-2 rounded border border-slate-300 bg-slate-50 p-2 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300';
+            element.textContent = '현재 SQLite DB를 읽어 integrity와 foreign key를 검사하고 있습니다.';
+        }
+        try {
+            if (!window.MDPStorage || typeof window.MDPStorage.runSqliteIntegrityCheck !== 'function') {
+                throw new Error('SQLite 무결성 검사 모듈이 준비되지 않았습니다.');
+            }
+            const result = await window.MDPStorage.runSqliteIntegrityCheck();
+            const integrity = Array.isArray(result && result.integrity) ? result.integrity : [];
+            const violations = Array.isArray(result && result.foreignKeyViolations)
+                ? result.foreignKeyViolations.length : Number(result && result.foreignKeyViolations || 0);
+            if (element) {
+                element.className = 'mt-2 rounded border p-2 text-[10px] ' + (result && result.ok
+                    ? 'border-emerald-400 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200'
+                    : 'border-red-400 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300');
+                element.innerHTML = '<p class="font-semibold">' + (result && result.ok ? 'SQLite DB 무결성 정상' : 'SQLite DB 검사에서 문제가 발견됨') + '</p>'
+                    + '<p class="mt-1">integrity: ' + escapeMigrationText(integrity.join(', ') || '-')
+                    + ' · FK 위반: ' + Number(violations) + '건</p>'
+                    + (result && result.ok ? '' : '<p class="mt-1">현재 DB에 추가 쓰기를 중단하고 최근 검증 백업을 확인하세요.</p>');
+            }
+        } catch (error) {
+            if (element) {
+                element.textContent = '무결성 검사를 실행하지 못했습니다: '
+                    + (error && error.message ? error.message : error)
+                    + ' · 현재 데이터는 변경되지 않았습니다. 서버 연결을 다시 확인하세요.';
+                element.className = 'mt-2 rounded border border-red-300 bg-red-50 p-2 text-[10px] text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400';
+            }
+        } finally {
+            sqliteIntegrityCheckRunning = false;
+            if (button) button.textContent = 'DB 무결성 검사';
+            const state = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
+                ? window.MDPStorage.getStatus() : null;
+            setSqliteIntegrityCheckAvailable(!!(state && state.sqliteHealth && state.sqliteHealth.capabilities
+                && state.sqliteHealth.capabilities.integrityCheck === true));
+        }
+    }
+
+    async function runSqliteWasmDatabaseExport() {
+        if (sqliteDatabaseExportRunning) return;
+        const button = document.getElementById('sqlite-wasm-db-export');
+        const element = document.getElementById('sqlite-wasm-db-export-result');
+        sqliteDatabaseExportRunning = true;
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'DB 내보내는 중...';
+        }
+        if (element) {
+            element.className = 'mt-2 rounded border border-slate-300 bg-slate-50 p-2 text-[10px] text-slate-600 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300';
+            element.textContent = 'OPFS SQLite DB의 일관된 스냅샷을 준비하고 있습니다.';
+        }
+        try {
+            if (!window.MDPStorage || typeof window.MDPStorage.exportSqliteDatabase !== 'function') {
+                throw new Error('WASM DB 내보내기 모듈이 준비되지 않았습니다.');
+            }
+            const result = await window.MDPStorage.exportSqliteDatabase();
+            if (!result || !(result.blob instanceof Blob)) {
+                throw new Error('DB 내보내기 결과가 올바르지 않습니다.');
+            }
+            const url = URL.createObjectURL(result.blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = result.fileName || 'mdpro.sqlite';
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+            if (element) {
+                element.className = 'mt-2 rounded border border-emerald-400 bg-emerald-50 p-2 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200';
+                element.textContent = (result.fileName || 'mdpro.sqlite') + ' · '
+                    + formatExplorerBytes(result.sizeBytes || result.blob.size) + ' 다운로드를 시작했습니다.';
+            }
+        } catch (error) {
+            if (element) {
+                element.className = 'mt-2 rounded border border-red-300 bg-red-50 p-2 text-[10px] text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300';
+                element.textContent = 'WASM DB 내보내기 실패: ' + (error && error.message ? error.message : error);
+            }
+        } finally {
+            sqliteDatabaseExportRunning = false;
+            if (button) button.textContent = 'WASM DB 파일 내보내기';
+            const state = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
+                ? window.MDPStorage.getStatus() : null;
+            setSqliteDatabaseExportAvailable(!!(state && state.sqliteHealth && state.sqliteHealth.capabilities
+                && state.sqliteHealth.capabilities.databaseExport === true));
+        }
+    }
+
     function handleSqliteRestoreFileSelection(event) {
         const input = event && event.currentTarget ? event.currentTarget : document.getElementById('sqlite-restore-package-file');
         const file = input && input.files && input.files[0] ? input.files[0] : null;
         const nameElement = document.getElementById('sqlite-restore-package-name');
         const resultElement = document.getElementById('sqlite-restore-package-result');
         selectedSqliteRestoreFile = null;
+        lastSqliteRestorePreview = null;
+        lastPreRestoreBackup = null;
         if (!file) {
-            if (nameElement) nameElement.textContent = '선택된 파일 없음 · 실제 복원은 아직 비활성';
+            if (nameElement) nameElement.textContent = '선택된 파일 없음';
             setSqliteRestorePreviewAvailable(sqliteRestorePreviewAvailable);
             return;
         }
@@ -609,7 +1295,7 @@
         const counts = validation.databaseCounts || {};
         element.className = 'mt-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200';
         element.innerHTML = [
-            '<p class="font-semibold">복원 패키지 안전 검증 완료 · 미리보기 전용</p>',
+            '<p class="font-semibold">복원 패키지 안전 검증 완료</p>',
             '<p class="mt-1 break-all">원본 파일: ' + escapeMigrationText(result.originalName || '-') + '</p>',
             '<div class="mt-2 grid grid-cols-3 gap-1 text-center sm:grid-cols-6">',
             '<span>문서<br><b>' + Number(counts.documents || 0) + '</b></span>',
@@ -626,7 +1312,7 @@
             '<p>검증: SHA-256 일치 · integrity ' + escapeMigrationText((validation.integrityCheck || []).join(',') || '-')
                 + ' · FK 위반 ' + Number(validation.foreignKeyViolations || 0) + ' · 안전 경로 확인</p>',
             '<p class="mt-1 break-all font-mono text-[9px]">package SHA-256 ' + escapeMigrationText(validation.packageChecksumSha256 || result.packageChecksumSha256 || '-') + '</p>',
-            '<p class="mt-2 font-semibold text-amber-700 dark:text-amber-300">패키지는 격리된 staging에만 보관되었습니다. 현재 SQLite DB와 assets는 변경되지 않았으며 실제 복원 버튼은 아직 제공하지 않습니다.</p>'
+            '<p class="mt-2 font-semibold text-amber-700 dark:text-amber-300">현재 SQLite DB와 assets는 아직 변경되지 않았습니다. “검증된 백업 복원”을 누르면 현재 데이터의 자동 백업을 만든 뒤 교체하며, 실패하면 자동 rollback합니다.</p>'
         ].join('');
     }
 
@@ -636,6 +1322,7 @@
         const selectButton = document.getElementById('sqlite-restore-package-select');
         const resultElement = document.getElementById('sqlite-restore-package-result');
         sqliteRestorePreviewRunning = true;
+        lastSqliteRestorePreview = null;
         if (previewButton) {
             previewButton.disabled = true;
             previewButton.textContent = '업로드 및 검증 중...';
@@ -650,6 +1337,7 @@
                 throw new Error('SQLite 복원 미리보기 기능이 준비되지 않았습니다.');
             }
             const result = await window.MDPStorage.previewBackupRestore(selectedSqliteRestoreFile);
+            lastSqliteRestorePreview = result;
             renderSqliteRestorePreview(result);
         } catch (error) {
             if (resultElement) {
@@ -661,6 +1349,101 @@
             sqliteRestorePreviewRunning = false;
             if (previewButton) previewButton.textContent = '복원 미리보기';
             setSqliteRestorePreviewAvailable(sqliteRestorePreviewAvailable);
+        }
+    }
+
+    async function runSqliteRestoreApply() {
+        if (sqliteRestoreApplyRunning || !lastSqliteRestorePreview) return;
+        const preview = lastSqliteRestorePreview;
+        const checksum = preview.packageChecksumSha256
+            || (preview.validation && preview.validation.packageChecksumSha256);
+        if (!preview.importId || !checksum) return;
+        const accepted = window.confirm(
+            '현재 SQLite 문서·폴더·설정·자산을 선택한 백업 내용으로 교체합니다.\n\n'
+            + '교체 직전에 현재 데이터 전체를 별도 .mdpbackup으로 자동 보존하며, 실패하면 자동으로 되돌립니다. 계속할까요?'
+        );
+        if (!accepted) return;
+        const applyButton = document.getElementById('sqlite-restore-package-apply');
+        const resultElement = document.getElementById('sqlite-restore-package-result');
+        sqliteRestoreApplyRunning = true;
+        setSqliteRestorePreviewAvailable(sqliteRestorePreviewAvailable);
+        if (applyButton) applyButton.textContent = '자동 백업 및 복원 중...';
+        if (resultElement) {
+            resultElement.className = 'mt-2 rounded border border-amber-300 bg-amber-50 p-2 text-[10px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200';
+            resultElement.textContent = '현재 DB와 assets를 자동 백업한 뒤 검증된 staging 데이터로 교체하고 있습니다. 창을 닫지 마세요.';
+        }
+        try {
+            if (!window.MDPStorage || typeof window.MDPStorage.applyBackupRestore !== 'function') {
+                throw new Error('SQLite 실제 복원 기능이 준비되지 않았습니다.');
+            }
+            const result = await window.MDPStorage.applyBackupRestore(preview.importId, checksum);
+            const backup = result.preRestoreBackup || {};
+            const counts = result.verification && result.verification.databaseCounts
+                ? result.verification.databaseCounts
+                : {};
+            lastSqliteRestorePreview = null;
+            lastPreRestoreBackup = backup;
+            if (resultElement) {
+                resultElement.className = 'mt-2 rounded border border-emerald-300 bg-emerald-50 p-2 text-[10px] text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200';
+                resultElement.innerHTML = [
+                    '<p class="font-semibold">SQLite 복원 및 적용 후 검증 완료</p>',
+                    '<p class="mt-1">문서 ' + Number(counts.documents || 0) + ' · 폴더 ' + Number(counts.folders || 0)
+                        + ' · 설정 ' + Number(counts.settings || 0) + ' · 자산 ' + Number(counts.assets || 0) + '</p>',
+                    '<p>integrity ' + escapeMigrationText((result.verification.integrityCheck || []).join(',') || '-')
+                        + ' · FK 위반 ' + Number(result.verification.foreignKeyViolations || 0) + '</p>',
+                    '<p class="mt-1 break-all">복원 직전 자동 백업: ' + escapeMigrationText(backup.fileName || backup.filePath || '-') + '</p>',
+                    '<p class="mt-2 font-semibold">복원 전 백업을 내려받아 보관한 뒤 새 데이터로 다시 연결해 주세요.</p>',
+                    '<div class="mt-2 flex flex-wrap gap-2">',
+                    '<button type="button" id="sqlite-pre-restore-backup-download" class="rounded border border-emerald-700 px-2 py-1 font-semibold">복원 전 백업 다운로드</button>',
+                    '<button type="button" id="sqlite-restore-reload" class="rounded bg-emerald-700 px-2 py-1 font-semibold text-white">앱 새로고침</button>',
+                    '</div>'
+                ].join('');
+                const backupButton = resultElement.querySelector('#sqlite-pre-restore-backup-download');
+                const reloadButton = resultElement.querySelector('#sqlite-restore-reload');
+                if (backupButton) backupButton.addEventListener('click', runSqlitePreRestoreBackupDownload);
+                if (reloadButton) reloadButton.addEventListener('click', function () { window.location.reload(); });
+            }
+        } catch (error) {
+            if (resultElement) {
+                resultElement.textContent = 'SQLite 복원 실패: ' + (error && error.message ? error.message : error)
+                    + ' · 교체 도중 실패한 경우 서버가 이전 DB와 assets로 자동 rollback합니다.';
+                resultElement.className = 'mt-2 rounded border border-red-300 bg-red-50 p-2 text-[10px] text-red-600 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400';
+            }
+        } finally {
+            sqliteRestoreApplyRunning = false;
+            if (applyButton) applyButton.textContent = '검증된 백업 복원';
+            setSqliteRestorePreviewAvailable(sqliteRestorePreviewAvailable);
+        }
+    }
+
+    async function runSqlitePreRestoreBackupDownload() {
+        const button = document.getElementById('sqlite-pre-restore-backup-download');
+        const fileName = lastPreRestoreBackup && lastPreRestoreBackup.fileName;
+        if (!fileName || !window.MDPStorage) return;
+        if (button) {
+            button.disabled = true;
+            button.textContent = '다운로드 준비 중...';
+        }
+        try {
+            const downloaded = await window.MDPStorage.downloadBackupPackage(fileName);
+            const url = URL.createObjectURL(downloaded.blob);
+            const anchor = document.createElement('a');
+            anchor.href = url;
+            anchor.download = downloaded.fileName || fileName;
+            anchor.style.display = 'none';
+            document.body.appendChild(anchor);
+            anchor.click();
+            anchor.remove();
+            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        } catch (error) {
+            if (typeof window.showToast === 'function') {
+                window.showToast('복원 전 백업 다운로드 실패: ' + (error && error.message ? error.message : error), 'error');
+            }
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = '복원 전 백업 다운로드';
+            }
         }
     }
 
@@ -857,11 +1640,16 @@
             state = window.MDPStorage.getStatus();
         }
         elements.checkbox.checked = state.activeMode === 'sqlite';
+        const backendSelect = document.getElementById('sqlite-backend-select');
+        if (backendSelect) backendSelect.value = state.sqliteBackendPreference || 'auto';
         const health = state.sqliteHealth;
         if (!health) {
             setMigrationPreviewAvailable(false);
             setSqliteExplorerAvailable(false);
             setSqliteBackupPackageAvailable(false);
+            setSqliteIntegrityCheckAvailable(false);
+            setSqliteDatabaseExportAvailable(false);
+            sqliteRestoreApplyAvailable = false;
             setSqliteRestorePreviewAvailable(false);
             setLocalAppLinkVisible(true);
             setSqliteStatus(sqliteOfflineStatus(), 'error', sqliteOfflineDetails(state.lastError) + ' · 현재 저장소: inDB');
@@ -871,6 +1659,9 @@
         setMigrationPreviewAvailable(!!(health.capabilities && health.capabilities.migrationPreview === true));
         setSqliteExplorerAvailable(!!(health.capabilities && health.capabilities.explorer === true));
         setSqliteBackupPackageAvailable(!!(health.capabilities && health.capabilities.backupPackage === true));
+        setSqliteIntegrityCheckAvailable(!!(health.capabilities && health.capabilities.integrityCheck === true));
+        setSqliteDatabaseExportAvailable(!!(health.capabilities && health.capabilities.databaseExport === true));
+        sqliteRestoreApplyAvailable = !!(health.capabilities && health.capabilities.restore === true);
         setSqliteRestorePreviewAvailable(!!(health.capabilities && health.capabilities.restorePreview === true));
         const recovery = state.recoveryStatus || null;
         const recoveryReady = !!(recovery && recovery.available === true);
@@ -880,7 +1671,8 @@
         const documentApiReady = !!(health.capabilities
             && health.capabilities.documents === true
             && health.capabilities.folders === true);
-        const detail = 'DB: ' + (health.databasePath || '-')
+        const detail = '백엔드: ' + (state.sqliteBackend || health.backend || '-')
+            + ' · DB: ' + (health.databasePath || '-')
             + ' · schema v' + (health.schemaVersion || '-')
             + ' · ' + String(health.journalMode || '').toUpperCase()
             + ' · 복구버퍼 ' + (recoveryReady ? '준비됨' : '사용 불가')
@@ -933,15 +1725,21 @@
         renderMigrationPreviewResult: renderMigrationPreviewResult
         ,runSqliteMigrationApply: runSqliteMigrationApply
         ,renderMigrationApplyResult: renderMigrationApplyResult
+        ,runSqliteIntegrityCheck: runSqliteIntegrityCheck
         ,openSqliteExplorer: openSqliteExplorer
         ,closeSqliteExplorer: closeSqliteExplorer
         ,refreshSqliteExplorer: refreshSqliteExplorer
         ,setSqliteExplorerTab: setSqliteExplorerTab
         ,openSqliteExplorerDocument: openSqliteExplorerDocument
         ,openSqliteExplorerFile: openSqliteExplorerFile
+        ,openSqliteExplorerBackup: openSqliteExplorerBackup
+        ,deleteSqliteExplorerBackup: deleteSqliteExplorerBackup
+        ,openSqliteExplorerSetting: openSqliteExplorerSetting
         ,runSqliteBackupPackageCreate: runSqliteBackupPackageCreate
         ,runSqliteBackupPackageDownload: runSqliteBackupPackageDownload
         ,runSqliteRestorePreview: runSqliteRestorePreview
         ,renderSqliteRestorePreview: renderSqliteRestorePreview
+        ,runSqliteRestoreApply: runSqliteRestoreApply
+        ,runSqlitePreRestoreBackupDownload: runSqlitePreRestoreBackupDownload
     };
 })();

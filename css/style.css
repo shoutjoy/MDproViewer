@@ -717,6 +717,28 @@
     50% { transform: scale(1.08); opacity: 1; box-shadow: 0 0 0 5px rgba(16, 185, 129, .14), 0 0 13px rgba(52, 211, 153, .82); }
 }
 
+@keyframes storageSqliteConnectionGlow {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(129, 140, 248, .42), 0 0 7px rgba(99, 102, 241, .28); }
+    50% { box-shadow: 0 0 0 2px rgba(129, 140, 248, .62), 0 0 14px rgba(99, 102, 241, .46); }
+}
+
+@keyframes storageGithubConnectionGlow {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(52, 211, 153, .4), 0 0 7px rgba(16, 185, 129, .26); }
+    50% { box-shadow: 0 0 0 2px rgba(52, 211, 153, .58), 0 0 14px rgba(16, 185, 129, .44); }
+}
+
+.storage-connected-sqlite {
+    border-color: #818cf8 !important;
+    box-shadow: 0 0 0 1px rgba(129, 140, 248, .42), 0 0 9px rgba(99, 102, 241, .34);
+    animation: storageSqliteConnectionGlow 2.6s ease-in-out infinite;
+}
+
+.storage-connected-github {
+    border-color: #34d399 !important;
+    box-shadow: 0 0 0 1px rgba(52, 211, 153, .4), 0 0 9px rgba(16, 185, 129, .32);
+    animation: storageGithubConnectionGlow 2.6s ease-in-out infinite;
+}
+
 .settings-credential-connected {
     border-color: #10b981 !important;
     outline: 1px solid rgba(52, 211, 153, .25);
@@ -804,5 +826,7 @@ html:not(.dark) .settings-credential-error-status {
     .settings-credential-connected,
     .settings-credential-connected-status,
     .settings-connected-dot,
-    .settings-connection-glow { animation: none !important; }
+    .settings-connection-glow,
+    .storage-connected-sqlite,
+    .storage-connected-github { animation: none !important; }
 }

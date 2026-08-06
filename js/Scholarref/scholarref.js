@@ -1037,6 +1037,82 @@
     download('scholar_references.md', body, 'text/markdown;charset=utf-8');
   }
 
+  function requireSqliteWorkFileApi() {
+    if (!global.MDPStorage
+        || typeof global.MDPStorage.saveSqliteWorkFile !== 'function'
+        || typeof global.MDPStorage.listSqliteWorkFiles !== 'function'
+        || typeof global.MDPStorage.loadSqliteWorkFile !== 'function') {
+      throw new Error('SQLite 작업파일 기능을 찾을 수 없습니다.');
+    }
+    return global.MDPStorage;
+  }
+
+  function chooseSqliteWorkFile(items, label) {
+    var list = Array.isArray(items) ? items.slice(0, 30) : [];
+    if (!list.length) return null;
+    var lines = list.map(function (item, index) {
+      var date = item.createdAt ? new Date(Number(item.createdAt)).toLocaleString() : '';
+      return (index + 1) + '. ' + item.name + (date ? ' · ' + date : '');
+    });
+    var selected = window.prompt(label + '\n\n' + lines.join('\n') + '\n\n번호를 입력하세요.', '1');
+    if (selected == null) return null;
+    var index = Number(selected) - 1;
+    return Number.isInteger(index) && index >= 0 && index < list.length ? list[index] : null;
+  }
+
+  async function saveSqliteMarkdown() {
+    if (!refs.length) {
+      toast('SQLite에 저장할 참고문헌이 없습니다.');
+      return null;
+    }
+    try {
+      var storage = requireSqliteWorkFileApi();
+      var body = buildReferencesSectionFromTexts(refs.map(function (r) { return r.text; }), {
+        withAnchors: false
+      }).replace(/^\n+/, '');
+      var blob = new Blob([body], { type: 'text/markdown' });
+      var result = await storage.saveSqliteWorkFile(blob, {
+        appId: 'scholarref',
+        workType: 'scholar_references_md',
+        fileName: 'scholar_references_' + Date.now() + '.md'
+      });
+      toast('참고문헌 ' + refs.length + '건을 SQLite에 저장했습니다.');
+      return result;
+    } catch (error) {
+      toast('SQLite 참고문헌 저장 실패: ' + String(error && error.message || error));
+      return null;
+    }
+  }
+
+  async function loadSqliteMarkdown() {
+    try {
+      var storage = requireSqliteWorkFileApi();
+      var result = await storage.listSqliteWorkFiles({
+        appId: 'scholarref',
+        workType: 'scholar_references_md',
+        limit: 30
+      });
+      var selected = chooseSqliteWorkFile(result && result.items, 'SQLite 참고문헌 목록');
+      if (!selected) {
+        if (!result || !Array.isArray(result.items) || !result.items.length) {
+          toast('SQLite에 저장된 참고문헌 Markdown이 없습니다.');
+        }
+        return null;
+      }
+      var blob = await storage.loadSqliteWorkFile(selected);
+      var markdown = await blob.text();
+      var extracted = extractReferencesSectionFromMarkdown(markdown);
+      var input = q('scholarref-input');
+      if (input) input.value = extracted || markdown;
+      switchTab(0);
+      toast('SQLite 참고문헌을 불러왔습니다. 확인 후 앱에서 사용하기를 누르세요.');
+      return selected;
+    } catch (error) {
+      toast('SQLite 참고문헌 불러오기 실패: ' + String(error && error.message || error));
+      return null;
+    }
+  }
+
   function openListWindow() {
     if (!refs.length) {
       toast('저장된 참고문헌이 없습니다.');
@@ -1122,6 +1198,8 @@
     insertAllSection: insertAllSection,
     downloadTxt: downloadTxt,
     downloadMd: downloadMd,
+    saveSqliteMarkdown: saveSqliteMarkdown,
+    loadSqliteMarkdown: loadSqliteMarkdown,
     openListWindow: openListWindow,
     pushGithubReferenceItem: pushGithubReferenceItem,
     pushGithubSavedList: pushGithubSavedList,

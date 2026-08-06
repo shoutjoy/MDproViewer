@@ -1174,7 +1174,13 @@
     if (typeof getKey === 'function') {
       try { return String(getKey() || '').trim(); } catch (e) {}
     }
-    try { return localStorage.getItem('ss_imgbb_api_key') || ''; } catch (e) {}
+    try {
+      if (window.MDPCredentialVault && typeof window.MDPCredentialVault.getSecret === 'function') {
+        var protectedKey = window.MDPCredentialVault.getSecret('imgbb');
+        if (protectedKey) return protectedKey;
+      }
+      return localStorage.getItem('ss_imgbb_api_key') || '';
+    } catch (e) {}
     return '';
   }
 

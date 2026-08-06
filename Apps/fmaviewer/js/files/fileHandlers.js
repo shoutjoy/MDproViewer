@@ -615,19 +615,15 @@ async function saveFMA(options = {}) {
 
     await new Promise(resolve => requestAnimationFrame(resolve));
     try {
-        const archive = await buildFmaArchive({ compressImages });
-        updateLoading(58);
-        const blob = await archive.zip.generateAsync({
-            type: "blob",
-            mimeType: "application/vnd.fma+zip",
-            compression: "DEFLATE",
-            compressionOptions: { level: 6 },
-            streamFiles: true
-        }, metadata => updateLoading(58 + (metadata.percent * .38)));
+        const archive = await createFmaArchiveFile({
+            compressImages,
+            onZipProgress: percent => updateLoading(58 + (percent * .38))
+        });
+        const blob = archive.blob;
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `project_export_${Date.now()}.fma`;
+        a.download = archive.fileName;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -645,6 +641,30 @@ async function saveFMA(options = {}) {
     } finally {
         setTimeout(hideLoading, 500);
     }
+}
+
+async function createFmaArchiveFile(options = {}) {
+    const archive = await buildFmaArchive({
+        compressImages: Boolean(options.compressImages)
+    });
+    updateLoading(58);
+    const blob = await archive.zip.generateAsync({
+        type: "blob",
+        mimeType: "application/vnd.fma+zip",
+        compression: "DEFLATE",
+        compressionOptions: { level: 6 },
+        streamFiles: true
+    }, metadata => {
+        if (typeof options.onZipProgress === "function") {
+            options.onZipProgress(metadata.percent);
+        }
+    });
+    return {
+        ...archive,
+        blob,
+        fileName: `project_export_${Date.now()}.fma`,
+        compressImages: Boolean(options.compressImages)
+    };
 }
 
 async function buildFmaArchive(options = {}) {

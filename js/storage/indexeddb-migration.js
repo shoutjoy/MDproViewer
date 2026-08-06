@@ -24,7 +24,9 @@
         googleCalendarEmail: ['integrations', 'profile'], naverBlogId: ['integrations', 'profile'],
         sitesList: ['collections', 'workspace'], templateCustomList: ['collections', 'workspace'],
         shareSites: ['collections', 'workspace'], customShareDestinations: ['collections', 'workspace'],
-        userInfo: ['profile', 'profile']
+        userInfo: ['profile', 'profile'],
+        encryptedToolVault: ['security', 'profile'],
+        toolSettingsCatalog: ['integrations', 'profile']
     });
     let lastPreviewState = null;
 

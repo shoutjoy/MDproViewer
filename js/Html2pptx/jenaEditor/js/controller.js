@@ -41,6 +41,9 @@
   <div class="spacer"></div>
   <button class="btn" id="btnInDbSave">inDB Save</button>
   <button class="btn" id="btnInDbOpen">inDB Open</button>
+  <button class="btn" id="btnSqliteSave">SQLite Save</button>
+  <button class="btn" id="btnSqliteOpen">SQLite Open</button>
+  <button class="btn" id="btnSqliteMirror" title="기존 저장 결과를 SQLite에도 보관">SQLite 자동: OFF</button>
   <button class="btn" id="btnImport">mpp Import</button>
   <button class="btn" id="btnPptxImport">pptx Import</button>
   <button class="btn" id="btnExport">mpp Export</button>
@@ -199,9 +202,10 @@
     "./js/Export/pptModeImageText.js",
     "./js/Export/pptModeFull.js",
     "./js/Export/pptExport.js",
+    "./js/sqliteStorage.js",
     "./js/main.js"
   ];
-  const ASSET_VERSION = "20260628-pptx-import-fit-1";
+  const ASSET_VERSION = "20260806-sqlite-storage-1";
 
   const loadedScripts = new Set();
   let booted = false;

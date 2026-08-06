@@ -6,6 +6,37 @@
     return global.ImageDB;
   }
 
+  var CHOICE_BUTTON_PALETTES = {
+    pink:   { background: '#be185d', border: '#ec4899', hover: '#db2777', focus: 'rgba(236,72,153,.38)' },
+    blue:   { background: '#1d4ed8', border: '#3b82f6', hover: '#2563eb', focus: 'rgba(59,130,246,.38)' },
+    purple: { background: '#6d28d9', border: '#8b5cf6', hover: '#7c3aed', focus: 'rgba(139,92,246,.38)' },
+    amber:  { background: '#b45309', border: '#f59e0b', hover: '#d97706', focus: 'rgba(245,158,11,.38)' },
+    teal:   { background: '#0f766e', border: '#14b8a6', hover: '#0d9488', focus: 'rgba(20,184,166,.38)' },
+    green:  { background: '#15803d', border: '#22c55e', hover: '#16a34a', focus: 'rgba(34,197,94,.38)' },
+    red:    { background: '#b91c1c', border: '#ef4444', hover: '#dc2626', focus: 'rgba(239,68,68,.38)' },
+    slate:  { background: '#1e293b', border: '#475569', hover: '#334155', focus: 'rgba(148,163,184,.32)' }
+  };
+
+  function styleChoiceButton(button, tone) {
+    var palette = CHOICE_BUTTON_PALETTES[tone] || CHOICE_BUTTON_PALETTES.slate;
+    button.style.cssText = 'padding:8px 12px;border-radius:8px;border:1px solid ' + palette.border + ';background:' + palette.background + ';color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:background-color .15s ease,transform .15s ease,box-shadow .15s ease;';
+    button.addEventListener('mouseenter', function () {
+      button.style.backgroundColor = palette.hover;
+      button.style.transform = 'translateY(-1px)';
+    });
+    button.addEventListener('mouseleave', function () {
+      button.style.backgroundColor = palette.background;
+      button.style.transform = '';
+    });
+    button.addEventListener('focus', function () {
+      button.style.outline = 'none';
+      button.style.boxShadow = '0 0 0 3px ' + palette.focus;
+    });
+    button.addEventListener('blur', function () {
+      button.style.boxShadow = '';
+    });
+  }
+
   function showChoiceDialog(title, message, choices, cancelKey) {
     return new Promise(function (resolve) {
       var overlay = document.createElement('div');
@@ -38,7 +69,7 @@
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = choice.label || choice.key;
-        btn.style.cssText = 'padding:8px 12px;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;font-size:13px;font-weight:600;cursor:pointer;';
+        styleChoiceButton(btn, choice.tone);
         btn.addEventListener('click', function () { done(choice.key); });
         row.appendChild(btn);
       });
@@ -210,18 +241,18 @@
   }
   function showExportTypeDialog() {
     var choices = [
-      { key: 'md', label: 'MD file' },
-      { key: 'docx', label: 'MS Word (.docx)' },
-      { key: 'mdd', label: 'MDD file (bundle)' },
-      { key: 'zip', label: 'ZIP file' },
-      { key: 'html', label: 'HTML file' }
+      { key: 'md', label: 'MD file', tone: 'pink' },
+      { key: 'docx', label: 'MS Word (.docx)', tone: 'blue' },
+      { key: 'mdd', label: 'MDD file (bundle)', tone: 'purple' },
+      { key: 'zip', label: 'ZIP file', tone: 'amber' },
+      { key: 'html', label: 'HTML file', tone: 'teal' }
     ];
     try {
       if (typeof global.isGithubExportEnabled === 'function' && global.isGithubExportEnabled()) {
-        choices.push({ key: 'github', label: 'GitHub (push)' });
+        choices.push({ key: 'github', label: 'GitHub (push)', tone: 'green' });
       }
     } catch (_) {}
-    choices.push({ key: 'cancel', label: 'Cancel' });
+    choices.push({ key: 'cancel', label: 'Cancel', tone: 'red' });
 
     return showChoiceDialog(
       'Export Format',

@@ -21,7 +21,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260731-html-preview-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260806-storage-glow-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260806-ai-jena-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -1823,11 +1823,12 @@
 
     <!-- SQLite read-only explorer -->
     <div id="sqlite-explorer-modal"
-        class="fixed inset-0 hidden items-center justify-center bg-slate-950/65 p-3 z-[2147483647] no-print backdrop-blur-sm"
-        onclick="if(event.target===this) SettingUI.closeSqliteExplorer()">
-        <section class="flex h-[min(820px,94vh)] w-[min(1280px,97vw)] min-h-[480px] flex-col overflow-hidden rounded-xl border border-emerald-700 bg-white shadow-2xl dark:bg-slate-900"
-            role="dialog" aria-modal="true" aria-labelledby="sqlite-explorer-title">
-            <header class="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-300 bg-slate-100 px-4 py-2 dark:border-slate-700 dark:bg-slate-800">
+        class="pointer-events-none fixed inset-0 hidden z-[2147483647] no-print">
+        <section id="sqlite-explorer-panel"
+            class="pointer-events-auto fixed flex h-[min(820px,94vh)] w-[min(1280px,97vw)] min-h-[480px] flex-col overflow-hidden rounded-xl border border-emerald-700 bg-white shadow-2xl dark:bg-slate-900"
+            role="dialog" aria-modal="false" aria-labelledby="sqlite-explorer-title">
+            <header id="sqlite-explorer-drag-handle" title="드래그하여 창 이동"
+                class="flex shrink-0 cursor-move flex-wrap items-center gap-2 border-b border-slate-300 bg-slate-100 px-4 py-2 select-none dark:border-slate-700 dark:bg-slate-800">
                 <div class="min-w-0 flex-1">
                     <h2 id="sqlite-explorer-title" class="text-base font-bold text-slate-900 dark:text-slate-100">SQLite 데이터 탐색</h2>
                     <p id="sqlite-explorer-database" class="truncate text-[11px] text-slate-500 dark:text-slate-400">연결 확인 전</p>
@@ -2101,7 +2102,7 @@
             </div>
         </div>
         <div id="html2ppt-panel-body" class="flex-1 p-2 min-h-0">
-            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html?v=20260628-pptx-import-fit-1"
+            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html?v=20260806-sqlite-storage-1"
                 class="w-full h-full border-0 rounded bg-white dark:bg-slate-900" title="GenSlide"></iframe>
         </div>
         <div id="html2ppt-panel-resizer" title="Resize"
@@ -2193,7 +2194,7 @@
 
 <!-- GitHub 환경 설정 -->
 <script
-    src="./js/GithubData/github-settings.js?v=20260428-2"
+    src="./js/GithubData/github-settings.js?v=20260806-storage-glow-1"
     charset="utf-8"
     defer>
 </script>
@@ -2243,7 +2244,7 @@
 
 <!-- 참고문헌 데이터 처리 -->
 <script
-    src="./js/Scholarref/scholarref.js?v=20260730-doi-newtab-1"
+    src="./js/Scholarref/scholarref.js?v=20260806-scholar-sqlite-1"
     charset="utf-8"
     defer>
 </script>
@@ -2257,7 +2258,7 @@
 
 <!-- 학술검색 통합 셸 -->
 <script
-    src="./js/Scholarref/scholarsearch-shell.js?v=20260730-github-share-1"
+    src="./js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-1"
     charset="utf-8"
     defer>
 </script>
@@ -2316,7 +2317,7 @@
 
 <!-- 확장 파일 처리 -->
 <script
-    src="./js/extendFiles/extend-files.js?v=20260725-docx-1"
+    src="./js/extendFiles/extend-files.js?v=20260806-export-colors-1"
     charset="utf-8"
     defer>
 </script>
@@ -2374,7 +2375,12 @@
     defer>
 </script>
 <script
-    src="./js/storage/sqlite-api-adapter.js?v=20260806-restore-preview-1"
+    src="./js/storage/sqlite-api-adapter.js?v=20260806-maintenance-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./Local_SQLiteWASM/sqlite-wasm-adapter.js?v=20260806-wasm-phase1"
     charset="utf-8"
     defer>
 </script>
@@ -2384,7 +2390,13 @@
     defer>
 </script>
 <script
-    src="./js/storage/storage-service.js?v=20260806-restore-preview-1"
+    src="./js/storage/storage-service.js?v=20260806-maintenance-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<script
+    src="./js/storage/encrypted-credential-vault.js?v=20260806-tool-vault-1"
     charset="utf-8"
     defer>
 </script>
@@ -2397,7 +2409,7 @@
 
 <!-- 설정 UI -->
 <script
-    src="./Setting/settings-ui.js?v=20260806-restore-preview-1"
+    src="./Setting/settings-ui.js?v=20260806-maintenance-1"
     charset="utf-8"
     defer>
 </script>
@@ -2460,7 +2472,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260806-settings-migration-1"
+    src="./js/app.js?v=20260806-storage-glow-1"
     charset="utf-8"
     defer>
 </script>
@@ -2505,7 +2517,7 @@
 
 <!-- GitHub 실제 기능 -->
 <script
-    src="./js/GithubData/github-app.js?v=20260806-sqlite-github-push-1"
+    src="./js/GithubData/github-app.js?v=20260806-storage-glow-1"
     charset="utf-8"
     defer>
 </script>

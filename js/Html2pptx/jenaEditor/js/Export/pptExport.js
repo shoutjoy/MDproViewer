@@ -900,6 +900,22 @@ async function exportPptx() {
     // Writing final PPTX file
     setPptxProgress(97, "\uD30C\uC77C \uC0DD\uC131 \uC911...");
     const fname = `jena_slides_${Date.now()}.pptx`;
+    if (window.GenSlideSqlite
+      && typeof window.GenSlideSqlite.isMirrorEnabled === "function"
+      && window.GenSlideSqlite.isMirrorEnabled()
+      && typeof window.GenSlideSqlite.captureExport === "function") {
+      try {
+        const sqliteOutput = await pptx.write({ outputType: "blob" });
+        const sqliteBlob = sqliteOutput instanceof Blob
+          ? sqliteOutput
+          : new Blob([sqliteOutput], {
+              type: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            });
+        await window.GenSlideSqlite.captureExport(sqliteBlob, fname);
+      } catch (sqliteError) {
+        console.warn("[GenSlide SQLite] PPTX mirror skipped:", sqliteError && sqliteError.message ? sqliteError.message : sqliteError);
+      }
+    }
     await pptx.writeFile({ fileName: fname });
     // Export done
     setPptxProgress(100, "\uC644\uB8CC");

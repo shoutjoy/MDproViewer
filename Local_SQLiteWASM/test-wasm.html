@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>MD Viewer SQLite WASM 통합 테스트</title>
+    <style>
+        body { margin: 2rem; font: 14px/1.5 system-ui, sans-serif; background: #0f172a; color: #e2e8f0; }
+        pre { white-space: pre-wrap; padding: 1rem; border: 1px solid #334155; border-radius: .5rem; background: #020617; }
+        [data-status="passed"] { border-color: #10b981; }
+        [data-status="failed"] { border-color: #ef4444; }
+    </style>
+</head>
+<body>
+    <h1>SQLite WASM + OPFS 통합 테스트</h1>
+    <pre id="result" data-status="running">테스트 실행 중...</pre>
+    <script src="./sqlite-wasm-adapter.js"></script>
+    <script src="./test-wasm.js"></script>
+</body>
+</html>

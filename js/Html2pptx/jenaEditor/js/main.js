@@ -67,7 +67,12 @@ document.getElementById("btnInDbSave").onclick = async () => {
   const suggested = makeInDbRecordName();
   const name = prompt("Save name", suggested);
   if (name == null) return;
-  try { await saveSlidesToInDb(name); } catch (_) {}
+  try {
+    await saveSlidesToInDb(name);
+    if (window.GenSlideSqlite && typeof window.GenSlideSqlite.captureCurrentMpp === "function") {
+      await window.GenSlideSqlite.captureCurrentMpp(name);
+    }
+  } catch (_) {}
 };
 document.getElementById("btnInDbOpen").onclick = () => { openInDbModal().catch(() => {}); };
 document.getElementById("btnPrev").onclick = () => { if (cur > 0) { cur--; loadCurrent(); } };
@@ -187,6 +192,9 @@ if (btnPptxImport && pptxFileInput) {
     btnPptxImport.textContent = "pptx 변환 중";
     try {
       await importPptxToGenSlide(file);
+      if (window.GenSlideSqlite && typeof window.GenSlideSqlite.captureImportedFile === "function") {
+        await window.GenSlideSqlite.captureImportedFile(file);
+      }
       btnPptxImport.textContent = "pptx 완료";
     } catch (error) {
       console.error("[GenSlide] PPTX import failed:", error);
@@ -420,9 +428,18 @@ if (els.findInput) {
 els.fileInput.onchange = async (e) => {
   const f = e.target.files && e.target.files[0];
   if (!f) return;
-  try { await importMpp(f); } catch (_) {}
+  try {
+    await importMpp(f);
+    if (window.GenSlideSqlite && typeof window.GenSlideSqlite.captureImportedFile === "function") {
+      await window.GenSlideSqlite.captureImportedFile(f);
+    }
+  } catch (_) {}
   e.target.value = "";
 };
+
+if (window.GenSlideSqlite && typeof window.GenSlideSqlite.bindButtons === "function") {
+  window.GenSlideSqlite.bindButtons();
+}
 
 document.querySelectorAll("[data-tag]").forEach((btn) => {
   btn.onclick = () => wrapTag(btn.getAttribute("data-tag"));

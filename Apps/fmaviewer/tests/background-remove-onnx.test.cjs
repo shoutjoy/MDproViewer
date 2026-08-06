@@ -45,6 +45,28 @@ assert.match(
     /clearBackgroundModelRuntimeCache\(currentModule, true\)/,
     "다른 모델을 선택한 경우에만 이전 모델 캐시를 제거해야 합니다."
 );
+assert.match(
+    source,
+    /FMASqliteWorkfiles\.saveOnnxModel/,
+    "SQLite 모드에서 선택하거나 다운로드한 ONNX 모델을 SQLite에 저장해야 합니다."
+);
+assert.match(
+    source,
+    /FMASqliteWorkfiles\.loadOnnxModel/,
+    "앱 재실행 시 SQLite ONNX 모델을 먼저 불러와야 합니다."
+);
+assert.match(
+    source,
+    /falling back to IndexedDB/,
+    "SQLite 모델 저장 실패 시 기존 IndexedDB 폴백을 유지해야 합니다."
+);
+assert.match(source, /sqlite:\s*"✓ SQLite에 저장된 ONNX 모델/, "SQLite 모델 위치를 UI에 표시해야 합니다.");
+assert.match(source, /rembgPersistedModelMetadata\.checksumSha256/, "SQLite 모델 checksum을 UI에 표시해야 합니다.");
+assert.match(
+    source,
+    /IndexedDB ONNX model migration to SQLite failed/,
+    "SQLite 모드에서 기존 IndexedDB 모델을 한 번 자동 이관해야 합니다."
+);
 
 const progressDom = {
     bgRemoveProgressBar: { style: {} },

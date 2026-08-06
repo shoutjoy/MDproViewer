@@ -2,7 +2,7 @@
 
 작성일: 2026-08-06  
 대상: `C:\CusorApps\md-viewerVscode\md_viewer`  
-상태: Phase 6B `.mdpbackup` 파일 선택·격리 staging·복원 미리보기 완료
+상태: Phase 7B-1 fmaviewer 저장 대상 분류·AI Jena 참고 세팅 SQLite 저장 완료
 
 진행 현황:
 
@@ -23,9 +23,11 @@
 - Phase 5: `ai_settings` 허용 목록, 비밀값 이중 차단, 범위 우선순위, SQLite 설정 API·복원·탐색 완료
 - Phase 6A: SQLite online backup과 연결 자산을 manifest·checksum으로 묶은 `.mdpbackup` 생성·검증·다운로드 완료
 - Phase 6B: 선택한 `.mdpbackup`을 격리 staging에서 검증하고 복원 데이터 수량을 미리보는 UI/API 완료
+- Phase 6C: 검증된 staging만 현재 전체 백업 후 DB/assets로 교체하고 실패 시 자동 rollback하는 실제 복원 완료
 - Phase 6A 선행 기반: 실행 중 DB를 단순 복사하지 않는 SQLite online backup 코어와 무결성 검증 완료
 - `storageModeActivation=true`: 설정과 좌측 SQLite 탭에서 실제 저장 모드 전환 가능
-- 다음 단계: Phase 6C 복원 전 현재 DB 자동 backup·원자적 DB/assets 교체·실패 rollback 구현
+- 완료 단계: Phase 7B-1 fmaviewer 저장 대상 분류와 AI Jena 참고 세팅 SQLite 저장·검색·불러오기
+- 다음 단계: Phase 7B-2 AI Jena 사용자 포즈·마스크 다각형 preset SQLite 설정 컬렉션 adapter
 
 ## 1. 목표
 
@@ -153,10 +155,10 @@ js/storage/
 
 ### Phase 0. 기준선과 회귀 테스트 고정
 
-- [ ] 현재 IndexedDB 모드에서 문서 생성·열기·수정·이동·삭제·검색 동작을 기록한다.
-- [ ] 현재 `MarkdownProDB`, `mdpro-indb-v1`의 샘플 백업을 만든다.
+- [x] 현재 IndexedDB 모드에서 문서 생성·열기·수정·이동·삭제·검색 동작을 기록한다.
+- [x] 현재 `MarkdownProDB`, `mdpro-indb-v1`의 샘플 백업을 만든다.
 - [x] 중복된 `saveToDB()` 중 실제 사용되는 최종 구현과 호출 경로를 확정한다.
-- [ ] 문서 레코드의 실제 선택 필드(`googleDocId`, GitHub 메타데이터 등)를 샘플로 수집한다.
+- [x] 문서 레코드의 실제 선택 필드(`googleDocId`)와 문서 밖 설정으로 관리되는 GitHub 저장소·브랜치·경로를 구분해 기록한다.
 - [x] 기존 테스트와 `node --check`, `python -m py_compile` 실행 기준을 정한다.
 - [x] 이 단계에서 사용자 데이터 삭제나 IndexedDB 스키마 변경을 하지 않는다.
 
@@ -195,7 +197,7 @@ js/storage/
 - [x] 설정 하단 `SQLite보기`에서 문서·폴더·버전·백업·이관 기록을 읽기 전용으로 탐색한다.
 - [x] SQLite 탐색 목록은 본문을 제외하고 문서를 선택했을 때만 단건 본문과 버전 기록을 읽는다.
 - [x] 이관된 `workspace_sources`·`file_entries`를 파일 탭에 표시하고 선택한 파일 본문만 단건 조회한다.
-- [ ] 설정 화면에 백업·무결성 검사 실행 버튼을 연결한다.
+- [x] 설정 화면에 백업·무결성 검사 실행 버튼을 연결한다.
 
 완료 조건: 체크 해제 시 기존 IndexedDB가 그대로 동작하고, 체크 시 서버 연결 상태와 SQLite 빈 목록이 정확히 표시됨.
 
@@ -254,30 +256,212 @@ js/storage/
 - [x] 설정 화면에서 백업을 생성하고 검증 결과·포함 범위를 확인한 뒤 다운로드한다.
 - [x] `.mdpbackup` 복원 파일 선택과 복원 미리보기 UI를 제공한다.
 - [x] 복원 전 스키마 버전, SHA-256, `integrity_check`, `foreign_key_check`를 검사한다.
-- [ ] 복원 전에 현재 데이터의 자동 백업을 만든다.
+- [x] 복원 전에 현재 DB와 자산 전체의 자동 `.mdpbackup` 및 SQLite online backup을 만든다.
 - [ ] 다른 PC에서 복원 후 문서·폴더·검색·설정·자산 경로를 검증한다.
-- [ ] 직접 DB 경로 열기는 서버 시작 옵션으로만 허용하고, 한 시점에 한 앱 인스턴스만 쓰도록 lock을 둔다.
-- [ ] OneDrive/NAS/공유 폴더의 SQLite 파일을 여러 PC가 동시에 쓰는 방식은 지원하지 않는다고 UI와 문서에 명시한다.
-- [ ] 실시간 다중 PC 사용이 필요해지면 별도의 상시 실행 호스트 서버, 인증, TLS, 사용자별 충돌 정책을 다음 단계로 분리한다.
-- [ ] FMA , FMA(webp)저장이 가능하게 하고 불러오기도 되게 조절 
-
+- [x] 직접 DB 경로 열기는 서버 시작 옵션으로만 허용하고, 한 시점에 한 앱 인스턴스만 쓰도록 lock을 둔다.
+- [x] OneDrive/NAS/공유 폴더의 SQLite 파일을 여러 PC가 동시에 쓰는 방식은 지원하지 않는다고 UI와 문서에 명시한다.
+- [x] 실시간 다중 PC 사용이 필요해지면 별도의 상시 실행 호스트 서버, 인증, TLS, 사용자별 충돌 정책을 다음 단계로 분리한다.
 완료 조건: PC A의 백업을 PC B에서 복원하여 같은 데이터를 검색·편집할 수 있고, 손상된 백업은 적용 전에 차단됨.
+
+#### Phase 6A-1. 빠진 유지보수 UI와 단일 인스턴스 안전장치
+
+- [x] 설정 화면의 백업 기능, integrity API, DB 경로 시작 옵션과 현재 서버 시작 흐름을 조사한다.
+- [x] 작업 전 코드 스냅샷과 최근 전체 `.mdpbackup`·checksum을 복구 지점으로 기록한다.
+- [x] 설정 화면에 세션 보호된 SQLite 무결성 검사 버튼과 integrity/FK 결과를 표시한다.
+- [x] `MDPStorage`에서 무결성 검사를 명시적으로 호출하고 연결 실패·검사 실패를 복구 가능한 문구로 표시한다.
+- [x] 같은 SQLite data root를 사용하는 두 번째 `run.py` 프로세스가 쓰기 서버로 시작하지 못하도록 OS file lock을 유지한다.
+- [x] 직접 DB 경로는 `run.py` 시작 전 환경 옵션으로만 받고 브라우저 API/UI에서 임의 경로를 받지 않는다.
+- [x] OneDrive/NAS/공유 폴더의 DB 동시 쓰기를 지원하지 않으며 다른 PC 공유는 `.mdpbackup`으로 수행한다고 UI·문서에 표시한다.
+- [x] 실시간 다중 PC는 상시 호스트·인증·TLS·충돌 정책이 필요한 별도 후속 구조임을 문서화한다.
+- [x] integrity UI/API, lock 획득·중복 차단·해제 후 재획득과 기존 SQLite 회귀 테스트를 통과한다.
+- [x] 완료 코드 스냅샷·전체 `.mdpbackup`과 작업일지에 복구 방법을 기록한다.
+
+Phase 6A-1 완료 조건: 사용자가 설정에서 현재 DB 무결성을 직접 검사할 수 있고, 동일 DB를 두 로컬 앱 프로세스가 동시에 쓰지 않으며, 공유 폴더 동시 쓰기 비지원 범위를 화면에서 확인할 수 있음.
 
 ### Phase 7. 기능별 데이터 확장
 
 아래 항목은 문서 저장이 안정화된 뒤 하나씩 이관한다. 한 번에 전체 IndexedDB를 바꾸지 않는다.
 
-- [ ] 참고문헌·인용·학술검색
+#### Phase 7A. SQLite 작업파일 보관함과 fmaviewer 연결
+
+- [x] FMA v3 ZIP, FMA(WebP 압축), FME 프로젝트, fmaviewer SaveDB의 현재 저장·불러오기 경로와 파일 형식을 조사한다.
+- [x] 기존 파일 다운로드와 IndexedDB SaveDB를 제거하지 않고 SQLite 저장을 선택 기능으로 추가하는 호환 원칙을 확정한다.
+- [x] 작업 전 코드 스냅샷과 전체 `.mdpbackup`을 생성하고 checksum·무결성을 기록한다.
+- [x] 임의 경로를 받지 않는 범용 작업파일 repository를 구현한다.
+- [x] 원본 파일은 `data/assets/workfiles/`에 checksum 기반으로 저장하고 SQLite `assets`·`workspace_sources`·`file_entries`에 검색용 메타데이터를 기록한다.
+- [x] 동일 원본은 asset을 중복 저장하지 않고 각 저장 시점의 논리 file entry는 별도로 보존한다.
+- [x] FMA ZIP의 manifest·경로·버전과 FME JSON의 format·version을 서버에서 검증하고 잘못된 파일을 저장 전에 차단한다.
+- [x] 세션 보호된 작업파일 저장·목록·검색·단건 다운로드 API와 health capability를 구현한다.
+- [x] fmaviewer에서 `SQLite에 FMA 저장`, `SQLite에 FMA(WebP) 저장`, `SQLite 작업파일 열기`를 제공한다.
+- [x] 이미지 편집기에서 FME를 SQLite에 저장하고 목록에서 선택해 다시 불러온다.
+- [x] 현재 fmaviewer 상태를 SQLite SaveDB 스냅샷으로 저장하고 FMA와 같은 검증 경로로 복구한다.
+- [x] 파일명·파일 형식·앱 이름 검색과 원본 파일 다운로드를 제공한다.
+- [x] FMA/FMA(WebP)/FME 원본 바이트와 checksum 왕복, 중복 asset, 검색, 잘못된 형식 차단을 자동 검증한다.
+- [x] 생성된 작업파일이 기존 `.mdpbackup`의 `assets/`에 포함되고 복원 검증 대상이 되는지 확인한다.
+- [x] 기존 FMA/FME 다운로드·열기와 IndexedDB SaveDB 회귀 테스트를 통과한다.
+- [x] 구현 완료 코드 스냅샷·전체 `.mdpbackup`과 작업일지에 복구 방법을 기록한다.
+
+Phase 7A 완료 조건: SQLite 모드에서 FMA 원본·FMA WebP 압축본·FME·SaveDB 스냅샷을 저장하고 이름/형식으로 검색해 원본 그대로 다시 열 수 있으며, 기존 다운로드와 IndexedDB 저장도 유지됨.
+
+#### Phase 7A-1. 배경 제거 ONNX 모델 SQLite 저장
+
+- [x] 현재 앱 폴더·원격 다운로드·수동 선택·IndexedDB 모델 저장과 ONNX 세션 연결 순서를 조사한다.
+- [x] 176MB 모델을 Python 메모리에 한 번에 복사하지 않고 SQLite `asset_blobs`에 분할 저장하는 구조를 확정한다.
+- [x] 작업 전 코드 스냅샷과 전체 `.mdpbackup`을 생성하고 checksum·무결성을 기록한다.
+- [x] ONNX 모델을 고정 크기 chunk asset/blob으로 한 트랜잭션에 저장하고 전체 크기·SHA-256·순서를 `file_entries`에 기록한다.
+- [x] 업로드 중단·크기 불일치·잘못된 확장자·최소/최대 크기를 차단하고 실패 시 부분 chunk를 남기지 않는다.
+- [x] 기존 모델 교체 성공 후 이전 chunk를 같은 트랜잭션에서 정리한다.
+- [x] 세션 보호된 모델 상태·업로드·SQLite BLOB 다운로드 API와 `modelAssets` capability를 구현한다.
+- [x] SQLite 모드에서는 앱 폴더 다음으로 SQLite 모델을 먼저 확인하고, 없을 때 기존 IndexedDB·원격 다운로드 순서를 유지한다.
+- [x] 자동 다운로드 또는 수동 선택 모델을 SQLite에 저장하고 다음 실행에서 SQLite 모델로 자동 연결한다.
+- [x] SQLite 저장 실패 시 현재 실행과 기존 IndexedDB 저장 경로를 사용할 수 있게 폴백한다.
+- [x] 설정 UI에 `SQLite 저장 모델` 상태·크기·checksum을 표시한다.
+- [x] chunk 왕복 SHA-256·교체·중단 rollback·세션 차단·HTTP 다운로드를 자동 검증한다.
+- [x] SQLite online backup과 `.mdpbackup` 내부 DB에 모델 BLOB이 포함되는지 검증한다.
+- [x] 기존 앱 폴더·IndexedDB·원격·수동 선택과 ONNX 세션 캐시 회귀 테스트를 통과한다.
+- [x] 구현 완료 코드 스냅샷·전체 `.mdpbackup`과 작업일지에 복구 방법을 기록한다.
+
+Phase 7A-1 완료 조건: SQLite 모드에서 준비한 ONNX 모델 원본이 SQLite DB 내부에 저장되고, 앱 재실행 시 외부 재다운로드 없이 같은 SHA-256 모델을 불러오며 기존 경로도 폴백으로 유지됨.
+
+#### Phase 7A-2. SQLite 탐색기 FMA 내용·경량 갤러리
+
+- [x] 현재 SQLite 탐색기 파일 목록·상세 API와 저장된 FMA v3 manifest/media 구조를 조사한다.
+- [x] 사용자 FMA 원본은 변경하지 않고 manifest와 제한된 썸네일만 읽는 원칙을 확정한다.
+- [x] 작업 전 코드 스냅샷과 전체 `.mdpbackup`을 생성하고 checksum·무결성을 기록한다.
+- [x] FMA 상세에서 갤러리 항목 수·고유 미디어 수·이미지·영상·기타와 MIME/확장자별 개수를 계산한다.
+- [x] 이미지 항목은 최대 24개만 반환하고 원본 경로·바이트·본문 JSON은 응답에 노출하지 않는다.
+- [x] Pillow 사용 가능 시 최대 240px WebP로 만들고, 미설치 시 브라우저 지원 이미지 중 2MB 이하만 제한 전송한다.
+- [x] 생성 썸네일은 checksum별 재생성 가능한 cache에 두고 `.mdpbackup` 사용자 자산에는 포함하지 않는다.
+- [x] 영상·미지원 이미지 형식은 원본 전체를 내려받지 않고 종류·파일명·크기 placeholder로 표시한다.
+- [x] 세션 보호된 FMA summary·thumbnail API와 경로·ZIP entry·크기 제한을 구현한다.
+- [x] 탐색기 파일 상세에서 종류별 요약 카드, MIME 분포, 경량 갤러리와 표시 개수 안내를 제공한다.
+- [x] 일반 Markdown/텍스트 파일의 기존 `파일 내용` 표시를 유지한다.
+- [x] FMA manifest 오류·누락 미디어·경로 이탈·지원하지 않는 파일은 안전한 안내로 처리한다.
+- [x] 실제 저장된 FMA에서 summary와 썸네일 크기 제한·cache 재사용을 자동 검증한다.
+- [x] SQLite explorer/API/storage service와 fmaviewer 저장 회귀 테스트를 통과한다.
+- [x] 구현 완료 코드 스냅샷·전체 `.mdpbackup`과 작업일지에 복구 방법을 기록한다.
+
+Phase 7A-2 완료 조건: SQLite 탐색기에서 FMA를 선택하면 파일 종류별 개수와 최대 24개의 경량 미리보기를 확인할 수 있고, 대용량 원본은 상세 화면 로딩에 사용하지 않음.
+
+#### Phase 7A-3. 도구 설정 통합 보기와 암호화 API 키 보관함
+
+- [x] ScholarAI, sspimgAI, AI Jena, imgBB와 공용 AI 공급자의 현재 키·모델·프롬프트 저장 위치를 조사한다.
+- [x] API 키 원문과 사용자가 정한 보관함 비밀번호는 SQLite·서버·로그에 평문으로 저장하지 않는 원칙을 확정한다.
+- [x] 작업 전 코드 스냅샷과 최근 전체 `.mdpbackup`·checksum을 복구 지점으로 기록한다.
+- [x] PBKDF2-SHA256과 AES-GCM을 사용하는 브라우저 암호화 보관함을 구현한다.
+- [x] SQLite에는 salt·반복 횟수·IV·ciphertext와 키별 설정 여부·끝 4자리만 저장한다.
+- [x] 새 보관함 생성, 잠금 해제, 잠금, 비밀번호 변경과 잘못된 비밀번호 차단을 구현한다.
+- [x] 잠금 해제된 키는 브라우저 메모리에서만 유지하고 ScholarAI·sspimgAI·AI Jena·imgBB의 키 조회 경로에 연결한다.
+- [x] 도구별 활성 상태·공급자·모델·시스템 프롬프트·일반 옵션을 비민감 설정 카탈로그로 SQLite에 동기화한다.
+- [x] SQLite 탐색기 설정 탭의 가운데 상세 화면에 도구별 설정 카드와 마스킹된 키 상태를 표시한다.
+- [x] 암호문·metadata 형식, 크기, 허용 도구 ID를 서버에서 검증하고 임의 중첩 데이터와 평문 비밀값을 차단한다.
+- [x] 암호화 왕복·오류 비밀번호·tamper·키 마스킹·검색·기존 도구 폴백 회귀 테스트를 통과한다.
+- [x] 구현 완료 코드 스냅샷·전체 `.mdpbackup`과 작업일지에 복구 방법을 기록한다.
+
+Phase 7A-3 완료 조건: SQLite 탐색기에서 주요 AI/이미지 도구의 모델·프롬프트·설정과 마스킹된 키 상태를 한 화면에서 확인하고, 사용자가 정한 비밀번호 없이는 SQLite에 저장된 API 키 원문을 복호화하거나 사용할 수 없음.
+
+#### Phase 7A-4. SQLite 백업 내용 탐색과 복구 가능한 삭제
+
+- [x] 현재 `backup_history` 목록, online backup 파일 경로와 탐색기 백업 탭 구조를 조사한다.
+- [x] 현재 DB·임의 경로는 열거나 삭제하지 않고 `data/backups/`의 등록된 SQLite backup만 대상으로 하는 원칙을 확정한다.
+- [x] 작업 전 코드 스냅샷과 현재 전체 `.mdpbackup`·checksum을 복구 지점으로 기록한다.
+- [x] 백업 카드를 선택하면 무결성·schema·checksum·테이블별 개수와 문서·폴더·파일·설정 목록을 읽기 전용으로 표시한다.
+- [x] 백업 DB는 SQLite readonly/immutable 연결로 열고 본문·설정값·암호문은 상세 응답에 포함하지 않는다.
+- [x] 세션 보호된 백업 상세 조회와 삭제 API를 구현한다.
+- [x] 삭제 전 backup ID 확인을 요구하고 파일은 `data/backups/trash/`로 원자 이동한 뒤 목록 record를 제거한다.
+- [x] 경로 이탈·현재 DB·미등록 파일·이중 삭제·잘못된 확인값을 차단한다.
+- [x] 탐색기 상세 화면에 내용 보기, 복구 가능 삭제 안내, 확인 대화상자와 삭제 후 목록 새로고침을 연결한다.
+- [x] 상세 개수·비밀값 누락·세션 차단·trash 이동·목록 제거·회귀 테스트를 통과한다.
+- [x] 구현 완료 스냅샷·전체 `.mdpbackup`과 작업일지에 복구 방법을 기록한다.
+
+Phase 7A-4 완료 조건: 백업 카드를 눌러 저장 내용과 무결성을 확인할 수 있고, 명시적으로 확인한 백업만 관리 휴지통으로 이동하여 목록에서 제거하며 필요하면 파일을 수동 복구할 수 있음.
+
+#### Phase 7B. 앱별 작업파일 형식 확장
+
+##### Phase 7B-1. fmaviewer 저장 대상 분류와 AI Jena 참고 세팅
+
+- [x] FMA/FME/SaveDB·레이어/텍스트/주석·AI Jena 참고 세팅·마스크 프리셋·내보내기 이력을 저장 성격별로 분류한다.
+- [x] 형식·MIME·최대 크기·기존 불러오기 함수와 후속 저장 위치를 분류 문서에 기록한다.
+- [x] 작업 전 코드 스냅샷과 현재 전체 `.mdpbackup`을 복구 기준점으로 기록한다.
+- [x] `ai_jena_preset` JSON을 범용 작업파일 repository에서 엄격히 검증하고 checksum 기반으로 저장한다.
+- [x] 기존 JSON/IndexedDB 기능을 유지하면서 AI Jena 패널에 SQLite 저장·목록·불러오기를 추가한다.
+- [x] SQLite 작업파일 검색창에서 AI Jena 참고 세팅을 검색·적용·원본 다운로드할 수 있게 한다.
+- [x] 유효/변조/과대 프리셋, 원본 바이트·checksum 왕복, 중복 asset, 백업 포함을 자동 검증한다.
+- [x] 기존 FMA/FME/SaveDB·AI Jena JSON/IndexedDB 회귀 테스트를 통과한다.
+- [x] 구현 완료 스냅샷·전체 `.mdpbackup`과 작업일지에 검증 결과와 복구 방법을 기록한다.
+
+Phase 7B-1 완료 조건: AI Jena 참고 이미지 세팅을 SQLite에 원본 JSON으로 저장하고 이름으로 검색해 다시 적용할 수 있으며, 기존 JSON 파일과 IndexedDB 저장 방식도 그대로 사용할 수 있음.
+
+- [x] fmaviewer의 설정 preset·레이어/주석·내보내기 이력을 작업파일 보관함 또는 전용 테이블로 분류한다.
+- [x] MD Viewer 하위 앱별 생성 파일을 조사해 형식·MIME·최대 크기·불러오기 함수를 목록화한다.
+- [ ] 범용 작업파일 API를 재사용해 앱별 저장·검색·불러오기 adapter를 단계별로 연결한다.
+- [ ] 앱별 원본 파일과 SQLite 메타데이터 checksum·수량·백업 포함 여부를 검증한다.
+- [x] GenSlide 상단의 inDB·MPP·PPTX·image export/import 결과를 SQLite에 저장하고 다시 가져온다.
+- [x] 양식 저장·추가·Markdown export/import를 SQLite에 연결하고 SQLite 탐색기에서 내용을 확인한다.
+- [x] Reference management의 저장된 인용 목록을 SQLite에 Markdown 원본으로 보내고 다시 가져온다.
+- [x] Scholar Search의 Crossref 결과 창에 GitHub 버튼 오른쪽 SQLite 저장·가져오기 기능을 추가한다.
+- [x] 참고문헌·인용·학술검색(Reference/Crossref Markdown 작업파일 범위)
 - [ ] 하이라이트·태그
 - [ ] AI 대화·메시지·출처
 - [ ] 프롬프트·버전·실행 이력
 - [ ] 이미지·첨부 메타데이터와 파일 자산
 - [ ] History와 workspace snapshot
-- [ ] GenSlide 덱·슬라이드·자산
+- [x] GenSlide 덱·슬라이드·자산(MPP/PPTX/PNG/이미지 ZIP 원본 범위)
 - [ ] GitHub/WebDAV/Google Docs 동기화 메타데이터
 - [ ] 문서·참고문헌·프롬프트·AI 메시지·하이라이트 통합검색
 
 각 기능은 `기존 모드 회귀 테스트 -> SQLite adapter -> 데이터 이관 -> checksum/수량 검증 -> 기능별 활성화` 순서로 진행한다.
+
+##### Phase 7B-2. 추가된 하위 앱 저장 요구사항 조사와 분리
+
+- [x] GenSlide의 inDB 저장 구조, MPP JSON, PPTX와 image export/import 함수·MIME·크기 특성을 기록한다.
+- [x] 양식의 기본/사용자 저장 위치, Markdown export/import와 문서 삽입 함수를 기록한다.
+- [x] Reference management의 IndexedDB 레코드, MD/TXT import/export와 GitHub payload 구조를 기록한다.
+- [x] Scholar Search Crossref의 Markdown 생성·편집·다운로드·현재 문서/GitHub 전달 경로를 기록한다.
+- [x] 각 형식을 범용 작업파일과 전용 구조화 테이블 중 어디에 저장할지 결정하고 단계별 adapter 순서를 확정한다.
+- [x] 조사 문서와 코드 위치가 실제 구현과 일치하는지 source contract 테스트로 고정한다.
+
+Phase 7B-2 완료 조건: 새로 추가된 GenSlide·양식·Reference·Crossref 요구사항을 구현 전에 형식과 기존 호환 경로별로 분리하고, 다음 단계에서 한 기능씩 안전하게 연결할 수 있음.
+
+##### Phase 7B-3. 양식·Reference·Crossref SQLite 연결
+
+- [x] `templateCustomList`가 SQLite 모드의 안전 설정 미러링과 서버 `collections/workspace/array/4MB` 정책을 통과하는지 검증한다.
+- [x] 양식 저장·편집·MD 가져오기가 기존 `setAiSettings`를 통해 SQLite에 반영되고 탐색기 설정 상세에서 내용을 표시하는 경로를 고정한다.
+- [x] `scholar_references_md`와 `crossref_markdown` 작업파일 형식, UTF-8·`.md`·8MB 검증을 서버에 추가한다.
+- [x] 공용 storage adapter에 세션 보호된 작업파일 저장·목록·다운로드를 연결한다.
+- [x] Reference management에 SQLite 저장·가져오기 버튼을 추가하고 기존 inDB·MD/TXT·GitHub 기능을 유지한다.
+- [x] Crossref 결과의 GitHub 버튼 오른쪽에 SQLite 저장·가져오기 버튼을 추가하고 편집된 Markdown을 원본 그대로 복원한다.
+- [x] Markdown 원본 checksum·목록·다운로드·잘못된 UTF-8·과대 파일·전체 백업 포함을 자동 검증한다.
+- [x] 완료 스냅샷·전체 `.mdpbackup`과 작업일지에 검증 결과와 복구 방법을 기록한다.
+
+Phase 7B-3 완료 조건: 사용자 양식이 SQLite 설정에 유지되고 Reference/Crossref Markdown을 SQLite에서 저장·검색·다시 불러오며 기존 저장 경로도 그대로 동작함.
+
+##### Phase 7B-4. Phase 0 기준선 고정과 GenSlide SQLite 연결
+
+- [x] `INDEXEDDB_BASELINE.md`에 현재 문서·폴더 CRUD, 이동·삭제와 제목 검색 기준을 기록한다.
+- [x] 비밀값과 사용자 데이터를 포함하지 않은 `MarkdownProDB`·`mdpro-indb-v1` 합성 백업 fixture를 만든다.
+- [x] 합성 IndexedDB에서 문서 생성·열기·수정·이동·삭제·제목 검색을 재현하고 현재 본문 검색 비지원도 기준선으로 고정한다.
+- [x] 작업 전 코드 스냅샷·전체 `.mdpbackup`·SQLite online backup과 SHA-256을 기록한다.
+- [x] `genslide_mpp`, `genslide_pptx`, `genslide_png`, `genslide_image_zip` 작업파일 형식과 크기 제한을 서버에 추가한다.
+- [x] MPP v2 JSON 구조·embedded image base64·PPTX/이미지 ZIP 안전 경로·PNG 서명과 크기를 서버에서 검증한다.
+- [x] GenSlide 상단에 `SQLite 저장`, `SQLite 열기`, 명시적으로 켜는 `SQLite 자동` 버튼을 추가한다.
+- [x] 현재 inDB 덱을 MPP v2로 SQLite에 저장하고, SQLite의 MPP를 기존 `importMpp` 경로로 다시 연다.
+- [x] 기존 MPP/PPTX import와 MPP/PPTX/PNG/이미지 ZIP export 결과를 자동 저장 옵션에 연결한다.
+- [x] 원본 checksum·목록·다운로드·복원·잘못된 형식 차단·전체 backup package 포함을 자동 검증한다.
+- [x] 기존 IndexedDB·Reference/Crossref·설정·백업·FMA·ONNX 회귀 테스트와 실제 로컬 서버 무결성 검사를 통과한다.
+- [x] 구현 완료 코드 스냅샷·전체 `.mdpbackup`과 작업일지에 최종 SHA-256·복구 방법을 기록한다.
+
+Phase 7B-4 완료 조건: 기존 inDB와 파일 import/export를 유지하면서 GenSlide 덱 및 결과 파일을 SQLite에 선택 저장하거나 명시적 자동 저장하고 다시 열 수 있으며, Phase 0 IndexedDB 비교 기준과 완료 복구 지점이 고정됨.
+
+##### Phase 7C. 남은 구조화 데이터 단계(후속)
+
+- [ ] 하이라이트·태그 전용 구조와 문서 위치 재연결 정책을 설계한다.
+- [ ] AI 대화·메시지·출처 및 프롬프트·버전·실행 이력의 비밀값 제외 정책을 설계한다.
+- [ ] 메인 문서 이미지·첨부 자산과 History/workspace snapshot의 중복 제거·보존 정책을 설계한다.
+- [ ] GitHub/WebDAV/Google Docs 동기화 메타데이터의 토큰 제외 schema와 충돌 정책을 설계한다.
+- [ ] 문서·참고문헌·프롬프트·AI 메시지·하이라이트 통합검색을 단계별 FTS 인덱스로 구현한다.
+
+Phase 7C의 항목은 범용 작업파일 연결과 별개의 전용 schema·보안·이관 작업이므로, 완료 근거 없이 상위 목록을 일괄 체크하지 않는다.
 
 ## 7. 보안·안정성 체크리스트
 
@@ -325,7 +509,7 @@ js/storage/
 - [x] 이관을 두 번 실행해도 중복이 없다.
 - [ ] 백업을 다른 PC에서 복원하고 검색할 수 있다.
 - [x] 손상된 DB, 잘못된 checksum, 지원하지 않는 미래 스키마를 복원 미리보기 단계에서 차단한다.
-- [ ] 복원 실패 시 기존 DB가 그대로 유지된다.
+- [x] 복원 교체 중 강제 오류를 주입해 기존 DB·자산 자동 rollback과 무결성을 검증한다.
 
 ## 9. 단계별 중단 기준
 

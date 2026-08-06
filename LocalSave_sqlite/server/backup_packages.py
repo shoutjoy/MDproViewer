@@ -9,6 +9,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
+import threading
 import time
 import uuid
 import zipfile
@@ -34,6 +35,7 @@ class BackupPackageService:
 
     def __init__(self, manager: DatabaseManager) -> None:
         self.manager = manager
+        self._restore_lock = threading.RLock()
 
     @staticmethod
     def _sha256_file(path: Path) -> str:
@@ -485,6 +487,19 @@ class BackupPackageService:
         """Test hook invoked after DB/assets replacement and before verification."""
 
     def apply_staged_restore(
+        self,
+        import_id: Any,
+        expected_package_checksum: Any,
+        confirmation: Any,
+    ) -> Dict[str, Any]:
+        with self._restore_lock:
+            return self._apply_staged_restore_locked(
+                import_id,
+                expected_package_checksum,
+                confirmation,
+            )
+
+    def _apply_staged_restore_locked(
         self,
         import_id: Any,
         expected_package_checksum: Any,

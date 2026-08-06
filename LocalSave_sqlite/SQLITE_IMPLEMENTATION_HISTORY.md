@@ -1655,3 +1655,928 @@ SQLite 작업 외에 추가로 감지된 다음 변경은 수정하거나 스냅
 - SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785986278798_b698d492.sqlite`
 - DB backup SHA-256: `3949E42D2759C394114FB743C21BF2F395A3A0B4D893AA234C555D169E1AB9BD`
 - 완료 backup 생성 전 `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+---
+
+## 2026-08-06 12:47 KST — 작업 019 — Phase 6C 실제 복원·자동 백업·rollback
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_restore_apply_start_20260806_1234`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785987300228_7fda5e2f86dc.mdpbackup`
+- 패키지 SHA-256: `CF48D0674988B5209E79AE260460E7DCB2E624FFC75B750214F9892F1704753A`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785987300141_32012afc.sqlite`
+- DB backup SHA-256: `0A8BE4AAB1F63428152B68FCE87D4783CB57864F5D10317902E6335F7680BB48`
+- 작업 전 패키지의 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+### 단계 범위와 안전 정책
+
+- Phase 6B에서 검증 완료된 `restore_<UUID>` staging과 미리보기 SHA-256이 일치할 때만 실제 복원을 허용한다.
+- 복원 시작 직전에 현재 DB와 연결 자산 전체를 별도 `.mdpbackup`으로 자동 보존하고, 그 내부 DB도 SQLite online backup으로 만든다.
+- 교체 중에는 같은 서버 프로세스의 신규 읽기·쓰기를 maintenance lock으로 막고 기존 연결이 닫힌 뒤 WAL checkpoint를 수행한다.
+- DB와 assets는 data root 내부의 생성된 임시 경로에서 준비하고, 같은 볼륨의 `os.replace`로 전환한다.
+- DB와 assets를 모두 교체해 재초기화·무결성·FK·수량·자산 checksum 검증까지 성공해야 적용 완료로 기록한다.
+- 어느 단계에서든 실패하면 임시 rollback 영역의 기존 DB·WAL·SHM·assets를 원래 위치로 복귀하고 DB를 다시 초기화한다.
+- 이미 적용된 staging은 `status=applied`로 바뀌며 같은 import ID를 다시 적용할 수 없다.
+
+### 실제 구현
+
+1. DB 연결과 maintenance lock
+   - `DatabaseManager`의 initialize/read/write/online backup 연결이 공통 `_access_lock`에 참여하도록 변경했다.
+   - `exclusive_maintenance()`, `checkpoint_for_replacement()`, `reload_replaced_database()`를 추가했다.
+   - Windows에서 열린 SQLite handle 때문에 파일 교체가 실패하지 않도록 모든 연결 종료를 기다린 뒤 교체한다.
+
+2. 검증된 staging 적용
+   - `apply_staged_restore()`는 명시적 confirmation 문자열, 안전한 import ID, metadata 상태, preview/package SHA-256을 다시 확인한다.
+   - 적용 직전 package 전체를 다시 검증하고 DB/assets를 UUID 기반 작업 디렉터리에 안전하게 streaming 추출한다.
+   - 복원 서비스 단위 lock을 추가해 같은 staging에 대한 동시 apply를 직렬화했다.
+   - 현재 전체 `.mdpbackup`과 `pre_update` online backup을 만든 후 live DB/assets를 rollback 영역으로 이동하고 준비 파일을 설치한다.
+   - 새 DB의 schema 초기화, `integrity_check`, `foreign_key_check`, 문서·폴더·버전·설정·자산·file entry 수량과 모든 자산 checksum을 재검증한다.
+   - 성공 시 staging metadata에 적용 시각, 자동 백업, 검증 결과를 기록하고 임시 rollback 파일을 정리한다.
+   - 강제 오류 주입 테스트 hook을 통해 교체 후 실패 시 기존 DB와 자산이 실제로 되돌아오는 것을 검증했다.
+
+3. API와 저장 파사드
+   - health capability를 `restore=true`로 전환했다.
+   - session-protected `POST /api/sqlite/backups/restore/apply`를 추가했다.
+   - `SqliteApiAdapter.applyBackupRestore()`와 `MDPStorage.applyBackupRestore()`를 연결했다.
+   - API는 import ID, preview SHA-256, 고정 confirmation을 모두 요구한다.
+
+4. 설정 UI
+   - 미리보기 성공 후에만 `검증된 백업 복원` 버튼을 활성화한다.
+   - 복원 전 현재 데이터가 자동 백업되고 실패 시 rollback된다는 확인 대화상자를 표시한다.
+   - 성공 후 문서·폴더·설정·자산 수량과 integrity/FK 결과, 복원 직전 백업 파일명을 표시한다.
+   - 자동 백업을 즉시 내려받는 버튼과 새 DB로 다시 연결하는 명시적 앱 새로고침 버튼을 제공한다.
+   - 캐시 버전을 `20260806-restore-apply-1`로 갱신했다.
+
+### 변경 파일
+
+- 변경: `LocalSave_sqlite/server/database.py`
+- 변경: `LocalSave_sqlite/server/backup_packages.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `js/storage/sqlite-api-adapter.js`
+- 변경: `js/storage/storage-service.js`
+- 변경: `Setting/settings-ui.js`
+- 변경: `index.html`
+- 변경: `scripts/test-backup-packages.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `scripts/test-storage-service.js`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- 정상 staging을 실제 DB·설정·자산에 적용하고 preview 수량과 일치 확인: 통과
+- 명시적 confirmation 없는 복원 차단: 통과
+- 적용 완료 staging 재사용 차단: 통과
+- 복원 직전 전체 `.mdpbackup`과 `pre_update` online backup 생성: 통과
+- 교체 직후 강제 오류 주입과 기존 문서·자산 자동 rollback: 통과
+- rollback 후 `integrity_check=ok`, foreign key 위반 0건: 통과
+- session 없는 restore apply 403과 session apply 성공: 통과
+- 복원 후 새로 만든 임시 문서 제거, 문서 수량·검색·설정 API 정상: 통과
+- SQLite package/server core/IndexedDB migration/HTTP/storage service 테스트 6종: 통과
+- Academic Crossref, Markdown bold, Mermaid label sanitizer, Scholarref APA 회귀 테스트 4종: 통과
+- 변경 파일 `git diff --check`: 통과
+
+### 운영 서버 검증
+
+- 기존 PID `23492`가 이 프로젝트 `run.py`인지 확인하고 새 코드로 PID `42340`에서 재기동했다.
+- schema v3, `available=true`, `restorePreview=true`, `restore=true`를 확인했다.
+- live DB는 `integrity_check=ok`, foreign key 위반 0, 문서 3, 폴더 1, 설정 23을 확인했다.
+- 운영 데이터 보호를 위해 live DB에는 실제 restore apply를 실행하지 않았다. 실제 적용·rollback은 격리된 임시 data root와 HTTP 서버에서 검증했다.
+- 물리적인 다른 PC에서의 파일 이동·복원 검증은 Phase 6D 체크 항목으로 남겼다.
+
+### 오류와 복구 기록
+
+- 작업 전 전용 `/api/sqlite/backups`를 호출했으나 구현되지 않은 경로라 `NOT_FOUND`가 반환됐다. 요청은 데이터 변경 없이 끝났고, 기존 검증된 `/backups/packages`로 전체 작업 전 백업을 생성했다.
+- 기존 회귀 테스트 파일명을 잘못 지정해 Node `MODULE_NOT_FOUND` 4건이 발생했다. 실제 파일명 `test-academic-search-crossref.js`, `test-markdown-bold.js`, `test-mermaid-label-sanitizer.js`, `test-scholarref-apa-format.js`를 찾아 재실행해 모두 통과했다.
+- 로컬 UI 시각 점검 중 Edge 확장 연결이 두 번 timeout으로 초기화됐고 내장 브라우저는 제공되지 않았다. 운영 DB 변경이나 업로드는 실행되지 않았으며, UI 구문·정적 계약·storage 요청 테스트로 대체 검증했다.
+- 서버 복원 코어, rollback, HTTP API에서는 새 오류가 발생하지 않았다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_restore_apply_start_20260806_1234`의 같은 상대 경로 파일을 사용한다.
+- 전체 데이터 복구는 작업 전 `.mdpbackup`을 설정의 복원 미리보기에서 검증한 후 적용한다.
+- DB만 수동 복구해야 하면 현재 DB를 먼저 별도 보존하고 작업 전 `manual_1785987300141_32012afc.sqlite`의 SHA-256과 무결성을 확인한 뒤 서버를 종료한 상태에서 복원한다.
+- API가 `RESTORE_ROLLBACK_FAILED`를 반환한 경우 서버를 중지하고 오류 응답의 generated rollback 디렉터리와 자동 pre-restore package를 삭제하지 않은 채 작업일지 기준으로 수동 복구한다.
+- 이전 코드로 복구한 뒤 PID `42340` 서버를 재시작해야 이전 capability와 cache version이 반영된다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_restore_apply_20260806_1247`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785988034420_1dbd4cc9720f.mdpbackup`
+- 패키지 SHA-256: `26FC16B2B865A5DFCC9230F447CCE64DC7D82B4CA63B38937DEF5A99196515C8`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785988034324_ffc80969.sqlite`
+- DB backup SHA-256: `E8D6EAC6486A675597C2AAD4B8814BD42E869B2D7B9DE8EA7FA1A9D9308AFB46`
+- 완료 package 생성 시 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+---
+
+## 2026-08-06 13:21 KST — 작업 021 — Phase 7A-1 배경 제거 ONNX 모델 SQLite BLOB 저장
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_onnx_model_start_20260806_1313`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785989611206_f29e80af43a5.mdpbackup`
+- 패키지 SHA-256: `3AB1DC4C75CC02352E5416B35D99CA841E9E4384E82F82A25DD7E1876F5DE8C5`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785989610976_19e25913.sqlite`
+- DB backup SHA-256: `03BF2D2763EDD95F6EBE4F7887C17BE33E1EAAF87AF275F84EAE8CA1FE8C5AA8`
+- 작업 전 package의 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+### 저장 구조와 안전 정책
+
+- 약 176MB ONNX 모델 원본은 filesystem 자산이 아니라 SQLite `asset_blobs.blob_data` 내부에 저장한다.
+- Python 3.10에 `sqlite3.Connection.blobopen()`이 없어 전체 모델을 한 번에 메모리에 복사하지 않고 4MB chunk별 asset/blob row로 분할한다.
+- 모든 chunk, 전체 SHA-256, 순서 manifest, file entry 교체와 이전 chunk 삭제를 하나의 `BEGIN IMMEDIATE` 트랜잭션으로 처리한다.
+- 업로드가 중단되거나 크기·형식 검증이 실패하면 신규 chunk와 source 변경 전체를 rollback한다.
+- 브라우저는 고정 모델 키 `u2net_human_seg`와 바이너리만 보내며 SQL·테이블·파일 경로를 지정하지 못한다.
+
+### 실제 구현
+
+1. SQLite 모델 자산 서비스
+   - `ModelAssetService`를 추가하고 `u2net_human_seg.onnx`만 허용했다.
+   - 100,000,000바이트 미만, 512MB 초과, `.onnx`가 아닌 파일명, HTML/XML/JSON 오류 응답을 차단한다.
+   - 4MB 단위 `assets(storage_type='sqlite_blob')`와 `asset_blobs`를 생성하고 `file_entries.content_text`에 순서 manifest를 기록한다.
+   - 전체 SHA-256·크기·chunk 수를 metadata로 반환하고 같은 모델 재저장은 기존 chunk를 유지한다.
+   - 다른 모델로 교체가 완료된 뒤에만 이전 chunk asset을 삭제한다.
+
+2. 세션 보호 API
+   - health/session capability `modelAssets=true`를 추가했다.
+   - `GET /api/sqlite/models/u2net_human_seg`에서 저장 여부·크기·checksum·chunk 수를 조회한다.
+   - `POST /api/sqlite/models/u2net_human_seg`에서 raw ONNX binary를 SQLite BLOB으로 저장한다.
+   - `GET /api/sqlite/models/u2net_human_seg/download`에서 chunk 순서대로 원본 bytes를 streaming 반환한다.
+   - 다운로드 응답에 원본 크기, UTF-8 파일명, SHA-256 header를 포함한다.
+
+3. fmaviewer 배경 제거 연결
+   - SQLite 모드의 모델 탐색 순서를 `앱 폴더 -> SQLite -> IndexedDB -> 원격`으로 연결했다.
+   - 원격 자동 다운로드나 `ONNX 수동 선택` 모델을 SQLite에 우선 저장한다.
+   - 기존 IndexedDB 모델을 발견하면 SQLite로 한 번 자동 이관하고 다음 실행부터 SQLite 모델을 사용한다.
+   - SQLite 저장·불러오기가 실패하면 기존 IndexedDB와 현재 실행 object URL을 유지한다.
+   - 모델 위치에 `SQLite 저장 모델`, 크기, SHA-256 앞 12자를 표시한다.
+   - 기존 rembg-web object URL·세션 cache·모델 cache 복구 흐름은 변경하지 않았다.
+
+4. 백업 연계
+   - ONNX chunk는 SQLite DB 내부 row이므로 SQLite online backup과 `.mdpbackup`의 `mdpro.sqlite`에 자동 포함된다.
+   - 격리 DB에서 package 내부 DB를 다시 열어 chunk row 수와 `SUM(LENGTH(blob_data))`가 원본과 같은지 검증했다.
+   - 기존 schema v3의 `assets`, `asset_blobs`, `workspace_sources`, `file_entries`를 사용해 schema version 변경은 없다.
+
+### 변경 파일
+
+- 추가: `LocalSave_sqlite/server/model_assets.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `Apps/fmaviewer/js/storage/sqliteWorkfiles.js`
+- 변경: `Apps/fmaviewer/js/image/backgroundRemove.js`
+- 변경: `Apps/fmaviewer/index.html`
+- 추가: `scripts/test-sqlite-model-assets.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `Apps/fmaviewer/tests/sqlite-workfiles.test.cjs`
+- 변경: `Apps/fmaviewer/tests/background-remove-onnx.test.cjs`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- chunk 저장·원본 byte/SHA-256 왕복·같은 모델 dedup·다른 모델 교체: 통과
+- 중단된 upload의 신규 chunk rollback과 기존 모델 보존: 통과
+- 잘못된 파일명·HTML 오류 응답·최소/최대 크기 차단: 통과
+- 세션 없는 모델 상태·저장·다운로드 403과 세션 HTTP byte 왕복: 통과
+- online backup/package 내부 SQLite BLOB row 수·전체 byte 수 일치: 통과
+- SQLite server/work-file/model/HTTP/backup package/IndexedDB migration/storage service 테스트: 통과
+- fmaviewer auth/background remove/SaveDB/image editor/MD Viewer bridge/SQLite adapter 회귀 테스트 6종: 통과
+- 변경 파일 `git diff --check`: 통과
+
+### 운영 서버 검증
+
+- 기존 PID `32704`가 이 프로젝트의 `python.exe run.py`인지 확인하고 새 코드로 PID `26676`에서 재기동했다.
+- schema v3, `modelAssets=true`, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+- 앱 폴더에 실제 `.onnx` 파일이 없고 운영 SQLite 모델 상태는 `available=false`임을 확인했다.
+- 실제 모델은 사용자가 `모델 자동 다운로드·연결` 또는 `ONNX 수동 선택`을 실행할 때 SQLite에 저장된다.
+- 운영 DB에 임의 176MB 테스트 모델을 넣지 않았으며, 실제 API와 동일한 router의 격리 DB에서 byte 왕복을 검증했다.
+
+### 오류와 복구 기록
+
+- 첫 모델 단위 테스트에서 인스턴스에 최소 크기를 낮췄지만 classmethod가 운영 상수 100MB를 정상 적용해 `MODEL_FILE_TOO_SMALL`이 발생했다. 테스트 전용 클래스 상수만 격리 프로세스에서 조정해 재실행했다.
+- HTML 오류 문서 탐지는 테스트 chunk 크기 7바이트에서 전체 `<!doctype html>` 문자열이 아직 들어오지 않아 1회 통과했다. 첫 chunk가 `<!`, `<html`, `<?xml`, `{`로 시작하면 즉시 차단하도록 보완했다.
+- 완료 `.mdpbackup`이 약 104MB여서 내부 항목을 점검했다. 오류 파일이 아니라 사용자가 Phase 7A 작업파일 보관함에 저장한 97,841,395바이트 FMA asset 1개였고 manifest checksum과 DB 참조가 일치해 삭제하지 않고 보존했다.
+- 사용자 ONNX 모델·IndexedDB·FMA 자산을 삭제하지 않았다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_onnx_model_start_20260806_1313`의 같은 상대 경로 파일을 사용한다. 새 `model_assets.py`와 모델 테스트 파일은 제거 대상이다.
+- 전체 데이터 복구는 작업 전 `.mdpbackup`을 복원 미리보기에서 검증한 후 적용한다.
+- DB만 수동 복구하려면 현재 DB와 filesystem assets를 먼저 보존하고 서버를 종료한 뒤 작업 전 online backup SHA-256·무결성을 확인한다.
+- SQLite 모델 저장 오류가 나도 기존 IndexedDB 저장 모델과 앱 폴더/수동 선택 경로가 유지된다.
+- 이전 코드로 복구한 뒤 PID `26676` 서버를 재시작해야 capability와 정적 파일 cache version이 반영된다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_onnx_model_20260806_1321`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785990069202_7d24f552e64b.mdpbackup`
+- 패키지 SHA-256: `5DD96F808667C91531522833FAA1E0DD8E7E035C1A5C12858AB34E990F91DA99`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785990068999_eacb33c3.sqlite`
+- DB backup SHA-256: `11C3E0E5AD8F6054184F0C974499C8AF2765E9235B52614932547ADFAE0DC5DE`
+- 완료 package는 사용자 FMA asset 1개(97,841,395 bytes)를 포함하며 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+---
+
+## 2026-08-06 18:21 KST — 작업 027 — Phase 0 누락 기준선과 GenSlide SQLite 저장
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_missing_phase0_genslide_start_20260806_1805` (12개 파일)
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1786007141621_eb44ab311526.mdpbackup`
+- 패키지 SHA-256: `F5079DAD809CC4559FCDE633F5E4E5D457A302DC294FD7DFAB2D235B80672643`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1786007141404_c032ff1d.sqlite`
+- DB backup SHA-256: `935B2BDBD413B08D9747F14CA7A4D3CFC0E5481299E8A236F865D32225F3BA82`
+- 작업 전 DB: schema v3, `integrity_check=ok`, foreign key 위반 0건
+
+### Phase 0 누락 항목 완료
+
+1. 현재 IndexedDB 동작 기준선
+   - `INDEXEDDB_BASELINE.md`에 `MarkdownProDB` v5 문서·폴더 CRUD, 이동·삭제와 제목 검색 동작을 기록했다.
+   - `mdpro-indb-v1`의 meta/file store와 통합 백업 경계를 기록했다.
+   - 본문 FTS는 현재 IndexedDB 목록 검색 기능이 아니라 SQLite 전용임을 명시해 회귀 기대값을 분리했다.
+
+2. 안전한 샘플 백업과 선택 필드
+   - `baselines/indexeddb_sample_backup.json`에 두 DB의 합성 fixture를 만들었다.
+   - fixture에는 실제 사용자 본문, API key, 토큰, 비밀번호가 없으며 SHA-256으로 변경 여부를 고정했다.
+   - 문서 선택 필드 `googleDocId`와 문서 레코드가 아닌 설정에서 관리되는 GitHub 저장소·브랜치·경로를 구분했다.
+   - in-memory IndexedDB adapter로 생성·열기·수정·이동·삭제·제목 검색을 자동 재현했다.
+
+### GenSlide 실제 구현
+
+1. 서버 작업파일 형식과 안전 검증
+   - `genslide_mpp`(256MB), `genslide_pptx`(1GB), `genslide_png`(512MB), `genslide_image_zip`(1GB)를 범용 작업파일에 추가했다.
+   - MPP v2의 format/version/currentIndex/slides/images, embedded image MIME·base64·개수·총량을 검증한다.
+   - PPTX/ZIP은 경로 이탈·중복·암호화 entry·압축해제 상한을 막고 PPTX 필수 OOXML entry와 이미지 ZIP의 PNG 전용 정책을 확인한다.
+   - PNG signature·IHDR·가로/세로 크기를 검증하고 원본 SHA-256·byte size를 유지한다.
+
+2. GenSlide 화면과 기존 기능 연결
+   - 상단에 `SQLite 저장`, `SQLite 열기`, `SQLite 자동: OFF/ON` 버튼을 추가했다.
+   - SQLite 저장은 현재 덱과 IndexedDB embedded images를 MPP v2 원본으로 보관한다.
+   - SQLite 열기는 MPP를 기존 `importMpp`, PPTX를 기존 `importPptxToGenSlide` 경로로 전달한다. PNG/ZIP 결과는 원본 다운로드로 연다.
+   - 자동 저장은 기본 OFF이며 사용자가 명시적으로 켰을 때만 inDB 저장, MPP/PPTX import, MPP/PPTX/PNG/ZIP export 결과를 SQLite에 복제한다.
+   - 기존 inDB, MPP/PPTX 파일 import/export, PNG/ZIP 다운로드 흐름은 제거하거나 대체하지 않았다.
+
+3. 하위 앱 저장 인벤토리
+   - `MD_VIEWER_APP_SQLITE_ARTIFACT_CLASSIFICATION.md`에 문서·양식·참고문헌·하이라이트·AI 대화·prompt·이미지·History·GenSlide·외부 동기화·검색의 현재 원본과 SQLite 경계를 정리했다.
+   - Reference/Crossref Markdown과 GenSlide 원본 저장 범위는 완료 처리했다.
+   - 하이라이트, AI 대화, prompt/run, 주 문서 이미지, workspace snapshot, 동기화 revision, 통합 FTS는 전용 schema가 없어 Phase 7C 후속 항목으로 명시했고 완료 표시하지 않았다.
+
+### 변경·추가 파일
+
+- 서버: `LocalSave_sqlite/server/work_files.py`, `LocalSave_sqlite/server/api.py`
+- GenSlide: `js/Html2pptx/jenaEditor/ui/header.html`, `index.html`, `js/controller.js`, `js/main.js`, `js/sqliteStorage.js`, `js/Export/mppExport.js`, `pptExport.js`, `imageExport.js`
+- 기준선·분류: `LocalSave_sqlite/INDEXEDDB_BASELINE.md`, `LocalSave_sqlite/baselines/indexeddb_sample_backup.json`, `LocalSave_sqlite/MD_VIEWER_APP_SQLITE_ARTIFACT_CLASSIFICATION.md`
+- 테스트: `scripts/test-indexeddb-baseline.js`, `test-indexeddb-adapter-crud.js`, `test-genslide-sqlite-storage.js`, `test-genslide-sqlite-storage-runtime.js`, `test-sqlite-work-files.py`, `test-sqlite-http-api.py`
+- 문서/cache: 계획서, 작업일지, 루트 `index.html`
+
+### 자동·운영 검증
+
+- Node 13종: Phase 0 adapter/fixture, IndexedDB migration, storage service, Reference/Crossref, GenSlide source/runtime, 유지보수·백업·FMA·도구 보관함 회귀 통과
+- Python 10종: server core, HTTP API, IndexedDB migration preview, 작업파일 왕복·안전 검증, ONNX, FMA preview, 도구 설정, 백업 탐색·package, instance lock 통과
+- MPP/PPTX/PNG/이미지 ZIP: 저장·목록·검색·원본 다운로드·checksum·전체 backup package 포함과 잘못된 형식 차단 통과
+- 운영 서버를 PID `42236`으로 새 코드 재시작: schema v3, `workFiles=true`, integrity `ok`, foreign key 위반 0건
+- 실제 동일 data root의 두 번째 `run.py`: exit code 1로 차단
+- 운영 사용자 DB에 검증용 GenSlide 파일은 저장하지 않았다.
+
+### 오류와 복구 기록
+
+- 최초 회귀 명령은 테스트가 실제 `scripts/`에 있는데 `LocalSave_sqlite/scripts/`로 지정해 `MODULE_NOT_FOUND`가 발생했다. 제품 코드와 데이터 변경 없이 경로만 수정해 전체 테스트를 다시 통과했다.
+- Phase 0 fixture 최초 checksum 기대값이 생성 파일의 실제 SHA-256과 달라 테스트 1회가 실패했다. fixture 자체를 바꾸지 않고 고정 기대값을 실제 SHA-256 `4430DADF611CB0EF4309A33A521B84A75F8771A6B2B00BDED86002F9CEE02C54`로 수정했다.
+- browser control skill은 설치된 런타임과 문서 경로의 버전이 달라 초기화하지 못했다. 실제 사용자 Chrome/IndexedDB를 조작하지 않고 합성 IndexedDB runtime test와 로컬 HTTP 응답 검증으로 대체했다.
+- 정적 반영 확인에서 존재하지 않는 `controller.html` URL을 요청해 404가 1회 발생했다. 실제 파일 `js/controller.js`와 `js/sqliteStorage.js`의 HTTP 응답으로 cache version과 로딩 순서를 재확인했다.
+- 사용자 문서, IndexedDB, 기존 SQLite 작업파일, FMA, ONNX를 삭제하거나 변환하지 않았다.
+
+### 복구 방법
+
+- 작업 전체를 되돌리려면 서버 PID `42236`을 종료하고 `backup/sqlite_missing_phase0_genslide_start_20260806_1805`의 같은 상대 경로 파일을 복원한다.
+- 이번에 새로 만든 `sqliteStorage.js`, 기준선 문서·fixture와 신규 테스트는 작업 전 snapshot에 없으므로 코드 롤백 시 제거 대상이다.
+- 데이터 복구는 작업 전 `.mdpbackup`을 설정의 복원 미리보기로 검증한 뒤 적용한다. 이번 테스트는 사용자 GenSlide 자산을 운영 DB에 쓰지 않았다.
+- GenSlide SQLite 저장에 실패해도 SQLite 자동 저장을 끄고 기존 inDB, MPP/PPTX import/export, PNG/ZIP 다운로드를 계속 사용할 수 있다.
+- 복원 뒤 서버를 다시 시작해 Python module과 정적 cache version을 적용한다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_phase0_genslide_complete_20260806_1822` (22개 파일)
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1786008168850_fe117a52f24c.mdpbackup`
+- 패키지 SHA-256: `B9734FC32A228145B2E8A873F1B9DC9EEF88C1CBEFF04B268A069AA47C5CCFFA`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1786008168675_4d83dd92.sqlite`
+- DB backup SHA-256: `2137ACE1C25F83EE5403DAE3909F1A7A6232DD80A0EF05ECBBD8DAEF2C1D04B`
+- 완료 package: 104,275,558 bytes, schema v3, integrity `ok`, foreign key 위반 0, 사용자 FMA 자산 1개 포함
+
+---
+
+## 2026-08-06 16:38 KST — 작업 026 — 빠진 유지보수 항목과 추가 앱 저장 요구사항
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_missing_items_start_20260806_1612` (8개 파일, 570,456 bytes)
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785999932291_553ac7d31231.mdpbackup`
+- 패키지 SHA-256: `6FB97CB1D852832619A69AD81E0E15012898C5B2A8D6B3CDF2568AF67BF055E5`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785999932053_1a6a3c3b.sqlite`
+- DB backup SHA-256: `FCA0735D45850FF3B531DB42267D63D3B49534BB32EB65788C125B72B8BF88A7`
+
+### 빠진 항목 구현
+
+1. 설정의 SQLite 유지보수
+   - 설정 화면에 `DB 무결성 검사` 버튼과 integrity/FK 결과 영역을 추가했다.
+   - `MDPStorage.runSqliteIntegrityCheck`로 세션 보호 API를 호출하며 연결 실패와 검사 실패 시 현재 DB가 변경되지 않았음을 안내한다.
+   - OneDrive·NAS·공유 폴더의 같은 DB 동시 쓰기 비지원과 PC 간 `.mdpbackup` 이동 원칙을 화면에 표시했다.
+
+2. 동일 DB 중복 실행 차단
+   - `run.py`가 data root의 `mdviewer.instance.lock`을 OS file lock으로 실행 동안 유지한다.
+   - Windows `msvcrt.locking`, POSIX `fcntl.flock`을 사용하며 두 번째 서버는 DB를 열기 전에 종료한다.
+   - lock metadata에는 PID, 시작 시각, DB 파일명만 기록하고 절대 경로·본문·키를 기록하지 않는다.
+   - 직접 DB 위치는 서버 시작 전 `MD_VIEWER_SQLITE_ROOT`/`MD_VIEWER_SQLITE_PATH` 환경 옵션으로만 허용한다.
+   - 실시간 다중 PC는 상시 호스트·인증·TLS·충돌 정책이 필요한 별도 후속 구조로 문서화했다.
+
+### 추가 항목 조사와 실제 구현
+
+1. 저장 대상 분류
+   - `MD_VIEWER_APP_SQLITE_ARTIFACT_CLASSIFICATION.md`에 GenSlide inDB/MPP/PPTX/image, 사용자 양식, Reference, Crossref의 형식·MIME·상한·현재 함수·후속 저장 위치를 기록했다.
+   - 활성 GenSlide 경로가 복제 폴더가 아닌 `js/Html2pptx/**`임을 확정했다.
+   - GenSlide는 MPP 원본 -> PPTX 원본 -> PNG/ZIP 결과 순서로 후속 구현하도록 분리했다.
+
+2. 사용자 양식
+   - 사용자 양식이 `templateCustomList`로 `setAiSettings`와 SQLite 안전 설정 미러링을 통과함을 확인했다.
+   - 서버 정책 `collections/workspace/array/4MB`, MD import/export, 현재/새 문서 삽입, SQLite 탐색기 설정 상세 표시를 source contract와 storage service 테스트로 고정했다.
+
+3. Reference management와 Crossref
+   - 범용 작업파일에 `scholar_references_md`, `crossref_markdown`을 추가했다.
+   - `.md`, UTF-8, 비어 있지 않음, 최대 8MB를 서버에서 검증하고 원본 SHA-256과 자산을 백업에 포함한다.
+   - 공용 SQLite adapter/service에 세션 보호 저장·목록·다운로드를 추가했다.
+   - Reference 저장 목록에 `SQLite 저장`·`SQLite 가져오기`를 추가했다. 가져온 MD는 기존 MD import와 같은 입력 탭에서 확인한 뒤 inDB에 병합한다.
+   - Crossref 결과의 GitHub 버튼 오른쪽에 `SQLite 저장`·`SQLite 가져오기`를 추가했다. 사용자가 수정한 MD를 그대로 저장하고 편집/PV 화면으로 다시 불러온다.
+   - 기존 inDB, MD/TXT 파일, GitHub 경로는 제거하거나 변경하지 않았다.
+
+### 변경·추가 파일
+
+- 유지보수/잠금: `Setting/settings-ui.js`, `js/storage/storage-service.js`, `run.py`, `LocalSave_sqlite/server/instance_lock.py`, `LocalSave_sqlite/SQLITE_LOCAL_SERVER_SHARING_POLICY.md`
+- 작업파일 서버/adapter: `LocalSave_sqlite/server/work_files.py`, `LocalSave_sqlite/server/api.py`, `js/storage/sqlite-api-adapter.js`
+- 학술 기능: `js/Scholarref/scholarref.js`, `js/Scholarref/scholarsearch-shell.js`, `js/Scholarref/scholarsearch-shell.html`
+- 문서: `LocalSave_sqlite/MD_VIEWER_APP_SQLITE_ARTIFACT_CLASSIFICATION.md`, 계획서와 작업일지
+- 테스트: `test-sqlite-instance-lock.py`, `test-sqlite-maintenance-ui.js`, `test-sqlite-app-artifact-classification.js`, `test-storage-service.js`, `test-sqlite-work-files.py`와 cache version 관련 회귀 테스트
+- cache version: `index.html`
+
+### 자동·운영 검증
+
+- Node: storage service, Crossref, Scholarref APA, 분류 source contract, 유지보수 UI, 백업/FMA 탐색 UI, 암호화 보관함 8종 통과
+- Python: server core, HTTP API, IndexedDB 이관, 작업파일, ONNX, FMA preview, 설정 정책, 백업 탐색, 전체 backup package, instance lock 10종 통과
+- Reference/Crossref Markdown 원본 저장·목록·다운로드·checksum·잘못된 UTF-8·8MB 초과 차단·전체 백업 포함: 통과
+- 사용자 양식 `templateCustomList`만 SQLite 설정 API에 전달되고 API key는 전달되지 않음: 통과
+- 운영 서버 PID `38552`: schema v3, `available=true`, `workFiles=true`, integrity `ok`, foreign key 위반 0건
+- 실제 동일 data root의 두 번째 `run.py`: 5초 안에 종료, exit code 1로 중복 실행 차단 확인
+- 운영 사용자 DB에 검증용 Reference/Crossref 파일은 저장하지 않았다.
+
+### 오류와 복구 기록
+
+- lock 단위 테스트 최초 실행은 Windows에서 잠긴 첫 바이트를 테스트가 직접 읽어 실패했다. metadata 검사는 lock 해제 뒤 수행하도록 테스트 순서를 수정했고 남은 임시 폴더 1개를 범위 확인 후 제거했다. 사용자 DB 변경은 없었다.
+- storage service 작업파일 다운로드 mock의 예상 크기를 27 bytes로 잘못 기록해 크기 불일치가 1회 발생했다. 실제 Blob 26 bytes에 맞춰 mock만 수정한 뒤 통과했다.
+- 유지보수 UI 계약 테스트가 화면의 구분자 `·`와 정책 문장의 `열어 쓰는` 표현을 너무 좁은 정규식으로 비교해 2회 실패했다. 실제 문구에 맞게 계약식을 수정했으며 제품 코드 오류는 아니었다.
+- 기존 서버 PID `22580`은 일반 권한 종료가 거부되어 승인된 상승 권한으로 해당 PID만 종료했다. 새 서버 PID `38552`를 숨김 창으로 시작했다.
+- 사용자 문서, FMA, ONNX, IndexedDB, 기존 SQLite 작업파일을 삭제하거나 변환하지 않았다.
+
+### 복구 방법
+
+- 작업 전체를 되돌리려면 서버 PID `38552`를 종료하고 `backup/sqlite_missing_items_start_20260806_1612`의 같은 상대 경로 파일을 복원한다.
+- 이번에 새로 추가된 `instance_lock.py`, 공유 정책/분류 문서와 신규 테스트는 작업 전 snapshot에 없으므로 코드 롤백 시 제거 대상이다.
+- 데이터 복구는 작업 전 `.mdpbackup`을 설정의 복원 미리보기로 검사한 뒤 적용한다. 현재 사용자 데이터는 이번 기능 검증으로 변경하지 않았고 완료 package 생성에 따른 backup history만 추가됐다.
+- Reference/Crossref SQLite 저장에 실패해도 기존 inDB, MD/TXT 다운로드·가져오기와 GitHub 경로를 계속 사용할 수 있다.
+- 이전 코드 또는 완료 코드로 전환한 뒤 로컬 서버를 재시작해 Python module과 정적 cache version을 적용한다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_missing_items_complete_20260806_1638`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1786001854366_d63ee1b7fc11.mdpbackup`
+- 패키지 SHA-256: `8AAA7204CA601D1679A6C9CDBB4D53D1C906E6244DFDE5FF6E260A5CF25A9C69`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1786001854135_1dab4a5a.sqlite`
+- DB backup SHA-256: `AC170FEFB28D00F043A096B3A33A17C921BE2F4D5613627F8EC0DCAC8BCEE088`
+- 완료 package: 104,275,250 bytes, schema v3, integrity `ok`, foreign key 위반 0, 사용자 FMA 자산 1개 포함
+
+---
+
+## 2026-08-06 14:45 KST — 작업 024 — Phase 7B-1 fmaviewer 저장 분류·AI Jena 참고 세팅
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_fmaviewer_presets_start_20260806_1436`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785992135151_091ee8179a71.mdpbackup`
+- 패키지 SHA-256: `B1B8981AD7E730776EB60FDDB1776F1A1E8F54AEE70490CE9C0F757866E52B54`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785992134920_5db60198.sqlite`
+- DB backup SHA-256: `B8050DB5057C6CB876794CBFB6B0704DE0FC39F3F31F8D9FD220495CB60E00AA`
+
+### 조사와 저장 분류
+
+- `LocalSave_sqlite/FMAVIEWER_SQLITE_ARTIFACT_CLASSIFICATION.md`에 형식·MIME·크기·불러오기 함수·저장 위치를 기록했다.
+- FMA/FMA(WebP)/SaveDB는 기존 범용 작업파일, 레이어·텍스트·그리기·채우기·주석은 FME 작업파일로 유지한다.
+- AI Jena 참고 이미지 세팅은 이미지 원본이 포함된 휴대형 JSON이므로 범용 작업파일 `ai_jena_preset`으로 분류했다.
+- AI Jena 사용자 포즈와 마스크 다각형 preset은 작은 설정 컬렉션, 내보내기 이력은 원본 asset을 중복하지 않는 전용 메타데이터로 후속 분리했다.
+
+### 실제 구현
+
+1. 서버 검증·저장
+   - `.json`, `application/vnd.fma-ai-jena-preset+json`, `FMA-AI-JENA-REFERENCES` v1 작업 형식을 추가했다.
+   - JSON 64MB, 이미지당 16MB, 합계 48MB 제한을 두고 `face/clothing/background/pose` 네 역할과 base64 image data URL을 검증한다.
+   - SVG와 임의 URL, MIME 불일치, 잘못된 base64, 형식/버전 오류를 asset 생성 전에 차단한다.
+   - 기존 checksum asset 중복 제거, 논리 file entry, 검색, 다운로드, `.mdpbackup` 포함 경로를 그대로 재사용한다.
+
+2. fmaviewer adapter와 화면
+   - AI Jena `참고 세팅 저장·불러오기`에 SQLite 목록·저장·불러오기 버튼을 추가했다.
+   - 기존 JSON 내보내기/불러오기와 IndexedDB 저장/불러오기/삭제는 제거하거나 변경하지 않았다.
+   - SQLite 작업파일 창에 AI Jena 참고 세팅 필터를 추가하고 `열기`로 현재 세팅에 적용하며 `다운로드`로 원본 JSON을 받을 수 있게 했다.
+   - 저장 결과에 이미지 개수를 표시하고 목록에서 세팅 이름과 저장 시각을 확인할 수 있게 했다.
+
+3. 계획·복구 문서
+   - Phase 7B-1 세부 체크리스트를 추가하고 완료 항목을 체크했다.
+   - Phase 7B의 첫 분류 항목을 완료 처리했으며 다음 단계는 사용자 포즈·마스크 preset SQLite 설정 adapter로 정했다.
+
+### 변경 파일
+
+- 추가: `LocalSave_sqlite/FMAVIEWER_SQLITE_ARTIFACT_CLASSIFICATION.md`
+- 변경: `LocalSave_sqlite/server/work_files.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `Apps/fmaviewer/js/storage/sqliteWorkfiles.js`
+- 변경: `Apps/fmaviewer/js/ai/aiJena.js`
+- 변경: `Apps/fmaviewer/js/core/globals.js`
+- 변경: `Apps/fmaviewer/index.html`
+- 변경: `scripts/test-sqlite-work-files.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `Apps/fmaviewer/tests/sqlite-workfiles.test.cjs`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python `py_compile`과 변경 JavaScript `node --check`: 통과
+- AI Jena 유효 세팅 저장·종류/이름 검색·원본 JSON 다운로드·SHA-256 왕복: 통과
+- 같은 JSON 재저장 시 asset 중복 제거와 논리 file entry 보존: 통과
+- 외부 URL 변조·잘못된 format·64MB 초과 요청 차단: 통과
+- 임시 HTTP 서버의 세션 보호 저장·검색·원본 다운로드 왕복: 통과
+- `.mdpbackup` asset 포함·checksum 검증: 통과
+- FMA/FME/SaveDB, ONNX, FME fill layer, backup package 회귀: 통과
+- 기존 AI Jena JSON/IndexedDB 함수 보존과 새 SQLite UI/API 계약: 통과
+- `git diff --check`: 통과
+
+### 오류와 복구 기록
+
+- 존재하지 않는 fmaviewer 테스트 파일 두 개를 추정 실행해 `MODULE_NOT_FOUND`가 1회 발생했다. 실제 `tests/` 목록을 조회한 뒤 존재하는 회귀 테스트만 실행했다. 코드·데이터 변경은 없었다.
+- 첫 HTTP 테스트에서 새 MIME이 API allowlist에 없어 415로 차단됐다. `application/vnd.fma-ai-jena-preset+json`만 명시적으로 추가한 뒤 통과했다.
+- HTTP 탐색기 테스트의 기존 file entry 기대값 4가 새 세팅 entry 추가로 5가 되어 1회 실패했다. 테스트 데이터 수량에 맞게 5로 갱신한 뒤 전체 통과했다.
+- 운영 DB에는 테스트 세팅을 저장하지 않았다. 모든 쓰기 왕복 테스트는 임시 SQLite 데이터 루트에서 수행했다.
+
+### 운영 서버·완료 복구 지점
+
+- 기존 PID `33676`이 이 프로젝트의 `python.exe run.py`인지 확인하고 새 코드로 PID `27208`에서 재기동했다.
+- health에서 schema v3, `workFiles=true`를 확인했다.
+- 코드: `backup/sqlite_fmaviewer_presets_20260806_1445`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785995109942_2b91b9e6c563.mdpbackup`
+- 패키지 SHA-256: `C62B10C9147B21E00400EAD527AD03FAC8EF954EF73099E4E94882D088BA3355`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785995109558_0f8224bd.sqlite`
+- DB backup SHA-256: `1D8B8EFA0D75B88084F80C52A4C9A83CCC17E2A586726187599986063FB20183`
+- 완료 package는 schema v3, asset 1개, package 검증 `ok=true`를 확인했다.
+
+### 복구 방법
+
+- Phase 7B-1 코드만 되돌리려면 서버를 종료하고 `backup/sqlite_fmaviewer_presets_start_20260806_1436`의 같은 파일을 복원한다.
+- `LocalSave_sqlite/server/api.py`에서는 새 AI Jena MIME allowlist 한 줄을 제거하고, 새 분류 문서는 삭제한다.
+- 전체 데이터 복구가 필요하면 작업 전 `.mdpbackup`을 복원 미리보기에서 checksum·수량 확인 후 적용한다.
+- 복구 후 로컬 서버를 다시 시작해야 Python 서비스와 정적 파일 cache version이 반영된다.
+
+---
+
+## 2026-08-06 16:05 KST — 작업 025 — Phase 7A-4 SQLite 백업 내용 탐색·복구 가능한 삭제
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_backup_explorer_start_20260806_1549` (10개 파일)
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785995109942_2b91b9e6c563.mdpbackup`
+- 패키지 SHA-256: `C62B10C9147B21E00400EAD527AD03FAC8EF954EF73099E4E94882D088BA3355`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785995109558_0f8224bd.sqlite`
+- DB backup SHA-256: `1D8B8EFA0D75B88084F80C52A4C9A83CCC17E2A586726187599986063FB20183`
+
+### 실제 구현
+
+1. 백업 상세 읽기
+   - 탐색기 `백업` 카드가 실제 버튼으로 동작하고 선택 상태를 표시한다.
+   - 오른쪽 화면에서 backup ID·종류·상태·생성 시각·schema·크기·SHA-256·checksum/크기 일치·`integrity_check`·foreign key 오류를 확인한다.
+   - 문서·폴더·버전·Source·파일·설정·자산·백업기록 개수와 각 항목의 제한된 metadata를 접이식 목록으로 표시한다.
+   - 문서 본문, 파일 내용, 설정값, API 키와 암호화 보관함 암호문은 상세 API 응답에서 제외한다.
+
+2. 읽기·경로 보안
+   - 등록된 `backup_history` ID만 조회하고 `data/backups/` 밖 경로, 현재 운영 DB, 잘못된 파일명과 symbolic link를 차단한다.
+   - 백업 DB는 `mode=ro&immutable=1`과 `PRAGMA query_only=ON`으로만 연다.
+   - 백업 상세 GET도 로컬 session token이 있어야 하며 최대 100개 metadata sample만 반환한다.
+
+3. 복구 가능한 삭제
+   - 화면에서 정확한 backup ID를 다시 입력하고 최종 확인해야 DELETE 요청을 보낸다.
+   - 원본과 WAL/SHM sidecar가 있으면 `LocalSave_sqlite/data/backups/trash/`로 원자 이동한 뒤 `backup_history` record를 transaction으로 제거한다.
+   - record 제거가 실패하면 이동한 파일을 원래 위치로 되돌리고, 이미 파일이 없는 stale record는 별도로 표시하며 record만 제거한다.
+   - 삭제 후 백업 목록과 상단 개수를 새로고침하고 실제 휴지통 경로를 안내한다.
+
+### 변경 파일
+
+- 추가: `LocalSave_sqlite/server/backup_explorer.py`
+- 추가: `scripts/test-sqlite-backup-explorer.py`
+- 추가: `scripts/test-sqlite-backup-explorer-ui.js`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `js/storage/sqlite-api-adapter.js`
+- 변경: `js/storage/storage-service.js`
+- 변경: `Setting/settings-ui.js`
+- 변경: `index.html`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `scripts/test-storage-service.js`
+- 변경: `scripts/test-backup-packages.py`
+- 변경: `scripts/test-sqlite-fma-explorer-ui.js`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python `py_compile`, JavaScript `node --check`: 통과
+- backup readonly/immutable 상세, checksum·integrity·테이블 개수와 metadata: 통과
+- 문서 본문·설정값 누락과 sentinel 비노출: 통과
+- 잘못된 확인값·현재 DB·경로 이탈·미등록 ID·이중 삭제 차단: 통과
+- 임시 backup 파일의 관리 휴지통 이동, 목록 record 제거와 stale record 정리: 통과
+- 세션 없는 상세 GET/DELETE 403, 보호된 상세·삭제 HTTP 왕복: 통과
+- storage adapter의 session header와 `DELETE_BACKUP:<id>` confirmation 계약: 통과
+- SQLite server, migration, backup package, 작업파일, ONNX, FMA preview, 도구 설정/보관함 전체 회귀: 통과
+- 실제 운영 백업 1개를 변경 없이 조회해 `readOnly=true`, `integrity=ok`, checksum 일치, 비밀값 미포함을 확인했다.
+
+### 오류와 복구 기록
+
+- 첫 단위 테스트에서 설정 보안 정책이 `secretSetting`을 차단했고, 다음 시도에서는 임의 key allowlist를 차단했다. 제품 정책을 완화하지 않고 임시 DB에 test-only setting row를 직접 넣어 값 비노출만 검증했다.
+- 전체 회귀에서 기존 두 테스트가 이전 정적 cache version을 고정 비교해 실패했다. 현재 통합 version `20260806-backup-explorer-1`로 기대값을 갱신한 뒤 전부 통과했다.
+- 브라우저 확장 기반 로컬 UI 점검은 새 탭 생성 단계에서 두 번 응답하지 않았다. 삭제 동작을 브라우저에서 시도하지 않았고, UI source contract와 실제 session HTTP 상세 조회로 대체 검증했다.
+- 사용자 운영 백업은 삭제하지 않았다. 삭제·이중 삭제·trash 이동 테스트는 모두 임시 SQLite data root에서 수행했다.
+
+### 운영 서버·완료 복구 지점
+
+- 기존 PID `27208`이 이 프로젝트의 `python.exe run.py`인지 확인하고 새 코드로 PID `22580`에서 재기동했다.
+- health에서 schema v3, `backupExplorer=true`를 확인했다.
+- 코드: `backup/sqlite_backup_explorer_complete_20260806_1605` (14개 파일)
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785999932291_553ac7d31231.mdpbackup`
+- 패키지 SHA-256: `6FB97CB1D852832619A69AD81E0E15012898C5B2A8D6B3CDF2568AF67BF055E5`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785999932053_1a6a3c3b.sqlite`
+- DB backup SHA-256: `FCA0735D45850FF3B531DB42267D63D3B49534BB32EB65788C125B72B8BF88A7`
+- package 검증 `ok=true`, 크기 104,275,087 bytes이며 기존 연결 asset을 포함한다.
+
+### 복구 방법
+
+- 코드만 되돌리려면 PID `22580` 서버를 종료하고 `backup/sqlite_backup_explorer_start_20260806_1549`의 같은 상대 경로 파일을 복원한다. 새 `backup_explorer.py`와 두 backup explorer 테스트 파일은 제거 대상이다.
+- 완료 상태 코드로 되돌리려면 `backup/sqlite_backup_explorer_complete_20260806_1605`의 같은 상대 경로 파일을 복원한다.
+- 탐색기에서 삭제한 백업은 화면에 표시된 `data/backups/trash/` 파일을 서버 종료 상태에서 `data/backups/`로 되돌린 뒤, 필요하면 해당 SQLite 파일을 별도 보관·복원한다. 삭제된 `backup_history` record는 자동 재등록되지 않는다.
+- 전체 데이터 복구는 작업 전 또는 완료 `.mdpbackup`을 복원 미리보기에서 checksum·수량 확인 후 적용한다.
+- 코드 또는 DB 복구 후 로컬 서버를 다시 시작해야 Python route와 정적 cache version이 반영된다.
+
+---
+
+## 2026-08-06 13:56 KST — 작업 023 — Phase 7A-3 도구 설정 통합 보기·암호화 API 키 보관함
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_tool_settings_vault_start_20260806_1340`
+- 직전 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785990980827_5b1d22057881.mdpbackup`
+- 직전 패키지 SHA-256: `99B5A68004345A9F0860D168B061C06555E3D493197123EBCD773CEBBF5E5715`
+- 직전 SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785990980612_2f8fe469.sqlite`
+- 직전 DB SHA-256: `7693B0AE1CA1317930DDC2B22CE2F4A72017BC19CD2E7EE7CC3F9F0B860567B5`
+
+### 보안 원칙
+
+- 기존 Phase 5의 `AI API Key를 SQLite에 평문 저장하지 않는다`는 원칙을 유지했다.
+- 사용자가 정한 보관함 비밀번호는 서버, SQLite, IndexedDB, localStorage, 로그에 저장하지 않는다.
+- 브라우저 Web Crypto에서 PBKDF2-SHA256 310,000회로 AES-256-GCM 키를 파생한다.
+- SQLite에는 version, algorithm, derivation, iteration, salt, IV, ciphertext와 도구별 `configured/last4` metadata만 저장한다.
+- 잠금 해제된 API 키는 현재 페이지의 JavaScript 메모리에서만 유지하고 잠그거나 새로고침하면 폐기한다.
+- 기존 평문 키를 처음 암호화한 뒤 `ai_settings`의 네 API 필드와 다섯 localStorage 키를 정리한다.
+- 탐색기 목록에서 `encryptedToolVault` 원본 record를 숨기고 암호문과 API 키 원문을 화면에 표시하지 않는다.
+- 프롬프트에 API 키 형태가 섞이면 카탈로그 저장 전에 `[보호된 값 숨김]`으로 치환하고 서버에서도 probable secret을 차단한다.
+
+### 실제 구현
+
+1. 암호화 보관함
+   - Google AI Studio, DeepSeek, OpenAI, imgBB, fmaviewer AI Jena 키를 도구 ID별로 암호화한다.
+   - 새 보관함 생성, 잠금 해제, 명시적 잠금, 현재 입력 키 재암호화, 비밀번호 변경을 구현했다.
+   - 잘못된 비밀번호와 변경된 ciphertext는 AES-GCM 인증 실패로 차단한다.
+   - 보관함이 잠겨 있고 해당 키 metadata가 있으면 남아 있을 수 있는 legacy localStorage 값으로 우회하지 않는다.
+
+2. 실제 도구 연결
+   - `getProtectedAiCredential()`을 Google AI Studio, DeepSeek, OpenAI, imgBB 조회 경로에 연결했다.
+   - ScholarAI/sspimgAI bridge와 본문 imgBB 업로드가 잠금 해제된 메모리 키를 사용한다.
+   - sidebarAI imgBB 조회와 fmaviewer iframe의 AI Jena/업스케일/배경 제거 공용 키 조회를 연결했다.
+   - SQLite 모드 앱 시작 때 보관함 metadata만 읽고 자동 복호화하지 않는다.
+
+3. 도구 설정 카탈로그와 탐색기 가운데 보기
+   - ScholarAI, sspimgAI, AI Jena, imgBB, fmaviewer AI Jena의 활성 상태, 공급자, 모델, endpoint, 옵션, 프롬프트를 `toolSettingsCatalog`에 동기화한다.
+   - SQLite 탐색기 설정 탭 맨 위에 `도구 설정 모아보기`를 추가했다.
+   - 가운데 상세 화면에 도구별 카드, 사용 여부, 공급자, 모델, 프롬프트 접기/펼치기, 마스킹된 키 상태를 표시한다.
+   - 같은 화면에서 보관함 생성·잠금 해제·잠금·현재 키 재암호화·비밀번호 변경을 수행한다.
+   - 설정 검색 SQL에 `value_json`을 추가해 `ScholarAI`, `AI Jena`, 모델명, 프롬프트 내용으로 카탈로그를 검색할 수 있게 했다.
+
+4. 서버 검증
+   - `encryptedToolVault`와 `toolSettingsCatalog`만 명시적으로 allow-list에 추가했다.
+   - 허용 field, 도구 ID, 중복 ID, 타입, 문자열 길이, base64, salt/IV/ciphertext 크기, PBKDF2 반복 범위를 검사한다.
+   - 임의 field, 민감한 중첩 key, 평문 API 키 형태의 catalog 문자열, 잘못된 암호문을 거부한다.
+   - schema v3의 기존 `settings` 테이블을 재사용하므로 schema version은 변경하지 않았다.
+
+### 변경 파일
+
+- 추가: `js/storage/encrypted-credential-vault.js`
+- 변경: `LocalSave_sqlite/server/settings_policy.py`
+- 변경: `LocalSave_sqlite/server/repositories.py`
+- 변경: `js/storage/indexeddb-migration.js`
+- 변경: `Setting/settings-ui.js`
+- 변경: `js/app.js`
+- 변경: `sidebarAI/sidebar-ai.js`
+- 변경: `Apps/fmaviewer/js/image/imageUpscale.js`
+- 변경: `index.html`
+- 추가: `scripts/test-sqlite-tool-vault.js`
+- 추가: `scripts/test-sqlite-tool-settings-policy.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- AES-GCM 암호화 왕복, 잠금 후 원문 차단, 정상 비밀번호 재해제: 통과
+- 잘못된 비밀번호, ciphertext tamper, 8자 미만·불일치 비밀번호 차단: 통과
+- SQLite payload·catalog·UI에 원문 API 키와 비밀번호가 포함되지 않음: 통과
+- 키 끝 4자리 metadata와 prompt secret redaction: 통과
+- 서버 envelope/catalog allow-list·base64·필드·ID·크기·probable secret 검증: 통과
+- `value_json` 기반 ScholarAI catalog 검색과 explorer 비밀값 누락: 통과
+- Python/Node 변경 파일 구문 검사와 `git diff --check`: 통과
+- SQLite server core, HTTP API, IndexedDB migration, storage service, backup package: 통과
+- FMA/FME 작업파일, ONNX model asset, FMA preview와 fmaviewer 회귀 테스트 전체: 통과
+
+### 운영 서버 검증
+
+- 기존 PID `27312`가 이 프로젝트의 `python.exe run.py`임을 확인한 뒤 구현 중 PID `13876`, 최종 코드로 PID `33676`에서 재기동했다.
+- schema v3, `available=true`, journal `WAL`, settings capability와 `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+- 사용자 비밀번호를 임의로 만들 수 없으므로 운영 DB에는 테스트 보관함이나 API 키를 생성하지 않았다.
+- 설정 탭을 열면 현재 브라우저의 비민감 도구 설정 catalog가 동기화되고, 사용자가 비밀번호를 입력할 때만 암호화 보관함이 생성된다.
+
+### 오류와 복구 기록
+
+- 새 Python 정책 테스트의 첫 실행은 프로젝트 root가 `sys.path`에 없어 `ModuleNotFoundError`가 발생했다. 테스트에 명시적 root 추가를 넣고 재실행해 통과했으며 제품 데이터 변경은 없었다.
+- HTTP 회귀 fixture가 실제 WebP가 아닌 `RIFFtestWEBP` 바이트여서 Pillow 사용 환경에서 thumbnail 415가 발생했다. 유효한 1×1 PNG fixture로 교체해 Pillow/비-Pillow 모두 같은 계약을 검증하도록 수정했다.
+- 저장소 owner와 실행 계정이 다른 환경에서 일반 `git diff --check`가 dubious ownership으로 거부됐다. 전역 Git 설정은 변경하지 않고 해당 명령에만 `-c safe.directory=...`를 적용해 검사했다.
+- 완료 package 응답 필드를 첫 출력에서 잘못 참조해 DB 경로와 무결성이 null처럼 표시됐으나 package 생성은 정상 완료됐다. 별도 validate API와 backup history로 실제 checksum·schema·무결성을 다시 확인했다.
+- 사용자 API 키 원문, 비밀번호, FMA, ONNX, 문서, 기존 IndexedDB 데이터는 테스트 과정에서 생성·변경·삭제하지 않았다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_tool_settings_vault_start_20260806_1340`의 같은 상대 경로 파일을 사용한다.
+- 새 파일 `js/storage/encrypted-credential-vault.js`, 두 tool-vault 테스트 파일은 이전 코드로 복구할 때 제거 대상이다.
+- 완료 상태 재적용은 `backup/sqlite_tool_settings_vault_20260806_1356`의 같은 상대 경로 파일을 사용한다.
+- 전체 데이터 복구는 `.mdpbackup`을 설정의 복원 미리보기에서 검증한 후 적용한다.
+- 보관함 비밀번호를 잊은 경우 암호문에서 API 키를 복구할 수 없으므로 각 공급자에서 키를 재발급하고 새 보관함을 만들어야 한다.
+- 이전 코드로 복구한 뒤 현재 PID `33676` 서버를 재시작해야 Python 정책과 정적 cache version이 반영된다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_tool_settings_vault_20260806_1356`
+- 코드 파일 14개 aggregate SHA-256: `E1F66EEE509D583FAD3C9B946B1EFB84A0FA4818A07F13FE69DCD70059E1DA0B` (최종 계획·일지 재복사 전 값이며 디렉터리 자체의 표준 archive hash는 아님)
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785992135151_091ee8179a71.mdpbackup`
+- 패키지 SHA-256: `B1B8981AD7E730776EB60FDDB1776F1A1E8F54AEE70490CE9C0F757866E52B54`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785992134920_5db60198.sqlite`
+- DB backup SHA-256: `B8050DB5057C6CB876794CBFB6B0704DE0FC39F3F31F8D9FD220495CB60E00AA`
+- 완료 package는 schema v3, `integrity_check=ok`, foreign key 위반 0건, 사용자 FMA asset 1개(97,841,395 bytes)를 확인했다.
+
+---
+
+## 2026-08-06 13:06 KST — 작업 020 — Phase 7A SQLite 작업파일 보관함·FMA/FME 연결
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_workfiles_start_20260806_1254`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785988532963_ab897124c42e.mdpbackup`
+- 패키지 SHA-256: `659EDFE97B356086001FBCC163389008BF9DA33BD791D6699EB1D5BE7596D427`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785988532866_6b9041de.sqlite`
+- DB backup SHA-256: `EB914B998D8E990A77558075F4C4E4F26816254480C54AB19B910DC578750B56`
+- 작업 전 package의 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+### 단계 범위와 호환 정책
+
+- 기존 FMA/FMA(WebP) 파일 다운로드, FME 파일 다운로드·불러오기, IndexedDB SaveDB와 DB 히스토리를 삭제하거나 대체하지 않았다.
+- 메인 앱의 저장 모드가 `sqlite`일 때만 새 SQLite 작업파일 기능을 사용하며, inDB 모드에서는 SQLite로 조용히 우회 저장하지 않는다.
+- FMA/FME 원본 바이트는 관리되는 `data/assets/workfiles/`에 저장하고 SQLite에는 검색·버전·checksum 메타데이터를 기록한다.
+- 같은 checksum의 원본 asset은 한 번만 보관하되 사용자가 저장한 시점별 `file_entries`는 각각 유지한다.
+- 브라우저는 로컬 파일 경로를 서버에 전달하지 않으며 파일명·앱 ID·허용된 작업 형식과 바이너리만 전달한다.
+
+### 실제 구현
+
+1. 범용 작업파일 저장 코어
+   - `WorkFileService`를 추가해 raw binary를 임시 파일에 streaming 저장하면서 SHA-256과 크기를 계산한다.
+   - 관리 경로는 `assets/workfiles/{app}/{checksum-prefix}/{checksum}.{extension}`으로 서버가 결정한다.
+   - `workspace_sources`의 `internal_library`, `assets`의 filesystem attachment, `file_entries`를 트랜잭션으로 연결했다.
+   - 동일 asset의 중복 파일 생성을 생략하고 논리 저장 entry는 별도 ID·시각·작업 형식으로 남긴다.
+
+2. 형식·경로 검증
+   - FMA는 ZIP 구조, 안전한 archive path, 암호화 여부, entry·압축 해제 크기 한도, `manifest.json`, format `fma-archive`, version 3 이상, image/media 참조를 검증한다.
+   - FME는 UTF-8 JSON, format `FMA_EDIT_PROJECT`, version 1 이상, source와 config 구조를 검증한다.
+   - 확장자·앱 ID·파일명·Content-Length·MIME 허용 목록과 최대 업로드 크기를 검사한다.
+   - 다운로드 전 관리 경로, 크기, streaming SHA-256을 다시 검증한다.
+
+3. API
+   - health/session capability `workFiles=true`를 추가했다.
+   - `POST /api/sqlite/workfiles`에 세션 보호된 바이너리 저장을 추가했다.
+   - `GET /api/sqlite/workfiles?app=&q=&type=&limit=`에 세션 보호된 목록·검색을 추가했다.
+   - `GET /api/sqlite/workfiles/{id}/download`에 세션 보호, 원본 MIME·UTF-8 파일명 다운로드를 추가했다.
+
+4. fmaviewer 연결
+   - File 메뉴에 `SQLite에 FMA 저장`, `SQLite에 FMA(WebP) 저장`, `SQLite 작업파일 열기`를 추가했다.
+   - SaveDB 메뉴에 현재 상태를 원본 보존 FMA로 저장하는 `SQLite SaveDB 저장`을 추가했다.
+   - 이미지 편집기에 `FME SQLite 저장`, `FME SQLite 불러오기`를 추가했다.
+   - 작업파일 창에서 파일명 debounce 검색, 형식 필터, 날짜·크기·checksum 표시, 열기와 원본 다운로드를 제공한다.
+   - FMA 생성 코드를 `createFmaArchiveFile()`로 공용화해 기존 파일 다운로드와 SQLite 저장이 같은 archive 생성기를 사용한다.
+   - SQLite에서 받은 FMA는 기존 `loadFMA(File)`, FME는 기존 `importImageEditorProject(File)`로 복구한다.
+
+5. 백업 연계
+   - 작업파일 asset은 기존 `BackupPackageService._collect_assets()`의 filesystem asset 수집 경로를 그대로 사용한다.
+   - 임시 DB에서 FMA/FME asset 2개가 `.mdpbackup` manifest와 `assets/`에 포함되는 것을 검증했다.
+   - 스키마 v3의 기존 세 테이블을 재사용했으므로 schema version 변경은 없다.
+
+### 변경 파일
+
+- 추가: `LocalSave_sqlite/server/work_files.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `Apps/fmaviewer/js/files/fileHandlers.js`
+- 추가: `Apps/fmaviewer/js/storage/sqliteWorkfiles.js`
+- 변경: `Apps/fmaviewer/index.html`
+- 변경: `Apps/fmaviewer/css/styles.css`
+- 추가: `scripts/test-sqlite-work-files.py`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 추가: `Apps/fmaviewer/tests/sqlite-workfiles.test.cjs`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- FMA 원본과 FMA WebP 작업 형식의 바이트·SHA-256 왕복: 통과
+- 같은 바이트 2회 저장 시 asset 1개, 논리 file entry 2개 보존: 통과
+- FME UTF-8 JSON 저장·파일명 검색·형식 필터·원본 왕복: 통과
+- 잘못된 FMA manifest, 잘못된 FME format, 틀린 확장자 저장 차단: 통과
+- 세션 없는 저장·목록·다운로드 403과 세션 사용 HTTP 왕복: 통과
+- 작업파일 asset의 `.mdpbackup` 포함·검증: 통과
+- SQLite server core, work-file service, HTTP API, backup package, IndexedDB migration, storage service 테스트: 통과
+- fmaviewer auth/background remove/SaveDB restore/image editor/MD Viewer bridge/SQLite adapter 회귀 테스트 6종: 통과
+- 변경 파일 `git diff --check`: 통과
+
+### 운영 서버 검증
+
+- 기존 PID `42340`이 이 프로젝트의 `python.exe run.py`인지 확인하고 새 코드로 PID `32704`에서 재기동했다.
+- schema v3, `available=true`, `workFiles=true`, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+- 운영 작업파일 목록은 0개이며 검증을 위해 사용자 DB에 테스트 FMA/FME를 저장하지 않았다.
+- 실제 바이너리 저장·검색·다운로드는 같은 router를 사용하는 격리 임시 data root HTTP 테스트로 검증했다.
+
+### 오류와 복구 기록
+
+- 첫 작업 전 패키지 요청에서 세션 헤더를 `X-MDPro-Session`으로 잘못 보내 `INVALID_SESSION`이 반환됐다. 데이터 변경은 없었으며 실제 서버 규약인 `X-MDViewer-Session`으로 다시 생성했다.
+- 전체 회귀 실행 중 존재하지 않는 `scripts/test-sqlite-core.py`를 지정해 Python file-not-found가 발생했다. 실제 파일 `scripts/test-sqlite-server.py`를 찾아 재실행해 통과했다.
+- HTTP 탐색기 테스트는 새 작업파일 source와 entry가 추가되어 기존 고정 수량 1/2가 2/3으로 바뀌어 1회 실패했다. 새 source가 별도로 존재하는 것이 정상임을 확인하고 기대 수량을 보정한 뒤 전체 통과했다.
+- 구현 중 운영 DB·IndexedDB 데이터의 삭제나 사용자 작업파일 업로드는 실행하지 않았다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_workfiles_start_20260806_1254`의 같은 상대 경로 파일을 사용한다. 새로 추가된 `work_files.py`, `sqliteWorkfiles.js`, 관련 테스트 파일은 제거 대상이다.
+- 전체 데이터 복구는 작업 전 `.mdpbackup`을 설정의 복원 미리보기에서 검증한 후 적용한다.
+- DB만 수동 복구해야 하면 현재 DB와 `data/assets/`를 먼저 별도 보존하고 서버를 종료한 상태에서 작업 전 online backup의 SHA-256·무결성을 확인한 뒤 복원한다.
+- SQLite 작업파일 저장이 실패해도 기존 파일 다운로드와 IndexedDB SaveDB는 유지되므로 해당 경로로 즉시 저장할 수 있다.
+- 이전 코드로 복구한 뒤 PID `32704` 서버를 재시작해야 capability와 정적 파일 cache version이 반영된다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_workfiles_20260806_1306`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785989181765_8a02bf27b16b.mdpbackup`
+- 패키지 SHA-256: `3460C0CF29119A6CC439F7FF8188BACD35AFEEB08E06F4902B3D7056AF3A2829`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785989181558_cbbdb342.sqlite`
+- DB backup SHA-256: `4FA069233CDDAC0EEBE2CB17B9CD188635A24F03E0B5B16993708D2194963FA1`
+- 완료 package 생성 시 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+---
+
+## 2026-08-06 13:36 KST — 작업 022 — Phase 7A-2 SQLite 탐색기 FMA 내용·경량 갤러리
+
+상태: 완료
+
+### 작업 전 복구 지점
+
+- 코드: `backup/sqlite_fma_explorer_start_20260806_1325`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785990356459_bb115a5ba461.mdpbackup`
+- 패키지 SHA-256: `7B3B81E167C592D9547010556FA4BD68089AB6DF27244D6FFD335D3C31DF30C1`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785990356252_29bdbef7.sqlite`
+- DB backup SHA-256: `FD77768048C8054731CB4E7AC0EEDC5C201428C0F251BF675A0BEDE57A54A8B8`
+- 작업 전 package는 사용자 FMA asset 1개를 포함하며 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.
+
+### 범위와 경량화 원칙
+
+- SQLite 작업파일 보관함이 관리하는 FMA v3 ZIP만 미리보기 대상으로 허용한다.
+- 원본 FMA와 manifest/media는 변경하지 않으며 탐색기 화면은 읽기 전용이다.
+- summary 응답에는 manifest 개수·MIME·제한된 메타데이터만 포함하고 ZIP 원본 경로와 media bytes를 넣지 않는다.
+- 갤러리는 최대 24개만 표시하고 썸네일 요청 동시 실행을 4개로 제한한다.
+- Pillow 사용 가능 시 최대 240x240 WebP를 생성한다. 없는 환경은 PNG/JPEG/WebP/GIF/AVIF 중 2MB 이하만 제한 전송한다.
+- 영상·오디오·SVG·큰 이미지·지원하지 않는 형식은 원본 전체를 보내지 않고 placeholder와 종류·크기만 표시한다.
+
+### 실제 구현
+
+1. FMA summary와 썸네일 서비스
+   - `FmaPreviewService`를 추가해 file entry/source/asset 연결, workspace, FMA 작업 유형, filesystem 관리 경로를 검증한다.
+   - ZIP absolute/parent 경로, 중복 entry, 암호화 entry, 16MB 초과 manifest, 누락 media를 차단한다.
+   - 갤러리 항목·고유 media·이미지·영상·오디오·기타 개수와 MIME/확장자 분포, 전체 media bytes를 계산한다.
+   - manifest images 순서에서 최대 24개만 이름·종류·MIME·크기·크기 메타데이터로 반환한다.
+   - 이미지 썸네일은 `data/previews/fma/{checksum-derived-key}`에 cache하며 FMA checksum이 바뀌면 새 cache key를 사용한다.
+   - preview cache는 재생성 가능 데이터라 SQLite asset에 등록하지 않고 `.mdpbackup`에도 포함하지 않는다.
+
+2. API와 세션 보호
+   - health/session capability `fmaPreview=true`를 추가했다.
+   - `GET /api/sqlite/explorer/files/{id}/fma-preview`에서 summary와 갤러리 metadata를 반환한다.
+   - `GET /api/sqlite/explorer/files/{id}/fma-thumbnail/{mediaId}`에서 제한된 image response만 반환한다.
+   - summary와 thumbnail 모두 `X-MDViewer-Session`을 요구한다.
+   - thumbnail 응답은 실제 MIME·Content-Length·nosniff와 private cache header를 제공한다.
+
+3. 저장 파사드와 탐색 UI
+   - `SqliteApiAdapter`에 session-protected GET과 preview Blob 요청을 추가했다.
+   - `MDPStorage`에 FMA summary·thumbnail 읽기 전용 함수를 공개했다.
+   - FMA 파일 상세에 갤러리 항목·고유 미디어·이미지·영상·오디오·기타 요약 카드와 MIME 분포를 표시한다.
+   - 미리보기 카드에는 파일명·MIME·크기를 표시하고 영상·미지원 항목은 아이콘 placeholder를 사용한다.
+   - 파일 변경·탭 변경·새로고침·탐색기 닫기 때 모든 thumbnail object URL을 해제한다.
+   - Markdown 등 일반 파일은 기존 `파일 내용` `<pre>` 표시를 그대로 유지한다.
+   - 정적 cache version을 `20260806-fma-preview-1`로 갱신했다.
+
+### 변경 파일
+
+- 추가: `LocalSave_sqlite/server/fma_previews.py`
+- 변경: `LocalSave_sqlite/server/api.py`
+- 변경: `js/storage/sqlite-api-adapter.js`
+- 변경: `js/storage/storage-service.js`
+- 변경: `Setting/settings-ui.js`
+- 변경: `index.html`
+- 추가: `scripts/test-sqlite-fma-previews.py`
+- 추가: `scripts/test-sqlite-fma-explorer-ui.js`
+- 변경: `scripts/test-sqlite-http-api.py`
+- 변경: `scripts/test-storage-service.js`
+- 변경: `scripts/test-backup-packages.py`
+- 변경: `LocalSave_sqlite/SQLITE_LOCAL_STORAGE_IMPLEMENTATION_PLAN.md`
+- 변경: `LocalSave_sqlite/SQLITE_IMPLEMENTATION_HISTORY.md`
+
+### 자동 검증
+
+- Python/Node 변경 파일 구문 검사: 통과
+- FMA 갤러리/고유 media/이미지/영상/MIME 개수 계산: 통과
+- 최대 24개 갤러리 제한과 영상 placeholder: 통과
+- 제한 preview 생성·2MB cap·cache 재사용: 통과
+- preview cache의 `.mdpbackup` 제외: 통과
+- 세션 없는 summary/thumbnail 403과 세션 HTTP image 왕복: 통과
+- UI summary 카드·MIME·4 worker 동시성 제한·object URL 정리 계약: 통과
+- SQLite server/work-file/model/FMA preview/HTTP/backup/storage service와 fmaviewer adapter 회귀 테스트: 통과
+- 변경 파일 `git diff --check`: 통과
+
+### 운영 서버·실데이터 검증
+
+- 기존 PID `26676`이 이 프로젝트의 `python.exe run.py`인지 확인하고 새 코드로 PID `27312`에서 재기동했다.
+- schema v3, `available=true`, `fmaPreview=true`를 확인했다.
+- 실제 사용자 FMA `project_export_1785989415008.fma`(97,841,395 bytes)를 변경 없이 읽었다.
+- 실제 결과: 갤러리 항목 31, 고유 media 30, 이미지 29, 영상 1, 화면 표시 24개가 정확히 반환됐다.
+- 실제 PNG 1개를 2,690바이트 `image/webp` 썸네일로 생성해 session-protected HTTP로 반환했다.
+- 운영 FMA/SQLite metadata에는 쓰지 않았고 재생성 가능한 preview cache만 생성했다.
+
+### 오류와 복구 기록
+
+- 도구 sandbox의 Python에서는 사용자 site-packages 접근이 제한돼 `PIL` import가 1회 실패했다. 운영 서버에서는 Pillow가 확인됐지만 다른 PC 호환성을 위해 Pillow 없는 경우 2MB 이하 browser image 제한 전송 폴백을 추가했다.
+- 전체 회귀에서 backup test가 이전 cache version `20260806-restore-apply-1`을 고정 비교해 1회 실패했다. 현재 통합 version `20260806-fma-preview-1`로 기대값을 갱신한 뒤 통과했다.
+- 완료 package 크기 약 104MB는 기존 사용자 FMA asset 97,841,395 bytes 때문이며 preview cache는 포함되지 않았다.
+- 사용자 FMA, SQLite metadata, ONNX 모델, IndexedDB 데이터는 삭제하거나 변경하지 않았다.
+
+### 복구 방법
+
+- 코드 복구는 `backup/sqlite_fma_explorer_start_20260806_1325`의 같은 상대 경로 파일을 사용한다. 새 `fma_previews.py`와 FMA preview 테스트 파일은 제거 대상이다.
+- 생성된 미리보기 cache만 정리하려면 서버 종료 후 `LocalSave_sqlite/data/previews/fma/`만 제거할 수 있으며 원본 FMA와 SQLite metadata에는 영향이 없다.
+- 전체 데이터 복구는 작업 전 `.mdpbackup`을 복원 미리보기에서 검증한 후 적용한다.
+- 이전 코드로 복구한 뒤 PID `27312` 서버를 재시작해야 capability와 정적 cache version이 반영된다.
+
+### 완료 복구 지점
+
+- 코드: `backup/sqlite_fma_explorer_20260806_1336`
+- 전체 패키지: `LocalSave_sqlite/data/exports/mdviewer_1785990980827_5b1d22057881.mdpbackup`
+- 패키지 SHA-256: `99B5A68004345A9F0860D168B061C06555E3D493197123EBCD773CEBBF5E5715`
+- SQLite online backup: `LocalSave_sqlite/data/backups/manual_1785990980612_2f8fe469.sqlite`
+- DB backup SHA-256: `7693B0AE1CA1317930DDC2B22CE2F4A72017BC19CD2E7EE7CC3F9F0B860567B5`
+- 완료 package는 사용자 FMA asset 1개(97,841,395 bytes)를 포함하며 schema v3, `integrity_check=ok`, foreign key 위반 0건을 확인했다.

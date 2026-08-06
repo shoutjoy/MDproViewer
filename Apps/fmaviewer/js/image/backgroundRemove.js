@@ -31,6 +31,8 @@ var rembgSelectedModelObjectUrl = null;
 var rembgSelectedModelSource = null;
 var rembgSelectedModelSignature = null;
 var rembgModelDownloadPromise = null;
+var rembgPersistedModelSource = null;
+var rembgPersistedModelMetadata = null;
 var mediaPipeScriptPromise = null;
 var mediaPipeSessionPromise = null;
 var mediaPipePendingResult = null;
@@ -674,8 +676,9 @@ async function resolveBackgroundModelUrl() {
 
     const savedModel = await loadSavedBackgroundModel();
     if (savedModel) {
-        setSelectedBackgroundModelBlob(savedModel, "saved");
-        rembgResolvedModelSource = "saved";
+        const savedSource = rembgPersistedModelSource || "saved";
+        setSelectedBackgroundModelBlob(savedModel, savedSource);
+        rembgResolvedModelSource = savedSource;
         return rembgSelectedModelObjectUrl;
     }
 
@@ -704,12 +707,17 @@ async function updateBackgroundModelLocation() {
     if (!dom.bgModelLocation) return;
     dom.bgModelLocation.classList.remove("available", "remote");
     dom.bgModelLocation.innerHTML =
-        '모델 경로와 브라우저 저장소를 확인하는 중...';
+        '모델 경로와 SQLite·브라우저 저장소를 확인하는 중...';
 
     const modelUrl = await resolveBackgroundModelUrl();
     const sourceMessages = {
         local: `✓ 앱 폴더 모델 발견: <code>${getRelativeBackgroundModelPath(modelUrl)}</code>`,
         selected: "✓ 직접 선택한 ONNX 모델을 사용합니다.",
+        sqlite: "✓ SQLite에 저장된 ONNX 모델을 사용합니다." +
+            (rembgPersistedModelMetadata
+                ? ` (${formatBackgroundModelBytes(rembgPersistedModelMetadata.sizeBytes)}) · ` +
+                    `SHA-256 ${String(rembgPersistedModelMetadata.checksumSha256 || "").slice(0, 12)}…`
+                : ""),
         saved: "✓ 브라우저 저장소에 보관된 ONNX 모델을 사용합니다.",
         downloaded: "✓ 다운로드한 ONNX 모델이 자동 연결되었습니다.",
         remote: "저장된 모델 없음 · 자동 다운로드 후 연결할 수 있습니다."
@@ -791,7 +799,9 @@ async function handleBackgroundModelFileSelection(event) {
 
     dom.btnSelectBgModel.disabled = true;
     dom.btnPrepareBgModel.disabled = true;
-    setBgRemoveProgress(2, "선택한 모델을 브라우저 저장소에 보관 중");
+    setBgRemoveProgress(2, isSqliteBackgroundModelStorageEnabled()
+        ? "선택한 모델을 SQLite에 보관 중"
+        : "선택한 모델을 브라우저 저장소에 보관 중");
 
     try {
         const selectedSignature = getBackgroundModelBlobSignature(file);
@@ -826,13 +836,16 @@ async function handleBackgroundModelFileSelection(event) {
         }
 
         try {
-            if (!sameConnectedModel) await saveBackgroundModel(file);
+            const persistence = !sameConnectedModel
+                ? await saveBackgroundModel(file, file.name)
+                : { storage: rembgSelectedModelSource || "selected" };
             dom.bgModelLocation.classList.remove("remote");
             dom.bgModelLocation.classList.add("available");
             dom.bgModelLocation.innerHTML =
                 `${sameConnectedModel ? "✓ 동일 모델 재사용" : "✓ 선택한 모델 저장 완료"}: ` +
                 `<code>${escapeBackgroundModelText(file.name)}</code> ` +
-                `(${formatBackgroundModelBytes(file.size)})`;
+                `(${formatBackgroundModelBytes(file.size)}) · ` +
+                `${persistence.storage === "sqlite" ? "SQLite" : "브라우저 저장소"}`;
         } catch (storageError) {
             console.warn("Model persistence failed; using for current session only.", storageError);
             dom.bgModelLocation.classList.remove("remote");
@@ -910,9 +923,9 @@ async function downloadAndConnectBackgroundModel() {
         rembgHumanSessionPromise = null;
 
         try {
-            await saveBackgroundModel(modelBlob);
-            rembgResolvedModelSource = "saved";
-            rembgSelectedModelSource = "saved";
+            const persistence = await saveBackgroundModel(modelBlob, REMBG_MODEL_DB_KEY);
+            rembgResolvedModelSource = persistence.storage;
+            rembgSelectedModelSource = persistence.storage;
         } catch (storageError) {
             console.warn("Downloaded model persistence failed; using current session.", storageError);
         }
@@ -922,7 +935,7 @@ async function downloadAndConnectBackgroundModel() {
             dom.bgModelLocation.classList.add("available");
             dom.bgModelLocation.innerHTML =
                 "✓ 모델 다운로드 및 자동 연결 완료" +
-                (rembgResolvedModelSource === "saved"
+                (["saved", "sqlite"].includes(rembgResolvedModelSource)
                     ? " · 다음 실행에도 자동으로 사용합니다."
                     : " · 현재 실행에서 사용합니다.");
         }
@@ -966,7 +979,35 @@ function openBackgroundModelDatabase() {
     });
 }
 
-async function saveBackgroundModel(blob) {
+function isSqliteBackgroundModelStorageEnabled() {
+    return Boolean(
+        window.FMASqliteWorkfiles?.isSqliteMode?.() &&
+        typeof window.FMASqliteWorkfiles?.saveOnnxModel === "function"
+    );
+}
+
+async function saveBackgroundModel(blob, fileName = REMBG_MODEL_DB_KEY) {
+    if (isSqliteBackgroundModelStorageEnabled()) {
+        try {
+            const metadata = await window.FMASqliteWorkfiles.saveOnnxModel(
+                blob,
+                fileName,
+                "u2net_human_seg"
+            );
+            rembgPersistedModelSource = "sqlite";
+            rembgPersistedModelMetadata = metadata;
+            return { storage: "sqlite", metadata };
+        } catch (error) {
+            console.warn("SQLite ONNX model persistence failed; falling back to IndexedDB.", error);
+        }
+    }
+    await saveBackgroundModelToIndexedDb(blob);
+    rembgPersistedModelSource = "saved";
+    rembgPersistedModelMetadata = null;
+    return { storage: "saved" };
+}
+
+async function saveBackgroundModelToIndexedDb(blob) {
     const database = await openBackgroundModelDatabase();
     return new Promise((resolve, reject) => {
         const transaction = database.transaction(REMBG_MODEL_STORE_NAME, "readwrite");
@@ -985,6 +1026,38 @@ async function saveBackgroundModel(blob) {
 }
 
 async function loadSavedBackgroundModel() {
+    rembgPersistedModelSource = null;
+    rembgPersistedModelMetadata = null;
+    if (isSqliteBackgroundModelStorageEnabled() &&
+        typeof window.FMASqliteWorkfiles?.loadOnnxModel === "function") {
+        try {
+            const stored = await window.FMASqliteWorkfiles.loadOnnxModel("u2net_human_seg");
+            if (stored?.blob instanceof Blob && stored.blob.size >= REMBG_MIN_MODEL_BYTES) {
+                rembgPersistedModelSource = "sqlite";
+                rembgPersistedModelMetadata = stored.metadata;
+                return stored.blob;
+            }
+        } catch (error) {
+            console.warn("SQLite background model unavailable; checking IndexedDB.", error);
+        }
+    }
+    const indexedDbModel = await loadSavedBackgroundModelFromIndexedDb();
+    if (indexedDbModel && isSqliteBackgroundModelStorageEnabled()) {
+        try {
+            rembgPersistedModelMetadata = await window.FMASqliteWorkfiles.saveOnnxModel(
+                indexedDbModel,
+                REMBG_MODEL_DB_KEY,
+                "u2net_human_seg"
+            );
+            rembgPersistedModelSource = "sqlite";
+        } catch (error) {
+            console.warn("IndexedDB ONNX model migration to SQLite failed; keeping IndexedDB model.", error);
+        }
+    }
+    return indexedDbModel;
+}
+
+async function loadSavedBackgroundModelFromIndexedDb() {
     try {
         const database = await openBackgroundModelDatabase();
         return await new Promise((resolve, reject) => {
@@ -993,7 +1066,11 @@ async function loadSavedBackgroundModel() {
             request.onsuccess = () => {
                 database.close();
                 const blob = request.result;
-                resolve(blob instanceof Blob && blob.size >= REMBG_MIN_MODEL_BYTES ? blob : null);
+                const validBlob = blob instanceof Blob && blob.size >= REMBG_MIN_MODEL_BYTES
+                    ? blob
+                    : null;
+                if (validBlob) rembgPersistedModelSource = "saved";
+                resolve(validBlob);
             };
             request.onerror = () => {
                 database.close();
@@ -1068,6 +1145,7 @@ async function prepareBackgroundRemoveModel() {
         const sourceStatus = {
             local: "앱 폴더의 ONNX 모델 불러오는 중",
             selected: "직접 선택한 ONNX 모델 불러오는 중",
+            sqlite: "SQLite에 저장된 ONNX 모델 불러오는 중",
             saved: "브라우저 저장소의 ONNX 모델 불러오는 중",
             downloaded: "다운로드한 ONNX 모델 불러오는 중",
             remote: "원본 서버에서 약 176MB 모델 다운로드 및 초기화"

@@ -1,9 +1,9 @@
 ﻿(function (global) {
   'use strict';
 
-  var SHELL_VERSION = '20260730-github-share-1';
-  var SHELL_TEMPLATE_VERSION = '20260730-github-share-1';
-  var SCHOLAR_REF_VERSION = '20260730-doi-newtab-1';
+  var SHELL_VERSION = '20260806-sqlite-artifacts-1';
+  var SHELL_TEMPLATE_VERSION = '20260806-sqlite-artifacts-1';
+  var SCHOLAR_REF_VERSION = '20260806-scholar-sqlite-1';
 
   var deps = {
     dbGetter: null,
@@ -156,8 +156,50 @@
   function getTemplateHtml() {
     return FALLBACK_TEMPLATE_HTML;
   }
+
+  function ensureSqliteArtifactButtons() {
+    var refPush = q('scholarref-push-all-github-btn');
+    if (refPush && refPush.parentNode && !q('scholarref-sqlite-save-btn')) {
+      var refSave = document.createElement('button');
+      refSave.type = 'button';
+      refSave.id = 'scholarref-sqlite-save-btn';
+      refSave.className = 'scholarref-primary';
+      refSave.textContent = 'SQLite 저장';
+      refSave.onclick = saveScholarRefsToSqlite;
+      refPush.parentNode.insertBefore(refSave, refPush);
+      var refLoad = document.createElement('button');
+      refLoad.type = 'button';
+      refLoad.id = 'scholarref-sqlite-load-btn';
+      refLoad.className = 'scholarref-secondary';
+      refLoad.textContent = 'SQLite 가져오기';
+      refLoad.onclick = loadScholarRefsFromSqlite;
+      refPush.parentNode.insertBefore(refLoad, refPush);
+    }
+    var header = q('scholar-crossref-results-header');
+    var github = header && header.querySelector('[onclick="toggleScholarCrossrefGithubPanel()"]');
+    if (github && github.parentNode && !q('scholar-crossref-sqlite-save')) {
+      var crossrefSave = document.createElement('button');
+      crossrefSave.type = 'button';
+      crossrefSave.id = 'scholar-crossref-sqlite-save';
+      crossrefSave.className = 'rounded bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-700';
+      crossrefSave.textContent = 'SQLite 저장';
+      crossrefSave.onclick = saveScholarCrossrefToSqlite;
+      github.parentNode.insertBefore(crossrefSave, github.nextSibling);
+      var crossrefLoad = document.createElement('button');
+      crossrefLoad.type = 'button';
+      crossrefLoad.id = 'scholar-crossref-sqlite-load';
+      crossrefLoad.className = 'rounded border border-violet-400 px-3 py-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300';
+      crossrefLoad.textContent = 'SQLite 가져오기';
+      crossrefLoad.onclick = loadScholarCrossrefFromSqlite;
+      github.parentNode.insertBefore(crossrefLoad, crossrefSave.nextSibling);
+    }
+  }
+
   function mountTemplateHtml(html) {
-    if (q('scholar-search-modal')) return true;
+    if (q('scholar-search-modal')) {
+      ensureSqliteArtifactButtons();
+      return true;
+    }
     var wrap = document.createElement('div');
     wrap.innerHTML = String(html || getTemplateHtml()).trim();
     var nodes = Array.prototype.slice.call(wrap.children);
@@ -170,6 +212,7 @@
     nodes.forEach(function (node) {
       document.body.appendChild(node);
     });
+    ensureSqliteArtifactButtons();
     return !!q('scholar-search-modal');
   }
 
@@ -918,6 +961,96 @@
     toast('수정된 Markdown을 저장했습니다.');
   }
 
+  function requireScholarSqliteStorage() {
+    if (!global.MDPStorage
+        || typeof global.MDPStorage.saveSqliteWorkFile !== 'function'
+        || typeof global.MDPStorage.listSqliteWorkFiles !== 'function'
+        || typeof global.MDPStorage.loadSqliteWorkFile !== 'function') {
+      throw new Error('SQLite 작업파일 기능을 찾을 수 없습니다.');
+    }
+    return global.MDPStorage;
+  }
+
+  function scholarSqliteFileName(prefix) {
+    var queryInput = q('scholar-search-query');
+    var query = String(queryInput && queryInput.value || prefix || 'crossref-search-results')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 70) || prefix || 'crossref-search-results';
+    return query + '_' + Date.now() + '.md';
+  }
+
+  function chooseScholarSqliteItem(items, title) {
+    var list = Array.isArray(items) ? items.slice(0, 30) : [];
+    if (!list.length) return null;
+    var labels = list.map(function (item, index) {
+      var date = item.createdAt ? new Date(Number(item.createdAt)).toLocaleString() : '';
+      return (index + 1) + '. ' + item.name + (date ? ' · ' + date : '');
+    });
+    var selected = window.prompt(title + '\n\n' + labels.join('\n') + '\n\n번호를 입력하세요.', '1');
+    if (selected == null) return null;
+    var index = Number(selected) - 1;
+    return Number.isInteger(index) && index >= 0 && index < list.length ? list[index] : null;
+  }
+
+  async function saveScholarCrossrefToSqlite() {
+    var input = q('scholar-crossref-results-md');
+    var markdown = String(input && input.value || '');
+    if (!markdown.trim()) {
+      toast('SQLite에 저장할 Crossref Markdown이 없습니다.');
+      return null;
+    }
+    try {
+      var storage = requireScholarSqliteStorage();
+      var result = await storage.saveSqliteWorkFile(
+        new Blob([markdown], { type: 'text/markdown' }),
+        {
+          appId: 'scholarsearch',
+          workType: 'crossref_markdown',
+          fileName: scholarSqliteFileName('crossref-search-results')
+        }
+      );
+      toast('수정된 Crossref Markdown을 SQLite에 저장했습니다.');
+      return result;
+    } catch (error) {
+      toast('SQLite Crossref 저장 실패: ' + String(error && error.message || error));
+      return null;
+    }
+  }
+
+  async function loadScholarCrossrefFromSqlite() {
+    try {
+      var storage = requireScholarSqliteStorage();
+      var result = await storage.listSqliteWorkFiles({
+        appId: 'scholarsearch',
+        workType: 'crossref_markdown',
+        limit: 30
+      });
+      var selected = chooseScholarSqliteItem(result && result.items, 'SQLite Crossref Markdown 목록');
+      if (!selected) {
+        if (!result || !Array.isArray(result.items) || !result.items.length) {
+          toast('SQLite에 저장된 Crossref Markdown이 없습니다.');
+        }
+        return null;
+      }
+      var blob = await storage.loadSqliteWorkFile(selected);
+      var input = q('scholar-crossref-results-md');
+      if (!input) throw new Error('Crossref 편집창을 찾을 수 없습니다.');
+      input.value = await blob.text();
+      state.crossrefResults = [];
+      renderScholarCrossrefMirror();
+      var status = q('scholar-crossref-results-status');
+      if (status) status.textContent = 'SQLite에서 ' + selected.name + '을(를) 불러왔습니다.';
+      toast('SQLite Crossref Markdown을 불러왔습니다.');
+      return selected;
+    } catch (error) {
+      toast('SQLite Crossref 불러오기 실패: ' + String(error && error.message || error));
+      return null;
+    }
+  }
+
   function setScholarCrossrefGithubStatus(message, kind) {
     var status = q('scholar-crossref-github-status');
     if (!status) return;
@@ -1423,6 +1556,8 @@
   function insertAllScholarRefSection() { invokeScholarRef('insertAllSection'); }
   function downloadScholarRefTxt() { invokeScholarRef('downloadTxt'); }
   function downloadScholarRefMd() { invokeScholarRef('downloadMd'); }
+  function saveScholarRefsToSqlite() { return invokeScholarRef('saveSqliteMarkdown'); }
+  function loadScholarRefsFromSqlite() { return invokeScholarRef('loadSqliteMarkdown'); }
   function openScholarRefListWindow() { invokeScholarRef('openListWindow'); }
   function pushScholarRefItemToGithub(id) { invokeScholarRef('pushGithubReferenceItem', id); }
   function pushScholarRefsToGithub() { invokeScholarRef('pushGithubSavedList'); }
@@ -1446,6 +1581,8 @@
     global.closeScholarCrossrefResults = closeScholarCrossrefResults;
     global.copyScholarCrossrefMarkdown = copyScholarCrossrefMarkdown;
     global.saveScholarCrossrefMarkdown = saveScholarCrossrefMarkdown;
+    global.saveScholarCrossrefToSqlite = saveScholarCrossrefToSqlite;
+    global.loadScholarCrossrefFromSqlite = loadScholarCrossrefFromSqlite;
     global.toggleScholarCrossrefGithubPanel = toggleScholarCrossrefGithubPanel;
     global.loadScholarCrossrefGithubRepos = loadScholarCrossrefGithubRepos;
     global.syncScholarCrossrefGithubRepoSelection = syncScholarCrossrefGithubRepoSelection;
@@ -1470,6 +1607,8 @@
     global.insertAllScholarRefSection = insertAllScholarRefSection;
     global.downloadScholarRefTxt = downloadScholarRefTxt;
     global.downloadScholarRefMd = downloadScholarRefMd;
+    global.saveScholarRefsToSqlite = saveScholarRefsToSqlite;
+    global.loadScholarRefsFromSqlite = loadScholarRefsFromSqlite;
     global.openScholarRefListWindow = openScholarRefListWindow;
     global.pushScholarRefItemToGithub = pushScholarRefItemToGithub;
     global.pushScholarRefsToGithub = pushScholarRefsToGithub;

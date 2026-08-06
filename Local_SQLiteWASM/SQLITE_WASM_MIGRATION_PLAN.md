@@ -1,0 +1,242 @@
+# MD Viewer SQLite WASM 전환 계획
+
+## 1. 목표
+
+Python `run.py`의 SQLite HTTP API를 브라우저의 SQLite WASM + OPFS 저장소로 대체한다.
+기존 UI는 `MDPStorage` 파사드를 계속 사용하고, HTTP `fetch()` 대신 Web Worker RPC로 SQLite를 호출한다.
+
+이번 작업 범위는 문서 중심 저장 기능이다. 대용량 작업 파일, 전체 패키지 백업, FMA 처리,
+이미지 프록시와 정적 웹 제공은 명시적으로 제외한다.
+
+## 2. 현재 구조
+
+```text
+브라우저 UI
+   |
+   v
+MDPStorage
+   +-- IndexedDbAdapter ----------------> IndexedDB
+   +-- RecoveryBuffer ------------------> IndexedDB
+   +-- SqliteApiAdapter -- HTTP --------> Python run.py
+                                           |
+                                           v
+                                      SqliteApiRouter
+                                      +-- StorageRepository
+                                      +-- MigrationService
+                                      +-- BackupService
+                                      +-- WorkFileService
+                                      +-- ModelAssetService
+                                      +-- FmaPreviewService
+                                           |
+                                           +-- mdpro.sqlite
+                                           +-- assets/
+                                           +-- backups/
+                                           +-- exports/
+                                           +-- previews/
+```
+
+관련 코드:
+
+- `js/storage/storage-service.js`: 저장 모드와 활성 어댑터 선택
+- `js/storage/sqlite-api-adapter.js`: `/api/sqlite` HTTP 호출
+- `LocalSave_sqlite/server/api.py`: SQLite API 라우터
+- `LocalSave_sqlite/server/database.py`: 연결, 트랜잭션, 무결성 검사, 백업
+- `LocalSave_sqlite/server/repositories.py`: 문서·폴더·설정 SQL
+- `js/storage/recovery-buffer.js`: SQLite 장애 시 IndexedDB 복구 버퍼
+
+### 2.1 Python SQLite 서버가 실제로 동작하는 위치
+
+- 실행 진입점은 `md_viewer/run.py`이다.
+- 기본 주소는 `127.0.0.1:8765`이며 `MD_VIEWER_HOST`, `MD_VIEWER_PORT` 환경 변수로 바뀔 수 있다.
+- 별도 SQLite 프로세스가 있는 구조가 아니다. `run.py` 한 프로세스가 정적 파일 제공과
+  `/api/sqlite` 요청 처리를 모두 맡고, 내부에서 `SqliteApiRouter`와 `DatabaseManager`를 호출한다.
+- 기본 DB 파일은 `md_viewer/LocalSave_sqlite/data/mdpro.sqlite`이다.
+- 브라우저는 `sqlite-api-adapter.js`의 `fetch()`로 Python API를 호출하며, Python 프로세스가
+  파일 잠금·트랜잭션·Repository SQL을 실행한다.
+- WASM 전환 뒤에는 동일 브라우저 안의 전용 Worker가 그 역할을 맡고 DB는 Windows 파일 경로가
+  아닌 해당 origin의 OPFS `/mdpro.sqlite`에 저장된다.
+
+## 3. 목표 구조
+
+```text
+브라우저 UI
+   |
+   v
+MDPStorage
+   +-- IndexedDbAdapter ----------------> IndexedDB
+   +-- RecoveryBuffer ------------------> IndexedDB
+   +-- WasmSqliteAdapter -- postMessage -> SQLite 전용 Web Worker
+                                               |
+                                               +-- Repository JS
+                                               +-- SQLite WASM
+                                               +-- OPFS SAH Pool VFS
+                                                       |
+                                                       v
+                                                /mdpro.sqlite
+```
+
+SQLite는 메인 UI 스레드에서 실행하지 않는다. 전용 Worker 하나가 데이터베이스 연결을 소유하고
+모든 작업을 직렬화한다. 기존 API 어댑터는 전환 기간의 호환·복구 수단으로 유지한다.
+
+## 4. 범위
+
+| 현재 기능 | WASM 전환 | 구현 방향 |
+|---|---:|---|
+| 문서 CRUD | 쉬움 | Repository SQL을 Worker JS로 이식 |
+| 폴더 CRUD | 쉬움 | 현재 어댑터 메서드와 반환 형식 유지 |
+| 문서 버전·복원 | 보통 | 낙관적 잠금과 트랜잭션 유지 |
+| 설정 저장 | 쉬움 | 안전 설정 허용 목록과 검증을 JS로 이식 |
+| FTS5 검색 | 보통 | WASM 빌드의 FTS5를 시작 시 검증 |
+| IndexedDB 이관 | 보통 | 기존 정규화 결과를 Worker에서 preview/apply |
+| 자동저장·복구 버퍼 | 거의 그대로 | 기존 IndexedDB RecoveryBuffer 재사용 |
+| 무결성 검사 | 쉬움 | `quick_check`, `integrity_check`, `foreign_key_check` 실행 |
+| DB 파일 백업 | 가능 | OPFS DB를 독립 `.sqlite` 파일로 export |
+
+## 5. 제외 범위
+
+아래 기능은 이번 구현에서 포팅하지 않는다. WASM health capability에서 `false`로 보고한다.
+
+- 전체 `.mdpbackup` 생성·검증·복원
+- 작업파일 저장 및 다운로드
+- ONNX 모델 저장
+- FMA ZIP 검증
+- FMA 썸네일 생성
+- 이미지 프록시
+- 정적 웹 제공
+
+## 6. 기술 결정
+
+### 6.1 SQLite 배포물
+
+- SQLite 공식 WASM 3.53.4 배포물을 로컬에 포함한다.
+- 런타임 CDN 의존성을 두지 않는다.
+- `vendor/sqlite3/sqlite3.js`, `vendor/sqlite3/sqlite3.wasm`만 사용한다.
+
+### 6.2 영속 저장
+
+- 1차 VFS: `opfs-sahpool`
+- DB 가상 경로: `/mdpro.sqlite`
+- SAH pool 디렉터리: `.mdviewer-sqlite-wasm-v1`
+- Worker 하나와 DB 연결 하나만 사용한다.
+- 두 번째 탭의 동시 연결은 VFS 오류로 처리하며 향후 Web Locks 조정 단계로 남긴다.
+
+### 6.3 Journal mode
+
+네이티브 스키마의 `PRAGMA journal_mode = WAL`은 Worker에서 검증 후
+`PRAGMA journal_mode = DELETE`로 치환하여 적용한다. WASM OPFS의 WAL은 배타 잠금이 필요하고
+현재 단일 Worker 구조에서는 이점이 작기 때문이다.
+
+### 6.4 호환 전환
+
+- 기본 백엔드 정책은 `auto`이다.
+- `auto`: Python API health 확인 후 성공하면 API, 실패하면 WASM 사용
+- `api`: Python API만 사용
+- `wasm`: SQLite WASM만 사용
+- 선택값은 `mdpro_sqlite_backend_v1`에 저장한다.
+- 기존 UI의 저장 모드 이름 `sqlite`는 유지하고 내부 backend만 구분한다.
+
+### 6.5 기존 DB 이전
+
+브라우저는 Windows의 기존 `LocalSave_sqlite/data/mdpro.sqlite`를 직접 열 수 없다.
+기존 서버에서 online backup으로 완결된 `.sqlite` 파일을 만든 뒤 파일 선택 또는 드래그로
+OPFS에 가져오는 별도 단계가 필요하다. 이번 단계에서는 IndexedDB -> WASM 이관과 OPFS DB export를
+우선 구현하고, 네이티브 `.sqlite` import UI는 후속 체크리스트로 유지한다.
+
+## 7. 구현 체크리스트
+
+### A. 기반
+
+- [x] `Local_SQLiteWASM` 작업 폴더 생성
+- [x] 공식 SQLite WASM 배포물 로컬 포함
+- [x] 배포물 버전·해시 문서화
+- [x] SQLite 전용 Worker 생성
+- [x] Worker RPC 어댑터 생성
+- [x] OPFS SAH Pool 초기화
+- [x] 기존 스키마 SHA-256 검증 후 적용
+- [x] profile/workspace/root bootstrap 생성
+- [x] SQLite/FTS5/JSON/STRICT 기능 self-test
+
+### B. 문서
+
+- [x] 문서 목록과 제목 필터
+- [x] 문서 상세 조회
+- [x] 문서 생성과 최초 버전 생성
+- [x] `expectedVersion` 기반 문서 수정
+- [x] soft delete와 버전 충돌 처리
+- [x] 문서 버전 목록
+- [x] 과거 버전 복원
+
+### C. 폴더
+
+- [x] 폴더 트리 목록
+- [x] 폴더 생성
+- [x] 폴더 수정과 순환 참조 방지
+- [x] 폴더 삭제 시 문서를 ROOT로 이동
+- [x] ROOT 폴더 수정·삭제 방지
+
+### D. 설정
+
+- [x] 안전 설정 허용 목록 이식
+- [x] 민감 키·중첩 민감 데이터 차단
+- [x] 설정 저장·목록
+- [x] global/profile/workspace/feature/document 우선순위 해석
+
+### E. 검색·검사·백업
+
+- [x] 1~2글자 LIKE 검색
+- [x] 3글자 이상 FTS5 검색
+- [x] `quick_check`, `integrity_check`, `foreign_key_check`
+- [x] OPFS DB `.sqlite` export
+- [x] 브라우저 다운로드 헬퍼
+
+### F. IndexedDB 및 복구
+
+- [x] IndexedDB 이관 preview
+- [x] preview fingerprint 검증
+- [x] 폴더·문서·설정 idempotent apply
+- [x] 이관 checkpoint 저장
+- [x] 기존 RecoveryBuffer 그대로 연결
+- [x] 서버 offline 시 pending 문서 재시도
+- [x] 버전 충돌 UI와 오류 형식 유지
+
+### G. 통합·검증
+
+- [x] `storage-service.js`에 API/WASM backend 선택 연결
+- [x] `index.html`에 WASM 어댑터 로드
+- [x] Node 기반 어댑터/RPC 계약 테스트
+- [x] 실제 Chromium에서 Worker 시작 검증
+- [x] 새로고침 후 OPFS 데이터 유지 검증
+- [x] CRUD·버전·검색·이관·백업 통합 테스트
+- [x] Python API 기존 회귀 테스트 유지
+- [x] 구현 결과로 이 체크리스트 갱신
+
+## 8. 완료 기준
+
+1. Python 서버가 꺼진 상태에서 `wasm` backend health가 성공한다.
+2. 문서·폴더·설정 CRUD가 새로고침 뒤에도 유지된다.
+3. 문서 수정 충돌이 `VERSION_CONFLICT`와 현재 버전을 반환한다.
+4. 문서 버전 복원과 FTS5 검색이 동작한다.
+5. IndexedDB 이관을 재실행해도 중복 데이터가 생성되지 않는다.
+6. `integrity_check`와 `foreign_key_check`가 통과한다.
+7. 내보낸 `.sqlite` 파일을 네이티브 SQLite에서 열 수 있다.
+8. 제외 기능은 숨겨진 성공이 아니라 capability `false` 또는 명시적 오류를 반환한다.
+
+## 9. 구현 및 검증 결과 (2026-08-06)
+
+- 실제 브라우저 통합 테스트 38개 항목 통과
+- SQLite 3.53.4, schema v3, OPFS SAH Pool, FTS5 활성 확인
+- Worker 종료·재시작 뒤 문서 version 유지 확인
+- 동일 IndexedDB batch의 재-preview·재-apply에서 신규 0건 확인
+- 내보낸 Blob 1,613,824 bytes 및 `SQLite format 3\0` 헤더 확인
+- Node Worker RPC 계약, 기존 StorageService, 기존 IndexedDB 이관 테스트 통과
+- 기존 Python SQLite core 및 HTTP API 회귀 테스트 통과
+- 메인 설정 UI에서 API/WASM 전환과 WASM DB 내보내기 활성 상태 확인
+- 실제 데스크톱 SQLite 프로그램에서 다운로드 파일을 다시 여는 수동 검증은 후속 확인 항목
+
+## 10. 후속 작업
+
+- 네이티브 `.sqlite` 파일 import UI와 검증
+- 다중 탭 Web Locks 또는 `opfs-wl` 평가
+- 저장 quota와 `navigator.storage.persist()` 사용자 안내
+- 안정적인 origin 정책 확정
+- 제외 기능을 별도 프로젝트로 분리

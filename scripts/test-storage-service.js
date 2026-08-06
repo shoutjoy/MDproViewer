@@ -28,10 +28,13 @@ const capabilities = {
     migrationPreview: true,
     onlineBackup: true,
     explorer: false,
+    backupExplorer: false,
+    workFiles: false,
+    fmaPreview: false,
     backup: true,
     backupPackage: true,
     restorePreview: true,
-    restore: false,
+    restore: true,
     storageModeActivation: false
 };
 
@@ -63,6 +66,22 @@ global.fetch = async function (url, options) {
             async blob() { return new Blob(['PK-backup']); }
         };
     }
+    if (pathname.endsWith('/explorer/files/file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/fma-thumbnail/image-1') && method === 'GET') {
+        assert.equal(options.headers['X-MDViewer-Session'], 'test-session');
+        return {
+            ok: true,
+            status: 200,
+            async blob() { return new Blob(['thumbnail']); }
+        };
+    }
+    if (pathname.endsWith('/workfiles/file_scholar_test/download') && method === 'GET') {
+        assert.equal(options.headers['X-MDViewer-Session'], 'test-session');
+        return {
+            ok: true,
+            status: 200,
+            async blob() { return new Blob(['# References\n\nTest (2026).']); }
+        };
+    }
     let data = pathname.endsWith('/session')
         ? { token: 'test-session', capabilities }
         : pathname.endsWith('/health')
@@ -72,6 +91,27 @@ global.fetch = async function (url, options) {
     if (pathname.endsWith('/documents/doc_retry/versions') && method === 'GET') data = { items: [] };
     if (pathname.endsWith('/explorer/files/legacy_file_test') && method === 'GET') data = {
         id: 'legacy_file_test', entryType: 'file', path: 'docs/test.md', content: 'file body'
+    };
+    if (pathname.endsWith('/explorer/files/file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/fma-preview') && method === 'GET') data = {
+        kind: 'fma',
+        counts: { galleryItems: 2, uniqueMedia: 2, images: 1, videos: 1 },
+        mimeCounts: { 'image/png': 1, 'video/webm': 1 },
+        gallery: [{ mediaId: 'image-1', previewAvailable: true }]
+    };
+    if (pathname.endsWith('/explorer/backups/backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') && method === 'GET') data = {
+        id: 'backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        readOnly: true,
+        sensitiveValuesIncluded: false,
+        integrity: ['ok'],
+        counts: { documents: 1, settings: 1 },
+        documents: [{ id: 'doc_retry', title: 'Retry' }],
+        settings: [{ key: 'sitesVisible', valueType: 'boolean' }]
+    };
+    if (pathname.endsWith('/explorer/backups/backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') && method === 'DELETE') data = {
+        id: 'backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        deleted: true,
+        recoverable: true,
+        trashPath: 'LocalSave_sqlite/data/backups/trash/test.sqlite'
     };
     if ((pathname.includes('/explorer?') || pathname.endsWith('/explorer')) && method === 'GET') data = {
         readOnly: true,
@@ -91,6 +131,16 @@ global.fetch = async function (url, options) {
         data = { items: [{ key: 'sitesVisible', value: true, scopeType: 'global' }] };
     }
     if (pathname.endsWith('/settings') && method === 'PUT') data = JSON.parse(options.body);
+    if (pathname.endsWith('/workfiles') && method === 'POST') data = {
+        id: 'file_scholar_test', appId: 'scholarref', workType: 'scholar_references_md',
+        name: 'scholar_references.md', mimeType: 'text/markdown', sizeBytes: 26
+    };
+    if (pathname.includes('/workfiles?') && method === 'GET') data = {
+        items: [{
+            id: 'file_scholar_test', appId: 'scholarref', workType: 'scholar_references_md',
+            name: 'scholar_references.md', mimeType: 'text/markdown', sizeBytes: 26
+        }]
+    };
     if (pathname.endsWith('/backups/packages') && method === 'POST') data = {
         fileName: 'mdviewer_1785985000000_aaaaaaaaaaaa.mdpbackup',
         checksumSha256: 'package-checksum',
@@ -113,6 +163,17 @@ global.fetch = async function (url, options) {
             foreignKeyViolations: 0,
             databaseCounts: { documents: 1, settings: 2 }
         }
+    };
+    if (pathname.endsWith('/backups/restore/apply') && method === 'POST') data = {
+        status: 'applied',
+        importId: 'restore_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        reloadRequired: true,
+        verification: {
+            integrityCheck: ['ok'],
+            foreignKeyViolations: 0,
+            databaseCounts: { documents: 1, settings: 2 }
+        },
+        preRestoreBackup: { fileName: 'mdviewer_1785985000001_bbbbbbbbbbbb.mdpbackup' }
     };
     if (pathname.endsWith('/documents/doc_retry') && method === 'PUT') {
         const body = JSON.parse(options.body);
@@ -206,6 +267,9 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     capabilities.folders = true;
     capabilities.search = true;
     capabilities.explorer = true;
+    capabilities.backupExplorer = true;
+    capabilities.fmaPreview = true;
+    capabilities.workFiles = true;
     capabilities.settings = true;
     capabilities.storageModeActivation = true;
     const sqliteState = await global.MDPStorage.requestMode('sqlite');
@@ -230,6 +294,31 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     await global.MDPStorage.listSqliteExplorerDocumentVersions('doc_retry');
     const explorerFile = await global.MDPStorage.getSqliteExplorerFileEntry('legacy_file_test');
     assert.equal(explorerFile.content, 'file body');
+    const fmaPreview = await global.MDPStorage.getSqliteExplorerFmaPreview('file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    assert.equal(fmaPreview.counts.images, 1);
+    const fmaThumbnail = await global.MDPStorage.getSqliteExplorerFmaThumbnail(
+        'file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'image-1'
+    );
+    assert.equal(fmaThumbnail.size, 9);
+    assert.ok(requests.some(function (request) {
+        return request.url.endsWith('/explorer/files/file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/fma-preview')
+            && request.options.headers['X-MDViewer-Session'] === 'test-session';
+    }), 'FMA preview summary must use the local session');
+    const backupDetail = await global.MDPStorage.getSqliteExplorerBackup('backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    assert.equal(backupDetail.readOnly, true);
+    assert.equal(backupDetail.sensitiveValuesIncluded, false);
+    const deletedBackup = await global.MDPStorage.deleteSqliteExplorerBackup('backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    assert.equal(deletedBackup.recoverable, true);
+    const backupRequests = requests.filter(function (request) {
+        return request.url.endsWith('/explorer/backups/backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    });
+    assert.equal(backupRequests.length, 2);
+    assert.equal(backupRequests[0].options.headers['X-MDViewer-Session'], 'test-session');
+    assert.equal(backupRequests[1].options.method, 'DELETE');
+    assert.equal(backupRequests[1].options.headers['X-MDViewer-Session'], 'test-session');
+    assert.deepEqual(JSON.parse(backupRequests[1].options.body), {
+        confirmation: 'DELETE_BACKUP:backup_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    });
     assert.ok(requests.some(function (request) {
         return request.url.endsWith('/explorer?q=HTTP&limit=25');
     }), 'SQLite explorer must use its read-only endpoint');
@@ -244,18 +333,35 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     const savedSettings = await global.MDPStorage.saveSqliteSafeSettings({
         sitesVisible: true,
         githubRepo: 'owner/repo',
+        templateCustomList: [{ id: 'custom_1', name: '연구 양식', desc: '', content: '# 연구' }],
         githubToken: 'must-never-reach-api',
         sqliteEnabled: true
     });
-    assert.equal(savedSettings.saved, 2);
+    assert.equal(savedSettings.saved, 3);
     const settingWrites = requests.filter(function (request) {
         return request.url.endsWith('/settings') && request.options.method === 'PUT';
     });
-    assert.equal(settingWrites.length, 2);
+    assert.equal(settingWrites.length, 3);
     assert.deepEqual(settingWrites.map(function (request) {
         return JSON.parse(request.options.body).key;
-    }).sort(), ['githubRepo', 'sitesVisible']);
+    }).sort(), ['githubRepo', 'sitesVisible', 'templateCustomList']);
     assert.equal(JSON.stringify(settingWrites).includes('must-never-reach-api'), false);
+    const scholarBlob = new Blob(['# References\n\nTest (2026).'], { type: 'text/markdown' });
+    const savedWorkFile = await global.MDPStorage.saveSqliteWorkFile(scholarBlob, {
+        appId: 'scholarref', workType: 'scholar_references_md', fileName: 'scholar_references.md'
+    });
+    assert.equal(savedWorkFile.workType, 'scholar_references_md');
+    const workFiles = await global.MDPStorage.listSqliteWorkFiles({
+        appId: 'scholarref', workType: 'scholar_references_md', limit: 30
+    });
+    assert.equal(workFiles.items.length, 1);
+    const loadedWorkFile = await global.MDPStorage.loadSqliteWorkFile(workFiles.items[0]);
+    assert.match(await loadedWorkFile.text(), /References/);
+    const workFileUpload = requests.find(function (request) {
+        return request.url.endsWith('/workfiles') && request.options.method === 'POST';
+    });
+    assert.equal(workFileUpload.options.headers['X-MDViewer-Session'], 'test-session');
+    assert.equal(workFileUpload.options.headers['X-MDViewer-Work-Type'], 'scholar_references_md');
     const backupPackage = await global.MDPStorage.createBackupPackage();
     assert.equal(backupPackage.validation.ok, true);
     const backupValidation = await global.MDPStorage.validateBackupPackage(backupPackage.fileName);
@@ -284,6 +390,23 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
         '다른PC.mdpbackup'
     );
     assert.equal(restoreRequest.options.headers['X-MDViewer-Session'], 'test-session');
+    const restoreApplied = await global.MDPStorage.applyBackupRestore(
+        restorePreview.importId,
+        'a'.repeat(64)
+    );
+    assert.equal(restoreApplied.status, 'applied');
+    assert.equal(restoreApplied.verification.integrityCheck[0], 'ok');
+    const restoreApplyRequest = requests.find(function (request) {
+        return request.url.endsWith('/backups/restore/apply');
+    });
+    assert.ok(restoreApplyRequest, 'restore apply request missing');
+    assert.equal(restoreApplyRequest.options.method, 'POST');
+    assert.equal(restoreApplyRequest.options.headers['X-MDViewer-Session'], 'test-session');
+    assert.deepEqual(JSON.parse(restoreApplyRequest.options.body), {
+        importId: restorePreview.importId,
+        expectedPackageChecksumSha256: 'a'.repeat(64),
+        confirmation: 'RESTORE_VALIDATED_BACKUP'
+    });
     await global.MDPStorage.previewIndexedDbMigration({
         source: { database: 'MarkdownProDB', version: 5 },
         folders: [],

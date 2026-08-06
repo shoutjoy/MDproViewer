@@ -2,6 +2,7 @@
     'use strict';
 
     const MODE_KEY = 'mdpro_storage_mode_v1';
+    const SQLITE_BACKEND_KEY = 'mdpro_sqlite_backend_v1';
     const MODES = Object.freeze({ INDB: 'indb', SQLITE: 'sqlite' });
     const listeners = new Set();
     let initialized = false;
@@ -9,6 +10,10 @@
     let preferredMode = MODES.INDB;
     let indexedDbAdapter = null;
     let sqliteAdapter = null;
+    let sqliteApiAdapter = null;
+    let sqliteWasmAdapter = null;
+    let sqliteBackendPreference = 'auto';
+    let sqliteBackend = null;
     let recoveryBuffer = null;
     let recoveryFlushPromise = null;
     let sqliteHealth = null;
@@ -34,11 +39,26 @@
         try { root.localStorage.setItem(MODE_KEY, mode); } catch (_) {}
     }
 
+    function readSqliteBackendPreference() {
+        try {
+            const value = String(root.localStorage.getItem(SQLITE_BACKEND_KEY) || 'auto').toLowerCase();
+            return value === 'api' || value === 'wasm' ? value : 'auto';
+        } catch (_) {
+            return 'auto';
+        }
+    }
+
+    function writeSqliteBackendPreference(backend) {
+        try { root.localStorage.setItem(SQLITE_BACKEND_KEY, backend); } catch (_) {}
+    }
+
     function snapshot() {
         return {
             initialized: initialized,
             activeMode: activeMode,
             preferredMode: preferredMode,
+            sqliteBackendPreference: sqliteBackendPreference,
+            sqliteBackend: sqliteBackend,
             sqliteHealth: sqliteHealth,
             lastError: lastError,
             recoveryStatus: { ...recoveryStatus }
@@ -62,14 +82,29 @@
             && recoveryStatus.available === true);
     }
 
+    function sqliteBackendCandidates() {
+        if (sqliteBackendPreference === 'wasm') return sqliteWasmAdapter ? [sqliteWasmAdapter] : [];
+        if (sqliteBackendPreference === 'api') return sqliteApiAdapter ? [sqliteApiAdapter] : [];
+        return [sqliteApiAdapter, sqliteWasmAdapter].filter(Boolean);
+    }
+
     async function refreshSqliteHealth() {
-        if (!sqliteAdapter) throw new Error('Storage service is not initialized.');
-        try {
-            sqliteHealth = await sqliteAdapter.health();
-            lastError = null;
-        } catch (error) {
-            sqliteHealth = null;
-            lastError = error;
+        const candidates = sqliteBackendCandidates();
+        if (!candidates.length) throw new Error('SQLite storage adapter is not available.');
+        sqliteHealth = null;
+        lastError = null;
+        for (let index = 0; index < candidates.length; index++) {
+            const candidate = candidates[index];
+            try {
+                const health = await candidate.health();
+                sqliteAdapter = candidate;
+                sqliteBackend = candidate.backend || (candidate === sqliteWasmAdapter ? 'wasm-opfs' : 'api');
+                sqliteHealth = Object.assign({}, health, { backend: health.backend || sqliteBackend });
+                lastError = null;
+                break;
+            } catch (error) {
+                lastError = error;
+            }
         }
         notify();
         return sqliteHealth;
@@ -78,10 +113,24 @@
     async function initialize(options) {
         const config = options || {};
         indexedDbAdapter = new root.MDPIndexedDbAdapter({ getDb: config.getIndexedDb });
-        sqliteAdapter = new root.MDPSqliteApiAdapter({
+        sqliteApiAdapter = new root.MDPSqliteApiAdapter({
             baseUrl: config.sqliteBaseUrl || '/api/sqlite',
             fetchImpl: config.fetchImpl || root.fetch
         });
+        sqliteWasmAdapter = null;
+        if (typeof root.MDPSqliteWasmAdapter === 'function'
+            && root.MDPSqliteWasmAdapter.isSupported(root)) {
+            sqliteWasmAdapter = new root.MDPSqliteWasmAdapter({
+                workerUrl: config.sqliteWasmWorkerUrl || './Local_SQLiteWASM/sqlite-wasm-worker.js',
+                workerFactory: config.sqliteWasmWorkerFactory,
+                timeoutMs: config.sqliteWasmTimeoutMs
+            });
+        }
+        sqliteBackendPreference = ['api', 'wasm'].includes(config.sqliteBackend)
+            ? config.sqliteBackend
+            : readSqliteBackendPreference();
+        sqliteAdapter = sqliteApiAdapter;
+        sqliteBackend = 'api';
         recoveryBuffer = config.recoveryBuffer || (
             typeof root.MDPRecoveryBuffer === 'function'
                 ? new root.MDPRecoveryBuffer({ indexedDBImpl: config.recoveryIndexedDB || root.indexedDB })
@@ -123,6 +172,28 @@
         if (activeMode === MODES.SQLITE && recoveryStatus.pendingCount > 0) {
             await flushPendingOperations().catch(function () {});
         }
+        return snapshot();
+    }
+
+    async function requestSqliteBackend(backend) {
+        const requested = backend === 'api' || backend === 'wasm' ? backend : 'auto';
+        const previous = sqliteBackendPreference;
+        sqliteBackendPreference = requested;
+        let health = null;
+        try {
+            health = await refreshSqliteHealth();
+        } catch (error) {
+            lastError = error;
+        }
+        if (!health) {
+            sqliteBackendPreference = previous;
+            await refreshSqliteHealth().catch(function () {});
+            const unavailable = lastError || new Error('Requested SQLite backend is unavailable.');
+            unavailable.code = unavailable.code || 'SQLITE_BACKEND_UNAVAILABLE';
+            throw unavailable;
+        }
+        writeSqliteBackendPreference(requested);
+        notify();
         return snapshot();
     }
 
@@ -300,6 +371,17 @@
             throw unavailable;
         }
         return sqliteAdapter.previewBackupRestore(file);
+    }
+
+    async function applyBackupRestore(importId, expectedPackageChecksumSha256) {
+        if (!sqliteHealth || !sqliteHealth.available) await refreshSqliteHealth();
+        const capabilities = sqliteHealth && sqliteHealth.capabilities;
+        if (!capabilities || capabilities.restore !== true) {
+            const unavailable = new Error('SQLite restore apply is not available.');
+            unavailable.code = 'SQLITE_RESTORE_NOT_READY';
+            throw unavailable;
+        }
+        return sqliteAdapter.applyBackupRestore(importId, expectedPackageChecksumSha256);
     }
 
     function createConflictError(currentVersion) {
@@ -499,11 +581,42 @@
         return sqliteAdapter[method].apply(sqliteAdapter, args || []);
     }
 
+    async function requireSqliteWorkFiles() {
+        if (activeMode !== MODES.SQLITE) {
+            const inactive = new Error('SQLite 저장 모드를 먼저 활성화하세요.');
+            inactive.code = 'SQLITE_MODE_REQUIRED';
+            throw inactive;
+        }
+        if (!sqliteHealth || !sqliteHealth.available) await refreshSqliteHealth();
+        if (!sqliteHealth.capabilities || sqliteHealth.capabilities.workFiles !== true) {
+            const unavailable = new Error('현재 SQLite 서버는 작업파일 저장을 지원하지 않습니다.');
+            unavailable.code = 'SQLITE_WORK_FILES_NOT_READY';
+            throw unavailable;
+        }
+    }
+
+    async function saveSqliteWorkFile(file, options) {
+        await requireSqliteWorkFiles();
+        return callSqlite('uploadWorkFile', [file, options]);
+    }
+
+    async function listSqliteWorkFiles(options) {
+        await requireSqliteWorkFiles();
+        return callSqlite('listWorkFiles', [options]);
+    }
+
+    async function loadSqliteWorkFile(item) {
+        await requireSqliteWorkFiles();
+        return callSqlite('downloadWorkFile', [item]);
+    }
+
     root.MDPStorage = {
         MODES: MODES,
         MODE_KEY: MODE_KEY,
+        SQLITE_BACKEND_KEY: SQLITE_BACKEND_KEY,
         initialize: initialize,
         requestMode: requestMode,
+        requestSqliteBackend: requestSqliteBackend,
         refreshSqliteHealth: refreshSqliteHealth,
         getStatus: snapshot,
         getActiveAdapter: getActiveAdapter,
@@ -532,6 +645,7 @@
         validateBackupPackage: validateBackupPackage,
         downloadBackupPackage: downloadBackupPackage,
         previewBackupRestore: previewBackupRestore,
+        applyBackupRestore: applyBackupRestore,
         getSqliteExplorerSnapshot: function (options) {
             return callSqlite('getExplorerSnapshot', [options]);
         },
@@ -544,6 +658,27 @@
         getSqliteExplorerFileEntry: function (id) {
             return callSqlite('getExplorerFileEntry', [id]);
         },
+        getSqliteExplorerFmaPreview: function (id) {
+            return callSqlite('getExplorerFmaPreview', [id]);
+        },
+        getSqliteExplorerFmaThumbnail: function (id, mediaId) {
+            return callSqlite('getExplorerFmaThumbnail', [id, mediaId]);
+        },
+        getSqliteExplorerBackup: function (id) {
+            return callSqlite('getExplorerBackup', [id]);
+        },
+        deleteSqliteExplorerBackup: function (id) {
+            return callSqlite('deleteExplorerBackup', [id]);
+        },
+        runSqliteIntegrityCheck: function () {
+            return callSqlite('integrityCheck', []);
+        },
+        exportSqliteDatabase: function (options) {
+            return callSqlite('exportDatabase', [options || {}]);
+        },
+        saveSqliteWorkFile: saveSqliteWorkFile,
+        listSqliteWorkFiles: listSqliteWorkFiles,
+        loadSqliteWorkFile: loadSqliteWorkFile,
         getRecoveryStatus: function () { return { ...recoveryStatus }; },
         listDocuments: function (options) { return callActive('listDocuments', [options]); },
         searchDocuments: function (query, options) { return callActive('searchDocuments', [query, options]); },

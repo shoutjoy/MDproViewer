@@ -314,6 +314,19 @@ function getStorageModeLabel(mode) {
     return mode === 'sqlite' ? 'SQLite' : 'inDB';
 }
 
+function setStorageConnectionButtonGlow(buttonId, connectionType, connected) {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+    button.classList.remove('storage-connected-sqlite', 'storage-connected-github');
+    if (connected) button.classList.add('storage-connected-' + connectionType);
+    button.dataset.connectionState = connected ? 'connected' : 'disconnected';
+    if (connected) {
+        button.setAttribute('aria-label', (connectionType === 'sqlite' ? 'SQLite' : 'GitHub') + ' · 연결됨');
+    } else {
+        button.removeAttribute('aria-label');
+    }
+}
+
 function updateStorageRecoveryStatusUI(stateInput) {
     const element = document.getElementById('storage-sync-status');
     if (!element) return;
@@ -322,7 +335,16 @@ function updateStorageRecoveryStatusUI(stateInput) {
         : null);
     const recovery = state && state.recoveryStatus ? state.recoveryStatus : null;
     const mode = state && state.activeMode === 'sqlite' ? 'sqlite' : 'indb';
-    if (!recovery || (!recovery.pendingCount && mode !== 'sqlite')) {
+    const sqliteConnected = !!(state && state.sqliteHealth && state.sqliteHealth.available === true
+        && state.sqliteHealth.capabilities
+        && state.sqliteHealth.capabilities.documents === true
+        && state.sqliteHealth.capabilities.folders === true);
+    setStorageConnectionButtonGlow('tab-storage-sqlite', 'sqlite', sqliteConnected);
+    const syncState = String(recovery && recovery.syncState || 'idle');
+    const steadyConnectedState = sqliteConnected && syncState === 'idle'
+        && !Number(recovery && recovery.pendingCount || 0)
+        && !(recovery && recovery.lastError);
+    if (!recovery || steadyConnectedState || (!recovery.pendingCount && mode !== 'sqlite')) {
         element.className = 'hidden text-[10px] px-2 py-1 rounded border';
         element.textContent = '';
         element.onclick = null;
@@ -339,7 +361,6 @@ function updateStorageRecoveryStatusUI(stateInput) {
         syncing: 'border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/30',
         error: 'border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30'
     };
-    const syncState = String(recovery.syncState || 'idle');
     const labels = {
         conflict: '충돌 · 복구 확인 필요',
         pending: '동기화 대기 ' + Number(recovery.pendingCount || 0) + '건',
@@ -347,7 +368,7 @@ function updateStorageRecoveryStatusUI(stateInput) {
         syncing: 'SQLite 재동기화 중',
         error: '복구 버퍼 오류',
         synced: 'SQLite 저장 완료',
-        idle: 'SQLite 연결됨'
+        idle: ''
     };
     element.className = 'text-[10px] px-2 py-1 rounded border ' + (
         toneClasses[syncState]
@@ -897,11 +918,17 @@ function organizeSettingsDashboard() {
         localSaveTools.appendChild(inDbStatusButton);
     }
 
+    const sqliteExplorerButton = document.getElementById('btn-open-sqlite-explorer');
+    if (sqliteExplorerButton) {
+        sqliteExplorerButton.className = 'w-full px-4 py-2 border-2 border-emerald-700 dark:border-emerald-600 rounded-md text-sm font-medium text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 disabled:opacity-40 disabled:cursor-not-allowed';
+        localSaveTools.appendChild(sqliteExplorerButton);
+    }
+
     const featureTools = document.getElementById('feature-tools-settings');
     const sqliteTool = document.getElementById('sqlite-settings-tool');
     if (featureTools) toolsColumn.appendChild(featureTools);
     if (sqliteTool) localSaveTools.appendChild(sqliteTool);
-    if (inDbStatusButton || sqliteTool) saveColumn.appendChild(localSaveTools);
+    if (inDbStatusButton || sqliteExplorerButton || sqliteTool) saveColumn.appendChild(localSaveTools);
 
     const aiMaster = document.getElementById('ai-master-settings-card');
     const aiIntegration = document.getElementById('ai-integration-settings-slot');
@@ -965,6 +992,14 @@ window.onload = async () => {
             });
             if (window.SettingUI && typeof window.SettingUI.refreshSqliteStatus === 'function') {
                 await window.SettingUI.refreshSqliteStatus();
+            }
+            if (storageState && storageState.activeMode === 'sqlite'
+                && window.MDPCredentialVault && typeof window.MDPCredentialVault.load === 'function') {
+                try {
+                    await window.MDPCredentialVault.load();
+                } catch (vaultError) {
+                    console.warn('Encrypted API key vault status load skipped:', vaultError && vaultError.message ? vaultError.message : vaultError);
+                }
             }
             if (storageState && storageState.activeMode !== 'sqlite'
                 && getStorageSourceTabFromLocal() === 'sqlite') {
@@ -2476,18 +2511,18 @@ async function exportCurrentDocumentAsDocx() {
 function showExportTypeDialogFallback() {
     return new Promise(function (resolve) {
         const choices = [
-            { key: 'md', label: 'MD file' },
-            { key: 'docx', label: 'MS Word (.docx)' },
-            { key: 'mdd', label: 'MDD file (bundle)' },
-            { key: 'zip', label: 'ZIP file' },
-            { key: 'html', label: 'HTML file' }
+            { key: 'md', label: 'MD file', background: '#be185d', border: '#ec4899', hover: '#db2777', focus: 'rgba(236,72,153,.38)' },
+            { key: 'docx', label: 'MS Word (.docx)', background: '#1d4ed8', border: '#3b82f6', hover: '#2563eb', focus: 'rgba(59,130,246,.38)' },
+            { key: 'mdd', label: 'MDD file (bundle)', background: '#6d28d9', border: '#8b5cf6', hover: '#7c3aed', focus: 'rgba(139,92,246,.38)' },
+            { key: 'zip', label: 'ZIP file', background: '#b45309', border: '#f59e0b', hover: '#d97706', focus: 'rgba(245,158,11,.38)' },
+            { key: 'html', label: 'HTML file', background: '#0f766e', border: '#14b8a6', hover: '#0d9488', focus: 'rgba(20,184,166,.38)' }
         ];
         try {
             if (typeof isGithubExportEnabled === 'function' && isGithubExportEnabled()) {
-                choices.push({ key: 'github', label: 'GitHub (push)' });
+                choices.push({ key: 'github', label: 'GitHub (push)', background: '#15803d', border: '#22c55e', hover: '#16a34a', focus: 'rgba(34,197,94,.38)' });
             }
         } catch (_) {}
-        choices.push({ key: 'cancel', label: 'Cancel' });
+        choices.push({ key: 'cancel', label: 'Cancel', background: '#b91c1c', border: '#ef4444', hover: '#dc2626', focus: 'rgba(239,68,68,.38)' });
 
         const overlay = document.createElement('div');
         overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -2517,7 +2552,20 @@ function showExportTypeDialogFallback() {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.textContent = choice.label;
-            btn.style.cssText = 'padding:8px 12px;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#e2e8f0;font-size:13px;font-weight:600;cursor:pointer;';
+            btn.style.cssText = 'padding:8px 12px;border-radius:8px;border:1px solid ' + choice.border + ';background:' + choice.background + ';color:#fff;font-size:13px;font-weight:700;cursor:pointer;transition:background-color .15s ease,transform .15s ease,box-shadow .15s ease;';
+            btn.addEventListener('mouseenter', function () {
+                btn.style.backgroundColor = choice.hover;
+                btn.style.transform = 'translateY(-1px)';
+            });
+            btn.addEventListener('mouseleave', function () {
+                btn.style.backgroundColor = choice.background;
+                btn.style.transform = '';
+            });
+            btn.addEventListener('focus', function () {
+                btn.style.outline = 'none';
+                btn.style.boxShadow = '0 0 0 3px ' + choice.focus;
+            });
+            btn.addEventListener('blur', function () { btn.style.boxShadow = ''; });
             btn.addEventListener('click', function () { done(choice.key); });
             row.appendChild(btn);
         });
@@ -5909,6 +5957,21 @@ function isValidGoogleAiApiKey(key) {
     return /^AIza[0-9A-Za-z_-]{35,120}$/.test(k);
 }
 
+function getProtectedAiCredential(id, legacyStorageKey) {
+    try {
+        if (window.MDPCredentialVault && typeof window.MDPCredentialVault.getSecret === 'function') {
+            const protectedValue = String(window.MDPCredentialVault.getSecret(id) || '').trim();
+            if (protectedValue) return protectedValue;
+            const vaultStatus = window.MDPCredentialVault.getStatus();
+            const metadata = vaultStatus && Array.isArray(vaultStatus.entries)
+                ? vaultStatus.entries.find(function (item) { return item && item.id === id; })
+                : null;
+            if (metadata && metadata.configured && vaultStatus.locked) return '';
+        }
+    } catch (_) {}
+    try { return String(localStorage.getItem(legacyStorageKey) || '').trim(); } catch (_) { return ''; }
+}
+
 function isValidDeepseekAiKey(key) {
     const k = (key || '').trim();
     return /^sk-[0-9A-Za-z_-]{16,}$/.test(k);
@@ -5931,7 +5994,7 @@ function validateOpenAIApiKeyInputUI() {
         setCredentialConnectionVisual('openai-api-key', 'openai-api-key-feedback', 'error', 'OpenAI API 키는 sk-로 시작해야 합니다.');
         return false;
     }
-    const verified = localStorage.getItem('ss_openai_api_key') === key
+    const verified = getProtectedAiCredential('openai', 'ss_openai_api_key') === key
         && localStorage.getItem('ss_openai_api_key_verified') === credentialFingerprint(key);
     setCredentialConnectionVisual(
         'openai-api-key',
@@ -5999,7 +6062,7 @@ function validateDeepseekApiKeyInputUI() {
         const baseInput = document.getElementById('deepseek-base-url');
         baseUrl = normalizeDeepseekBaseUrl(baseInput && baseInput.value);
     } catch (_) {}
-    const verified = localStorage.getItem('ss_deepseek_api_key') === key
+    const verified = getProtectedAiCredential('deepseek', 'ss_deepseek_api_key') === key
         && localStorage.getItem('ss_deepseek_api_key_verified') === getDeepseekVerifiedToken(key, baseUrl);
     setCredentialConnectionVisual(
         'deepseek-api-key',
@@ -6070,7 +6133,7 @@ function validateApiKeyInputUI() {
     if (isValidGoogleAiApiKey(key)) {
         input.className = ok + ' ai-api-key-input';
         const verified = localStorage.getItem('ss_gemini_api_key_verified') === credentialFingerprint(key)
-            && localStorage.getItem('ss_gemini_api_key') === key;
+            && getProtectedAiCredential('gemini', 'ss_gemini_api_key') === key;
         if (fb && !verified) {
             fb.textContent = 'API key 형식이 올바릅니다. 저장하면 연결을 확인합니다.';
             fb.className = 'text-xs mt-1 text-green-600 dark:text-green-400 min-h-[1.25rem]';
@@ -6289,7 +6352,7 @@ async function saveOpenAIApiKey() {
 }
 
 function getImgbbApiKey() {
-    return localStorage.getItem('ss_imgbb_api_key') || '';
+    return getProtectedAiCredential('imgbb', 'ss_imgbb_api_key');
 }
 
 function getEnterButtonInsertBrFromLocal() {
@@ -6801,7 +6864,7 @@ async function toggleViewModeEditSetting(enabled) {
 
 async function saveImgbbApiKey(key) {
     const value = String(key || '').trim();
-    const previous = String(localStorage.getItem('ss_imgbb_api_key') || '').trim();
+    const previous = getProtectedAiCredential('imgbb', 'ss_imgbb_api_key');
     await setAiSettings({ imgbbApiKey: value });
     if (value) localStorage.setItem('ss_imgbb_api_key', value);
     else localStorage.removeItem('ss_imgbb_api_key');
@@ -6841,7 +6904,7 @@ function getDeepseekApiState() {
         baseUrl = normalizeDeepseekBaseUrl(localStorage.getItem('ss_deepseek_base_url'));
     } catch (_) {}
     return {
-        key: String(localStorage.getItem('ss_deepseek_api_key') || '').trim(),
+        key: getProtectedAiCredential('deepseek', 'ss_deepseek_api_key'),
         baseUrl: baseUrl,
         verifiedFingerprint: String(localStorage.getItem('ss_deepseek_api_key_verified') || '')
     };
@@ -10111,7 +10174,7 @@ function updateLMStudioApiKeyConnectionUI() {
 }
 
 async function callAIStudioText(prompt, systemInstruction, useSearch, modelOverride, signal) {
-    const key = localStorage.getItem('ss_gemini_api_key') || '';
+    const key = getProtectedAiCredential('gemini', 'ss_gemini_api_key');
     if (!key.trim()) throw new Error('AI Studio API Key가 없습니다. 설정에서 API Key를 저장하거나 LM Studio를 선택하세요.');
     const modelId = modelOverride || 'gemini-2.5-flash';
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelId + ':generateContent?key=' + encodeURIComponent(key);
@@ -10139,7 +10202,7 @@ async function callAIStudioText(prompt, systemInstruction, useSearch, modelOverr
 }
 
 async function listAIStudioTextModels(apiKeyOverride) {
-    const key = String(apiKeyOverride || localStorage.getItem('ss_gemini_api_key') || '');
+    const key = String(apiKeyOverride || getProtectedAiCredential('gemini', 'ss_gemini_api_key') || '');
     if (!key.trim()) throw new Error('AI Studio API Key가 없습니다. 설정에서 API Key를 먼저 저장하세요.');
     const url = 'https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=' + encodeURIComponent(key);
     const res = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -10689,7 +10752,7 @@ function isAIChatGeminiImageModel(model) {
 }
 
 async function getAIStudioKeyForChat() {
-    let key = String(localStorage.getItem('ss_gemini_api_key') || '').trim();
+    let key = getProtectedAiCredential('gemini', 'ss_gemini_api_key');
     if (key) return key;
     try {
         const settings = await getAiSettings();
@@ -11042,7 +11105,7 @@ async function callDeepseekText(prompt, systemInstruction, useSearch, modelOverr
 
 function getOpenAIApiState() {
     return {
-        key: String(localStorage.getItem('ss_openai_api_key') || '').trim(),
+        key: getProtectedAiCredential('openai', 'ss_openai_api_key'),
         verifiedFingerprint: String(localStorage.getItem('ss_openai_api_key_verified') || '')
     };
 }
@@ -11643,7 +11706,7 @@ function ensureSidebarAILoaded() {
         host: null,
         cropEditorBase: './js/crop/',
         callbacks: {
-            getApiKey: function () { return localStorage.getItem('ss_gemini_api_key') || ''; },
+            getApiKey: function () { return getProtectedAiCredential('gemini', 'ss_gemini_api_key'); },
             getImgbbApiKey: function () { return getImgbbApiKey(); },
             setImgbbApiKey: async function (key) { return saveImgbbApiKey(key); },
             getImageUploadEnabled: function () { return true; },
@@ -11707,7 +11770,7 @@ function ensureSidebarAILoaded() {
             /**
              */
             generateImage: async function (prompt, options) {
-                const key = localStorage.getItem('ss_gemini_api_key') || '';
+                const key = getProtectedAiCredential('gemini', 'ss_gemini_api_key');
                 if (!key || !String(key).trim()) throw new Error('API key is missing. Save your Gemini API key in Settings.');
                 const ctrl = new AbortController();
                 window._abortController = ctrl;
@@ -12100,7 +12163,7 @@ async function loadAiSettingsToUI() {
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
         const openaiInputEmpty = document.getElementById('openai-api-key');
-        if (openaiInputEmpty) openaiInputEmpty.value = localStorage.getItem('ss_openai_api_key') || '';
+        if (openaiInputEmpty) openaiInputEmpty.value = getProtectedAiCredential('openai', 'ss_openai_api_key');
         const sqliteEnabledEmpty = document.getElementById('sqlite-enabled');
         if (sqliteEnabledEmpty) sqliteEnabledEmpty.checked = false;
         const githubEnabledEmpty = document.getElementById('ai-github-enabled');
@@ -12149,7 +12212,8 @@ async function loadAiSettingsToUI() {
         return;
     }
     const apiInput = document.getElementById('ai-api-key');
-    if (apiInput && settings.apiKey) apiInput.value = settings.apiKey;
+    const effectiveGeminiKey = settings.apiKey || getProtectedAiCredential('gemini', 'ss_gemini_api_key');
+    if (apiInput) apiInput.value = effectiveGeminiKey;
     if (settings.apiKey) localStorage.setItem('ss_gemini_api_key', settings.apiKey);
     if (settings.imgbbApiKey) localStorage.setItem('ss_imgbb_api_key', settings.imgbbApiKey);
     else localStorage.removeItem('ss_imgbb_api_key');
@@ -12157,7 +12221,7 @@ async function loadAiSettingsToUI() {
     const deepseekBaseInput = document.getElementById('deepseek-base-url');
     const openaiInput = document.getElementById('openai-api-key');
     const deepseekState = getDeepseekApiState();
-    if (deepseekInput) deepseekInput.value = settings.deepseekApiKey || deepseekState.key || '';
+    if (deepseekInput) deepseekInput.value = settings.deepseekApiKey || deepseekState.key || getProtectedAiCredential('deepseek', 'ss_deepseek_api_key');
     if (deepseekBaseInput) deepseekBaseInput.value = settings.deepseekBaseUrl || deepseekState.baseUrl || 'https://api.deepseek.com';
     if (openaiInput) openaiInput.value = settings.openaiApiKey || getOpenAIApiState().key || '';
     if (settings.openaiApiKey) localStorage.setItem('ss_openai_api_key', settings.openaiApiKey);
@@ -12196,7 +12260,8 @@ async function loadAiSettingsToUI() {
     viewModeEditEnabled = viewModeEditValue;
     setViewModeEditEnabledToLocal(viewModeEditValue);
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
-    if (imageKeyInput) imageKeyInput.value = settings.imgbbApiKey || '';
+    const effectiveImgbbKey = settings.imgbbApiKey || getProtectedAiCredential('imgbb', 'ss_imgbb_api_key');
+    if (imageKeyInput) imageKeyInput.value = effectiveImgbbKey;
     if (window.SettingUI && typeof window.SettingUI.syncSqliteCheckbox === 'function') {
         window.SettingUI.syncSqliteCheckbox(settings.sqliteEnabled === true);
     } else {
@@ -12206,14 +12271,14 @@ async function loadAiSettingsToUI() {
     if (window.GoogleDocs && typeof window.GoogleDocs.loadGoogleDocsSettingsUI === 'function') {
         window.GoogleDocs.loadGoogleDocsSettingsUI(settings);
     }
-    syncImgbbApiKeyInputs(settings.imgbbApiKey || '');
+    syncImgbbApiKeyInputs(effectiveImgbbKey);
     if (typeof validateApiKeyInputUI === 'function') validateApiKeyInputUI();
     if (typeof validateDeepseekApiKeyInputUI === 'function') validateDeepseekApiKeyInputUI();
     if (typeof validateDeepseekBaseUrlInputUI === 'function') validateDeepseekBaseUrlInputUI();
     if (typeof validateOpenAIApiKeyInputUI === 'function') validateOpenAIApiKeyInputUI();
-    if (settings.apiKey && isValidGoogleAiApiKey(settings.apiKey)
-        && localStorage.getItem('ss_gemini_api_key_verified') !== credentialFingerprint(settings.apiKey)) {
-        verifyAIStudioApiKeyConnection(settings.apiKey).catch(function () {});
+    if (effectiveGeminiKey && isValidGoogleAiApiKey(effectiveGeminiKey)
+        && localStorage.getItem('ss_gemini_api_key_verified') !== credentialFingerprint(effectiveGeminiKey)) {
+        verifyAIStudioApiKeyConnection(effectiveGeminiKey).catch(function () {});
     }
     const deepseekKey = settings.deepseekApiKey || getDeepseekApiState().key;
     const deepseekBase = settings.deepseekBaseUrl || getDeepseekApiState().baseUrl;

@@ -16,6 +16,7 @@
         constructor(options) {
             const config = options || {};
             this.kind = 'sqlite';
+            this.backend = 'api';
             this.baseUrl = String(config.baseUrl || '/api/sqlite').replace(/\/$/, '');
             const fetchFunction = config.fetchImpl || root.fetch;
             this.fetchImpl = typeof fetchFunction === 'function' ? fetchFunction.bind(root) : null;
@@ -33,7 +34,10 @@
                 headers: { 'Accept': 'application/json' }
             }, options || {});
             requestOptions.headers = Object.assign({}, requestOptions.headers || {});
-            if (requestOptions.method !== 'GET' && requestOptions.method !== 'HEAD') {
+            const requiresSession = requestOptions.requiresSession === true
+                || (requestOptions.method !== 'GET' && requestOptions.method !== 'HEAD');
+            delete requestOptions.requiresSession;
+            if (requiresSession) {
                 await this.ensureSession();
                 requestOptions.headers['X-MDViewer-Session'] = this.sessionToken;
             }
@@ -52,8 +56,7 @@
             if (!response.ok || !payload || payload.ok !== true) {
                 const apiError = payload && payload.error ? payload.error : {};
                 if (response.status === 403
-                    && requestOptions.method !== 'GET'
-                    && requestOptions.method !== 'HEAD'
+                    && requiresSession
                     && sessionRetryAttempted !== true) {
                     this.sessionToken = '';
                     return this._request(path, options, true);
@@ -67,6 +70,41 @@
                 );
             }
             return payload.data;
+        }
+
+        async _requestBlob(path, accept, sessionRetryAttempted) {
+            await this.ensureSession();
+            let response;
+            try {
+                response = await this.fetchImpl(this.baseUrl + path, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: {
+                        'Accept': accept || 'application/octet-stream',
+                        'X-MDViewer-Session': this.sessionToken
+                    }
+                });
+            } catch (_) {
+                throw new SqliteApiError('SQLITE_SERVER_OFFLINE', '로컬 SQLite 서버에 연결할 수 없습니다.', 0);
+            }
+            if (!response.ok) {
+                let payload = null;
+                try { payload = await response.json(); } catch (_) {}
+                if (response.status === 403 && sessionRetryAttempted !== true) {
+                    this.sessionToken = '';
+                    return this._requestBlob(path, accept, true);
+                }
+                const apiError = payload && payload.error ? payload.error : {};
+                throw new SqliteApiError(
+                    apiError.code || 'SQLITE_PREVIEW_ERROR',
+                    apiError.message || ('SQLite preview HTTP ' + response.status),
+                    response.status,
+                    apiError.details,
+                    payload && payload.requestId
+                );
+            }
+            return response.blob();
         }
 
         async _download(path, sessionRetryAttempted) {
@@ -170,8 +208,83 @@
             return this._request('/explorer/files/' + encodeURIComponent(String(id)), { method: 'GET' });
         }
 
+        getExplorerFmaPreview(id) {
+            return this._request(
+                '/explorer/files/' + encodeURIComponent(String(id)) + '/fma-preview',
+                { method: 'GET', requiresSession: true }
+            );
+        }
+
+        getExplorerFmaThumbnail(id, mediaId) {
+            return this._requestBlob(
+                '/explorer/files/' + encodeURIComponent(String(id))
+                    + '/fma-thumbnail/' + encodeURIComponent(String(mediaId)),
+                'image/avif,image/webp,image/png,image/jpeg,image/gif'
+            );
+        }
+
+        getExplorerBackup(id) {
+            return this._request(
+                '/explorer/backups/' + encodeURIComponent(String(id)),
+                { method: 'GET', requiresSession: true }
+            );
+        }
+
+        deleteExplorerBackup(id) {
+            const backupId = String(id);
+            return this._request(
+                '/explorer/backups/' + encodeURIComponent(backupId),
+                this._jsonOptions('DELETE', { confirmation: 'DELETE_BACKUP:' + backupId })
+            );
+        }
+
         integrityCheck() {
             return this._request('/maintenance/integrity-check', { method: 'POST' });
+        }
+
+        uploadWorkFile(file, options) {
+            const config = options || {};
+            if (!file || typeof file.size !== 'number' || typeof file.arrayBuffer !== 'function') {
+                throw new TypeError('uploadWorkFile requires a File or Blob.');
+            }
+            return this._request('/workfiles', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': String(file.type || config.mimeType || 'application/octet-stream'),
+                    'X-MDViewer-File-Name': encodeURIComponent(String(config.fileName || file.name || 'work-file')),
+                    'X-MDViewer-Work-Type': String(config.workType || ''),
+                    'X-MDViewer-App': String(config.appId || '')
+                },
+                body: file
+            });
+        }
+
+        listWorkFiles(options) {
+            const config = options || {};
+            return this._request('/workfiles' + this._query({
+                app: config.appId,
+                q: config.query,
+                type: config.workType,
+                limit: config.limit || 100
+            }), { method: 'GET', requiresSession: true });
+        }
+
+        async downloadWorkFile(item) {
+            const record = item || {};
+            if (!record.id) throw new TypeError('downloadWorkFile requires an item id.');
+            const blob = await this._requestBlob(
+                '/workfiles/' + encodeURIComponent(String(record.id)) + '/download',
+                String(record.mimeType || 'application/octet-stream')
+            );
+            if (Number.isFinite(Number(record.sizeBytes)) && blob.size !== Number(record.sizeBytes)) {
+                throw new SqliteApiError(
+                    'WORK_FILE_SIZE_MISMATCH',
+                    '불러온 작업파일 크기가 SQLite 메타데이터와 다릅니다.',
+                    409
+                );
+            }
+            return blob;
         }
 
         createBackupPackage() {
@@ -203,6 +316,17 @@
                 },
                 body: file
             });
+        }
+
+        applyBackupRestore(importId, expectedPackageChecksumSha256) {
+            return this._request(
+                '/backups/restore/apply',
+                this._jsonOptions('POST', {
+                    importId: importId,
+                    expectedPackageChecksumSha256: expectedPackageChecksumSha256,
+                    confirmation: 'RESTORE_VALIDATED_BACKUP'
+                })
+            );
         }
 
         previewIndexedDbMigration(batch) {

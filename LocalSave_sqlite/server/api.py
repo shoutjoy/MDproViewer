@@ -10,7 +10,7 @@ import traceback
 import uuid
 from pathlib import Path
 from typing import Any, Dict
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 from .database import (
     DatabaseConfigurationError,
@@ -18,8 +18,12 @@ from .database import (
     DatabaseManager,
 )
 from .backup_packages import BackupPackageService
+from .backup_explorer import BackupExplorerService
+from .fma_previews import FmaPreviewService
 from .migrations import IndexedDbMigrationService
+from .model_assets import ModelAssetService
 from .repositories import RepositoryError, StorageRepository
+from .work_files import WorkFileService
 
 
 class SqliteApiRouter:
@@ -39,8 +43,12 @@ class SqliteApiRouter:
         "explorer": True,
         "backup": True,
         "backupPackage": True,
+        "backupExplorer": True,
         "restorePreview": True,
         "restore": True,
+        "workFiles": True,
+        "modelAssets": True,
+        "fmaPreview": True,
         "storageModeActivation": True,
     }
 
@@ -49,6 +57,10 @@ class SqliteApiRouter:
         self.repository = StorageRepository(self.manager)
         self.migration_service = IndexedDbMigrationService(self.manager, self.repository)
         self.backup_package_service = BackupPackageService(self.manager)
+        self.backup_explorer_service = BackupExplorerService(self.manager)
+        self.work_file_service = WorkFileService(self.manager)
+        self.model_asset_service = ModelAssetService(self.manager)
+        self.fma_preview_service = FmaPreviewService(self.manager)
         self._session_token = secrets.token_urlsafe(32)
 
     @staticmethod
@@ -81,6 +93,55 @@ class SqliteApiRouter:
             for chunk in iter(lambda: source.read(1024 * 1024), b""):
                 handler.wfile.write(chunk)
 
+    @staticmethod
+    def _send_work_file_download(handler: Any, item: Dict[str, Any]) -> None:
+        path = Path(item["path"])
+        file_name = str(item["name"])
+        ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", file_name).strip("._") or "work-file"
+        encoded_name = quote(file_name, safe="")
+        handler.send_response(200)
+        handler.send_header("Content-Type", str(item["mimeType"]))
+        handler.send_header(
+            "Content-Disposition",
+            f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}",
+        )
+        handler.send_header("Content-Length", str(item["sizeBytes"]))
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.end_headers()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                handler.wfile.write(chunk)
+
+    def _send_model_download(self, handler: Any, item: Dict[str, Any]) -> None:
+        file_name = str(item["name"])
+        ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "_", file_name).strip("._") or "model.onnx"
+        encoded_name = quote(file_name, safe="")
+        handler.send_response(200)
+        handler.send_header("Content-Type", str(item["mimeType"]))
+        handler.send_header(
+            "Content-Disposition",
+            f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded_name}",
+        )
+        handler.send_header("Content-Length", str(item["sizeBytes"]))
+        handler.send_header("X-MDViewer-Checksum-Sha256", str(item["checksumSha256"]))
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.end_headers()
+        for chunk in self.model_asset_service.iter_model_chunks(item["modelKey"]):
+            handler.wfile.write(chunk)
+
+    @staticmethod
+    def _send_preview_image(handler: Any, item: Dict[str, Any]) -> None:
+        path = Path(item["path"])
+        handler.send_response(200)
+        handler.send_header("Content-Type", str(item["mimeType"]))
+        handler.send_header("Content-Length", str(path.stat().st_size))
+        handler.send_header("Cache-Control", "private, max-age=86400")
+        handler.send_header("X-Content-Type-Options", "nosniff")
+        handler.end_headers()
+        with path.open("rb") as source:
+            for chunk in iter(lambda: source.read(256 * 1024), b""):
+                handler.wfile.write(chunk)
+
     def handle(self, handler: Any, method: str) -> bool:
         parsed_url = urlsplit(handler.path)
         path = parsed_url.path
@@ -105,6 +166,125 @@ class SqliteApiRouter:
             return True
 
         try:
+            fma_thumbnail = re.fullmatch(
+                r"/api/sqlite/explorer/files/([^/]+)/fma-thumbnail/([^/]+)", path
+            )
+            if method == "GET" and fma_thumbnail:
+                if not self._has_valid_session(handler):
+                    self._send_json(
+                        handler,
+                        403,
+                        {
+                            "ok": False,
+                            "error": {
+                                "code": "INVALID_SESSION",
+                                "message": "A valid local application session is required.",
+                            },
+                            "requestId": request_id,
+                        },
+                    )
+                    return True
+                item = self.fma_preview_service.get_thumbnail(
+                    fma_thumbnail.group(1), unquote(fma_thumbnail.group(2))
+                )
+                self._send_preview_image(handler, item)
+                return True
+            fma_summary = re.fullmatch(r"/api/sqlite/explorer/files/([^/]+)/fma-preview", path)
+            if method == "GET" and fma_summary and not self._has_valid_session(handler):
+                self._send_json(
+                    handler,
+                    403,
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": "INVALID_SESSION",
+                            "message": "A valid local application session is required.",
+                        },
+                        "requestId": request_id,
+                    },
+                )
+                return True
+            backup_detail = re.fullmatch(r"/api/sqlite/explorer/backups/([^/]+)", path)
+            if method == "GET" and backup_detail and not self._has_valid_session(handler):
+                self._send_json(
+                    handler,
+                    403,
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": "INVALID_SESSION",
+                            "message": "A valid local application session is required.",
+                        },
+                        "requestId": request_id,
+                    },
+                )
+                return True
+            model_download = re.fullmatch(r"/api/sqlite/models/([a-z0-9_]+)/download", path)
+            if method == "GET" and model_download:
+                if not self._has_valid_session(handler):
+                    self._send_json(
+                        handler,
+                        403,
+                        {
+                            "ok": False,
+                            "error": {
+                                "code": "INVALID_SESSION",
+                                "message": "A valid local application session is required.",
+                            },
+                            "requestId": request_id,
+                        },
+                    )
+                    return True
+                item = self.model_asset_service.get_model(model_download.group(1))
+                self._send_model_download(handler, item)
+                return True
+            if method == "GET" and path.startswith("/api/sqlite/models/") and not self._has_valid_session(handler):
+                self._send_json(
+                    handler,
+                    403,
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": "INVALID_SESSION",
+                            "message": "A valid local application session is required.",
+                        },
+                        "requestId": request_id,
+                    },
+                )
+                return True
+            work_file_download = re.fullmatch(r"/api/sqlite/workfiles/([^/]+)/download", path)
+            if method == "GET" and work_file_download:
+                if not self._has_valid_session(handler):
+                    self._send_json(
+                        handler,
+                        403,
+                        {
+                            "ok": False,
+                            "error": {
+                                "code": "INVALID_SESSION",
+                                "message": "A valid local application session is required.",
+                            },
+                            "requestId": request_id,
+                        },
+                    )
+                    return True
+                item = self.work_file_service.resolve_download(work_file_download.group(1))
+                self._send_work_file_download(handler, item)
+                return True
+            if method == "GET" and path == "/api/sqlite/workfiles" and not self._has_valid_session(handler):
+                self._send_json(
+                    handler,
+                    403,
+                    {
+                        "ok": False,
+                        "error": {
+                            "code": "INVALID_SESSION",
+                            "message": "A valid local application session is required.",
+                        },
+                        "requestId": request_id,
+                    },
+                )
+                return True
             package_download = re.fullmatch(r"/api/sqlite/backups/packages/([^/]+\.mdpbackup)", path)
             if method == "GET" and package_download:
                 if not self._has_valid_session(handler):
@@ -273,6 +453,17 @@ class SqliteApiRouter:
         explorer_file_match = re.fullmatch(r"/api/sqlite/explorer/files/([^/]+)", path)
         if method == "GET" and explorer_file_match:
             return self.repository.get_explorer_file_entry(explorer_file_match.group(1))
+        explorer_fma_match = re.fullmatch(r"/api/sqlite/explorer/files/([^/]+)/fma-preview", path)
+        if method == "GET" and explorer_fma_match:
+            return self.fma_preview_service.get_summary(explorer_fma_match.group(1))
+        explorer_backup_match = re.fullmatch(r"/api/sqlite/explorer/backups/([^/]+)", path)
+        if method == "GET" and explorer_backup_match:
+            return self.backup_explorer_service.get_detail(explorer_backup_match.group(1))
+        if method == "DELETE" and explorer_backup_match:
+            payload = self._read_json(handler, max_bytes=64 * 1024)
+            return self.backup_explorer_service.delete_backup(
+                explorer_backup_match.group(1), payload.get("confirmation")
+            )
         if method == "POST" and path == "/api/sqlite/maintenance/integrity-check":
             return self.manager.integrity_check()
         if method == "POST" and path == "/api/sqlite/backups/packages":
@@ -303,6 +494,55 @@ class SqliteApiRouter:
                 payload.get("importId"),
                 payload.get("expectedPackageChecksumSha256"),
                 payload.get("confirmation"),
+            )
+        if method == "POST" and path == "/api/sqlite/workfiles":
+            content_type = str(handler.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if content_type not in {
+                "application/vnd.fma+zip",
+                "application/vnd.fma-edit+json",
+                "application/vnd.fma-ai-jena-preset+json",
+                "text/markdown",
+                "application/vnd.genslide.mpp+json",
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                "image/png",
+                "application/zip",
+                "application/octet-stream",
+            }:
+                raise RepositoryError(
+                    "WORK_FILE_CONTENT_TYPE_INVALID",
+                    "Work file upload content type is not supported.",
+                    415,
+                )
+            return self.work_file_service.save_upload(
+                handler.rfile,
+                handler.headers.get("Content-Length"),
+                unquote(str(handler.headers.get("X-MDViewer-File-Name") or "")),
+                handler.headers.get("X-MDViewer-Work-Type"),
+                handler.headers.get("X-MDViewer-App"),
+            )
+        if method == "GET" and path == "/api/sqlite/workfiles":
+            return self.work_file_service.list_files(
+                app_id=self._query_value(query, "app", "fmaviewer"),
+                query=self._query_value(query, "q", ""),
+                work_type=self._query_value(query, "type"),
+                limit=self._query_value(query, "limit", "100"),
+            )
+        model_match = re.fullmatch(r"/api/sqlite/models/([a-z0-9_]+)", path)
+        if method == "GET" and model_match:
+            return self.model_asset_service.get_model_status(model_match.group(1))
+        if method == "POST" and model_match:
+            content_type = str(handler.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if content_type not in {"application/octet-stream", "application/onnx"}:
+                raise RepositoryError(
+                    "MODEL_CONTENT_TYPE_INVALID",
+                    "ONNX model upload content type is not supported.",
+                    415,
+                )
+            return self.model_asset_service.save_upload(
+                handler.rfile,
+                handler.headers.get("Content-Length"),
+                unquote(str(handler.headers.get("X-MDViewer-File-Name") or "")),
+                model_match.group(1),
             )
         if method == "POST" and path == "/api/sqlite/migrations/indexeddb/preview":
             return self.migration_service.preview(self._read_json(handler, max_bytes=50 * 1024 * 1024))

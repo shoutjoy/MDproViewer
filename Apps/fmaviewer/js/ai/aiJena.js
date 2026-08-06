@@ -59,6 +59,7 @@ var aiJenaState = {
 };
 
 var aiJenaHistorySessions = new Map();
+var aiJenaSqliteReferencePresets = [];
 var aiJenaNoticeTimer = null;
 const AI_JENA_HISTORY_DB_PREFIX = "ai_jena_history:";
 const AI_JENA_REFERENCE_PRESET_INDEX_KEY = "ai_jena_reference_presets:index";
@@ -917,7 +918,10 @@ async function replaceAiJenaOriginal(index) {
 function initAiJenaReferenceStorage() {
     dom.aiJenaReferenceStorage.open = false;
     dom.aiJenaReferenceStorage.ontoggle = () => {
-        if (dom.aiJenaReferenceStorage.open) refreshAiJenaReferencePresetList();
+        if (dom.aiJenaReferenceStorage.open) {
+            refreshAiJenaReferencePresetList();
+            refreshAiJenaReferenceSqliteList();
+        }
     };
     dom.btnExportAiJenaReferences.onclick = exportAiJenaReferencePreset;
     dom.btnImportAiJenaReferences.onclick = () => dom.aiJenaReferenceFileInput.click();
@@ -925,9 +929,15 @@ function initAiJenaReferenceStorage() {
     dom.btnSaveAiJenaReferencesDb.onclick = saveAiJenaReferencePresetToDb;
     dom.btnLoadAiJenaReferencesDb.onclick = loadAiJenaReferencePresetFromDb;
     dom.btnDeleteAiJenaReferencesDb.onclick = deleteAiJenaReferencePresetFromDb;
+    dom.btnSaveAiJenaReferencesSqlite.onclick = saveAiJenaReferencePresetToSqlite;
+    dom.btnLoadAiJenaReferencesSqlite.onclick = loadAiJenaReferencePresetFromSqlite;
     dom.aiJenaReferencePresetList.onchange = () => {
         const option = dom.aiJenaReferencePresetList.selectedOptions[0];
         if (option?.dataset.name) dom.aiJenaReferencePresetName.value = option.dataset.name;
+    };
+    dom.aiJenaReferenceSqliteList.onchange = () => {
+        const item = aiJenaSqliteReferencePresets.find(entry => entry.id === dom.aiJenaReferenceSqliteList.value);
+        if (item?.presetName) dom.aiJenaReferencePresetName.value = item.presetName;
     };
 }
 
@@ -1146,6 +1156,71 @@ async function deleteAiJenaReferencePresetFromDb() {
         setAiJenaReferenceStorageStatus(`“${name}” 세팅을 삭제했습니다.`);
     } catch (error) {
         setAiJenaReferenceStorageStatus("DB 삭제 실패: " + error.message, true);
+    }
+}
+
+async function refreshAiJenaReferenceSqliteList(selectedId = "") {
+    const select = dom.aiJenaReferenceSqliteList;
+    if (!select) return [];
+    const api = window.FMASqliteWorkfiles;
+    select.innerHTML = "";
+    if (!api?.isSqliteMode?.()) {
+        aiJenaSqliteReferencePresets = [];
+        select.add(new Option("SQLite 모드에서 사용 가능", ""));
+        return [];
+    }
+    try {
+        const result = await api.listAiJenaReferencePresets();
+        aiJenaSqliteReferencePresets = (result.items || []).map(item => ({
+            ...item,
+            presetName: String(item.name || "")
+                .replace(/^aiJena_refs_/, "")
+                .replace(/_\d+\.json$/i, "")
+        }));
+        if (!aiJenaSqliteReferencePresets.length) {
+            select.add(new Option("저장된 SQLite 세팅 없음", ""));
+        } else {
+            select.add(new Option("SQLite 세팅 선택", ""));
+            aiJenaSqliteReferencePresets.forEach(item => {
+                select.add(new Option(`${item.presetName} · ${new Date(item.createdAt).toLocaleString("ko-KR")}`, item.id));
+            });
+            select.value = selectedId || "";
+        }
+        return aiJenaSqliteReferencePresets;
+    } catch (error) {
+        aiJenaSqliteReferencePresets = [];
+        select.add(new Option("SQLite 목록을 읽지 못함", ""));
+        setAiJenaReferenceStorageStatus("SQLite 목록 실패: " + error.message, true);
+        return [];
+    }
+}
+
+async function saveAiJenaReferencePresetToSqlite() {
+    const api = window.FMASqliteWorkfiles;
+    if (!api) return setAiJenaReferenceStorageStatus("SQLite 작업파일 기능을 불러오지 못했습니다.", true);
+    try {
+        const preset = makeAiJenaReferencePreset(dom.aiJenaReferencePresetName.value);
+        const saved = await api.saveAiJenaReferencePreset(preset);
+        await refreshAiJenaReferenceSqliteList(saved.id);
+        setAiJenaReferenceStorageStatus(
+            `“${preset.name}” 세팅을 SQLite에 저장했습니다. · ${Object.values(preset.references).filter(Boolean).length}개 이미지`
+        );
+    } catch (error) {
+        setAiJenaReferenceStorageStatus("SQLite 저장 실패: " + error.message, true);
+    }
+}
+
+async function loadAiJenaReferencePresetFromSqlite() {
+    const id = dom.aiJenaReferenceSqliteList.value;
+    if (!id) return setAiJenaReferenceStorageStatus("불러올 SQLite 세팅을 선택하세요.", true);
+    const item = aiJenaSqliteReferencePresets.find(entry => entry.id === id);
+    if (!item) return setAiJenaReferenceStorageStatus("선택한 SQLite 세팅 정보를 찾을 수 없습니다.", true);
+    try {
+        const preset = await window.FMASqliteWorkfiles.loadAiJenaReferencePreset(item);
+        const loaded = applyAiJenaReferencePreset(preset);
+        setAiJenaReferenceStorageStatus(`“${loaded.name}” 세팅을 SQLite에서 불러왔습니다.`);
+    } catch (error) {
+        setAiJenaReferenceStorageStatus("SQLite 불러오기 실패: " + error.message, true);
     }
 }
 

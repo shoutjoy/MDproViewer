@@ -121,6 +121,18 @@
         indbBtn.className = currentStorageSourceTab === 'indb' ? active : inactive;
         sqliteBtn.className = currentStorageSourceTab === 'sqlite' ? active : inactive;
         ghBtn.className = currentStorageSourceTab === 'github' ? active : inactive;
+        const storageState = window.MDPStorage && typeof window.MDPStorage.getStatus === 'function'
+            ? window.MDPStorage.getStatus()
+            : null;
+        const sqliteConnected = !!(storageState && storageState.sqliteHealth
+            && storageState.sqliteHealth.available === true
+            && storageState.sqliteHealth.capabilities
+            && storageState.sqliteHealth.capabilities.documents === true
+            && storageState.sqliteHealth.capabilities.folders === true);
+        if (typeof window.setStorageConnectionButtonGlow === 'function') {
+            window.setStorageConnectionButtonGlow('tab-storage-sqlite', 'sqlite', sqliteConnected);
+            window.setStorageConnectionButtonGlow('tab-storage-github', 'github', window.githubStorageConnectionVerified === true);
+        }
         const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
         const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
         syncStorageSourceTabsVisibility(!!(githubEnabled && githubToken));
