@@ -25,11 +25,22 @@
         plainTextThreshold: 300000,
         largeDocumentDelayMs: 48
     });
+    const DEFAULT_EDITOR_COMMENT_COLORS = Object.freeze({
+        light: '#f59e0b',
+        dark: '#facc15'
+    });
     let activeEditorDebugState = null;
 
     function normalizePositiveNumber(value, fallback) {
         const parsed = Number(value);
         return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+    }
+
+    function normalizeEditorCommentColor(value, fallback) {
+        const candidate = String(value == null ? '' : value).trim();
+        return /^#[0-9a-f]{6}$/i.test(candidate)
+            ? candidate.toLowerCase()
+            : String(fallback || '#facc15').toLowerCase();
     }
 
     function getHighlightOptions() {
@@ -375,10 +386,12 @@
         createHighlightMarkup: createHighlightMarkup,
         getToggleReplacement: getToggleReplacement,
         getHighlightMode: getHighlightMode,
+        normalizeEditorCommentColor: normalizeEditorCommentColor,
         getEditorDebugState: function () {
             return activeEditorDebugState ? Object.assign({}, activeEditorDebugState) : null;
         },
         DEFAULT_HIGHLIGHT_OPTIONS: DEFAULT_HIGHLIGHT_OPTIONS,
+        DEFAULT_EDITOR_COMMENT_COLORS: DEFAULT_EDITOR_COMMENT_COLORS,
         initEditor: initEditor
     };
 });

@@ -45,3 +45,12 @@ test('default large document thresholds remain ordered and configurable', () => 
     assert.ok(options.plainTextThreshold >= options.largeDocumentThreshold);
     assert.ok(options.largeDocumentDelayMs >= 0);
 });
+
+test('editor comment colors provide separate valid light and dark defaults', () => {
+    const colors = mdComment.DEFAULT_EDITOR_COMMENT_COLORS;
+    assert.match(colors.light, /^#[0-9a-f]{6}$/);
+    assert.match(colors.dark, /^#[0-9a-f]{6}$/);
+    assert.notEqual(colors.light, colors.dark);
+    assert.equal(mdComment.normalizeEditorCommentColor('#ABCDEF', colors.dark), '#abcdef');
+    assert.equal(mdComment.normalizeEditorCommentColor('invalid', colors.light), colors.light);
+});

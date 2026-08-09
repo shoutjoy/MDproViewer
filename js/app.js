@@ -380,6 +380,11 @@ let isSidebarCollapsed = false;
 // Theme
 const THEME_KEY = 'md_viewer_theme';
 const EDITOR_LIGHT_KEY = 'md_viewer_editor_light';
+const EDITOR_COMMENT_LIGHT_COLOR_KEY = 'md_viewer_comment_highlight_light';
+const EDITOR_COMMENT_DARK_COLOR_KEY = 'md_viewer_comment_highlight_dark';
+const DEFAULT_EDITOR_COMMENT_COLORS = window.MDComment && window.MDComment.DEFAULT_EDITOR_COMMENT_COLORS
+    ? window.MDComment.DEFAULT_EDITOR_COMMENT_COLORS
+    : Object.freeze({ light: '#f59e0b', dark: '#facc15' });
 const MERMAID_DISPLAY_MODE_KEY = 'md_viewer_mermaid_display_mode';
 
 const sidebar = document.getElementById('sidebar');
@@ -6443,6 +6448,57 @@ function scrollToDocumentBottom() {
 }
 
 // --- Settings ---
+function normalizeMarkdownCommentColor(value, fallback) {
+    if (window.MDComment && typeof window.MDComment.normalizeEditorCommentColor === 'function') {
+        return window.MDComment.normalizeEditorCommentColor(value, fallback);
+    }
+    const candidate = String(value == null ? '' : value).trim();
+    return /^#[0-9a-f]{6}$/i.test(candidate)
+        ? candidate.toLowerCase()
+        : String(fallback || '#facc15').toLowerCase();
+}
+
+function setMarkdownCommentColorVariables(lightColor, darkColor) {
+    document.documentElement.style.setProperty('--md-comment-highlight-light', lightColor);
+    document.documentElement.style.setProperty('--md-comment-highlight-dark', darkColor);
+}
+
+function loadMarkdownCommentColorSettings() {
+    let savedLight = '';
+    let savedDark = '';
+    try {
+        savedLight = localStorage.getItem(EDITOR_COMMENT_LIGHT_COLOR_KEY) || '';
+        savedDark = localStorage.getItem(EDITOR_COMMENT_DARK_COLOR_KEY) || '';
+    } catch (_) {}
+    const lightColor = normalizeMarkdownCommentColor(savedLight, DEFAULT_EDITOR_COMMENT_COLORS.light);
+    const darkColor = normalizeMarkdownCommentColor(savedDark, DEFAULT_EDITOR_COMMENT_COLORS.dark);
+    const lightInput = document.getElementById('comment-highlight-light-color');
+    const darkInput = document.getElementById('comment-highlight-dark-color');
+    if (lightInput) lightInput.value = lightColor;
+    if (darkInput) darkInput.value = darkColor;
+    setMarkdownCommentColorVariables(lightColor, darkColor);
+}
+
+function applyMarkdownCommentColorSettings() {
+    const lightInput = document.getElementById('comment-highlight-light-color');
+    const darkInput = document.getElementById('comment-highlight-dark-color');
+    const lightColor = normalizeMarkdownCommentColor(
+        lightInput && lightInput.value,
+        DEFAULT_EDITOR_COMMENT_COLORS.light
+    );
+    const darkColor = normalizeMarkdownCommentColor(
+        darkInput && darkInput.value,
+        DEFAULT_EDITOR_COMMENT_COLORS.dark
+    );
+    if (lightInput) lightInput.value = lightColor;
+    if (darkInput) darkInput.value = darkColor;
+    setMarkdownCommentColorVariables(lightColor, darkColor);
+    try {
+        localStorage.setItem(EDITOR_COMMENT_LIGHT_COLOR_KEY, lightColor);
+        localStorage.setItem(EDITOR_COMMENT_DARK_COLOR_KEY, darkColor);
+    } catch (_) {}
+}
+
 function initSettings() {
     const savedBg = localStorage.getItem('md_viewer_code_bg');
     const savedText = localStorage.getItem('md_viewer_code_text');
@@ -6456,6 +6512,7 @@ function initSettings() {
         document.documentElement.style.setProperty('--code-text-color', savedText);
         if (textEl) textEl.value = savedText;
     }
+    loadMarkdownCommentColorSettings();
     const savedShift = Number(localStorage.getItem(EDITOR_HORIZONTAL_SHIFT_KEY));
     editorHorizontalShiftPx = Number.isFinite(savedShift) ? Math.round(savedShift) : 0;
     applyDocumentWidthScale();
@@ -9732,6 +9789,8 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     GOOGLE_CALENDAR_OPEN_MODE_KEY,
     GOOGLE_CALENDAR_EMAIL_KEY,
     MERMAID_DISPLAY_MODE_KEY,
+    EDITOR_COMMENT_LIGHT_COLOR_KEY,
+    EDITOR_COMMENT_DARK_COLOR_KEY,
     'mdpro_storage_sidebar_visibility_v1',
     'md_viewer_code_bg',
     'md_viewer_code_text',
@@ -9828,6 +9887,7 @@ async function applyImportedSettingsPayload(payload) {
     if (typeof loadAiSettingsToUI === 'function') await loadAiSettingsToUI();
     if (typeof initAiVisibility === 'function') await initAiVisibility();
     if (typeof applyCodeColorSettings === 'function') applyCodeColorSettings();
+    loadMarkdownCommentColorSettings();
     if (typeof applyTheme === 'function') applyTheme();
     syncMermaidDisplayModeUI();
     await refreshMermaidDisplay();
@@ -9905,6 +9965,7 @@ async function resetSettingsMset() {
         if (codeTextInput) codeTextInput.value = '#f8fafc';
         document.documentElement.style.setProperty('--code-bg-color', '#1e293b');
         document.documentElement.style.setProperty('--code-text-color', '#f8fafc');
+        loadMarkdownCommentColorSettings();
         applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
 
         ['ai-api-key', 'deepseek-api-key', 'openai-api-key', 'ai-imgbb-api-key', 'ai-password-input'].forEach(function (id) {
@@ -14129,6 +14190,20 @@ function resetCodeColorSettings() {
     showToast('Code color settings reset to default.');
 }
 
+function resetCodeAndCommentColorSettings() {
+    const codeBgInput = document.getElementById('code-bg-color');
+    const codeTextInput = document.getElementById('code-text-color');
+    const commentLightInput = document.getElementById('comment-highlight-light-color');
+    const commentDarkInput = document.getElementById('comment-highlight-dark-color');
+    if (codeBgInput) codeBgInput.value = '#1e293b';
+    if (codeTextInput) codeTextInput.value = '#f8fafc';
+    if (commentLightInput) commentLightInput.value = DEFAULT_EDITOR_COMMENT_COLORS.light;
+    if (commentDarkInput) commentDarkInput.value = DEFAULT_EDITOR_COMMENT_COLORS.dark;
+    applyCodeColorSettings();
+    applyMarkdownCommentColorSettings();
+    showToast('코드 및 주석 색상을 기본값으로 초기화했습니다.');
+}
+
 
 
 function getNextIndexedDbTitle(baseTitle, docs) {
@@ -14477,6 +14552,8 @@ window.deleteFeatureRecordFromInDb = deleteFeatureRecordFromInDb;
 window.syncKnownFeatureDataToInDb = syncKnownFeatureDataToInDb;
 window.applyCodeColorSettings = applyCodeColorSettings;
 window.resetCodeColorSettings = resetCodeColorSettings;
+window.applyMarkdownCommentColorSettings = applyMarkdownCommentColorSettings;
+window.resetCodeAndCommentColorSettings = resetCodeAndCommentColorSettings;
 window.clearUnusedCache = clearUnusedCache;
 window.switchSidebarTab = switchSidebarTab;
 window.openSqliteConflictResolver = openSqliteConflictResolver;
