@@ -27,6 +27,7 @@
                 throw new TypeError('IndexedDbAdapter requires getDb().');
             }
             this.kind = 'indb';
+            this.backend = 'indb';
             this.getDb = config.getDb;
         }
 
@@ -109,6 +110,92 @@
             tx.objectStore('folders').delete(String(id));
             await waitForTransaction(tx);
             return true;
+        }
+
+        async health() {
+            const db = this._requireDb();
+            const workFilesReady = db.objectStoreNames.contains('work_files');
+            return {
+                available: true,
+                backend: 'indb',
+                capabilities: { workFiles: workFilesReady }
+            };
+        }
+
+        async uploadWorkFile(file, options) {
+            if (!(file instanceof Blob)) throw new TypeError('uploadWorkFile requires a File or Blob.');
+            const db = this._requireDb();
+            if (!db.objectStoreNames.contains('work_files')) {
+                throw new Error('inDB 작업파일 저장소가 준비되지 않았습니다. 앱을 새로고침해 주세요.');
+            }
+            const config = options || {};
+            const createdAt = Date.now();
+            const record = {
+                id: 'work_' + createdAt + '_' + Math.random().toString(36).slice(2, 10),
+                name: String(config.fileName || file.name || 'work-file.bin'),
+                appId: String(config.appId || 'mdpro'),
+                workType: String(config.workType || 'generic'),
+                mimeType: String(file.type || 'application/octet-stream'),
+                sizeBytes: Number(file.size || 0),
+                createdAt: createdAt,
+                modifiedAt: createdAt,
+                blob: file
+            };
+            const tx = db.transaction('work_files', 'readwrite');
+            tx.objectStore('work_files').put(record);
+            await waitForTransaction(tx);
+            return {
+                id: record.id,
+                name: record.name,
+                appId: record.appId,
+                workType: record.workType,
+                mimeType: record.mimeType,
+                sizeBytes: record.sizeBytes,
+                createdAt: record.createdAt,
+                modifiedAt: record.modifiedAt
+            };
+        }
+
+        async listWorkFiles(options) {
+            const db = this._requireDb();
+            if (!db.objectStoreNames.contains('work_files')) return { items: [], total: 0 };
+            const config = options || {};
+            const records = (await asPromise(
+                db.transaction('work_files', 'readonly').objectStore('work_files').getAll()
+            )) || [];
+            const items = records.filter(function (record) {
+                if (config.appId && String(record.appId) !== String(config.appId)) return false;
+                if (config.workType && String(record.workType) !== String(config.workType)) return false;
+                return true;
+            }).sort(function (left, right) {
+                return Number(right.createdAt || 0) - Number(left.createdAt || 0);
+            }).map(function (record) {
+                return {
+                    id: record.id,
+                    name: record.name,
+                    appId: record.appId,
+                    workType: record.workType,
+                    mimeType: record.mimeType,
+                    sizeBytes: record.sizeBytes,
+                    createdAt: record.createdAt,
+                    modifiedAt: record.modifiedAt
+                };
+            });
+            const limit = Math.max(1, Math.min(500, Number(config.limit) || 200));
+            return { items: items.slice(0, limit), total: items.length };
+        }
+
+        async downloadWorkFile(item) {
+            const id = String(item && item.id || item || '').trim();
+            if (!id) throw new TypeError('downloadWorkFile requires an item id.');
+            const db = this._requireDb();
+            if (!db.objectStoreNames.contains('work_files')) throw new Error('inDB 작업파일 저장소가 없습니다.');
+            const record = await asPromise(
+                db.transaction('work_files', 'readonly').objectStore('work_files').get(id)
+            );
+            if (!record) throw new Error('inDB에서 작업파일을 찾을 수 없습니다.');
+            if (record.blob instanceof Blob) return record.blob;
+            return new Blob([record.blob || ''], { type: record.mimeType || 'application/octet-stream' });
         }
     }
 

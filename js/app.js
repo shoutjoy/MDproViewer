@@ -1,6 +1,6 @@
 ﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 let db;
 
 const FEATURE_DATA_STORE_NAMES = ['ai_chat', 'scholar_ai', 'ssp_image_ai', 'highlights', 'genslides'];
@@ -23,6 +23,150 @@ const GOOGLE_CALENDAR_OPEN_MODE_KEY = 'md_viewer_google_calendar_open_mode';
 const GOOGLE_CALENDAR_EMAIL_KEY = 'md_viewer_google_calendar_email';
 const VIEW_COPY_FAB_POSITION_KEY = 'md_viewer_view_copy_fab_position_v2';
 const VIEW_COPY_FAB_EDGE_GAP = 8;
+const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
+    mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
+    docxExport: './js/extendFiles/docx-export.js?v=20260805-image-1',
+    htmlExport: './js/export/html-export.js?v=20260805-image-1',
+    aiAcademicSearch: './AI_App/aiChat/academic-search.js?v=20260729-crossref-1',
+    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1',
+    scholarRef: './js/Scholarref/scholarref.js?v=20260806-scholar-sqlite-fallback-3',
+    scholarCrossref: './js/Scholarref/crossref-search.js?v=20260729-1',
+    scholarShell: './js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-explorer-button-4',
+    mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
+    inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
+    codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
+});
+const optionalScriptLoads = new Map();
+
+function loadOptionalScript(key, isReady, options) {
+    if (typeof isReady === 'function' && isReady()) return Promise.resolve(true);
+    if (optionalScriptLoads.has(key)) return optionalScriptLoads.get(key);
+    const source = OPTIONAL_SCRIPT_SOURCES[key];
+    if (!source) return Promise.reject(new Error('Unknown optional script: ' + key));
+    const promise = new Promise(function (resolve, reject) {
+        const existing = Array.from(document.scripts).find(function (script) {
+            return script.dataset.optionalScript === key;
+        });
+        const script = existing || document.createElement('script');
+        const finish = function () {
+            if (typeof isReady !== 'function' || isReady()) resolve(true);
+            else reject(new Error('Optional script loaded without expected API: ' + key));
+        };
+        const fail = function () {
+            optionalScriptLoads.delete(key);
+            reject(new Error('Optional script failed to load: ' + source));
+        };
+        script.addEventListener('load', finish, { once: true });
+        script.addEventListener('error', fail, { once: true });
+        if (!existing) {
+            if (options && options.module) script.type = 'module';
+            script.src = source;
+            script.async = true;
+            script.dataset.optionalScript = key;
+            document.head.appendChild(script);
+        }
+    });
+    optionalScriptLoads.set(key, promise);
+    return promise;
+}
+
+function ensureLazyFrameLoaded(frameOrId) {
+    const frame = typeof frameOrId === 'string' ? document.getElementById(frameOrId) : frameOrId;
+    if (!frame) return null;
+    const source = frame.dataset ? String(frame.dataset.src || '') : '';
+    if (source && !frame.getAttribute('src')) frame.setAttribute('src', source);
+    return frame;
+}
+
+function refreshLucideIcons(root) {
+    if (!window.lucide || typeof window.lucide.createIcons !== 'function') return;
+    try {
+        if (root && root !== document) window.lucide.createIcons({ nodes: [root] });
+        else window.lucide.createIcons();
+    } catch (_) {
+        window.lucide.createIcons();
+    }
+}
+
+async function ensureAiChatLoaded() {
+    if (window.AIChat && typeof window.AIChat.open === 'function') return true;
+    await loadOptionalScript('aiAcademicSearch', function () { return !!window.AIChatAcademicSearch; });
+    await loadOptionalScript('aiMarkdown', function () { return !!window.AIChatMarkdown; });
+    await loadOptionalScript('aiChat', function () { return !!window.AIChat; });
+    return true;
+}
+
+async function ensureScholarSearchLoaded() {
+    if (window.ScholarSearchShell && typeof window.ScholarSearchShell.openModal === 'function') return true;
+    await loadOptionalScript('scholarRef', function () { return !!window.ScholarRef; });
+    await loadOptionalScript('scholarCrossref', function () { return !!window.ScholarCrossrefSearch; });
+    await loadOptionalScript('scholarShell', function () { return !!window.ScholarSearchShell; });
+    configureScholarSearchShellBridge();
+    return true;
+}
+
+async function ensureMdMathEngineLoaded() {
+    if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') return true;
+    await loadOptionalScript('mathJax', function () {
+        return !!window.MathJax && typeof window.MathJax.typesetPromise === 'function';
+    });
+    return true;
+}
+window.ensureMdMathEngineLoaded = ensureMdMathEngineLoaded;
+
+async function openScholarSearchModalLazy() {
+    try {
+        await ensureScholarSearchLoaded();
+        if (window.ScholarSearchShell && typeof window.ScholarSearchShell.openModal === 'function') {
+            window.ScholarSearchShell.openModal();
+        }
+    } catch (error) {
+        showToast('학술검색을 불러오지 못했습니다: ' + (error && error.message ? error.message : error));
+    }
+}
+
+function initializeLazyAiChatEntry() {
+    const enabledKey = 'ss_ai_chat_enabled';
+    const checkbox = document.getElementById('ai-chat-enabled');
+    let launcher = null;
+    const removeLauncher = function () {
+        if (launcher && launcher.parentNode) launcher.parentNode.removeChild(launcher);
+        launcher = null;
+    };
+    const loadChat = async function (openAfterLoad) {
+        removeLauncher();
+        try {
+            await ensureAiChatLoaded();
+            if (openAfterLoad && window.AIChat && typeof window.AIChat.open === 'function') window.AIChat.open();
+        } catch (error) {
+            showToast('AI Jena를 불러오지 못했습니다: ' + (error && error.message ? error.message : error));
+            createLauncher();
+        }
+    };
+    const createLauncher = function () {
+        if (launcher || document.getElementById('ai-chat-launcher') || localStorage.getItem(enabledKey) !== '1') return;
+        launcher = document.createElement('button');
+        launcher.type = 'button';
+        launcher.id = 'ai-chat-lazy-launcher';
+        launcher.className = 'ai-chat-launcher enabled';
+        launcher.title = 'AI Jena 열기';
+        launcher.setAttribute('aria-label', 'AI Jena 열기');
+        launcher.innerHTML = '<span class="ai-chat-launcher-icon" aria-hidden="true">AI</span><span class="ai-chat-launcher-label">Jena</span>';
+        launcher.addEventListener('click', function () { loadChat(true); }, { once: true });
+        document.body.appendChild(launcher);
+    };
+    if (checkbox && !checkbox.dataset.lazyAiChatBound) {
+        checkbox.dataset.lazyAiChatBound = '1';
+        checkbox.checked = localStorage.getItem(enabledKey) === '1';
+        checkbox.addEventListener('change', function () {
+            localStorage.setItem(enabledKey, checkbox.checked ? '1' : '0');
+            if (checkbox.checked) loadChat(false);
+            else removeLauncher();
+        });
+    }
+    createLauncher();
+}
 
 function enableTouchModalDrag(panel, handle, options) {
     const opts = options || {};
@@ -96,6 +240,14 @@ let sqliteConflictIndex = 0;
 let sqliteConflictResolving = false;
 let storageOnlineRetryBound = false;
 let storageAutoSavePromise = Promise.resolve(false);
+let pendingAutoSaveKey = '';
+const autoSaveStats = {
+    requested: 0,
+    skippedDuplicate: 0,
+    skippedStale: 0,
+    completed: 0,
+    failed: 0
+};
 let isEditMode = true;
 let pageScale = 1.0;
 let fontSize = 16;
@@ -191,16 +343,31 @@ let viewClickMappedCaretPos = null;
 let lastEditCaretPos = 0;
 let viewerInternalImageObjectUrls = [];
 let previewInternalImageObjectUrls = [];
+const internalImageObjectUrlCache = new Map();
 let lastPersistedContent = '';
-let autoSaveDebounceTimer = null;
-let tocDebounceTimer = null;
-let miniPreviewDebounceTimer = null;
-let previewPopupDebounceTimer = null;
 let lastAutoSavedContent = '';
 let lastAutoSavedTitle = '';
 let pauseMainRenderWhileEditing = true;
 let mainRenderDirty = true;
 let mainRenderToken = 0;
+let renderSourceRevision = 0;
+let renderSourceValue = currentMarkdown;
+let renderPreparationSettingsRevision = 0;
+let renderPreparationCache = [];
+const RENDER_PREPARATION_CACHE_LIMIT = 2;
+const renderPreparationStats = {
+    sourceChanges: 0,
+    snapshotHits: 0,
+    snapshotMisses: 0,
+    commentHideRuns: 0,
+    preprocessRuns: 0,
+    markdownParseRuns: 0,
+    staleResults: 0
+};
+const renderCoordinator = window.MDRenderCoordinator
+    && typeof window.MDRenderCoordinator.create === 'function'
+    ? window.MDRenderCoordinator.create(window)
+    : null;
 let viewCopyFabInitialized = false;
 let viewCopyFabHasCustomPosition = false;
 let viewCopyFabAiJenaObserver = null;
@@ -213,6 +380,7 @@ let isSidebarCollapsed = false;
 // Theme
 const THEME_KEY = 'md_viewer_theme';
 const EDITOR_LIGHT_KEY = 'md_viewer_editor_light';
+const MERMAID_DISPLAY_MODE_KEY = 'md_viewer_mermaid_display_mode';
 
 const sidebar = document.getElementById('sidebar');
 const viewerContainer = document.getElementById('viewer-container');
@@ -459,7 +627,7 @@ async function openSqliteConflictResolver() {
         renderSqliteConflictModal();
         modal.classList.remove('hidden');
         modal.classList.add('flex');
-        if (window.lucide) lucide.createIcons();
+        refreshLucideIcons(modal);
     } catch (error) {
         showToast('충돌 목록을 읽을 수 없습니다: ' + (error && error.message ? error.message : error));
     }
@@ -761,6 +929,12 @@ function initDB() {
             if (!db.objectStoreNames.contains('scholar_refs')) {
                 db.createObjectStore('scholar_refs', { keyPath: 'id' });
             }
+            if (!db.objectStoreNames.contains('work_files')) {
+                const workFileStore = db.createObjectStore('work_files', { keyPath: 'id' });
+                workFileStore.createIndex('appId', 'appId', { unique: false });
+                workFileStore.createIndex('workType', 'workType', { unique: false });
+                workFileStore.createIndex('createdAt', 'createdAt', { unique: false });
+            }
             FEATURE_DATA_STORE_NAMES.forEach(function (storeName) {
                 if (!db.objectStoreNames.contains(storeName)) {
                     db.createObjectStore(storeName, { keyPath: 'id' });
@@ -779,7 +953,7 @@ function toggleTheme() {
     const isDark = html.classList.toggle('dark');
     localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
     syncSidebarAiTheme();
-    lucide.createIcons();
+    refreshMermaidDisplay();
 }
 
 function initTheme() {
@@ -798,7 +972,6 @@ function toggleEditorLightMode() {
     const isLight = vp.classList.toggle('editor-light-mode');
     localStorage.setItem(EDITOR_LIGHT_KEY, isLight ? '1' : '');
     updateEditorLightButton();
-    lucide.createIcons();
 }
 
 function applyEditorLightPreference() {
@@ -903,7 +1076,7 @@ function organizeSettingsDashboard() {
     );
     const saveColumn = createColumn(
         'settings-dashboard-save',
-        'SAVE',
+        'STORAGE',
         'save'
     );
     const toolsColumn = createColumn(
@@ -919,6 +1092,7 @@ function organizeSettingsDashboard() {
 
     const googleCalendar = document.getElementById('google-calendar-settings-card');
     const codeColors = document.getElementById('code-color-settings-card');
+    const mermaidDisplay = document.getElementById('mermaid-display-settings-card');
     const shortcuts = document.getElementById('shortcuts-settings-card');
     const aiUser = document.getElementById('ai-user-settings-card');
     if (aiUser) {
@@ -927,6 +1101,7 @@ function organizeSettingsDashboard() {
     }
     if (googleCalendar) appendToColumn(generalColumn, googleCalendar);
     if (codeColors) appendToColumn(generalColumn, codeColors);
+    if (mermaidDisplay) appendToColumn(generalColumn, mermaidDisplay);
     if (shortcuts) appendToColumn(generalColumn, shortcuts);
 
     const githubSettings = document.getElementById('github-settings-slot');
@@ -1004,6 +1179,38 @@ function initUserSettingsModule() {
     });
 }
 
+function scheduleNonCriticalStartupTasks() {
+    const run = function () {
+        syncKnownFeatureDataToInDb().catch(function (error) {
+            console.warn('Feature data background sync failed:', error);
+        });
+    };
+    if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(run, { timeout: 2500 });
+    } else {
+        setTimeout(run, 250);
+    }
+}
+
+function initializeOptionalPerformanceBenchmark() {
+    if (new URLSearchParams(window.location.search).get('perfBench') !== '1') return;
+    loadOptionalScript('inputPaintBenchmark', function () { return !!window.MDInputPaintBenchmark; })
+        .then(function () { window.MDInputPaintBenchmark.mount(); })
+        .catch(function (error) { console.warn('Performance benchmark could not be loaded:', error); });
+}
+
+function initializeOptionalCodeMirrorPrototype() {
+    if (new URLSearchParams(window.location.search).get('editor') !== 'cm6') return;
+    loadOptionalScript('codeMirrorPrototype', function () { return !!window.MDCm6Prototype; }, { module: true })
+        .then(function () {
+            if (editorTextarea) window.MDCm6Prototype.mount(editorTextarea, { syncDelayMs: 120 });
+        })
+        .catch(function (error) {
+            console.warn('CodeMirror prototype could not be loaded; textarea fallback remains active:', error);
+            showToast('CodeMirror 시험 모드를 불러오지 못해 기본 편집기를 사용합니다.');
+        });
+}
+
 window.onload = async () => {
     try {
         if (window.MiniPreviewUI && window.MiniPreviewUI.ready && typeof window.MiniPreviewUI.ready.then === 'function') {
@@ -1017,8 +1224,11 @@ window.onload = async () => {
         initUserSettingsModule();
         relocateAiIntegrationSettingsIntoAiUse();
         organizeSettingsDashboard();
-        lucide.createIcons();
+        refreshLucideIcons(document);
         initViewCopyFab();
+        initializeLazyAiChatEntry();
+        initializeOptionalPerformanceBenchmark();
+        initializeOptionalCodeMirrorPrototype();
         toggleMode('edit');
 
         await initDB();
@@ -1077,14 +1287,13 @@ window.onload = async () => {
             updateStorageRecoveryStatusUI(storageState);
             syncSqlitePendingRetryTimer(storageState);
         }
-        await syncKnownFeatureDataToInDb().catch(function (error) {
-            console.warn('Feature data startup sync failed:', error);
-        });
         loadFolderCollapseState();
         currentStorageSourceTab = getStorageSourceTabFromLocal();
         updateStorageSourceTabsUI();
-        await ensureRootFolder();
-        await cleanupBootBlockedDocuments();
+        await Promise.all([
+            ensureRootFolder(),
+            cleanupBootBlockedDocuments()
+        ]);
         renderDBList();
 
         if (pendingExternalContent) {
@@ -1123,6 +1332,7 @@ window.onload = async () => {
         if (!receivedExternalContent) await checkAutoSave();
 
         if (isEditMode && editorTextarea) editorTextarea.focus();
+        scheduleNonCriticalStartupTasks();
 
         if (sidebar) {
             sidebar.style.display = isSidebarHidden ? 'none' : 'flex';
@@ -1134,11 +1344,7 @@ window.onload = async () => {
                 sidebar.classList.remove('sidebar-collapsed');
                 if (collapseIcon) collapseIcon.setAttribute('data-lucide', 'chevron-left');
             }
-            lucide.createIcons();
-        }
-
-        if (window.ScholarSearchShell && typeof window.ScholarSearchShell.ensureScholarRefReady === 'function') {
-            await window.ScholarSearchShell.ensureScholarRefReady();
+            refreshLucideIcons(sidebar);
         }
 
         initAiVisibility();
@@ -1192,6 +1398,8 @@ window.onload = async () => {
 
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
+        syncRenderSourceRevision(currentMarkdown);
+        if (window.__mdPerformanceBenchmarkActive) return;
         const baseDelay = getEditorInputDebounceMs();
         scheduleUpdatePreviewPopupContent(baseDelay + 40);
         scheduleMiniPreviewRender(baseDelay + 40);
@@ -1785,8 +1993,11 @@ function preprocessRestartedNumberedParagraphs(raw) {
     return out.join('\n');
 }
 
-function preprocessMarkdownForView(raw) {
-    let s = String(raw ?? '');
+function preprocessMarkdownForView(raw, options) {
+    const opts = options || {};
+    let s = opts.commentsAlreadyHidden
+        ? String(raw ?? '')
+        : hideMarkdownCommentsForRender(raw);
     s = preprocessFootnotesForView(s);
     s = preprocessRestartedNumberedParagraphs(s);
     if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForRender === 'function') {
@@ -1807,6 +2018,155 @@ function preprocessMarkdownForView(raw) {
     }
     return s;
 }
+
+/** 원본 Markdown을 변경하지 않고 화면 렌더용 주석 숨김 문자열을 반환한다. */
+function hideMarkdownCommentsForRender(raw) {
+    renderPreparationStats.commentHideRuns += 1;
+    if (window.MDComment && typeof window.MDComment.stripForRender === 'function') {
+        return window.MDComment.stripForRender(raw);
+    }
+    return String(raw ?? '').replace(/<--[\s\S]*?-->/g, function (comment) {
+        return comment.replace(/[^\r\n]/g, '');
+    });
+}
+
+function stripMarkdownCommentsForView(raw) {
+    return hideMarkdownCommentsForRender(raw);
+}
+
+function syncRenderSourceRevision(raw) {
+    const source = String(raw ?? '');
+    if (source !== renderSourceValue) {
+        renderSourceValue = source;
+        renderSourceRevision += 1;
+        renderPreparationStats.sourceChanges += 1;
+    }
+    return renderSourceRevision;
+}
+
+function getRenderPreparationSettingsKey() {
+    return String(renderPreparationSettingsRevision) + ':' + (notebookLmEqualsHrPreprocess ? '1' : '0');
+}
+
+function invalidateRenderPreparationCache() {
+    renderPreparationSettingsRevision += 1;
+    renderPreparationCache = [];
+}
+
+function detectRenderFeatures(source) {
+    const value = String(source ?? '');
+    return {
+        hasMath: /(?:\$\$|\\\(|\\\[|(^|[^\\])\$[^$\r\n]+\$)/m.test(value),
+        hasMermaid: /```\s*mermaid\b/i.test(value),
+        hasInternalImages: /internal:\/\//i.test(value),
+        hasDoiLinks: /https?:\/\/(?:dx\.)?doi\.org\//i.test(value)
+    };
+}
+
+function prepareMarkdownRenderSnapshot(raw) {
+    const sourceRaw = String(raw ?? '');
+    const revision = syncRenderSourceRevision(sourceRaw);
+    const settingsKey = getRenderPreparationSettingsKey();
+    const cached = renderPreparationCache.find(function (candidate) {
+        return candidate.revision === revision
+            && candidate.settingsKey === settingsKey
+            && candidate.sourceRaw === sourceRaw;
+    });
+    if (cached) {
+        renderPreparationStats.snapshotHits += 1;
+        return cached;
+    }
+
+    renderPreparationStats.snapshotMisses += 1;
+    const renderSource = hideMarkdownCommentsForRender(sourceRaw);
+    renderPreparationStats.preprocessRuns += 1;
+    const preprocessed = preprocessMarkdownForView(renderSource, { commentsAlreadyHidden: true });
+    const snapshot = {
+        revision: revision,
+        settingsKey: settingsKey,
+        sourceRaw: sourceRaw,
+        renderSource: renderSource,
+        preprocessed: preprocessed,
+        features: detectRenderFeatures(preprocessed),
+        baseHtmlPromise: null
+    };
+    renderPreparationCache.unshift(snapshot);
+    if (renderPreparationCache.length > RENDER_PREPARATION_CACHE_LIMIT) {
+        renderPreparationCache.length = RENDER_PREPARATION_CACHE_LIMIT;
+    }
+    return snapshot;
+}
+
+function isMarkdownRenderSnapshotCurrent(snapshot, source) {
+    if (!snapshot) return false;
+    const currentSource = source == null
+        ? String(editorTextarea && typeof editorTextarea.value === 'string' ? editorTextarea.value : currentMarkdown ?? '')
+        : String(source);
+    const currentRevision = syncRenderSourceRevision(currentSource);
+    const current = snapshot.revision === currentRevision
+        && snapshot.settingsKey === getRenderPreparationSettingsKey()
+        && snapshot.sourceRaw === currentSource;
+    if (!current) renderPreparationStats.staleResults += 1;
+    return current;
+}
+
+async function renderMarkdownSnapshotToHtml(snapshot, options) {
+    const opts = options || {};
+    if (!snapshot) return '';
+    let preprocessed = snapshot.preprocessed;
+    let cacheable = true;
+
+    if (snapshot.features.hasInternalImages && typeof opts.resolveInternalImages === 'function') {
+        cacheable = false;
+        const resolved = await opts.resolveInternalImages(snapshot.renderSource);
+        renderPreparationStats.preprocessRuns += 1;
+        preprocessed = preprocessMarkdownForView(resolved, { commentsAlreadyHidden: true });
+    }
+
+    const createHtml = async function () {
+        renderPreparationStats.markdownParseRuns += 1;
+        if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
+            return String(await MathRender.renderMarkdownSafe(
+                (typeof marked !== 'undefined' && marked.parse) ? marked : null,
+                preprocessed,
+                { fallbackText: preprocessed }
+            ) || '');
+        }
+        if (typeof marked !== 'undefined' && marked.parse) {
+            return String(marked.parse(preprocessed) || '');
+        }
+        return escapeMarkdownRenderFallback(preprocessed);
+    };
+
+    if (!cacheable) return createHtml();
+    if (!snapshot.baseHtmlPromise) {
+        snapshot.baseHtmlPromise = Promise.resolve().then(createHtml).catch(function (error) {
+            snapshot.baseHtmlPromise = null;
+            throw error;
+        });
+    }
+    return snapshot.baseHtmlPromise;
+}
+
+function getRenderPreparationDebugState() {
+    return Object.assign({}, renderPreparationStats, {
+        revision: renderSourceRevision,
+        settingsRevision: renderPreparationSettingsRevision,
+        cacheSize: renderPreparationCache.length
+    });
+}
+
+window.hideMarkdownCommentsForRender = hideMarkdownCommentsForRender;
+window.stripMarkdownCommentsForView = stripMarkdownCommentsForView;
+window.syncRenderSourceRevision = syncRenderSourceRevision;
+window.invalidateRenderPreparationCache = invalidateRenderPreparationCache;
+window.prepareMarkdownRenderSnapshot = prepareMarkdownRenderSnapshot;
+window.isMarkdownRenderSnapshotCurrent = isMarkdownRenderSnapshotCurrent;
+window.renderMarkdownSnapshotToHtml = renderMarkdownSnapshotToHtml;
+window.getRenderPreparationDebugState = getRenderPreparationDebugState;
+window.getRenderCoordinatorDebugState = function () {
+    return renderCoordinator ? renderCoordinator.getStats() : null;
+};
 
 function applyDoiLinkTargets(root) {
     if (!root || !root.querySelectorAll) return;
@@ -1928,17 +2288,27 @@ async function renderMarkdown(options) {
     }
     mainRenderDirty = false;
     const raw = String(currentMarkdown ?? '');
+    const snapshot = prepareMarkdownRenderSnapshot(raw);
+    const renderRaw = snapshot.renderSource;
     const isCurrentRender = function () {
-        return renderToken === mainRenderToken && !!viewer;
+        return renderToken === mainRenderToken
+            && !!viewer
+            && isMarkdownRenderSnapshotCurrent(snapshot);
     };
     function runPostRenderHooks() {
         if (!isCurrentRender()) return;
-        try { applyDoiLinkTargets(viewer); } catch (e) {}
+        try { if (snapshot.features.hasDoiLinks) applyDoiLinkTargets(viewer); } catch (e) {}
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
-        try { if (typeof lucide !== 'undefined') lucide.createIcons(); } catch (e) {}
-        try { hydrateInternalImagesInElement(viewer, registerViewerInternalObjectUrl); } catch (e) {}
+        refreshLucideIcons(viewer);
         try {
-            if (window.MermaidTRT && typeof window.MermaidTRT.renderIn === 'function') {
+            if (snapshot.features.hasInternalImages) {
+                hydrateInternalImagesInElement(viewer, registerViewerInternalObjectUrl);
+            }
+        } catch (e) {}
+        try {
+            if (snapshot.features.hasMermaid
+                && window.MermaidTRT
+                && typeof window.MermaidTRT.renderIn === 'function') {
                 window.MermaidTRT.renderIn(viewer).catch(function () {});
             }
         } catch (e) {}
@@ -1948,32 +2318,23 @@ async function renderMarkdown(options) {
     revokeObjectUrls(viewerInternalImageObjectUrls);
 
     try {
-        const htmlDocument = getRenderableHtmlDocument(raw);
+        const htmlDocument = getRenderableHtmlDocument(renderRaw);
         if (htmlDocument !== null) {
             if (!isCurrentRender()) return;
             renderHtmlDocumentFrame(viewer, htmlDocument, { title: currentFileName || 'HTML preview' });
             runPostRenderHooks();
             return;
         }
-        const resolvedRaw = await resolveInternalMarkdownImagesForViewer(raw);
-        if (!isCurrentRender()) return;
-        const preprocessed = preprocessMarkdownForView(resolvedRaw);
-        let html = '';
-        if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
-            html = await MathRender.renderMarkdownSafe(
-                (typeof marked !== 'undefined' && marked.parse) ? marked : null,
-                preprocessed,
-                { fallbackText: resolvedRaw }
-            );
-        } else if (typeof marked !== 'undefined' && marked.parse) {
-            html = String(marked.parse(preprocessed) || '');
-        } else {
-            html = escapeMarkdownRenderFallback(resolvedRaw);
-        }
+        const html = await renderMarkdownSnapshotToHtml(snapshot);
         if (!isCurrentRender()) return;
         setHtmlDocumentMode(viewer, false);
         viewer.innerHTML = String(html || '');
-        if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
+        if (snapshot.features.hasMath
+            && typeof MathRender !== 'undefined'
+            && MathRender
+            && typeof MathRender.typesetElement === 'function') {
+            await ensureMdMathEngineLoaded();
+            if (!isCurrentRender()) return;
             await MathRender.typesetElement(viewer, {
                 silent: true,
                 retries: 20,
@@ -1984,9 +2345,14 @@ async function renderMarkdown(options) {
     } catch (error) {
         if (!isCurrentRender()) return;
         setHtmlDocumentMode(viewer, false);
-        viewer.innerHTML = escapeMarkdownRenderFallback(raw);
+        viewer.innerHTML = escapeMarkdownRenderFallback(renderRaw);
         try {
-            if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
+            if (snapshot.features.hasMath
+                && typeof MathRender !== 'undefined'
+                && MathRender
+                && typeof MathRender.typesetElement === 'function') {
+                await ensureMdMathEngineLoaded();
+                if (!isCurrentRender()) return;
                 await MathRender.typesetElement(viewer, {
                     silent: true,
                     retries: 10,
@@ -2274,7 +2640,6 @@ function toggleMode(mode) {
         if (btnEdit) btnEdit.classList.add(...activeClasses);
         if (btnView) btnView.classList.remove(...activeClasses);
         applyEditorLightPreference();
-        lucide.createIcons();
         if (editorTextarea) {
             const text = String(editorTextarea.value ?? '');
             const safePos = Math.max(0, Math.min(mappedPos, text.length));
@@ -2412,7 +2777,11 @@ function openSelectedFileInBrowserViewer(file, extension) {
 
 async function openDocxInEditor(file) {
     if (!file) return false;
-    if (!window.mammoth || typeof window.mammoth.convertToHtml !== 'function') {
+    try {
+        await loadOptionalScript('mammoth', function () {
+            return !!window.mammoth && typeof window.mammoth.convertToHtml === 'function';
+        });
+    } catch (_) {
         showToast('DOCX 가져오기 모듈을 불러오지 못했습니다.');
         return false;
     }
@@ -2797,9 +3166,9 @@ async function resolveDocxExportImage(src) {
 
 async function exportCurrentDocumentAsDocx() {
     syncCurrentMarkdownFromEditor();
-    if (!window.DocxExport || typeof window.DocxExport.createBlob !== 'function') {
-        throw new Error('DOCX export is not available.');
-    }
+    await loadOptionalScript('docxExport', function () {
+        return !!window.DocxExport && typeof window.DocxExport.createBlob === 'function';
+    });
     const blob = await window.DocxExport.createBlob({
         content: String(currentMarkdown || ''),
         html: getRenderedHtmlForDocxExport(),
@@ -2918,9 +3287,9 @@ async function exportCurrentDocumentByChoice() {
     }
     if (choice === 'html') {
         syncCurrentMarkdownFromEditor();
-        if (!window.HtmlExport || typeof window.HtmlExport.exportToHTML !== 'function') {
-            throw new Error('HTML export is not available.');
-        }
+        await loadOptionalScript('htmlExport', function () {
+            return !!window.HtmlExport && typeof window.HtmlExport.exportToHTML === 'function';
+        });
         const result = await window.HtmlExport.exportToHTML({
             content: String(currentMarkdown || ''),
             fileName: getSaveCandidateFileName(),
@@ -3142,7 +3511,6 @@ async function restoreFromMpv(data) {
 function openBackupModal() {
     document.getElementById('backup-modal').classList.remove('hidden');
     document.getElementById('backup-modal').classList.add('flex');
-    lucide.createIcons();
 }
 
 function closeBackupModal() {
@@ -3310,7 +3678,7 @@ function syncPrintRootFromViewer() {
     printable.className = 'markdown-body print-area';
     printable.innerHTML = String(viewerEl.innerHTML || '').trim();
     if (!printable.innerHTML.trim()) {
-        const raw = String(currentMarkdown || '');
+        const raw = prepareMarkdownRenderSnapshot(currentMarkdown).renderSource;
         if (!raw.trim()) return false;
         printable.innerHTML = '<p>' + raw
             .replace(/&/g, '&amp;')
@@ -3434,15 +3802,45 @@ async function hydrateInternalImagesInElement(rootEl, collector) {
         const id = window.ImageDB.parseInternalUrl ? window.ImageDB.parseInternalUrl(src) : src.replace(/^internal:\/\//, '');
         if (!id) continue;
         try {
-            const rec = await window.ImageDB.getImage(db, id);
-            if (!rec || !rec.blob) continue;
-            const objectUrl = URL.createObjectURL(rec.blob);
-            if (typeof collector === 'function') collector(objectUrl);
+            let cached = internalImageObjectUrlCache.get(id);
+            if (!cached) {
+                const rec = await window.ImageDB.getImage(db, id);
+                if (!rec || !rec.blob) continue;
+                cached = {
+                    url: URL.createObjectURL(rec.blob),
+                    size: Number(rec.blob.size || 0),
+                    type: String(rec.blob.type || rec.mime || '')
+                };
+                internalImageObjectUrlCache.set(id, cached);
+            }
+            const objectUrl = cached.url;
             img.src = objectUrl;
             img.setAttribute('data-internal-id', id);
         } catch (e) {}
     }
 }
+
+function clearInternalImageObjectUrlCache(id) {
+    if (id != null) {
+        const key = String(id);
+        const cached = internalImageObjectUrlCache.get(key);
+        if (cached && cached.url) {
+            try { URL.revokeObjectURL(cached.url); } catch (_) {}
+        }
+        internalImageObjectUrlCache.delete(key);
+        return;
+    }
+    internalImageObjectUrlCache.forEach(function (cached) {
+        if (!cached || !cached.url) return;
+        try { URL.revokeObjectURL(cached.url); } catch (_) {}
+    });
+    internalImageObjectUrlCache.clear();
+}
+
+window.clearInternalImageObjectUrlCache = clearInternalImageObjectUrlCache;
+window.addEventListener('beforeunload', function () {
+    clearInternalImageObjectUrlCache();
+}, { once: true });
 
 function fallbackCopyHtmlFromViewer(html) {
     if (!document.body) return false;
@@ -3538,7 +3936,7 @@ function toggleSidebarCollapse() {
         const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
         syncStorageSourceTabsVisibility(githubEnabled && !!githubToken);
     } catch (_) {}
-    lucide.createIcons();
+    refreshLucideIcons(collapseIcon && collapseIcon.parentElement ? collapseIcon.parentElement : sidebar);
     renderDBList();
     if (activeSidebarTab === 'toc') renderTOC();
 }
@@ -3566,7 +3964,7 @@ function parseTocItemsFromMarkdown(markdownText) {
 function renderTOC() {
     if (window.SidebarLeft && typeof window.SidebarLeft.renderTOC === 'function') {
         lastRenderedTocItems = window.SidebarLeft.renderTOC({
-            getMarkdown: function () { return currentMarkdown; },
+            getMarkdown: function () { return prepareMarkdownRenderSnapshot(currentMarkdown).renderSource; },
             isCollapsed: function () { return isSidebarCollapsed; }
         }) || [];
     }
@@ -3894,7 +4292,7 @@ async function renderDBList() {
     }
     if (generation !== renderDBListGeneration) return;
     listEl.replaceChildren(...Array.from(nextList.childNodes));
-    lucide.createIcons();
+    refreshLucideIcons(listEl);
 }
 
 function scheduleStorageSearch() {
@@ -4023,7 +4421,7 @@ async function openMoveModal(docId) {
 
     document.getElementById('move-modal').classList.remove('hidden');
     document.getElementById('move-modal').classList.add('flex');
-    lucide.createIcons();
+    refreshLucideIcons(list);
 }
 
 function closeMoveModal() {
@@ -4063,53 +4461,89 @@ function getEditorInputDebounceMs() {
 }
 
 function schedulePerformAutoSave(delayMs) {
-    clearTimeout(autoSaveDebounceTimer);
-    autoSaveDebounceTimer = setTimeout(function () {
-        autoSaveDebounceTimer = null;
-        performAutoSave();
-    }, Math.max(40, Number(delayMs) || 0));
+    const revision = syncRenderSourceRevision(currentMarkdown);
+    if (!renderCoordinator) {
+        setTimeout(performAutoSave, Math.max(40, Number(delayMs) || 0));
+        return;
+    }
+    renderCoordinator.schedule('autosave', performAutoSave, {
+        delayMs: Math.max(40, Number(delayMs) || 0),
+        revision: revision,
+        isCurrent: function (candidate) { return candidate === renderSourceRevision; },
+        idle: true,
+        idleTimeoutMs: 1200
+    });
 }
 
 function scheduleRenderTOC(delayMs) {
     if (activeSidebarTab !== 'toc') return;
-    clearTimeout(tocDebounceTimer);
-    tocDebounceTimer = setTimeout(function () {
-        tocDebounceTimer = null;
+    const revision = syncRenderSourceRevision(currentMarkdown);
+    if (!renderCoordinator) {
+        setTimeout(function () { if (activeSidebarTab === 'toc') renderTOC(); }, Math.max(60, Number(delayMs) || 0));
+        return;
+    }
+    renderCoordinator.schedule('toc', function () {
         if (activeSidebarTab === 'toc') renderTOC();
-    }, Math.max(60, Number(delayMs) || 0));
+    }, {
+        delayMs: Math.max(60, Number(delayMs) || 0),
+        revision: revision,
+        isCurrent: function (candidate) { return candidate === renderSourceRevision; }
+    });
 }
 
 function scheduleMiniPreviewRender(delayMs) {
     if (!miniPreviewEnabled || !isEditMode) return;
-    clearTimeout(miniPreviewDebounceTimer);
-    miniPreviewDebounceTimer = setTimeout(function () {
-        miniPreviewDebounceTimer = null;
+    const revision = syncRenderSourceRevision(currentMarkdown);
+    if (!renderCoordinator) {
+        setTimeout(function () { if (miniPreviewEnabled && isEditMode) renderMiniPreviewContent(); }, Math.max(80, Number(delayMs) || 0));
+        return;
+    }
+    renderCoordinator.schedule('mini-preview', function () {
         if (miniPreviewEnabled && isEditMode) renderMiniPreviewContent();
-    }, Math.max(80, Number(delayMs) || 0));
+    }, {
+        delayMs: Math.max(80, Number(delayMs) || 0),
+        revision: revision,
+        isCurrent: function (candidate) { return candidate === renderSourceRevision; }
+    });
 }
 
 function scheduleUpdatePreviewPopupContent(delayMs) {
     if (!(typeof isPreviewPopupAlive === 'function' && isPreviewPopupAlive())) return;
-    clearTimeout(previewPopupDebounceTimer);
-    previewPopupDebounceTimer = setTimeout(function () {
-        previewPopupDebounceTimer = null;
+    const revision = syncRenderSourceRevision(currentMarkdown);
+    if (!renderCoordinator) {
+        setTimeout(function () {
+            if (typeof updatePreviewPopupContent === 'function') updatePreviewPopupContent();
+        }, Math.max(80, Number(delayMs) || 0));
+        return;
+    }
+    renderCoordinator.schedule('popup-preview', function () {
         if (typeof updatePreviewPopupContent === 'function') updatePreviewPopupContent();
-    }, Math.max(80, Number(delayMs) || 0));
+    }, {
+        delayMs: Math.max(80, Number(delayMs) || 0),
+        revision: revision,
+        isCurrent: function (candidate) { return candidate === renderSourceRevision; }
+    });
 }
 
-async function saveCurrentDocumentToActiveStorageQuietly() {
+function getCurrentAutoSaveDocumentKey() {
+    if (!currentDocumentRef) return getActiveStorageMode() + ':unsaved_current';
+    return String(currentDocumentRef.storageMode || getActiveStorageMode()) + ':' + String(currentDocumentRef.id || '');
+}
+
+async function saveCurrentDocumentToActiveStorageQuietly(snapshot) {
     if (!window.MDPStorage) return false;
+    const candidate = snapshot || null;
+    if (candidate && candidate.documentKey !== getCurrentAutoSaveDocumentKey()) return false;
     const activeMode = getActiveStorageMode();
     if (!currentDocumentRef) {
         if (activeMode !== 'sqlite') return false;
-        syncCurrentMarkdownFromEditor();
-        const unsavedContent = String(currentMarkdown || '');
+        const unsavedContent = candidate ? candidate.content : String(currentMarkdown || '');
         if (!unsavedContent.trim()) return false;
         try {
             await window.MDPStorage.saveDocumentDraft({
                 documentId: 'unsaved_current',
                 storageMode: 'sqlite',
-                title: String((currentFileName || 'Untitled').replace(/\.md$/i, '')).trim() || 'Untitled',
+                title: String(((candidate ? candidate.fileName : currentFileName) || 'Untitled').replace(/\.md$/i, '')).trim() || 'Untitled',
                 content: unsavedContent,
                 baseVersion: null,
                 cursorPosition: editorTextarea ? editorTextarea.selectionStart : 0,
@@ -4123,9 +4557,8 @@ async function saveCurrentDocumentToActiveStorageQuietly() {
         }
     }
     if (currentDocumentRef.storageMode !== activeMode) return false;
-    syncCurrentMarkdownFromEditor();
-    const content = String(currentMarkdown || '');
-    const title = String((currentFileName || 'Untitled').replace(/\.md$/i, '')).trim() || 'Untitled';
+    const content = candidate ? candidate.content : String(currentMarkdown || '');
+    const title = String(((candidate ? candidate.fileName : currentFileName) || 'Untitled').replace(/\.md$/i, '')).trim() || 'Untitled';
     const expectedVersion = currentDocumentRef.version;
     let draft = null;
     if (activeMode === 'sqlite') {
@@ -4197,13 +4630,42 @@ function performAutoSave(options) {
     const opts = options || {};
     const force = !!opts.force;
     const content = String(currentMarkdown || '');
-    const title = String(currentFileName || 'untitled.md');
-    if (!force && content === lastAutoSavedContent && title === lastAutoSavedTitle) return;
-    lastAutoSavedContent = content;
-    lastAutoSavedTitle = title;
+    const fileName = String(currentFileName || 'untitled.md');
+    const revision = syncRenderSourceRevision(content);
+    const documentKey = getCurrentAutoSaveDocumentKey();
+    const requestKey = documentKey + '|' + revision + '|' + fileName;
+    autoSaveStats.requested += 1;
+    if (!force && content === lastAutoSavedContent && fileName === lastAutoSavedTitle) {
+        autoSaveStats.skippedDuplicate += 1;
+        return;
+    }
+    if (!force && requestKey === pendingAutoSaveKey) {
+        autoSaveStats.skippedDuplicate += 1;
+        return;
+    }
+    pendingAutoSaveKey = requestKey;
+    const snapshot = { content: content, fileName: fileName, revision: revision, documentKey: documentKey };
     storageAutoSavePromise = storageAutoSavePromise
         .catch(function () { return false; })
-        .then(saveCurrentDocumentToActiveStorageQuietly);
+        .then(async function () {
+            if (!force && (snapshot.revision !== renderSourceRevision || snapshot.documentKey !== getCurrentAutoSaveDocumentKey())) {
+                autoSaveStats.skippedStale += 1;
+                return false;
+            }
+            const saved = await saveCurrentDocumentToActiveStorageQuietly(snapshot);
+            if (saved) {
+                lastAutoSavedContent = snapshot.content;
+                lastAutoSavedTitle = snapshot.fileName;
+                autoSaveStats.completed += 1;
+            } else {
+                autoSaveStats.failed += 1;
+            }
+            return saved;
+        })
+        .finally(function () {
+            if (pendingAutoSaveKey === requestKey) pendingAutoSaveKey = '';
+            if (snapshot.revision !== renderSourceRevision) schedulePerformAutoSave(80);
+        });
 }
 
 function setLiveRenderInEditMode(enabled) {
@@ -5560,6 +6022,7 @@ function closeTextStyleModal() {
 function openMermaidEditorModal() {
     const modal = document.getElementById('mermaid-editor-modal');
     if (!modal) return;
+    ensureLazyFrameLoaded('mermaid-editor-frame');
     modal.classList.remove('hidden');
     bindMermaidEditorModalDrag();
 }
@@ -6006,6 +6469,54 @@ function initSettings() {
     if (calendarCheck) calendarCheck.checked = calendarEnabled;
     applyGoogleCalendarVisibility(calendarEnabled);
     loadGoogleCalendarOptionsUI();
+    syncMermaidDisplayModeUI();
+}
+
+function getMermaidDisplayModeFromLocal() {
+    try {
+        return localStorage.getItem(MERMAID_DISPLAY_MODE_KEY) === 'fixed' ? 'fixed' : 'interactive';
+    } catch (_) {
+        return 'interactive';
+    }
+}
+
+function syncMermaidDisplayModeUI() {
+    const mode = getMermaidDisplayModeFromLocal();
+    const inputs = document.querySelectorAll('input[name="mermaid-display-mode"]');
+    inputs.forEach(function (input) {
+        input.checked = input.value === mode;
+    });
+    const status = document.getElementById('mermaid-display-mode-status');
+    if (status) {
+        status.textContent = mode === 'fixed'
+            ? '고정형: 문서에 맞는 기본 크기로 표시하며 도표별 크기를 조절할 수 있습니다.'
+            : '인터랙티브: 이동, 확대/축소, 맞춤, 크기 조절 도구를 표시합니다.';
+    }
+}
+
+function refreshMermaidDisplay() {
+    if (typeof updatePreviewPopupContent === 'function') {
+        Promise.resolve(updatePreviewPopupContent()).catch(function () {});
+    }
+    if (!window.MermaidTRT || typeof window.MermaidTRT.refresh !== 'function') return Promise.resolve(false);
+    return window.MermaidTRT.refresh(document).catch(function (error) {
+        console.warn('Mermaid display refresh skipped:', error && error.message ? error.message : error);
+        return false;
+    });
+}
+
+function setMermaidDisplayMode(mode) {
+    const nextMode = mode === 'fixed' ? 'fixed' : 'interactive';
+    try { localStorage.setItem(MERMAID_DISPLAY_MODE_KEY, nextMode); } catch (_) {}
+    syncMermaidDisplayModeUI();
+    if (window.MermaidTRT && typeof window.MermaidTRT.setDisplayMode === 'function') {
+        window.MermaidTRT.setDisplayMode(nextMode).catch(function (error) {
+            console.warn('Mermaid display mode change skipped:', error && error.message ? error.message : error);
+        });
+    }
+    if (typeof updatePreviewPopupContent === 'function') {
+        Promise.resolve(updatePreviewPopupContent()).catch(function () {});
+    }
 }
 
 function getGoogleCalendarEnabledFromLocal() {
@@ -6983,6 +7494,7 @@ function initializeSettingsContainerFolds() {
     enhanceSettingsCardFold('ai-user-settings-card', ':scope > p:first-child', '', '', '사용자 정보');
     enhanceSettingsCardFold('google-calendar-settings-card', ':scope > div:first-child', '', '', 'Google 캘린더');
     enhanceSettingsCardFold('code-color-settings-card', ':scope > h4:first-child', '', '', '코드 색상');
+    enhanceSettingsCardFold('mermaid-display-settings-card', ':scope > h4:first-child', '', '', 'Mermaid 표시');
     enhanceSettingsCardFold(
         'sqlite-settings-tool',
         '#sqlite-settings-fold-header',
@@ -8472,6 +8984,7 @@ function bindHtml2pptPanelResize() {
 function openHtml2pptPanel() {
     const panel = document.getElementById('html2ppt-panel');
     if (!panel) return;
+    ensureLazyFrameLoaded('html2ppt-frame');
     bindHtml2pptPanelDrag();
     bindHtml2pptPanelResize();
     applyHtml2pptPanelLayout();
@@ -8609,6 +9122,7 @@ function configureScholarSearchShellBridge() {
 function openHighlightPopup() {
     const modal = document.getElementById('highlight-popup-modal');
     if (!modal) return;
+    ensureLazyFrameLoaded('highlight-popup-frame');
     bindHighlightPopupDrag();
     // Ensure selection sync is always active even if iframe onload happened
     // before this script finished wiring global handlers.
@@ -9217,6 +9731,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     GOOGLE_CALENDAR_ENABLED_KEY,
     GOOGLE_CALENDAR_OPEN_MODE_KEY,
     GOOGLE_CALENDAR_EMAIL_KEY,
+    MERMAID_DISPLAY_MODE_KEY,
     'mdpro_storage_sidebar_visibility_v1',
     'md_viewer_code_bg',
     'md_viewer_code_text',
@@ -9314,6 +9829,8 @@ async function applyImportedSettingsPayload(payload) {
     if (typeof initAiVisibility === 'function') await initAiVisibility();
     if (typeof applyCodeColorSettings === 'function') applyCodeColorSettings();
     if (typeof applyTheme === 'function') applyTheme();
+    syncMermaidDisplayModeUI();
+    await refreshMermaidDisplay();
 }
 
 async function importSettingsMsetFile(event) {
@@ -9380,6 +9897,8 @@ async function resetSettingsMset() {
         if (typeof applyMiniPreviewVisibility === 'function') applyMiniPreviewVisibility();
         initTheme();
         applyEditorLightPreference();
+        syncMermaidDisplayModeUI();
+        refreshMermaidDisplay();
         const codeBgInput = document.getElementById('code-bg-color');
         const codeTextInput = document.getElementById('code-text-color');
         if (codeBgInput) codeBgInput.value = '#1e293b';
@@ -9413,6 +9932,7 @@ const INDB_STATUS_STORE_ORDER = [
     'autosave',
     'ai_settings',
     'scholar_refs',
+    'work_files',
     'ai_chat',
     'scholar_ai',
     'ssp_image_ai',
@@ -9666,6 +10186,7 @@ function getInDbStatusPrimaryText(storeName, item) {
     if (storeName === 'images') return String(rec.name || rec.id || '(image)');
     if (storeName === 'autosave') return String(rec.title || rec.id || '(autosave)');
     if (storeName === 'scholar_refs') return String(rec.title || rec.id || '(scholar ref)');
+    if (storeName === 'work_files') return String(rec.name || rec.id || '(work file)');
     if (storeName === 'ai_settings') return String(rec.id || 'ai_settings');
     if (storeName === 'ai_chat') return String(rec.title || rec.id || '(AI chat)');
     if (storeName === 'scholar_ai') return String(rec.prompt || rec.title || rec.id || '(ScholarAI)');
@@ -9687,6 +10208,10 @@ function getInDbStatusSecondaryText(storeName, item) {
     if (storeName === 'images') {
         const size = rec.blob && typeof rec.blob.size === 'number' ? rec.blob.size : 0;
         return 'id=' + String(rec.id || '') + ' | bytes=' + size;
+    }
+    if (storeName === 'work_files') {
+        return String(rec.appId || 'mdpro') + ' | ' + String(rec.workType || 'generic')
+            + ' | bytes=' + Number(rec.sizeBytes || 0);
     }
     if (storeName === 'ai_chat') {
         return 'id=' + String(rec.id || '') + ' | messages=' + (Array.isArray(rec.messages) ? rec.messages.length : 0);
@@ -12883,7 +13408,7 @@ function injectSidebarAIHtml() {
         getAiSettings().then(function (s) {
             applyImageUploadFeatureVisibility(s || { imageUploadEnabled: false });
         });
-        if (typeof lucide !== 'undefined') lucide.createIcons();
+        refreshLucideIcons(inner);
         return true;
     };
     const tryFetch = function (u) {
@@ -13363,14 +13888,14 @@ function applySettingsModalFullscreenUI() {
         if (btn) {
             btn.innerHTML = '<i data-lucide="square" class="w-4 h-4"></i>';
             btn.title = '전체화면 해제';
-            try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch (e) {}
+            refreshLucideIcons(btn);
         }
     } else {
         if (compactBtn) compactBtn.disabled = false;
         if (btn) {
             btn.innerHTML = '<i data-lucide="square" class="w-4 h-4"></i>';
             btn.title = '전체화면';
-            try { if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons(); } catch (e) {}
+            refreshLucideIcons(btn);
         }
     }
 }
@@ -13719,6 +14244,7 @@ function saveToDB() {
 
 // Global exports for inline HTML handlers
 window.toggleTheme = toggleTheme;
+window.setMermaidDisplayMode = setMermaidDisplayMode;
 window.toggleEditorLightMode = toggleEditorLightMode;
 window.toggleMiniPreview = toggleMiniPreview;
 window.toggleMiniPreviewFullscreen = toggleMiniPreviewFullscreen;
@@ -13757,6 +14283,22 @@ window.openMoveModal = openMoveModal;
 window.closeMoveModal = closeMoveModal;
 window.moveDocToFolder = moveDocToFolder;
 window.performAutoSave = performAutoSave;
+window.__mdPerformanceDebug = Object.freeze({
+    getAutoSaveStats: function () {
+        return Object.assign({ pending: !!pendingAutoSaveKey }, autoSaveStats);
+    },
+    getRenderStats: function () {
+        return Object.assign({}, renderPreparationStats);
+    },
+    getCoordinatorStats: function () {
+        return renderCoordinator && typeof renderCoordinator.getStats === 'function'
+            ? renderCoordinator.getStats()
+            : null;
+    },
+    getOptionalScriptKeys: function () {
+        return Array.from(optionalScriptLoads.keys());
+    }
+});
 window.setLiveRenderInEditMode = setLiveRenderInEditMode;
 window.checkAutoSave = checkAutoSave;
 window.applyRecovery = applyRecovery;
@@ -13797,6 +14339,7 @@ window.adjustHeaderScale = adjustHeaderScale;
 window.adjustEditorHorizontalShift = adjustEditorHorizontalShift;
 window.resetEditorHorizontalShift = resetEditorHorizontalShift;
 configureScholarSearchShellBridge();
+window.openScholarSearchModal = openScholarSearchModalLazy;
 window.toggleTemplatePanel = toggleTemplatePanel;
 window.closeTemplatePanel = closeTemplatePanel;
 window.toggleTemplateCompactMode = toggleTemplateCompactMode;

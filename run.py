@@ -18,6 +18,7 @@ PREFERRED_PORT = int(os.environ.get("MD_VIEWER_PORT", "8765"))
 DIR = os.path.dirname(os.path.abspath(__file__))
 HOST = os.environ.get("MD_VIEWER_HOST", "127.0.0.1").strip() or "127.0.0.1"
 OPEN_BROWSER = os.environ.get("MD_VIEWER_NO_BROWSER", "").strip().lower() not in {"1", "true", "yes"}
+CACHE_MODE = os.environ.get("MD_VIEWER_CACHE_MODE", "release").strip().lower()
 
 os.chdir(DIR)
 
@@ -39,6 +40,29 @@ SQLITE_API = SqliteApiRouter(DIR, manager=SQLITE_MANAGER)
 class Handler(http.server.SimpleHTTPRequestHandler):
     IMAGE_PROXY_PATH = "/__mdviewer_image_proxy"
     IMAGE_PROXY_LIMIT = 30 * 1024 * 1024
+
+    def send_header(self, keyword, value):
+        if str(keyword).lower() == "cache-control":
+            self._mdviewer_cache_control_sent = True
+        super().send_header(keyword, value)
+
+    def _default_cache_control(self):
+        parsed = urllib.parse.urlsplit(self.path)
+        path = parsed.path.lower()
+        if path.startswith("/__mdviewer_"):
+            return "no-store"
+        if CACHE_MODE in {"dev", "development", "no-cache"}:
+            return "no-store, no-cache, must-revalidate"
+        if path in {"", "/"} or path.endswith((".html", ".htm")):
+            return "no-cache, must-revalidate"
+        extension = os.path.splitext(path)[1]
+        if parsed.query and extension in {".js", ".css", ".woff", ".woff2", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}:
+            return "public, max-age=31536000, immutable"
+        if extension in {".woff", ".woff2", ".ttf", ".otf", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".ico"}:
+            return "public, max-age=604800"
+        if extension in {".js", ".css"}:
+            return "public, max-age=300, must-revalidate"
+        return "no-cache, must-revalidate"
 
     @staticmethod
     def _validate_public_image_url(raw_url):
@@ -131,7 +155,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_error(404, "Not Found")
 
     def end_headers(self):
-        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate')
+        if not getattr(self, "_mdviewer_cache_control_sent", False):
+            self.send_header("Cache-Control", self._default_cache_control())
         super().end_headers()
 
 class ReusableTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):

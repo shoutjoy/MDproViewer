@@ -263,6 +263,38 @@ require(path.join(root, 'js', 'storage', 'indexeddb-migration.js'));
     await global.MDPStorage.requestMode('indb');
     assert.equal(global.localStorage.getItem(global.MDPStorage.MODE_KEY), 'indb');
 
+    const inDbAdapter = global.MDPStorage.getActiveAdapter();
+    const originalInDbMethods = {
+        health: inDbAdapter.health,
+        uploadWorkFile: inDbAdapter.uploadWorkFile,
+        listWorkFiles: inDbAdapter.listWorkFiles,
+        downloadWorkFile: inDbAdapter.downloadWorkFile
+    };
+    inDbAdapter.health = async function () {
+        return { available: true, backend: 'indb', capabilities: { workFiles: true } };
+    };
+    inDbAdapter.uploadWorkFile = async function (_file, options) {
+        return { id: 'work_indb_fallback', name: options.fileName, createdAt: 1 };
+    };
+    inDbAdapter.listWorkFiles = async function () {
+        return { items: [{ id: 'work_indb_fallback', name: 'fallback.md', createdAt: 1 }], total: 1 };
+    };
+    inDbAdapter.downloadWorkFile = async function () { return new Blob(['inDB fallback']); };
+
+    global.localStorage.setItem(global.MDPStorage.SQLITE_FEATURE_KEY, '0');
+    capabilities.workFiles = false;
+    const fallbackSaved = await global.MDPStorage.saveScholarSqliteWorkFile(
+        new Blob(['fallback']),
+        { appId: 'scholarsearch', workType: 'crossref_markdown', fileName: 'fallback.md' }
+    );
+    assert.equal(fallbackSaved.storageBackend, 'indb', 'unavailable SQLite must fall back to inDB');
+    const fallbackItems = await global.MDPStorage.listScholarSqliteWorkFiles({ appId: 'scholarsearch' });
+    assert.equal(fallbackItems.items[0].storageBackend, 'indb');
+    const fallbackBlob = await global.MDPStorage.loadScholarSqliteWorkFile(fallbackItems.items[0]);
+    assert.equal(await fallbackBlob.text(), 'inDB fallback');
+
+    Object.assign(inDbAdapter, originalInDbMethods);
+    global.localStorage.setItem(global.MDPStorage.SQLITE_FEATURE_KEY, '1');
     capabilities.workFiles = true;
     const directSqliteArtifacts = await global.MDPStorage.listSqliteWorkFiles({
         appId: 'scholarsearch', workType: 'crossref_markdown', limit: 30

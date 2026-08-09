@@ -3,6 +3,7 @@
 
     const MODE_KEY = 'mdpro_storage_mode_v1';
     const SQLITE_BACKEND_KEY = 'mdpro_sqlite_backend_v1';
+    const SQLITE_FEATURE_KEY = 'mdpro_sqlite_feature_enabled_v1';
     const DEFAULT_SQLITE_BACKEND = 'wasm';
     const MODES = Object.freeze({ INDB: 'indb', SQLITE: 'sqlite' });
     const listeners = new Set();
@@ -627,13 +628,22 @@
     }
 
     function sqliteWorkFileBackendName(adapter) {
+        if (adapter === indexedDbAdapter) return 'indb';
         if (adapter === sqliteWasmAdapter) return 'wasm-opfs';
         if (adapter === sqliteApiAdapter) return 'api';
         return String(adapter && adapter.backend || 'sqlite');
     }
 
+    function scholarSqliteFeatureEnabled() {
+        try { return root.localStorage.getItem(SQLITE_FEATURE_KEY) === '1'; } catch (_) { return false; }
+    }
+
     function scholarSqliteWorkFileAdapters(preferredBackend) {
-        const all = [sqliteAdapter, sqliteWasmAdapter, sqliteApiAdapter].filter(Boolean);
+        // Scholar work files prefer SQLite, but always keep inDB as the durable browser fallback.
+        const sqliteAdapters = scholarSqliteFeatureEnabled()
+            ? [sqliteAdapter, sqliteWasmAdapter, sqliteApiAdapter]
+            : [];
+        const all = sqliteAdapters.concat([indexedDbAdapter]).filter(Boolean);
         const unique = all.filter(function (adapter, index) { return all.indexOf(adapter) === index; });
         if (!preferredBackend) return unique;
         return unique.sort(function (left, right) {
@@ -668,7 +678,7 @@
             }
         }
         const failure = errors[errors.length - 1];
-        throw failure || new Error('학술검색용 SQLite 저장소를 사용할 수 없습니다.');
+        throw failure || new Error('학술검색용 STORAGE(SQLite/inDB)를 사용할 수 없습니다.');
     }
 
     async function listScholarSqliteWorkFiles(options) {
@@ -695,7 +705,7 @@
         }
         if (!successCount) {
             const failure = errors[errors.length - 1];
-            throw failure || new Error('학술검색용 SQLite 저장소를 사용할 수 없습니다.');
+            throw failure || new Error('학술검색용 STORAGE(SQLite/inDB)를 사용할 수 없습니다.');
         }
         items.sort(function (left, right) {
             return Number(right.createdAt || right.modifiedAt || 0) - Number(left.createdAt || left.modifiedAt || 0);
@@ -720,13 +730,45 @@
             }
         }
         const failure = errors[errors.length - 1];
-        throw failure || new Error('저장된 학술검색 문서를 불러올 수 없습니다.');
+        throw failure || new Error('저장된 학술검색 문서를 SQLite/inDB에서 불러올 수 없습니다.');
+    }
+
+    async function requireScholarInDbWorkFiles() {
+        if (!initialized || !indexedDbAdapter) throw new Error('inDB 저장소가 초기화되지 않았습니다.');
+        if (!await scholarAdapterSupportsWorkFiles(indexedDbAdapter)) {
+            throw new Error('inDB 작업파일 저장소를 사용할 수 없습니다.');
+        }
+        return indexedDbAdapter;
+    }
+
+    async function saveScholarInDbWorkFile(file, options) {
+        const adapter = await requireScholarInDbWorkFiles();
+        const result = await adapter.uploadWorkFile(file, options || {});
+        return Object.assign({}, result || {}, { storageBackend: 'indb' });
+    }
+
+    async function listScholarInDbWorkFiles(options) {
+        const adapter = await requireScholarInDbWorkFiles();
+        const result = await adapter.listWorkFiles(options || {});
+        const items = result && Array.isArray(result.items) ? result.items : [];
+        return {
+            items: items.map(function (item) {
+                return Object.assign({}, item, { storageBackend: 'indb' });
+            }),
+            total: Number(result && result.total || items.length)
+        };
+    }
+
+    async function loadScholarInDbWorkFile(item) {
+        const adapter = await requireScholarInDbWorkFiles();
+        return adapter.downloadWorkFile(item);
     }
 
     root.MDPStorage = {
         MODES: MODES,
         MODE_KEY: MODE_KEY,
         SQLITE_BACKEND_KEY: SQLITE_BACKEND_KEY,
+        SQLITE_FEATURE_KEY: SQLITE_FEATURE_KEY,
         DEFAULT_SQLITE_BACKEND: DEFAULT_SQLITE_BACKEND,
         initialize: initialize,
         requestMode: requestMode,
@@ -799,6 +841,9 @@
         saveScholarSqliteWorkFile: saveScholarSqliteWorkFile,
         listScholarSqliteWorkFiles: listScholarSqliteWorkFiles,
         loadScholarSqliteWorkFile: loadScholarSqliteWorkFile,
+        saveScholarInDbWorkFile: saveScholarInDbWorkFile,
+        listScholarInDbWorkFiles: listScholarInDbWorkFiles,
+        loadScholarInDbWorkFile: loadScholarInDbWorkFile,
         getRecoveryStatus: function () { return { ...recoveryStatus }; },
         listDocuments: function (options) { return callActive('listDocuments', [options]); },
         searchDocuments: function (query, options) { return callActive('searchDocuments', [query, options]); },

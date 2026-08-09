@@ -1,4 +1,4 @@
-const PREVIEW_MERMAID_THEME_VARIABLES = {
+const PREVIEW_MERMAID_LIGHT_THEME_VARIABLES = {
     fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif',
     fontSize: '15px',
     primaryColor: '#ffffff',
@@ -25,6 +25,51 @@ const PREVIEW_MERMAID_THEME_VARIABLES = {
     noteTextColor: '#3b2f20',
     noteBorderColor: '#fed7aa'
 };
+const PREVIEW_MERMAID_DARK_THEME_VARIABLES = {
+    fontFamily: '"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo","Segoe UI",sans-serif',
+    fontSize: '15px',
+    primaryColor: '#1e293b',
+    primaryTextColor: '#e2e8f0',
+    primaryBorderColor: '#64748b',
+    lineColor: '#94a3b8',
+    secondaryColor: '#172033',
+    tertiaryColor: '#273449',
+    background: '#0f172a',
+    mainBkg: '#1e293b',
+    secondBkg: '#172033',
+    tertiaryBkg: '#273449',
+    nodeBorder: '#64748b',
+    clusterBkg: '#172033',
+    clusterBorder: '#475569',
+    edgeLabelBackground: '#0f172a',
+    textColor: '#e2e8f0',
+    titleColor: '#f8fafc',
+    labelTextColor: '#e2e8f0',
+    actorBkg: '#1e293b',
+    actorBorder: '#64748b',
+    actorTextColor: '#e2e8f0',
+    noteBkgColor: '#422006',
+    noteTextColor: '#ffedd5',
+    noteBorderColor: '#c2410c'
+};
+
+function isPreviewPopupDarkTheme() {
+    return document.documentElement.classList.contains('dark');
+}
+
+function getPreviewPopupMermaidDisplayMode() {
+    try {
+        return localStorage.getItem('md_viewer_mermaid_display_mode') === 'fixed' ? 'fixed' : 'interactive';
+    } catch (_) {
+        return 'interactive';
+    }
+}
+
+function syncPreviewPopupTheme() {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    if (doc && doc.documentElement) doc.documentElement.classList.toggle('dark', isPreviewPopupDarkTheme());
+}
 
 let previewPopupFileMode = false;
 let previewPopupFileObjectUrl = '';
@@ -201,12 +246,13 @@ function escapeHtmlForPreview(text) {
 }
 
 function getPreviewPopupDocumentHtml() {
+    const popupThemeClass = isPreviewPopupDarkTheme() ? ' class="dark"' : '';
     const mathHead = (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.getHeadTags === 'function')
         ? MathRender.getHeadTags({
             scriptUrl: new URL('./js/math_render/math_render.js?v=20260725-stable-math-1', window.location.href).href
         })
         : '';
-    return '<!doctype html><html lang="ko"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MDproViewer Preview</title>'
+    return '<!doctype html><html lang="ko"' + popupThemeClass + '><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>MDproViewer Preview</title>'
         + mathHead
         + '<style>'
         + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;}'
@@ -217,13 +263,25 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-viewport{height:100%;overflow:auto;padding:20px;padding-top:72px;box-sizing:border-box;}'
         + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;margin:0 auto;width:100%;max-width:56rem;}'
         + '#pv-content .trt-mermaid-wrapper{position:relative;display:block;box-sizing:border-box;width:100%;min-height:240px;padding:52px 14px 14px;margin:1rem 0;overflow:hidden;border:1px solid #cbd5e1;border-radius:8px;background:#fff;}'
-        + '#pv-content .trt-pv-mermaid-viewport{width:100%;overflow:auto;background:#fff;}'
-        + '#pv-content .trt-pv-mermaid-canvas{display:block;width:100%;min-width:0;}'
-        + '#pv-content .trt-pv-mermaid-canvas svg{display:block;margin:0 auto;max-width:none!important;height:auto!important;transform-origin:top center;}'
+        + '#pv-content .trt-mermaid-wrapper[data-mermaid-mode="fixed"]{min-height:0;}'
+        + '#pv-content .trt-pv-mermaid-viewport{width:100%;overflow:auto;background:transparent;}'
+        + '#pv-content .trt-pv-mermaid-canvas{display:block;width:100%;min-width:0;overflow:visible;}'
+        + '#pv-content .trt-pv-mermaid-canvas svg{display:block;margin:0 auto;max-width:none!important;height:auto!important;overflow:visible;transform-origin:top center;}'
         + '#pv-content .trt-pv-mermaid-controls{position:absolute;top:10px;right:10px;z-index:20;display:flex;align-items:center;gap:5px;}'
         + '#pv-content .trt-pv-mermaid-btn{min-width:32px;height:30px;padding:0 7px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#334155;font:700 13px/1 Arial,sans-serif;cursor:pointer;}'
         + '#pv-content .trt-pv-mermaid-btn:hover{background:#eef2ff;border-color:#a5b4fc;color:#3730a3;}'
         + '#pv-content .trt-pv-mermaid-scale{min-width:46px;text-align:center;color:#334155;font-size:12px;font-weight:700;}'
+        + 'html.dark body{background:#020617;color:#e2e8f0;}'
+        + 'html.dark #pv-toolbar{background:#0f172a;border-color:#334155;color:#e2e8f0;}'
+        + 'html.dark #pv-toolbar button{background:#1e293b;border-color:#64748b;color:#e2e8f0;}'
+        + 'html.dark #pv-toolbar .label{color:#cbd5e1;}'
+        + 'html.dark #pv-content .trt-mermaid-wrapper{background:#0f172a;border-color:#475569;}'
+        + 'html.dark #pv-content .trt-pv-mermaid-btn{background:#1e293b;border-color:#64748b;color:#e2e8f0;}'
+        + 'html.dark #pv-content .trt-pv-mermaid-btn:hover{background:#312e81;border-color:#818cf8;color:#eef2ff;}'
+        + 'html.dark #pv-content .trt-pv-mermaid-scale{color:#cbd5e1;}'
+        + 'html.dark #pv-content code,html.dark #pv-content pre{background:#172033;color:#e2e8f0;}'
+        + 'html.dark #pv-content thead th{background:#1e293b;}'
+        + 'html.dark #pv-content .md-footnotes{color:#cbd5e1;}'
         + '#pv-content h1{font-size:2.25rem;font-weight:800;margin-top:1.5rem;margin-bottom:1rem;border-bottom:1px solid #e2e8f0;padding-bottom:.5rem;}'
         + '#pv-content h2{font-size:1.875rem;font-weight:700;margin-top:1.25rem;margin-bottom:.75rem;border-bottom:1px solid #e2e8f0;padding-bottom:.3rem;}'
         + '#pv-content h3{font-size:1.5rem;font-weight:600;margin-top:1rem;margin-bottom:.5rem;}'
@@ -368,6 +426,35 @@ function restorePreviewPopupSankeyLabels(wrapper) {
     }
 }
 
+function configurePreviewPopupMermaid(win) {
+    if (!win || !win.mermaid || typeof win.mermaid.initialize !== 'function') return;
+    const dark = isPreviewPopupDarkTheme();
+    win.mermaid.initialize({
+        startOnLoad: false,
+        suppressErrorRendering: true,
+        securityLevel: 'loose',
+        theme: 'base',
+        flowchart: {
+            useMaxWidth: true,
+            htmlLabels: true,
+            padding: 20,
+            nodeSpacing: 50,
+            rankSpacing: 50
+        },
+        themeVariables: dark ? PREVIEW_MERMAID_DARK_THEME_VARIABLES : PREVIEW_MERMAID_LIGHT_THEME_VARIABLES
+    });
+}
+
+function waitForPreviewPopupMermaidFonts() {
+    if (!isPreviewPopupAlive()) return Promise.resolve();
+    const fonts = previewPopupWindow.document.fonts;
+    if (!fonts || !fonts.ready) return Promise.resolve();
+    return Promise.race([
+        fonts.ready.catch(function () {}),
+        new Promise(function (resolve) { setTimeout(resolve, 800); })
+    ]);
+}
+
 async function loadMermaidInPreviewPopup() {
     if (!isPreviewPopupAlive()) return null;
     const win = previewPopupWindow;
@@ -380,14 +467,7 @@ async function loadMermaidInPreviewPopup() {
         const done = function () {
             try {
                 if (!win.mermaid) throw new Error('Mermaid was not loaded in PV window.');
-                win.mermaid.initialize({
-                    startOnLoad: false,
-                    suppressErrorRendering: true,
-                    securityLevel: 'loose',
-                    theme: 'default',
-                    flowchart: { useMaxWidth: true, htmlLabels: true },
-                    themeVariables: PREVIEW_MERMAID_THEME_VARIABLES
-                });
+                configurePreviewPopupMermaid(win);
                 win.__mdvMermaidReady = true;
                 resolve(win.mermaid);
             } catch (e) {
@@ -416,21 +496,64 @@ async function loadMermaidInPreviewPopup() {
     return previewPopupMermaidLoadPromise;
 }
 
+function expandPreviewPopupMermaidSvgBounds(svg) {
+    if (!svg || svg.getAttribute('data-mdv-bounds-expanded') === '1') return;
+    svg.setAttribute('data-mdv-bounds-expanded', '1');
+    svg.style.overflow = 'visible';
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    const rawViewBox = String(svg.getAttribute('viewBox') || '').trim();
+    const viewBox = rawViewBox.split(/[\s,]+/).map(Number);
+    if (viewBox.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0 && viewBox[3] > 0) {
+        const padX = Math.max(14, Math.min(30, viewBox[2] * 0.025));
+        const padY = Math.max(14, Math.min(30, viewBox[3] * 0.025));
+        svg.setAttribute('viewBox', [
+            viewBox[0] - padX,
+            viewBox[1] - padY,
+            viewBox[2] + (padX * 2),
+            viewBox[3] + (padY * 2)
+        ].join(' '));
+    }
+    const foreignObjects = svg.querySelectorAll('foreignObject');
+    for (let i = 0; i < foreignObjects.length; i++) {
+        const foreignObject = foreignObjects[i];
+        const x = Number(foreignObject.getAttribute('x'));
+        const y = Number(foreignObject.getAttribute('y'));
+        const width = Number(foreignObject.getAttribute('width'));
+        const height = Number(foreignObject.getAttribute('height'));
+        if ([x, y, width, height].every(Number.isFinite) && width > 0 && height > 0) {
+            foreignObject.setAttribute('x', String(x - 7));
+            foreignObject.setAttribute('y', String(y - 4));
+            foreignObject.setAttribute('width', String(width + 14));
+            foreignObject.setAttribute('height', String(height + 8));
+        }
+        foreignObject.style.overflow = 'visible';
+    }
+}
+
 function polishPreviewPopupMermaidSvg(wrapper) {
     const doc = previewPopupWindow && previewPopupWindow.document;
     const svg = wrapper && wrapper.querySelector ? wrapper.querySelector('svg') : null;
-    if (!doc || !svg || svg.querySelector('style[data-mdv-mermaid-polish="1"]')) return;
+    if (!doc || !svg) return;
+    expandPreviewPopupMermaidSvgBounds(svg);
+    if (svg.querySelector('style[data-mdv-mermaid-polish="1"]')) return;
+    const dark = isPreviewPopupDarkTheme();
+    const lineColor = dark ? '#94a3b8' : '#64748b';
+    const textColor = dark ? '#e2e8f0' : '#334155';
+    const shadowColor = dark ? 'rgba(0,0,0,.28)' : 'rgba(15,23,42,.10)';
     svg.style.display = 'block';
     svg.style.marginLeft = 'auto';
     svg.style.marginRight = 'auto';
     const style = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
     style.setAttribute('data-mdv-mermaid-polish', '1');
     style.textContent = [
-        '.node rect,.node polygon,.node circle,.node ellipse{filter:drop-shadow(0 8px 18px rgba(15,23,42,.10));stroke-width:1.4px;}',
-        '.node .label,.nodeLabel,.edgeLabel,.label{font-weight:600;letter-spacing:0;}',
-        '.edgeLabel{border-radius:8px;color:#334155;}',
-        '.flowchart-link{stroke:#64748b !important;stroke-width:1.9px;}',
-        'marker path,path.arrowMarkerPath{fill:#64748b !important;stroke:#64748b !important;}',
+        '.node rect,.node polygon,.node circle,.node ellipse{filter:drop-shadow(0 8px 18px ' + shadowColor + ');stroke-width:1.4px;}',
+        '.node .label,.nodeLabel,.edgeLabel,.label{font-weight:600;letter-spacing:0;overflow:visible!important;}',
+        'foreignObject,foreignObject>div{overflow:visible!important;}',
+        '.nodeLabel p,.edgeLabel p,.label p{margin:0!important;overflow:visible!important;}',
+        'text,tspan{overflow:visible;}',
+        '.edgeLabel{border-radius:8px;color:' + textColor + ';}',
+        '.flowchart-link{stroke:' + lineColor + ' !important;stroke-width:1.9px;}',
+        'marker path,path.arrowMarkerPath{fill:' + lineColor + ' !important;stroke:' + lineColor + ' !important;}',
         '.cluster rect{stroke-dasharray:0;}'
     ].join('\n');
     svg.insertBefore(style, svg.firstChild);
@@ -441,17 +564,56 @@ function getPreviewPopupMermaidScale(wrapper) {
     return Number.isFinite(current) && current > 0 ? current : 1;
 }
 
+function getPreviewPopupMermaidNaturalWidth(svg) {
+    if (!svg) return 0;
+    const viewBox = String(svg.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+    if (viewBox.length === 4 && viewBox.every(Number.isFinite) && viewBox[2] > 0) return viewBox[2];
+    const width = Number.parseFloat(svg.getAttribute('width'));
+    return Number.isFinite(width) && width > 0 ? width : 0;
+}
+
 function applyPreviewPopupMermaidScale(wrapper, nextScale) {
     if (!wrapper || !wrapper.querySelector) return;
     const svg = wrapper.querySelector('svg');
-    if (!svg) return;
-    const scale = Math.max(0.25, Math.min(3, Math.round((Number(nextScale) || 1) * 100) / 100));
+    const viewport = wrapper.querySelector('.trt-pv-mermaid-viewport');
+    if (!svg || !viewport) return;
+    const scale = Math.max(0.5, Math.min(1.6, Math.round((Number(nextScale) || 1) * 10) / 10));
+    const availableWidth = Math.max(160, viewport.clientWidth || wrapper.clientWidth - 28 || 760);
+    const naturalWidth = getPreviewPopupMermaidNaturalWidth(svg) || availableWidth;
+    const fittedBaseWidth = Math.min(naturalWidth, availableWidth * 0.86);
+    const displayWidth = Math.max(80, Math.min(availableWidth * 1.6, fittedBaseWidth * scale));
     wrapper.setAttribute('data-pv-mermaid-scale', String(scale));
-    svg.style.setProperty('width', Math.round(scale * 100) + '%', 'important');
+    svg.style.setProperty('width', Math.round(displayWidth) + 'px', 'important');
     svg.style.setProperty('height', 'auto', 'important');
     svg.style.setProperty('max-width', 'none', 'important');
+    svg.style.setProperty('transform', 'none', 'important');
     const label = wrapper.querySelector('.trt-pv-mermaid-scale');
     if (label) label.textContent = Math.round(scale * 100) + '%';
+}
+
+function bindPreviewPopupMermaidResize(wrapper) {
+    const win = previewPopupWindow;
+    if (!win || !wrapper || wrapper.__mdvPvResizeBound || typeof win.ResizeObserver === 'undefined') return;
+    const viewport = wrapper.querySelector('.trt-pv-mermaid-viewport');
+    if (!viewport) return;
+    wrapper.__mdvPvResizeBound = true;
+    let frame = 0;
+    let lastWidth = Math.round(viewport.getBoundingClientRect().width * 10) / 10;
+    const observer = new win.ResizeObserver(function (entries) {
+        const entry = entries && entries[0];
+        const width = entry && entry.contentRect
+            ? Math.round(entry.contentRect.width * 10) / 10
+            : Math.round(viewport.getBoundingClientRect().width * 10) / 10;
+        if (Math.abs(width - lastWidth) < 0.5) return;
+        lastWidth = width;
+        if (frame) win.cancelAnimationFrame(frame);
+        frame = win.requestAnimationFrame(function () {
+            frame = 0;
+            applyPreviewPopupMermaidScale(wrapper, getPreviewPopupMermaidScale(wrapper));
+        });
+    });
+    observer.observe(viewport);
+    wrapper.__mdvPvResizeObserver = observer;
 }
 
 function addPreviewPopupMermaidControls(wrapper) {
@@ -460,10 +622,10 @@ function addPreviewPopupMermaidControls(wrapper) {
     const controls = doc.createElement('div');
     controls.className = 'trt-pv-mermaid-controls';
 
-    function addButton(text, title, action) {
+    function addButton(text, title, action, extraClass) {
         const button = doc.createElement('button');
         button.type = 'button';
-        button.className = 'trt-pv-mermaid-btn';
+        button.className = 'trt-pv-mermaid-btn' + (extraClass ? (' ' + extraClass) : '');
         button.textContent = text;
         button.title = title;
         button.addEventListener('click', function (event) {
@@ -474,12 +636,15 @@ function addPreviewPopupMermaidControls(wrapper) {
         controls.appendChild(button);
     }
 
-    addButton('↔', 'PV 너비에 맞춤', function () {
-        applyPreviewPopupMermaidScale(wrapper, 1);
-    });
-    addButton('R', '도표 크기 초기화', function () {
-        applyPreviewPopupMermaidScale(wrapper, 1);
-    });
+    const fixed = wrapper.getAttribute('data-mermaid-mode') === 'fixed';
+    if (!fixed) {
+        addButton('↔', 'PV 너비에 맞춤', function () {
+            applyPreviewPopupMermaidScale(wrapper, 1);
+        });
+        addButton('R', '도표 크기 초기화', function () {
+            applyPreviewPopupMermaidScale(wrapper, 1);
+        });
+    }
     addButton('−', '도표 축소', function () {
         applyPreviewPopupMermaidScale(wrapper, getPreviewPopupMermaidScale(wrapper) - 0.1);
     });
@@ -492,8 +657,14 @@ function addPreviewPopupMermaidControls(wrapper) {
     addButton('+', '도표 확대', function () {
         applyPreviewPopupMermaidScale(wrapper, getPreviewPopupMermaidScale(wrapper) + 0.1);
     });
+    if (fixed) {
+        addButton('맞춤', '문서 너비에 맞는 기본 크기', function () {
+            applyPreviewPopupMermaidScale(wrapper, 1);
+        }, 'trt-pv-mermaid-fit');
+    }
 
     wrapper.appendChild(controls);
+    bindPreviewPopupMermaidResize(wrapper);
     applyPreviewPopupMermaidScale(wrapper, 1);
 }
 
@@ -501,6 +672,8 @@ async function renderMermaidInPreviewPopup(root) {
     if (!isPreviewPopupAlive() || !root) return;
     const win = previewPopupWindow;
     const doc = win.document;
+    syncPreviewPopupTheme();
+    const displayMode = getPreviewPopupMermaidDisplayMode();
     const codeNodes = root.querySelectorAll('pre > code.language-mermaid, pre > code.lang-mermaid, pre > code.mermaid');
     if (!codeNodes.length) return;
 
@@ -516,6 +689,8 @@ async function renderMermaidInPreviewPopup(root) {
         const wrapper = doc.createElement('div');
         wrapper.className = 'trt-mermaid-wrapper my-3';
         wrapper.setAttribute('data-mermaid-source', source);
+        wrapper.setAttribute('data-mermaid-original-source', String(codeEl.textContent || '').trim());
+        wrapper.setAttribute('data-mermaid-mode', displayMode);
         if (prep && prep.labelMap) wrapper.setAttribute('data-sankey-label-map', JSON.stringify(prep.labelMap));
         const viewport = doc.createElement('div');
         viewport.className = 'trt-pv-mermaid-viewport';
@@ -530,6 +705,8 @@ async function renderMermaidInPreviewPopup(root) {
 
     if (!targets.length) return;
     await loadMermaidInPreviewPopup();
+    await waitForPreviewPopupMermaidFonts();
+    configurePreviewPopupMermaid(win);
 
     for (let i = 0; i < targets.length; i++) {
         const item = targets[i];
@@ -612,35 +789,28 @@ function getPreviewPopupSourceMarkdown() {
 async function updatePreviewPopupContent() {
     if (!isPreviewPopupAlive()) return;
     if (previewPopupFileMode) return;
+    syncPreviewPopupTheme();
     const token = ++previewPopupRenderToken;
     const raw = getPreviewPopupSourceMarkdown();
+    const snapshot = prepareMarkdownRenderSnapshot(raw);
+    const renderRaw = snapshot.renderSource;
     const htmlDocument = (typeof getRenderableHtmlDocument === 'function')
-        ? getRenderableHtmlDocument(raw)
+        ? getRenderableHtmlDocument(renderRaw)
         : null;
     let html = '';
 
     try {
         revokeObjectUrls(previewInternalImageObjectUrls);
         if (htmlDocument === null) {
-            const resolvedRaw = await resolveInternalMarkdownImagesForPreview(raw);
-            const preprocessed = preprocessMarkdownForView(resolvedRaw);
-            if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.renderMarkdownSafe === 'function') {
-                html = await MathRender.renderMarkdownSafe(
-                    (typeof marked !== 'undefined' && marked.parse) ? marked : null,
-                    preprocessed,
-                    { fallbackText: resolvedRaw }
-                );
-            } else if (typeof marked === 'undefined' || !marked.parse) {
-                html = '<p>' + escapeHtmlForPreview(resolvedRaw).replace(/\n/g, '<br>') + '</p>';
-            } else {
-                html = marked.parse(preprocessed);
-            }
+            html = await renderMarkdownSnapshotToHtml(snapshot);
         }
     } catch (e) {
-        html = '<p>' + escapeHtmlForPreview(raw).replace(/\n/g, '<br>') + '</p>';
+        html = '<p>' + escapeHtmlForPreview(renderRaw).replace(/\n/g, '<br>') + '</p>';
     }
 
-    if (token !== previewPopupRenderToken || !isPreviewPopupAlive()) return;
+    if (token !== previewPopupRenderToken
+        || !isPreviewPopupAlive()
+        || !isMarkdownRenderSnapshotCurrent(snapshot)) return;
     const target = previewPopupWindow.document.getElementById('pv-content');
     if (!target) {
         setTimeout(function () {
@@ -662,13 +832,27 @@ async function updatePreviewPopupContent() {
     if (typeof setHtmlDocumentMode === 'function') setHtmlDocumentMode(target, false);
     target.innerHTML = html;
     try {
-        if (typeof applyDoiLinkTargets === 'function') applyDoiLinkTargets(target);
+        if (snapshot.features.hasDoiLinks && typeof applyDoiLinkTargets === 'function') {
+            applyDoiLinkTargets(target);
+        }
     } catch (_) {}
-    try { await hydrateInternalImagesInElement(target, registerPreviewInternalObjectUrl); } catch (e) {}
-    if (typeof MathRender !== 'undefined' && MathRender && typeof MathRender.typesetElement === 'function') {
-        try { await MathRender.typesetElement(target); } catch (e) {}
+    try {
+        if (snapshot.features.hasInternalImages) {
+            await hydrateInternalImagesInElement(target, registerPreviewInternalObjectUrl);
+        }
+    } catch (e) {}
+    if (snapshot.features.hasMath
+        && typeof MathRender !== 'undefined'
+        && MathRender
+        && typeof MathRender.typesetElement === 'function') {
+        try {
+            if (typeof window.ensureMdMathEngineLoaded === 'function') await window.ensureMdMathEngineLoaded();
+            await MathRender.typesetElement(target);
+        } catch (e) {}
     }
-    try { await renderMermaidInPreviewPopup(target); } catch (e) {}
+    if (snapshot.features.hasMermaid) {
+        try { await renderMermaidInPreviewPopup(target); } catch (e) {}
+    }
     applyPreviewPopupViewport();
 }
 

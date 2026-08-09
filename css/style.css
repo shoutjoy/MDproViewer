@@ -353,6 +353,64 @@
         #content-viewport.editor-light-mode #viewer-edit-ta::placeholder {
             color: #94a3b8;
         }
+        #editor-doc-wrap.md-comment-editor-wrap {
+            position: relative;
+        }
+        #viewer-edit-highlight {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            box-sizing: border-box;
+            margin: 0;
+            border: 0;
+            overflow: hidden;
+            pointer-events: none;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            /* 입력 글자는 textarea가 즉시 그린다. 이 레이어는 주석 배경만 담당한다. */
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+            background: transparent;
+        }
+        #viewer-edit-highlight .md-editor-comment {
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+            background-color: rgba(245, 158, 11, 0.12);
+            border-radius: 0.2rem;
+        }
+        #viewer-edit-ta.md-comment-editor-input {
+            position: relative;
+            z-index: 1;
+            color: #e2e8f0 !important;
+            -webkit-text-fill-color: #e2e8f0;
+            caret-color: #e2e8f0;
+            background-color: transparent !important;
+        }
+        #viewer-edit-ta.md-comment-editor-input::placeholder {
+            color: #64748b;
+            -webkit-text-fill-color: #64748b;
+        }
+        #content-viewport.editor-light-mode #viewer-edit-highlight {
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+            background-color: #ffffff;
+        }
+        #content-viewport.editor-light-mode #viewer-edit-highlight .md-editor-comment {
+            color: transparent;
+            -webkit-text-fill-color: transparent;
+            background-color: rgba(217, 119, 6, 0.1);
+        }
+        #content-viewport.editor-light-mode #viewer-edit-ta.md-comment-editor-input {
+            color: #1e293b !important;
+            -webkit-text-fill-color: #1e293b;
+            caret-color: #0f172a;
+            background-color: transparent !important;
+        }
+        #content-viewport.editor-light-mode #viewer-edit-ta.md-comment-editor-input::placeholder {
+            color: #94a3b8;
+            -webkit-text-fill-color: #94a3b8;
+        }
         #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-track { background: #e2e8f0; }
         #content-viewport.editor-light-mode.custom-scrollbar::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #cbd5e1 0%, #94a3b8 100%); border-color: #e2e8f0; }
 
@@ -707,7 +765,8 @@
         }
 
         /* Mermaid Container Size Adjustment */
-        .trt-mermaid-wrapper, .trt-mermaid-viewport {
+        .trt-mermaid-wrapper:not([data-mermaid-mode="fixed"]),
+        .trt-mermaid-wrapper:not([data-mermaid-mode="fixed"]) .trt-mermaid-viewport {
             min-height: 500px !important;
         }
 

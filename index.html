@@ -5,10 +5,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MDproViewer</title>
-    <!-- Tailwind CSS for Styling -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tailwind 정적 빌드. 문제 진단 시 ?tailwindCdn=1 로 CDN fallback을 명시적으로 켤 수 있다. -->
+    <link rel="stylesheet" href="./css/tailwind-static.css?v=20260810-1">
     <script>
-        tailwind.config = { darkMode: 'class' }
+        if (new URLSearchParams(location.search).get('tailwindCdn') === '1') {
+            window.tailwind = window.tailwind || {};
+            window.tailwind.config = { darkMode: 'class' };
+            var tailwindFallback = document.createElement('script');
+            tailwindFallback.src = 'https://cdn.tailwindcss.com';
+            tailwindFallback.dataset.performanceFallback = 'tailwind-cdn';
+            document.head.appendChild(tailwindFallback);
+        }
     </script>
     <!-- Marked.js for MD Rendering -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -21,9 +28,9 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260810-copy-fab-drag-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260810-copy-fab-drag-1&amp;mermaidDisplay=20260810-1&amp;comment=20260810-2" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
-    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260806-ai-jena-1" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260810-ai-jena-button-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
@@ -959,7 +966,8 @@
                 <div id="content-viewport" class="relative h-full w-full flex justify-center bg-slate-900 dark:bg-slate-950 px-8 sm:px-12 md:px-16 pt-3 sm:pt-4 md:pt-5 pb-8 sm:pb-12 md:pb-16 viewer-edit-active">
                     
                                     
-                    <div id="editor-doc-wrap" class="w-full max-w-4xl h-full mx-auto flex flex-col">
+                    <div id="editor-doc-wrap" class="relative w-full max-w-4xl h-full mx-auto flex flex-col">
+                        <pre id="viewer-edit-highlight" aria-hidden="true"></pre>
                         <textarea id="viewer-edit-ta" spellcheck="false"
                         class="w-full max-w-4xl h-full bg-transparent text-slate-200 focus:outline-none custom-scrollbar text-lg leading-relaxed placeholder-slate-500 resize-none mx-auto"
                         placeholder="이곳에 마크다운 내용을 입력하세요..."></textarea>
@@ -1117,7 +1125,7 @@
                         class="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">닫기</button>
                 </div>
             </div>
-            <iframe id="mermaid-editor-frame" src="./js/mermaid/mermaid-editor/index.html?v=20260729-label-2"
+            <iframe id="mermaid-editor-frame" data-src="./js/mermaid/mermaid-editor/index.html?v=20260729-label-2"
                 class="w-full h-full border-0 bg-white dark:bg-slate-900" title="Mermaid Editor"></iframe>
         </div>
     </div>
@@ -1357,6 +1365,40 @@
                             기본값으로 초기화
                         </button>
                     </div>
+                </div>
+
+                <!-- Mermaid Display Setting -->
+                <div id="mermaid-display-settings-card"
+                    class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
+                    <h4
+                        class="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
+                        Mermaid 표시 방식</h4>
+                    <fieldset class="space-y-2">
+                        <legend class="sr-only">Mermaid 다이어그램 표시 방식</legend>
+                        <label
+                            class="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
+                            <input type="radio" name="mermaid-display-mode" value="interactive"
+                                onchange="setMermaidDisplayMode(this.value)"
+                                class="mt-0.5 border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                            <span>
+                                <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">인터랙티브 (현재 방식)</span>
+                                <span class="mt-0.5 block text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">이동, 확대·축소, 맞춤, 코드 복사와 크기 조절 도구를 표시합니다.</span>
+                            </span>
+                        </label>
+                        <label
+                            class="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
+                            <input type="radio" name="mermaid-display-mode" value="fixed"
+                                onchange="setMermaidDisplayMode(this.value)"
+                                class="mt-0.5 border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                            <span>
+                                <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">고정형</span>
+                                <span class="mt-0.5 block text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">이동 도구 없이 문서에 맞는 크기로 표시하며, 도표별 축소·확대·맞춤 기능을 제공합니다.</span>
+                            </span>
+                        </label>
+                    </fieldset>
+                    <p id="mermaid-display-mode-status"
+                        class="mt-3 text-[11px] leading-relaxed text-indigo-600 dark:text-indigo-300" aria-live="polite"></p>
+                    <p class="mt-1 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">다이어그램 배경과 색상은 앱의 라이트·다크 모드를 자동으로 따릅니다.</p>
                 </div>
 
                 <!-- Shortcuts Information -->
@@ -2114,7 +2156,7 @@
                 </div>
             </div>
             <div id="highlight-popup-body" class="flex-1 min-h-0">
-                <iframe id="highlight-popup-frame" src="./HighLights/Highlghts_index.html" onload="window.handleHighlightFrameLoad && window.handleHighlightFrameLoad()"
+                <iframe id="highlight-popup-frame" data-src="./HighLights/Highlghts_index.html" onload="window.handleHighlightFrameLoad && window.handleHighlightFrameLoad()"
                     class="w-full h-full border-0 bg-white dark:bg-slate-900" title="Highlight"></iframe>
             </div>
         </div>
@@ -2329,7 +2371,7 @@
             </div>
         </div>
         <div id="html2ppt-panel-body" class="flex-1 p-2 min-h-0">
-            <iframe id="html2ppt-frame" src="./js/Html2pptx/jenaEditor/index.html?v=20260806-sqlite-storage-1"
+            <iframe id="html2ppt-frame" data-src="./js/Html2pptx/jenaEditor/index.html?v=20260806-sqlite-storage-1"
                 class="w-full h-full border-0 rounded bg-white dark:bg-slate-900" title="GenSlide"></iframe>
         </div>
         <div id="html2ppt-panel-resizer" title="Resize"
@@ -2342,13 +2384,6 @@
      로컬 렌더링 모듈보다 먼저 실행되어야 함
 ========================================================= -->
 
-<!-- KaTeX -->
-<script
-    src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"
-    crossorigin="anonymous"
-    defer>
-</script>
-
 <!-- MathJax 설정 관리자: MathJax 본체보다 먼저 실행되어 $...$ 구분자를 등록해야 함 -->
 <script
     src="./js/math_render/math_render.js?v=20260725-stable-math-1"
@@ -2356,11 +2391,7 @@
     defer>
 </script>
 
-<!-- MathJax -->
-<script
-    src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js"
-    defer>
-</script>
+<!-- MathJax 본체는 수식이 있는 문서를 처음 렌더할 때 app.js가 지연 로드한다. -->
 
 
 <!-- =========================================================
@@ -2388,7 +2419,7 @@
     defer>
 </script>
 <script
-    src="./js/mermaid/mermaid_render.js?v=20260729-label-1"
+    src="./js/mermaid/mermaid_render.js?v=20260810-display-theme-4&amp;perfCache=20260810-1"
     charset="utf-8"
     defer>
 </script>
@@ -2469,26 +2500,7 @@
      6. 학술 참고문헌·논문 검색
 ========================================================= -->
 
-<!-- 참고문헌 데이터 처리 -->
-<script
-    src="./js/Scholarref/scholarref.js?v=20260806-scholar-sqlite-fallback-3"
-    charset="utf-8"
-    defer>
-</script>
-
-<!-- Scholar Search용 Crossref 검색·Markdown 변환 -->
-<script
-    src="./js/Scholarref/crossref-search.js?v=20260729-1"
-    charset="utf-8"
-    defer>
-</script>
-
-<!-- 학술검색 통합 셸 -->
-<script
-    src="./js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-explorer-button-4"
-    charset="utf-8"
-    defer>
-</script>
+<!-- 참고문헌·Crossref·학술검색 셸은 학술검색 최초 실행 시 app.js가 지연 로드한다. -->
 
 
 <!-- =========================================================
@@ -2549,19 +2561,7 @@
     defer>
 </script>
 
-<!-- DOCX 내보내기 -->
-<script
-    src="./js/extendFiles/docx-export.js?v=20260805-image-1"
-    charset="utf-8"
-    defer>
-</script>
-
-<!-- HTML 내보내기 -->
-<script
-    src="./js/export/html-export.js?v=20260805-image-1"
-    charset="utf-8"
-    defer>
-</script>
+<!-- DOCX/HTML 내보내기는 실제 내보내기 시점에 app.js가 지연 로드한다. -->
 
 
 <!-- =========================================================
@@ -2664,7 +2664,17 @@
 
 <!-- 미니 미리보기 -->
 <script
-    src="./js/UI_PV/minipv.js?v=20260810-sync-1"
+    src="./js/md-comment.js?v=20260810-1&amp;perf=20260810-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/render/render-coordinator.js?v=20260810-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/UI_PV/minipv.js?v=20260810-sync-directions-1&amp;comment=20260810-1&amp;perf=20260810-2"
     charset="utf-8"
     defer>
 </script>
@@ -2683,7 +2693,7 @@
 ========================================================= -->
 
 <script
-    src="./hotkey/hotkey.js"
+    src="./hotkey/hotkey.js?v=20260810-comment-1"
     charset="utf-8"
     defer>
 </script>
@@ -2693,18 +2703,14 @@
      12. 메인 애플리케이션
 ========================================================= -->
 
-<script
-    src="./vendor/mammoth/mammoth.browser.min.js?v=1.12.0"
-    charset="utf-8"
-    defer>
-</script>
+<!-- Mammoth는 DOCX 파일을 열 때만 app.js가 지연 로드한다. -->
 <script
     src="./sidebar_left/local-folder-explorer.js?v=20260806-local-folder-1"
     charset="utf-8"
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260810-unsaved-dirty-check-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260807-2&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1"
+    src="./js/app.js?v=20260810-unsaved-dirty-check-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260807-2&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260810-1&amp;perf=20260810-10"
     charset="utf-8"
     defer>
 </script>
@@ -2726,26 +2732,7 @@
     defer>
 </script>
 
-<!-- AI Jena 학술검색 -->
-<script
-    src="./AI_App/aiChat/academic-search.js?v=20260729-crossref-1"
-    charset="utf-8"
-    defer>
-</script>
-
-<!-- AI Jena Markdown 복사·미리보기 -->
-<script
-    src="./AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1"
-    charset="utf-8"
-    defer>
-</script>
-
-<!-- AI Jena -->
-<script
-    src="./AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1"
-    charset="utf-8"
-    defer>
-</script>
+<!-- AI Jena 모듈은 기능을 켜거나 패널을 처음 열 때 app.js가 지연 로드한다. -->
 
 <!-- GitHub 실제 기능 -->
 <script
@@ -2763,7 +2750,7 @@
 
 <!-- 편집기·미리보기 연동 -->
 <script
-    src="./js/UI_PV/editpv.js?v=20260806-image-open-1"
+    src="./js/UI_PV/editpv.js?v=20260806-image-open-1&amp;mermaidDisplay=20260810-3&amp;comment=20260810-1&amp;perf=20260810-2"
     charset="utf-8"
     defer>
 </script>

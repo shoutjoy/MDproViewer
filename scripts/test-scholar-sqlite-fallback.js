@@ -6,7 +6,10 @@ global.CustomEvent = class CustomEvent {
     constructor(type, options) { this.type = type; this.detail = options && options.detail; }
 };
 global.dispatchEvent = function () {};
-global.localStorage = { getItem() { return null; }, setItem() {} };
+global.localStorage = {
+    getItem(key) { return key === 'mdpro_sqlite_feature_enabled_v1' ? '1' : null; },
+    setItem() {}
+};
 
 global.MDPIndexedDbAdapter = class IndexedDbAdapter {
     constructor() { this.kind = 'indb'; }
