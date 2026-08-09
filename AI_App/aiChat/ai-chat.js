@@ -1016,6 +1016,11 @@
         : 0;
     document.documentElement.classList.toggle('ai-chat-page-pushed', !!shouldPush);
     document.documentElement.style.setProperty('--ai-chat-page-push', shouldPush ? Math.max(0, Math.round(width)) + 'px' : '0px');
+    try {
+      root.dispatchEvent(new CustomEvent('ai-jena-layout-change', {
+        detail: { open: state.open, enabled: state.enabled, layout: state.layout, dockWidth: shouldPush ? width : 0 }
+      }));
+    } catch (_) {}
   }
 
   function updateDockHistoryVisibility(widthOverride) {

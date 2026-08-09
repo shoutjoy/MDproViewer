@@ -21,6 +21,8 @@ const GOOGLE_CALENDAR_ENABLED_KEY = 'md_viewer_google_calendar_enabled';
 const GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r';
 const GOOGLE_CALENDAR_OPEN_MODE_KEY = 'md_viewer_google_calendar_open_mode';
 const GOOGLE_CALENDAR_EMAIL_KEY = 'md_viewer_google_calendar_email';
+const VIEW_COPY_FAB_POSITION_KEY = 'md_viewer_view_copy_fab_position_v2';
+const VIEW_COPY_FAB_EDGE_GAP = 8;
 
 function enableTouchModalDrag(panel, handle, options) {
     const opts = options || {};
@@ -199,6 +201,10 @@ let lastAutoSavedTitle = '';
 let pauseMainRenderWhileEditing = true;
 let mainRenderDirty = true;
 let mainRenderToken = 0;
+let viewCopyFabInitialized = false;
+let viewCopyFabHasCustomPosition = false;
+let viewCopyFabAiJenaObserver = null;
+let viewCopyFabAiJenaDockWidth = 0;
 
 // Sidebar states
 let isSidebarHidden = false;
@@ -1012,6 +1018,7 @@ window.onload = async () => {
         relocateAiIntegrationSettingsIntoAiUse();
         organizeSettingsDashboard();
         lucide.createIcons();
+        initViewCopyFab();
         toggleMode('edit');
 
         await initDB();
@@ -1569,12 +1576,7 @@ function isDocumentDirty() {
 }
 
 async function confirmSaveBeforeOpeningAnotherFile() {
-    const hasOpenedDocument = !!(
-        (currentFilePath && String(currentFilePath).trim())
-        || (currentFileName && String(currentFileName).trim().toLowerCase() !== 'untitled.md')
-        || (currentMarkdown && String(currentMarkdown).trim().length > 0)
-    );
-    if (!hasOpenedDocument) return true;
+    if (!isDocumentDirty()) return true;
     let action = 'cancel';
     if (window.ExtendFiles && typeof window.ExtendFiles.showCloseActionDialog === 'function') {
         action = await window.ExtendFiles.showCloseActionDialog();
@@ -2041,6 +2043,208 @@ function getMarkdownRatioFromCharPos(pos) {
     return clamp01(lineIdx / (lines.length - 1));
 }
 
+function clampViewCopyFabPosition(button, left, top) {
+    const width = button.offsetWidth || 42;
+    const height = button.offsetHeight || 42;
+    const viewportWidth = Math.max(width + VIEW_COPY_FAB_EDGE_GAP * 2, window.innerWidth || document.documentElement.clientWidth || 1280);
+    const viewportHeight = Math.max(height + VIEW_COPY_FAB_EDGE_GAP * 2, window.innerHeight || document.documentElement.clientHeight || 720);
+    return {
+        left: Math.max(VIEW_COPY_FAB_EDGE_GAP, Math.min(viewportWidth - width - VIEW_COPY_FAB_EDGE_GAP, Number(left) || 0)),
+        top: Math.max(VIEW_COPY_FAB_EDGE_GAP, Math.min(viewportHeight - height - VIEW_COPY_FAB_EDGE_GAP, Number(top) || 0))
+    };
+}
+
+function getDefaultViewCopyFabPosition(button) {
+    const width = button.offsetWidth || 42;
+    const height = button.offsetHeight || 42;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1280;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 720;
+    const footer = document.getElementById('app-status-footer');
+    const footerRect = footer ? footer.getBoundingClientRect() : null;
+    const bottomBoundary = footerRect && footerRect.height > 0 ? footerRect.top : viewportHeight;
+    return clampViewCopyFabPosition(
+        button,
+        viewportWidth - width - VIEW_COPY_FAB_EDGE_GAP,
+        bottomBoundary - height - VIEW_COPY_FAB_EDGE_GAP
+    );
+}
+
+function setViewCopyFabPosition(button, position) {
+    const safePosition = clampViewCopyFabPosition(button, position.left, position.top);
+    button.style.left = Math.round(safePosition.left) + 'px';
+    button.style.top = Math.round(safePosition.top) + 'px';
+    return safePosition;
+}
+
+function getAiJenaDockViewCopyFabPosition(button) {
+    if (!(viewCopyFabAiJenaDockWidth > 0)) return null;
+    const dockLeft = (window.innerWidth || document.documentElement.clientWidth || 1280) - viewCopyFabAiJenaDockWidth;
+    if (dockLeft <= VIEW_COPY_FAB_EDGE_GAP) return null;
+    const defaultPosition = getDefaultViewCopyFabPosition(button);
+    return clampViewCopyFabPosition(
+        button,
+        dockLeft - (button.offsetWidth || 42) - VIEW_COPY_FAB_EDGE_GAP,
+        defaultPosition.top
+    );
+}
+
+function syncViewCopyFabAiJenaDockStateFromDom() {
+    const panel = document.getElementById('ai-chat-panel');
+    const dockSlot = document.getElementById('ai-chat-dock-slot');
+    const dockOpen = !!(panel
+        && dockSlot
+        && panel.classList.contains('open')
+        && panel.classList.contains('layout-dock')
+        && dockSlot.classList.contains('active'));
+    viewCopyFabAiJenaDockWidth = dockOpen ? Math.max(0, dockSlot.getBoundingClientRect().width) : 0;
+}
+
+function positionViewCopyFab() {
+    const button = document.getElementById('btn-copy-view-rich');
+    if (!button) return;
+    const aiJenaDockPosition = getAiJenaDockViewCopyFabPosition(button);
+    if (aiJenaDockPosition) {
+        setViewCopyFabPosition(button, aiJenaDockPosition);
+        return;
+    }
+    let savedPosition = null;
+    if (viewCopyFabHasCustomPosition) {
+        try {
+            const parsed = JSON.parse(localStorage.getItem(VIEW_COPY_FAB_POSITION_KEY) || 'null');
+            if (parsed && Number.isFinite(Number(parsed.left)) && Number.isFinite(Number(parsed.top))) {
+                savedPosition = { left: Number(parsed.left), top: Number(parsed.top) };
+            }
+        } catch (_) {}
+    }
+    setViewCopyFabPosition(button, savedPosition || getDefaultViewCopyFabPosition(button));
+}
+
+function initViewCopyFab() {
+    const button = document.getElementById('btn-copy-view-rich');
+    if (!button || viewCopyFabInitialized) return;
+    viewCopyFabInitialized = true;
+
+    try {
+        const parsed = JSON.parse(localStorage.getItem(VIEW_COPY_FAB_POSITION_KEY) || 'null');
+        viewCopyFabHasCustomPosition = !!(parsed
+            && Number.isFinite(Number(parsed.left))
+            && Number.isFinite(Number(parsed.top)));
+    } catch (_) {
+        viewCopyFabHasCustomPosition = false;
+    }
+    syncViewCopyFabAiJenaDockStateFromDom();
+    positionViewCopyFab();
+
+    let activePointerId = null;
+    let startX = 0;
+    let startY = 0;
+    let startLeft = 0;
+    let startTop = 0;
+    let dragging = false;
+    let suppressClick = false;
+    let previousUserSelect = '';
+
+    button.addEventListener('pointerdown', function (event) {
+        if (event.isPrimary === false || (event.pointerType === 'mouse' && event.button !== 0)) return;
+        const rect = button.getBoundingClientRect();
+        activePointerId = event.pointerId;
+        startX = event.clientX;
+        startY = event.clientY;
+        startLeft = rect.left;
+        startTop = rect.top;
+        dragging = false;
+        try { button.setPointerCapture(event.pointerId); } catch (_) {}
+    });
+
+    button.addEventListener('pointermove', function (event) {
+        if (event.pointerId !== activePointerId) return;
+        const deltaX = event.clientX - startX;
+        const deltaY = event.clientY - startY;
+        if (!dragging && Math.hypot(deltaX, deltaY) < 5) return;
+        if (!dragging) {
+            dragging = true;
+            previousUserSelect = document.body.style.userSelect;
+            document.body.style.userSelect = 'none';
+            button.classList.add('is-dragging');
+            button.setAttribute('aria-grabbed', 'true');
+        }
+        setViewCopyFabPosition(button, {
+            left: startLeft + deltaX,
+            top: startTop + deltaY
+        });
+        event.preventDefault();
+    });
+
+    function finishViewCopyFabPointer(event) {
+        if (event.pointerId !== activePointerId) return;
+        try { button.releasePointerCapture(event.pointerId); } catch (_) {}
+        activePointerId = null;
+        if (!dragging) return;
+
+        dragging = false;
+        suppressClick = true;
+        button.classList.remove('is-dragging');
+        button.removeAttribute('aria-grabbed');
+        document.body.style.userSelect = previousUserSelect;
+        const rect = button.getBoundingClientRect();
+        const position = setViewCopyFabPosition(button, { left: rect.left, top: rect.top });
+        viewCopyFabHasCustomPosition = true;
+        try { localStorage.setItem(VIEW_COPY_FAB_POSITION_KEY, JSON.stringify(position)); } catch (_) {}
+        window.setTimeout(function () { suppressClick = false; }, 0);
+    }
+
+    button.addEventListener('pointerup', finishViewCopyFabPointer);
+    button.addEventListener('pointercancel', finishViewCopyFabPointer);
+    button.addEventListener('click', function (event) {
+        if (suppressClick) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        copyViewFormattedToClipboard();
+    });
+    let positionFrame = null;
+    const scheduleViewCopyFabPosition = function () {
+        if (positionFrame !== null) return;
+        positionFrame = requestAnimationFrame(function () {
+            positionFrame = null;
+            positionViewCopyFab();
+        });
+    };
+    window.addEventListener('resize', function () {
+        syncViewCopyFabAiJenaDockStateFromDom();
+        scheduleViewCopyFabPosition();
+    });
+    window.addEventListener('ai-jena-layout-change', function (event) {
+        const detail = event && event.detail ? event.detail : {};
+        const dockOpen = detail.open === true && detail.enabled === true && detail.layout === 'dock';
+        viewCopyFabAiJenaDockWidth = dockOpen ? Math.max(0, Number(detail.dockWidth) || 0) : 0;
+        positionViewCopyFab();
+        scheduleViewCopyFabPosition();
+    });
+
+    const aiJenaPanel = document.getElementById('ai-chat-panel');
+    const aiJenaDockSlot = document.getElementById('ai-chat-dock-slot');
+    if (typeof MutationObserver === 'function' && (aiJenaPanel || aiJenaDockSlot)) {
+        viewCopyFabAiJenaObserver = new MutationObserver(function () {
+            syncViewCopyFabAiJenaDockStateFromDom();
+            scheduleViewCopyFabPosition();
+        });
+        if (aiJenaPanel) {
+            viewCopyFabAiJenaObserver.observe(aiJenaPanel, {
+                attributes: true,
+                attributeFilter: ['class', 'aria-hidden']
+            });
+        }
+        if (aiJenaDockSlot) {
+            viewCopyFabAiJenaObserver.observe(aiJenaDockSlot, {
+                attributes: true,
+                attributeFilter: ['class', 'style']
+            });
+        }
+    }
+}
+
 function toggleMode(mode) {
     const vc = document.getElementById('viewer-container');
     const ec = document.getElementById('content-viewport');
@@ -2095,7 +2299,10 @@ function toggleMode(mode) {
         ec.classList.remove('viewer-edit-active');
         ec.classList.add('hidden');
         applyEditToolsVisibilityByMode();
-        if (btnCopyViewRich) btnCopyViewRich.classList.remove('hidden');
+        if (btnCopyViewRich) {
+            btnCopyViewRich.classList.remove('hidden');
+            requestAnimationFrame(positionViewCopyFab);
+        }
         if (btnExportGdocs) {
             const showFromGoogleDocs = !!(window.GoogleDocs && typeof window.GoogleDocs.shouldShowInViewMode === 'function' && window.GoogleDocs.shouldShowInViewMode());
             const toDocsCheck = document.getElementById('todocs-visible');

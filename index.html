@@ -21,7 +21,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260807-sidebar-storage-visibility-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260810-copy-fab-drag-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260806-ai-jena-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -977,18 +977,17 @@
                             title="편집창을 오른쪽으로 이동">R</button>
                     </div>
                 </div>
-                <button type="button" id="btn-copy-view-rich" onclick="copyViewFormattedToClipboard()"
+                <button type="button" id="btn-copy-view-rich"
                     class="view-copy-fab hidden no-print"
-                    title="보기 내용을 서식과 함께 복사" aria-label="보기 내용을 서식과 함께 복사">
+                    title="보기 내용을 서식과 함께 복사 · 드래그하여 이동" aria-label="보기 내용을 서식과 함께 복사 (드래그하여 이동)">
                     <i data-lucide="copy" aria-hidden="true"></i>
-                    <span>Copy</span>
                 </button>
                 <div class="scroll-jump-rail no-print" aria-label="문서 빠른 이동">
                     <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentTop()" title="맨 위로 이동">맨위</button>
                     <button type="button" class="scroll-jump-btn" onclick="scrollToDocumentBottom()" title="맨 아래로 이동">맨아래</button>
                 </div>
             </main>
-            <div class="no-print border-t border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-3 sm:px-4 md:px-6 py-1.5">
+            <div id="app-status-footer" class="no-print border-t border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-3 sm:px-4 md:px-6 py-1.5">
                 <div class="flex items-center gap-2 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 min-w-0">
                     <span class="shrink-0 font-semibold">MDproViewer</span>
                     <span class="shrink-0 text-slate-300 dark:text-slate-600">|</span>
@@ -2665,7 +2664,7 @@
 
 <!-- 미니 미리보기 -->
 <script
-    src="./js/UI_PV/minipv.js?v=20260731-html-preview-1"
+    src="./js/UI_PV/minipv.js?v=20260810-sync-1"
     charset="utf-8"
     defer>
 </script>
@@ -2705,7 +2704,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260807-calendar-header-actions-1&amp;feature=templates-1&amp;storageVisibility=20260807-2&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1"
+    src="./js/app.js?v=20260810-unsaved-dirty-check-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260807-2&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1"
     charset="utf-8"
     defer>
 </script>
@@ -2743,7 +2742,7 @@
 
 <!-- AI Jena -->
 <script
-    src="./AI_App/aiChat/ai-chat.js?v=20260806-ai-settings-1"
+    src="./AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1"
     charset="utf-8"
     defer>
 </script>
