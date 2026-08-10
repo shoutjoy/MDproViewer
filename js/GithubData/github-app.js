@@ -2,12 +2,14 @@
     'use strict';
 
     const STORAGE_SIDEBAR_VISIBILITY_KEY = 'mdpro_storage_sidebar_visibility_v1';
+    const STORAGE_SIDEBAR_AUTO_REVEALED_KEY = 'mdpro_storage_sidebar_auto_revealed_v1';
     const DEFAULT_STORAGE_SIDEBAR_VISIBILITY = Object.freeze({
-        local: true,
+        local: false,
         indb: true,
-        sqlite: true,
-        github: true
+        sqlite: false,
+        github: false
     });
+    const OPTIONAL_STORAGE_FEATURES = Object.freeze(['local', 'sqlite', 'github']);
 
     function parseGithubRepoInput(repoInput) {
         const raw = String(repoInput || '').trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
@@ -163,6 +165,45 @@
         return current;
     }
 
+    function getStorageSidebarAutoRevealed() {
+        let stored = null;
+        try {
+            stored = JSON.parse(localStorage.getItem(STORAGE_SIDEBAR_AUTO_REVEALED_KEY) || 'null');
+        } catch (_) {}
+        return OPTIONAL_STORAGE_FEATURES.reduce(function (result, feature) {
+            result[feature] = !!(stored && stored[feature] === true);
+            return result;
+        }, {});
+    }
+
+    function revealEnabledStorageSidebarFeaturesOnce(flagsInput) {
+        const flags = flagsInput && typeof flagsInput === 'object' ? flagsInput : {};
+        const revealed = getStorageSidebarAutoRevealed();
+        const visibility = getStorageSidebarVisibility();
+        let revealedChanged = false;
+        let visibilityChanged = false;
+
+        OPTIONAL_STORAGE_FEATURES.forEach(function (feature) {
+            if (flags[feature] !== true || revealed[feature] === true) return;
+            revealed[feature] = true;
+            revealedChanged = true;
+            if (visibility[feature] !== true) {
+                visibility[feature] = true;
+                visibilityChanged = true;
+            }
+        });
+
+        if (revealedChanged) {
+            try { localStorage.setItem(STORAGE_SIDEBAR_AUTO_REVEALED_KEY, JSON.stringify(revealed)); } catch (_) {}
+        }
+        if (visibilityChanged) {
+            const saved = setStorageSidebarVisibility(visibility);
+            applyStorageSidebarVisibility(saved);
+            return saved;
+        }
+        return visibility;
+    }
+
     function syncStorageSidebarVisibilitySettingsUI(visibilityInput) {
         const visibility = visibilityInput || getStorageSidebarVisibility();
         Object.keys(DEFAULT_STORAGE_SIDEBAR_VISIBILITY).forEach(function (key) {
@@ -208,6 +249,7 @@
 
     function applyStorageFeatureVisibility(settingsInput) {
         const flags = getStorageFeatureFlags(settingsInput);
+        revealEnabledStorageSidebarFeaturesOnce(flags);
         const body = document.body;
         if (body) {
             ['sqlite', 'github', 'local'].forEach(function (feature) {
@@ -1264,6 +1306,8 @@
     window.getStorageFeatureFlags = getStorageFeatureFlags;
     window.getStorageSidebarVisibility = getStorageSidebarVisibility;
     window.setStorageSidebarVisibility = setStorageSidebarVisibility;
+    window.getStorageSidebarAutoRevealed = getStorageSidebarAutoRevealed;
+    window.revealEnabledStorageSidebarFeaturesOnce = revealEnabledStorageSidebarFeaturesOnce;
     window.syncStorageSidebarVisibilitySettingsUI = syncStorageSidebarVisibilitySettingsUI;
     window.applyStorageSidebarVisibility = applyStorageSidebarVisibility;
     window.onStorageSidebarVisibilityChange = onStorageSidebarVisibilityChange;

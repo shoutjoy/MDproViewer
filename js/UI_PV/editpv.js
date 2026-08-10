@@ -262,15 +262,27 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-toolbar .label{font-size:12px;color:#334155;min-width:48px;text-align:center;font-weight:700;}'
         + '#pv-viewport{height:100%;overflow:auto;padding:20px;padding-top:72px;box-sizing:border-box;}'
         + '#pv-content{line-height:1.6;word-wrap:break-word;transform-origin:top left;margin:0 auto;width:100%;max-width:56rem;}'
-        + '#pv-content .trt-mermaid-wrapper{position:relative;display:block;box-sizing:border-box;width:100%;min-height:240px;padding:52px 14px 14px;margin:1rem 0;overflow:hidden;border:1px solid #cbd5e1;border-radius:8px;background:#fff;}'
-        + '#pv-content .trt-mermaid-wrapper[data-mermaid-mode="fixed"]{min-height:0;}'
-        + '#pv-content .trt-pv-mermaid-viewport{width:100%;overflow:auto;background:transparent;}'
+        + '#pv-content .trt-mermaid-wrapper{position:relative;display:block;box-sizing:border-box;width:100%;min-width:180px;min-height:140px;padding:52px 14px 14px;margin:1rem 0;overflow:hidden;border:1px solid #cbd5e1;border-radius:8px;background:#fff;}'
+        + '#pv-content .trt-mermaid-wrapper[data-mermaid-mode="fixed"]{min-height:140px;}'
+        + '#pv-content .trt-pv-mermaid-viewport{width:100%;height:100%;min-height:0;box-sizing:border-box;overflow:auto;background:transparent;}'
         + '#pv-content .trt-pv-mermaid-canvas{display:block;width:100%;min-width:0;overflow:visible;}'
         + '#pv-content .trt-pv-mermaid-canvas svg{display:block;margin:0 auto;max-width:none!important;height:auto!important;overflow:visible;transform-origin:top center;}'
         + '#pv-content .trt-pv-mermaid-controls{position:absolute;top:10px;right:10px;z-index:20;display:flex;align-items:center;gap:5px;}'
         + '#pv-content .trt-pv-mermaid-btn{min-width:32px;height:30px;padding:0 7px;border:1px solid #cbd5e1;border-radius:6px;background:#f8fafc;color:#334155;font:700 13px/1 Arial,sans-serif;cursor:pointer;}'
         + '#pv-content .trt-pv-mermaid-btn:hover{background:#eef2ff;border-color:#a5b4fc;color:#3730a3;}'
         + '#pv-content .trt-pv-mermaid-scale{min-width:46px;text-align:center;color:#334155;font-size:12px;font-weight:700;}'
+        + '#pv-content .trt-pv-mermaid-resize-handle{position:absolute;z-index:21;touch-action:none;}'
+        + '#pv-content .trt-pv-mermaid-resize-w{top:0;left:0;bottom:0;width:10px;cursor:ew-resize;}'
+        + '#pv-content .trt-pv-mermaid-resize-e{top:0;right:0;bottom:0;width:10px;cursor:ew-resize;}'
+        + '#pv-content .trt-pv-mermaid-resize-s{left:0;right:0;bottom:0;height:10px;cursor:ns-resize;}'
+        + '#pv-content .trt-pv-mermaid-resize-w::after,#pv-content .trt-pv-mermaid-resize-e::after{content:"";position:absolute;top:50%;width:3px;height:42px;border-radius:3px;background:#64748b;opacity:.42;transform:translateY(-50%);}'
+        + '#pv-content .trt-pv-mermaid-resize-w::after{left:2px;}'
+        + '#pv-content .trt-pv-mermaid-resize-e::after{right:2px;}'
+        + '#pv-content .trt-pv-mermaid-resize-s::after{content:"";position:absolute;left:50%;bottom:2px;width:42px;height:3px;border-radius:3px;background:#64748b;opacity:.42;transform:translateX(-50%);}'
+        + '#pv-content .trt-pv-mermaid-resize-w:hover::after,#pv-content .trt-pv-mermaid-resize-e:hover::after,#pv-content .trt-pv-mermaid-resize-s:hover::after{opacity:1;background:#6366f1;}'
+        + '#pv-content .trt-pv-mermaid-resize-sw{left:0;bottom:0;width:18px;height:18px;cursor:nesw-resize;background:linear-gradient(225deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);opacity:.75;}'
+        + '#pv-content .trt-pv-mermaid-resize-se{right:0;bottom:0;width:18px;height:18px;cursor:nwse-resize;background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);opacity:.75;}'
+        + '#pv-content .trt-pv-mermaid-resize-sw:hover,#pv-content .trt-pv-mermaid-resize-se:hover{opacity:1;}'
         + 'html.dark body{background:#020617;color:#e2e8f0;}'
         + 'html.dark #pv-toolbar{background:#0f172a;border-color:#334155;color:#e2e8f0;}'
         + 'html.dark #pv-toolbar button{background:#1e293b;border-color:#64748b;color:#e2e8f0;}'
@@ -577,7 +589,7 @@ function applyPreviewPopupMermaidScale(wrapper, nextScale) {
     const svg = wrapper.querySelector('svg');
     const viewport = wrapper.querySelector('.trt-pv-mermaid-viewport');
     if (!svg || !viewport) return;
-    const scale = Math.max(0.5, Math.min(1.6, Math.round((Number(nextScale) || 1) * 10) / 10));
+    const scale = Math.max(0.2, Math.min(1.6, Math.round((Number(nextScale) || 1) * 10) / 10));
     const availableWidth = Math.max(160, viewport.clientWidth || wrapper.clientWidth - 28 || 760);
     const naturalWidth = getPreviewPopupMermaidNaturalWidth(svg) || availableWidth;
     const fittedBaseWidth = Math.min(naturalWidth, availableWidth * 0.86);
@@ -614,6 +626,100 @@ function bindPreviewPopupMermaidResize(wrapper) {
     });
     observer.observe(viewport);
     wrapper.__mdvPvResizeObserver = observer;
+}
+
+function bindPreviewPopupMermaidBoxResize(wrapper) {
+    const win = previewPopupWindow;
+    const doc = win && win.document;
+    if (!win || !doc || !wrapper || wrapper.__mdvPvBoxResizeBound) return;
+    wrapper.__mdvPvBoxResizeBound = true;
+
+    const handles = Array.from(wrapper.querySelectorAll('.trt-pv-mermaid-resize-handle'));
+    let activeHandle = '';
+    let startX = 0;
+    let startY = 0;
+    let startWidth = 0;
+    let startHeight = 0;
+    let startMarginLeft = 0;
+
+    function stopResize(event) {
+        doc.documentElement.removeEventListener('pointermove', moveResize);
+        doc.documentElement.removeEventListener('pointerup', stopResize);
+        doc.documentElement.removeEventListener('pointercancel', stopResize);
+        doc.body.style.userSelect = '';
+        if (event && event.target && event.target.releasePointerCapture) {
+            try { event.target.releasePointerCapture(event.pointerId); } catch (e) {}
+        }
+        activeHandle = '';
+        applyPreviewPopupMermaidScale(wrapper, getPreviewPopupMermaidScale(wrapper));
+    }
+
+    function moveResize(event) {
+        if (!activeHandle) return;
+        const dx = event.clientX - startX;
+        const dy = event.clientY - startY;
+
+        if (activeHandle === 'w' || activeHandle === 'sw') {
+            let nextWidth = Math.max(180, startWidth - dx);
+            let nextMarginLeft = startMarginLeft + (startWidth - nextWidth);
+            if (nextMarginLeft < 0) {
+                nextWidth = startWidth + startMarginLeft;
+                nextMarginLeft = 0;
+            }
+            wrapper.style.width = nextWidth + 'px';
+            wrapper.style.marginLeft = nextMarginLeft + 'px';
+            wrapper.style.marginRight = '0';
+        }
+        if (activeHandle === 'e' || activeHandle === 'se') {
+            wrapper.style.width = Math.max(180, startWidth + dx) + 'px';
+            wrapper.style.marginRight = '0';
+        }
+        if (activeHandle === 's' || activeHandle === 'sw' || activeHandle === 'se') {
+            wrapper.style.height = Math.max(140, startHeight + dy) + 'px';
+        }
+    }
+
+    function startResize(event) {
+        const handle = event.currentTarget;
+        activeHandle = handle.getAttribute('data-pv-resize-direction') || '';
+        if (!activeHandle) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const rect = wrapper.getBoundingClientRect();
+        startX = event.clientX;
+        startY = event.clientY;
+        startWidth = rect.width;
+        startHeight = rect.height;
+        startMarginLeft = Number.parseFloat(win.getComputedStyle(wrapper).marginLeft) || 0;
+        doc.body.style.userSelect = 'none';
+        doc.documentElement.addEventListener('pointermove', moveResize);
+        doc.documentElement.addEventListener('pointerup', stopResize);
+        doc.documentElement.addEventListener('pointercancel', stopResize);
+        try { handle.setPointerCapture(event.pointerId); } catch (e) {}
+    }
+
+    handles.forEach(function (handle) {
+        handle.addEventListener('pointerdown', startResize);
+    });
+}
+
+function addPreviewPopupMermaidResizeHandles(wrapper) {
+    const doc = previewPopupWindow && previewPopupWindow.document;
+    if (!doc || !wrapper || wrapper.querySelector('.trt-pv-mermaid-resize-handle')) return;
+    [
+        { direction: 'w', title: '왼쪽 너비 조절' },
+        { direction: 'e', title: '오른쪽 너비 조절' },
+        { direction: 's', title: '아래 높이 조절' },
+        { direction: 'sw', title: '왼쪽 아래 크기 조절' },
+        { direction: 'se', title: '오른쪽 아래 크기 조절' }
+    ].forEach(function (item) {
+        const handle = doc.createElement('div');
+        handle.className = 'trt-pv-mermaid-resize-handle trt-pv-mermaid-resize-' + item.direction;
+        handle.setAttribute('data-pv-resize-direction', item.direction);
+        handle.title = item.title;
+        wrapper.appendChild(handle);
+    });
+    bindPreviewPopupMermaidBoxResize(wrapper);
 }
 
 function addPreviewPopupMermaidControls(wrapper) {
@@ -664,6 +770,7 @@ function addPreviewPopupMermaidControls(wrapper) {
     }
 
     wrapper.appendChild(controls);
+    addPreviewPopupMermaidResizeHandles(wrapper);
     bindPreviewPopupMermaidResize(wrapper);
     applyPreviewPopupMermaidScale(wrapper, 1);
 }

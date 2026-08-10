@@ -13,17 +13,17 @@ const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
 
 for (const token of [
-    'scholar-search-storage-explorer-btn',
+    'scholar-search-sqlite-explorer-btn',
     'scholar-search-storage-actions',
-    'STORAGE 탐색기 열기',
+    'CrossrefBank(SQL)',
     'scholar-search-indb-explorer-btn',
-    'inDB 전용 탐색기',
+    'CrossrefBank(inDB)',
     'scholarref-indb-save-btn',
     'scholar-crossref-indb-save',
     'scholar-crossref-sqlite-query',
     'scholar-crossref-sqlite-list',
     'STORAGE 저장 검색'
-]) assert.match(html, new RegExp(token));
+]) assert.ok(html.includes(token), `Missing Scholar HTML token: ${token}`);
 
 for (const token of [
     'function openScholarStorageExplorer',
@@ -59,5 +59,9 @@ assert.match(app, /createObjectStore\('work_files'/);
 assert.match(app, /'STORAGE'/);
 assert.match(styles, /body\.feature-sqlite-disabled button\[id\*="sqlite" i\]/);
 assert.doesNotMatch(styles, /:not\(\.scholar-sqlite-access\)/);
+assert.match(shell, /function scholarSqliteFeatureEnabled\(\)/);
+assert.match(shell, /openScholarStorageExplorer\('sqlite'\)/);
+assert.match(shell, /state\.crossrefStorageFilter === 'sqlite'/);
+assert.match(shell, /설정에서 SQLite 사용을 먼저 체크하세요/);
 
 console.log('Scholar SQLite explorer integration checks passed.');

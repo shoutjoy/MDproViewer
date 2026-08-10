@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '..');
 const read = (...parts) => fs.readFileSync(path.join(root, ...parts), 'utf8');
@@ -38,7 +39,10 @@ assert.match(app, /const sqliteEnabled = !!\(sqliteEnabledEl && sqliteEnabledEl\
 assert.doesNotMatch(app, /sqliteEnabledEl && sqliteEnabledEl\.checked\s*\n\s*&& sqliteStorageStatus/);
 assert.match(github, /function applyStorageFeatureVisibility/);
 assert.match(github, /mdpro_storage_sidebar_visibility_v1/);
-assert.match(github, /local:\s*true,[\s\S]*indb:\s*true,[\s\S]*sqlite:\s*true,[\s\S]*github:\s*true/);
+assert.match(github, /mdpro_storage_sidebar_auto_revealed_v1/);
+assert.match(github, /local:\s*false,[\s\S]*indb:\s*true,[\s\S]*sqlite:\s*false,[\s\S]*github:\s*false/);
+assert.match(github, /function revealEnabledStorageSidebarFeaturesOnce/);
+assert.match(github, /revealEnabledStorageSidebarFeaturesOnce\(flags\)/);
 assert.match(github, /function onStorageSidebarVisibilityChange/);
 assert.match(github, /toggleGithubSettingsSection\(\{ folded: folded \}\)/);
 assert.match(github, /body\.classList\.toggle\('hidden', folded\)/);
@@ -56,9 +60,12 @@ assert.match(app, /sidebar-storage-local-visible/);
 assert.match(app, /sidebar-storage-indb-visible/);
 assert.match(app, /sidebar-storage-sqlite-visible/);
 assert.match(app, /sidebar-storage-github-visible/);
-assert.equal((app.match(/data-storage-sidebar-visibility="(?:local|indb|sqlite|github)"[^>]* checked/g) || []).length, 4);
-assert.match(app, /저장 기능은 그대로 유지하고 왼쪽 사이드바의 항목만 표시하거나 숨깁니다/);
+assert.equal((app.match(/data-storage-sidebar-visibility="(?:local|indb|sqlite|github)"[^>]* checked/g) || []).length, 1);
+assert.match(app, /sidebar-storage-indb-visible[^>]* checked/);
+assert.match(app, /기본은 inDB만 표시합니다/);
+assert.match(app, /아래 사용 설정을 처음 켜면 자동으로 표시/);
 assert.match(app, /SETTINGS_EXPORT_LOCAL_KEYS[\s\S]*mdpro_storage_sidebar_visibility_v1/);
+assert.match(app, /SETTINGS_EXPORT_LOCAL_KEYS[\s\S]*mdpro_storage_sidebar_auto_revealed_v1/);
 assert.match(github, /currentStorageSourceTab = 'indb'/);
 assert.match(github, /next === 'local' && !featureFlags\.local/);
 assert.match(github, /next === 'sqlite' && !featureFlags\.sqlite/);
@@ -103,5 +110,38 @@ assert.match(backendHandler, /requestSqliteBackend\(select\.value\)/);
 
 assert.match(fmaSqlite, /function applySqliteFeatureButtonVisibility/);
 assert.match(genSlideSqlite, /function applySqliteFeatureButtonVisibility/);
+
+const storage = new Map();
+const context = {
+    window: {},
+    localStorage: {
+        getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+        setItem(key, value) { storage.set(key, String(value)); }
+    },
+    document: {
+        body: { classList: { toggle() {} } },
+        getElementById() { return null; }
+    },
+    console,
+    setTimeout,
+    clearTimeout,
+    URL,
+    Blob,
+    TextEncoder,
+    TextDecoder
+};
+context.window.window = context.window;
+context.window.document = context.document;
+vm.runInNewContext(github, context, { filename: 'github-app.js' });
+
+assert.deepEqual(
+    JSON.parse(JSON.stringify(context.window.getStorageSidebarVisibility())),
+    { local: false, indb: true, sqlite: false, github: false }
+);
+context.window.revealEnabledStorageSidebarFeaturesOnce({ local: true, sqlite: false, github: false });
+assert.equal(context.window.getStorageSidebarVisibility().local, true);
+context.window.setStorageSidebarVisibility({ local: false });
+context.window.revealEnabledStorageSidebarFeaturesOnce({ local: true, sqlite: false, github: false });
+assert.equal(context.window.getStorageSidebarVisibility().local, false);
 
 console.log('Storage feature visibility checks passed.');

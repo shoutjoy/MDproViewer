@@ -32,7 +32,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiChat: './AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1',
     scholarRef: './js/Scholarref/scholarref.js?v=20260806-scholar-sqlite-fallback-3',
     scholarCrossref: './js/Scholarref/crossref-search.js?v=20260729-1',
-    scholarShell: './js/Scholarref/scholarsearch-shell.js?v=20260806-scholar-sqlite-explorer-button-4',
+    scholarShell: './js/Scholarref/scholarsearch-shell.js?v=20260810-crossref-bank-labels-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -1117,12 +1117,12 @@ function organizeSettingsDashboard() {
     sidebarVisibilitySettings.innerHTML = [
         '<div class="text-xs font-bold text-slate-700 dark:text-slate-200">SIDEBAR 보이기</div>',
         '<div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2" role="group" aria-label="사이드바 저장소 항목 표시">',
-        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-local-visible" data-storage-sidebar-visibility="local" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>Local</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-local-visible" data-storage-sidebar-visibility="local" onchange="onStorageSidebarVisibilityChange()" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>Local</span></label>',
         '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-indb-visible" data-storage-sidebar-visibility="indb" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>inDB</span></label>',
-        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-sqlite-visible" data-storage-sidebar-visibility="sqlite" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>SQLite</span></label>',
-        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-github-visible" data-storage-sidebar-visibility="github" onchange="onStorageSidebarVisibilityChange()" checked class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>Github</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-sqlite-visible" data-storage-sidebar-visibility="sqlite" onchange="onStorageSidebarVisibilityChange()" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>SQLite</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"><input type="checkbox" id="sidebar-storage-github-visible" data-storage-sidebar-visibility="github" onchange="onStorageSidebarVisibilityChange()" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500"><span>Github</span></label>',
         '</div>',
-        '<p class="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">저장 기능은 그대로 유지하고 왼쪽 사이드바의 항목만 표시하거나 숨깁니다.</p>'
+        '<p class="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">기본은 inDB만 표시합니다. Local·SQLite·Github는 아래 사용 설정을 처음 켜면 자동으로 표시되며, 이후에는 여기서 직접 표시하거나 숨길 수 있습니다.</p>'
     ].join('');
     appendToColumn(saveColumn, sidebarVisibilitySettings);
     if (typeof window.syncStorageSidebarVisibilitySettingsUI === 'function') {
@@ -9792,6 +9792,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     EDITOR_COMMENT_LIGHT_COLOR_KEY,
     EDITOR_COMMENT_DARK_COLOR_KEY,
     'mdpro_storage_sidebar_visibility_v1',
+    'mdpro_storage_sidebar_auto_revealed_v1',
     'md_viewer_code_bg',
     'md_viewer_code_text',
     'ss_imgbb_api_key',
