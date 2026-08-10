@@ -2003,6 +2003,9 @@ function preprocessMarkdownForView(raw, options) {
     let s = opts.commentsAlreadyHidden
         ? String(raw ?? '')
         : hideMarkdownCommentsForRender(raw);
+    if (window.NoteCoverRenderer && typeof window.NoteCoverRenderer.replaceInMarkdown === 'function') {
+        s = window.NoteCoverRenderer.replaceInMarkdown(s);
+    }
     s = preprocessFootnotesForView(s);
     s = preprocessRestartedNumberedParagraphs(s);
     if (typeof specialTRT !== 'undefined' && typeof specialTRT.prepareForRender === 'function') {
@@ -2064,7 +2067,8 @@ function detectRenderFeatures(source) {
         hasMath: /(?:\$\$|\\\(|\\\[|(^|[^\\])\$[^$\r\n]+\$)/m.test(value),
         hasMermaid: /```\s*mermaid\b/i.test(value),
         hasInternalImages: /internal:\/\//i.test(value),
-        hasDoiLinks: /https?:\/\/(?:dx\.)?doi\.org\//i.test(value)
+        hasDoiLinks: /https?:\/\/(?:dx\.)?doi\.org\//i.test(value),
+        hasNoteCover: /class="note-cover-page\b/i.test(value)
     };
 }
 
@@ -2304,6 +2308,13 @@ async function renderMarkdown(options) {
         if (!isCurrentRender()) return;
         try { if (snapshot.features.hasDoiLinks) applyDoiLinkTargets(viewer); } catch (e) {}
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
+        try {
+            if (snapshot.features.hasNoteCover
+                && window.NoteCoverRenderer
+                && typeof window.NoteCoverRenderer.hydrate === 'function') {
+                window.NoteCoverRenderer.hydrate(viewer);
+            }
+        } catch (e) {}
         refreshLucideIcons(viewer);
         try {
             if (snapshot.features.hasInternalImages) {
@@ -5009,6 +5020,8 @@ function getTidyActionDeps() {
         activeSidebarTab: activeSidebarTab,
         specialTRT: (typeof specialTRT !== 'undefined') ? specialTRT : null,
         tidySeparatorSpacing: tidySeparatorSpacing,
+        db: db,
+        imageDb: window.ImageDB || null,
         setCurrentMarkdown: function (value) { currentMarkdown = value; },
         renderMarkdown: renderMarkdown,
         renderTOC: renderTOC,
@@ -5032,6 +5045,12 @@ function applyMathTidyInEditor() {
 function applyHtmlTidyInEditor() {
     if (window.TidyActions && typeof window.TidyActions.applyHtml === 'function') {
         window.TidyActions.applyHtml(getTidyActionDeps());
+    }
+}
+
+function convertBase64ImagesToInternalInEditor() {
+    if (window.TidyActions && typeof window.TidyActions.applyBase64ToUrl === 'function') {
+        return window.TidyActions.applyBase64ToUrl(getTidyActionDeps());
     }
 }
 
@@ -14488,6 +14507,7 @@ window.tidySeparatorSpacingInEditor = tidySeparatorSpacingInEditor;
 window.applyEnterTidyInEditor = applyEnterTidyInEditor;
 window.applyMathTidyInEditor = applyMathTidyInEditor;
 window.applyHtmlTidyInEditor = applyHtmlTidyInEditor;
+window.convertBase64ImagesToInternalInEditor = convertBase64ImagesToInternalInEditor;
 window.closeTidyQuickMenu = closeTidyQuickMenu;
 window.toggleTidyQuickMenu = toggleTidyQuickMenu;
 window.toggleMathQuickMenu = toggleMathQuickMenu;

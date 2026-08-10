@@ -28,7 +28,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260810-copy-fab-drag-1&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-1&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260810-ai-jena-button-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -853,6 +853,9 @@
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">HTML정리</button>
                                 <button type="button" onclick="convertSelectionMarkdownToHtml(); closeTidyQuickMenu && closeTidyQuickMenu()"
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">MD2HTML</button>
+                                <button type="button" onclick="convertBase64ImagesToInternalInEditor()"
+                                    class="px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                    title="선택 영역 또는 문서 전체의 Base64 이미지를 IndexedDB internal:// 링크로 변환">base64tourl</button>
                             </div>
                         </div>
                     </div>
@@ -2485,7 +2488,7 @@
 
 <!-- 이미지 데이터베이스 -->
 <script
-    src="./imageDB/imageDB.js"
+    src="./imageDB/imageDB.js?v=20260811-base64tourl-1"
     charset="utf-8"
     defer>
 </script>
@@ -2577,7 +2580,7 @@
 
 <!-- 확장 파일 처리 -->
 <script
-    src="./js/extendFiles/extend-files.js?v=20260806-export-colors-1"
+    src="./js/extendFiles/extend-files.js?v=20260811-mdd-id-map-1"
     charset="utf-8"
     defer>
 </script>
@@ -2657,7 +2660,7 @@
 
 <!-- 설정 UI -->
 <script
-    src="./Setting/settings-ui.js?v=20260807-local-server-toast-3&amp;feature=templates-2&amp;storageVisibility=20260807-1&amp;sqliteFullscreen=20260807-1"
+    src="./Setting/settings-ui.js?v=20260811-folder-picker-1&amp;feature=templates-2&amp;storageVisibility=20260807-1&amp;sqliteFullscreen=20260807-1"
     charset="utf-8"
     defer>
 </script>
@@ -2678,7 +2681,7 @@
 
 <!-- 문서 정리 기능 -->
 <script
-    src="./js/Tidy/tidy-actions.js?v=20260628-1"
+    src="./js/Tidy/tidy-actions.js?v=20260811-base64tourl-1"
     charset="utf-8"
     defer>
 </script>
@@ -2686,6 +2689,13 @@
 <!-- 미니 미리보기 -->
 <script
     src="./js/md-comment.js?v=20260810-3&amp;perf=20260810-1"
+    charset="utf-8"
+    defer>
+</script>
+
+<!-- Markdown 내장 A4 표지(note-cover) 렌더링 -->
+<script
+    src="./js/note-cover/note-cover.js?v=20260811-1"
     charset="utf-8"
     defer>
 </script>
@@ -2731,7 +2741,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260810-unsaved-dirty-check-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260810-3&amp;perf=20260810-10"
+    src="./js/app.js?v=20260811-note-cover-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260810-3&amp;perf=20260810-10"
     charset="utf-8"
     defer>
 </script>

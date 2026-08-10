@@ -206,6 +206,14 @@
     var doc = payload.document || {};
     var markdown = String(doc.content || '');
 
+    if (format === 'mdviewer/mdd') {
+      Object.keys(pathMap).forEach(function (key) {
+        if (!key) return;
+        var internalRef = 'internal://' + encodeURIComponent(key);
+        markdown = markdown.replace(new RegExp(escapeRegExp(internalRef), 'g'), pathMap[key]);
+      });
+    }
+
     if (format === 'mdlive/mdd') {
       Object.keys(pathMap).forEach(function (key) {
         if (!key) return;

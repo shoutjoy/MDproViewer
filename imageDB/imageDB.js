@@ -3,6 +3,7 @@
 
   var INTERNAL_PREFIX = 'internal://';
   var INTERNAL_RE = /internal:\/\/([A-Za-z0-9._~%\-]+)/g;
+  var BASE64_MARKDOWN_IMAGE_RE = /!\[([^\]\r\n]*)\]\(\s*(data:(image\/[A-Za-z0-9.+-]+);base64,([A-Za-z0-9+\/_=-]+))(\s+(?:"[^"\r\n]*"|'[^'\r\n]*'|\([^\)\r\n]*\)))?\s*\)/gi;
 
   function ensureDb(db) {
     if (!db) throw new Error('IndexedDB handle is not available.');
@@ -55,7 +56,8 @@
     var comma = raw.indexOf(',');
     if (comma < 0) throw new Error('Invalid data URL');
     var header = raw.slice(0, comma);
-    var b64 = raw.slice(comma + 1);
+    var b64 = raw.slice(comma + 1).replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+    while (b64.length % 4) b64 += '=';
     var mimeMatch = header.match(/^data:([^;]+);base64$/i);
     var mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
     var bin = atob(b64);
@@ -94,6 +96,90 @@
   function saveDataUrl(db, dataUrl, opts) {
     var blob = dataUrlToBlob(dataUrl);
     return saveBlob(db, blob, opts || {});
+  }
+
+  function getBase64MarkdownImages(markdown) {
+    var source = String(markdown || '');
+    var matches = [];
+    var match;
+    BASE64_MARKDOWN_IMAGE_RE.lastIndex = 0;
+    while ((match = BASE64_MARKDOWN_IMAGE_RE.exec(source)) !== null) {
+      matches.push({
+        start: match.index,
+        end: BASE64_MARKDOWN_IMAGE_RE.lastIndex,
+        alt: match[1] || '',
+        dataUrl: match[2],
+        mime: String(match[3] || 'image/png').toLowerCase(),
+        title: match[5] || ''
+      });
+    }
+    return matches;
+  }
+
+  function imageExtensionFromMime(mime) {
+    var normalized = String(mime || '').toLowerCase();
+    var map = {
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/gif': '.gif',
+      'image/webp': '.webp',
+      'image/svg+xml': '.svg',
+      'image/bmp': '.bmp',
+      'image/x-icon': '.ico',
+      'image/avif': '.avif'
+    };
+    return map[normalized] || '.bin';
+  }
+
+  async function convertBase64ImagesInMarkdown(db, markdown) {
+    ensureDb(db);
+    var source = String(markdown || '');
+    var matches = getBase64MarkdownImages(source);
+    if (!matches.length) {
+      return { markdown: source, convertedCount: 0, storedCount: 0, imageIds: [] };
+    }
+
+    var uniqueByDataUrl = new Map();
+    for (var i = 0; i < matches.length; i++) {
+      if (uniqueByDataUrl.has(matches[i].dataUrl)) continue;
+      // Decode every unique image before writing anything. Invalid Base64 then leaves the DB untouched.
+      uniqueByDataUrl.set(matches[i].dataUrl, {
+        blob: dataUrlToBlob(matches[i].dataUrl),
+        mime: matches[i].mime
+      });
+    }
+
+    var savedByDataUrl = new Map();
+    var imageIds = [];
+    var uniqueEntries = Array.from(uniqueByDataUrl.entries());
+    for (var j = 0; j < uniqueEntries.length; j++) {
+      var dataUrl = uniqueEntries[j][0];
+      var prepared = uniqueEntries[j][1];
+      var id = 'img_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      var saved = await saveBlob(db, prepared.blob, {
+        id: id,
+        name: id + imageExtensionFromMime(prepared.mime),
+        mime: prepared.mime
+      });
+      savedByDataUrl.set(dataUrl, saved);
+      imageIds.push(saved.id);
+    }
+
+    var output = source;
+    for (var k = matches.length - 1; k >= 0; k--) {
+      var item = matches[k];
+      var image = savedByDataUrl.get(item.dataUrl);
+      var alt = item.alt && item.alt.trim() ? item.alt : image.id;
+      var replacement = '![' + alt + '](' + image.url + item.title + ')';
+      output = output.slice(0, item.start) + replacement + output.slice(item.end);
+    }
+
+    return {
+      markdown: output,
+      convertedCount: matches.length,
+      storedCount: savedByDataUrl.size,
+      imageIds: imageIds
+    };
   }
 
   function getImage(db, id) {
@@ -216,6 +302,8 @@
     extractInternalImageIds: extractInternalImageIds,
     saveBlob: saveBlob,
     saveDataUrl: saveDataUrl,
+    getBase64MarkdownImages: getBase64MarkdownImages,
+    convertBase64ImagesInMarkdown: convertBase64ImagesInMarkdown,
     getImage: getImage,
     resolveInternalUrlsInMarkdown: resolveInternalUrlsInMarkdown,
     exportMarkdownToZip: exportMarkdownToZip,

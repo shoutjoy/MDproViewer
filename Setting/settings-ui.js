@@ -136,6 +136,16 @@
         return 'cmd.exe /k py -3 "' + directory + '\\run.py"';
     }
 
+    function buildLocalSqliteServerFolderPickerCommand() {
+        return 'powershell.exe -NoProfile -STA -Command "'
+            + '$folder=(New-Object -ComObject Shell.Application).BrowseForFolder(0,'
+            + "'run.py가 있는 md_viewer 폴더를 선택하세요',0);"
+            + "if($folder){$runPy=Join-Path $folder.Self.Path 'run.py';"
+            + "if(Test-Path -LiteralPath $runPy){py -3 $runPy}"
+            + "else{Add-Type -AssemblyName PresentationFramework;"
+            + "[System.Windows.MessageBox]::Show('선택한 폴더에 run.py가 없습니다.','MD Viewer')}}\"";
+    }
+
     async function copyLocalServerCommand(command) {
         if (!command) return false;
         try {
@@ -173,18 +183,23 @@
                 return;
             }
             const projectDirectory = getFileProtocolProjectDirectory();
-            const command = buildLocalSqliteServerCommand(projectDirectory);
+            const usesFolderPicker = !projectDirectory;
+            const command = projectDirectory
+                ? buildLocalSqliteServerCommand(projectDirectory)
+                : buildLocalSqliteServerFolderPickerCommand();
             if (command && await copyLocalServerCommand(command)) {
                 setSqliteStatus(
                     'Python 서버 실행 명령 복사됨',
                     'warning',
                     'Windows 키+R을 누르고 Ctrl+V, Enter를 차례로 누르세요. '
+                        + (usesFolderPicker ? '폴더 찾기 창에서 run.py가 있는 md_viewer 폴더를 선택하세요. ' : '')
                         + 'run.py가 SQLite API와 웹 서버를 시작하고 ' + LOCAL_SQLITE_APP_URL + '를 자동으로 엽니다. '
                         + '또는 앱 폴더의 start-md-viewer-server.cmd를 직접 실행할 수 있습니다.'
                 );
                 if (typeof window.showToast === 'function') {
                     window.showToast(
-                        '실행 명령을 복사했습니다. Windows 키+R → Ctrl+V → Enter',
+                        '실행 명령 복사됨 · Windows 키+R → Ctrl+V → Enter'
+                            + (usesFolderPicker ? ' → md_viewer 폴더 선택' : ''),
                         { tone: 'info', persistent: true, dismissible: true }
                     );
                 }
@@ -259,10 +274,10 @@
                 '  </select>',
                 '</div>',
                 '<div class="flex flex-wrap items-center gap-2">',
-                '  <button type="button" id="sqlite-start-local-server" class="px-2 py-1 text-[10px] rounded border border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60">Python 서버 실행</button>',
+                '  <button type="button" id="sqlite-start-local-server" class="px-2 py-1 text-[10px] rounded border border-emerald-400 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-40 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60">Python 서버 폴더 찾기</button>',
                 '  <a id="sqlite-open-local-app" href="http://127.0.0.1:8765/" target="_blank" rel="noopener noreferrer" class="px-2 py-1 text-[10px] rounded border border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950/30">127.0.0.1:8765 열기</a>',
                 '</div>',
-                '<p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">Python API는 <code>run.py</code> 서버를 사용합니다. <code>file://</code>에서는 실행 버튼이 명령을 복사하므로 <b>Windows 키+R → Ctrl+V → Enter</b>로 시작하세요. WASM · OPFS는 Live Server 같은 localhost 주소에서도 동작합니다.</p>',
+                '<p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">Python API는 <code>run.py</code> 서버를 사용합니다. 버튼을 누른 뒤 <b>Windows 키+R → Ctrl+V → Enter</b>를 누르고, 폴더 찾기 창에서 <code>md_viewer</code> 폴더를 선택하세요. <code>file://</code>로 연 경우에는 현재 폴더가 자동 설정됩니다. WASM · OPFS는 Live Server 같은 localhost 주소에서도 동작합니다.</p>',
                 '<p id="sqlite-connection-details" class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-500"></p>',
                 '<div class="flex flex-wrap items-center gap-2 pt-1">',
                 '  <button type="button" id="sqlite-migration-preview" disabled class="px-2 py-1 text-[10px] rounded border border-cyan-300 dark:border-cyan-700 text-cyan-700 dark:text-cyan-300 disabled:opacity-40">inDB 이관 미리보기</button>',
@@ -2323,6 +2338,8 @@
         ,renderSqliteRestorePreview: renderSqliteRestorePreview
         ,runSqliteRestoreApply: runSqliteRestoreApply
         ,runSqlitePreRestoreBackupDownload: runSqlitePreRestoreBackupDownload
+        ,buildLocalSqliteServerCommand: buildLocalSqliteServerCommand
+        ,buildLocalSqliteServerFolderPickerCommand: buildLocalSqliteServerFolderPickerCommand
         ,startLocalSqliteServer: startLocalSqliteServer
     };
 })();
