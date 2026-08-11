@@ -37,7 +37,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiChat: './AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1',
     scholarRef: './js/Scholarref/scholarref.js?v=20260806-scholar-sqlite-fallback-3',
     scholarCrossref: './js/Scholarref/crossref-search.js?v=20260729-1',
-    scholarShell: './js/Scholarref/scholarsearch-shell.js?v=20260810-crossref-bank-labels-1',
+    scholarShell: './js/Scholarref/scholarsearch-shell.js?v=20260812-crossref-results-ui-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'

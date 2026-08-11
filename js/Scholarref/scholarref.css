@@ -15,6 +15,53 @@
 }
 .dark .scholarref-toggle-btn:hover { background: rgba(34, 211, 238, 0.1); }
 
+/* Crossref 결과창 왼쪽 APA 목록은 앱 테마와 관계없이 충분한 대비를 유지한다. */
+#scholar-crossref-results-toc .scholar-crossref-apa-item {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+#scholar-crossref-results-toc .scholar-crossref-apa-jump {
+  color: #0f172a;
+}
+
+#scholar-crossref-results-toc .scholar-crossref-apa-jump:hover {
+  color: #4338ca;
+}
+
+#scholar-crossref-results-toc .scholar-crossref-apa-copy {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #334155;
+}
+
+#scholar-crossref-results-toc .scholar-crossref-apa-copy:hover {
+  background: #e2e8f0;
+}
+
+.dark #scholar-crossref-results-toc .scholar-crossref-apa-item {
+  border-color: #475569;
+  background: #1e293b;
+}
+
+.dark #scholar-crossref-results-toc .scholar-crossref-apa-jump {
+  color: #f8fafc;
+}
+
+.dark #scholar-crossref-results-toc .scholar-crossref-apa-jump:hover {
+  color: #a5b4fc;
+}
+
+.dark #scholar-crossref-results-toc .scholar-crossref-apa-copy {
+  border-color: #64748b;
+  background: #0f172a;
+  color: #e2e8f0;
+}
+
+.dark #scholar-crossref-results-toc .scholar-crossref-apa-copy:hover {
+  background: #334155;
+}
+
 .scholarref-panel {
   margin-top: 10px;
   border: 1px solid #cbd5e1;

@@ -221,15 +221,15 @@
     listEl.innerHTML = filtered.map(function (x) {
       var title = (x.item && x.item.title) || '';
       return '' +
-        '<div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700/50 rounded-lg border border-slate-200 dark:border-slate-600" data-idx="' + x.idx + '">' +
+        '<div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600" data-idx="' + x.idx + '">' +
           '<i data-lucide="file-text" class="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0"></i>' +
-          '<span class="flex-1 text-sm text-slate-700 dark:text-slate-200 truncate" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</span>' +
+          '<span class="flex-1 text-sm text-slate-700 dark:text-slate-100 truncate" title="' + escapeHtml(title) + '">' + escapeHtml(title) + '</span>' +
           '<label class="flex items-center shrink-0 cursor-pointer">' +
             '<input type="checkbox" ' + (x.item.checked ? 'checked' : '') + ' onchange="toggleMergeItem(' + x.idx + ', this.checked)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600">' +
           '</label>' +
           '<div class="flex flex-col shrink-0">' +
-            '<button type="button" onclick="moveMergeItem(' + x.idx + ',-1)" class="p-0.5 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400" title="위로 이동"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>' +
-            '<button type="button" onclick="moveMergeItem(' + x.idx + ',1)" class="p-0.5 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400" title="아래로 이동"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>' +
+            '<button type="button" onclick="moveMergeItem(' + x.idx + ',-1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="위로 이동"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>' +
+            '<button type="button" onclick="moveMergeItem(' + x.idx + ',1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="아래로 이동"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>' +
           '</div>' +
         '</div>';
     }).join('');

@@ -2618,6 +2618,8 @@ html:not(.dark) .settings-credential-error-status {
 
 /* Feature switches control functionality; sidebar visibility has its own switches. */
 body.feature-github-disabled #btn-github-sync,
+body.feature-sqlite-disabled #scholar-crossref-storage-save,
+body.feature-sqlite-disabled #scholar-crossref-storage-load,
 body.feature-sqlite-disabled button[id*="sqlite" i]:not(#tab-storage-sqlite),
 body.feature-sqlite-disabled a[id*="sqlite" i],
 body.feature-sqlite-disabled button[onclick*="sqlite" i]:not(#tab-storage-sqlite),
