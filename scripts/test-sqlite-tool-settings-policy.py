@@ -55,6 +55,16 @@ def main() -> None:
     normalized_catalog = validate_setting("toolSettingsCatalog", catalog)
     require(normalized_catalog["group"] == "integrations", "catalog group mismatch")
 
+    tidy_scripts = [{
+        "id": "tidy_policy",
+        "name": "정책 테스트",
+        "enabled": True,
+        "code": "function transform(source) { return source.trim(); }",
+    }]
+    normalized_tidy = validate_setting("tidyCustomScripts", tidy_scripts)
+    require(normalized_tidy["group"] == "collections", "TIDY script group mismatch")
+    require(normalized_tidy["scopeType"] == "workspace", "TIDY script scope mismatch")
+
     nested_secret_catalog = {
         **catalog,
         "tools": [{**catalog["tools"][0], "options": {"apiKey": "not-allowed"}}],

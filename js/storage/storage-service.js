@@ -137,7 +137,7 @@
         if (typeof root.MDPSqliteWasmAdapter === 'function'
             && root.MDPSqliteWasmAdapter.isSupported(root)) {
             sqliteWasmAdapter = new root.MDPSqliteWasmAdapter({
-                workerUrl: config.sqliteWasmWorkerUrl || './Local_SQLiteWASM/sqlite-wasm-worker.js',
+                workerUrl: config.sqliteWasmWorkerUrl || './Local_SQLiteWASM/sqlite-wasm-worker.js?v=20260811-tidy-scripts-1',
                 workerFactory: config.sqliteWasmWorkerFactory,
                 timeoutMs: config.sqliteWasmTimeoutMs
             });

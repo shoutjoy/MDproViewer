@@ -86,6 +86,7 @@ SAFE_SETTING_RULES: Dict[str, SettingRule] = {
     # User-managed collections and profile metadata.
     "sitesList": SettingRule("collections", "workspace", ("array",), 2 * 1024 * 1024),
     "templateCustomList": SettingRule("collections", "workspace", ("array",), 4 * 1024 * 1024),
+    "tidyCustomScripts": SettingRule("collections", "workspace", ("array",), 4 * 1024 * 1024),
     "shareSites": SettingRule("collections", "workspace", ("array",), 256 * 1024),
     "customShareDestinations": SettingRule("collections", "workspace", ("array",), 2 * 1024 * 1024),
     "userInfo": SettingRule("profile", "profile", ("object",), 64 * 1024),

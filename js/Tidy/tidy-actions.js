@@ -4,9 +4,66 @@
     var menuBound = false;
     var base64ConversionBusy = false;
 
+    function formatNoteCoverBlocks(source) {
+        var input = String(source == null ? '' : source);
+        var formattedCount = 0;
+        var invalidCount = 0;
+        var foundCount = 0;
+        var value = input.replace(/<!--\s*note-cover\b([\s\S]*?)-->/gi, function (whole, jsonText) {
+            foundCount += 1;
+            try {
+                var config = JSON.parse(String(jsonText || '').trim());
+                var next = '<!-- note-cover\n' + JSON.stringify(config, null, 2) + '\n-->';
+                if (next !== whole) formattedCount += 1;
+                return next;
+            } catch (_) {
+                invalidCount += 1;
+                return whole;
+            }
+        });
+        return {
+            value: value,
+            changed: value !== input,
+            foundCount: foundCount,
+            formattedCount: formattedCount,
+            invalidCount: invalidCount
+        };
+    }
+
     function closeMenu() {
         var panel = document.getElementById('tidy-quick-panel');
         if (panel) panel.classList.add('hidden');
+    }
+
+    function positionMenu(panel, btn) {
+        if (!panel || !btn || !document.body) return;
+        if (typeof document.body.appendChild === 'function' && panel.parentNode !== document.body) {
+            document.body.appendChild(panel);
+        }
+        panel.classList.add('tidy-menu-portal');
+        var viewportWidth = Math.max(240, Number(global.innerWidth) || 1024);
+        var viewportHeight = Math.max(240, Number(global.innerHeight) || 768);
+        var buttonRect = btn.getBoundingClientRect();
+        var panelWidth = Math.min(280, Math.max(224, viewportWidth - 16));
+        var left = buttonRect.left;
+        if (left + panelWidth > viewportWidth - 8) left = buttonRect.right - panelWidth;
+        left = Math.max(8, Math.min(left, viewportWidth - panelWidth - 8));
+        panel.style.setProperty('--tidy-menu-left', left + 'px');
+        panel.style.setProperty('--tidy-menu-width', panelWidth + 'px');
+
+        var panelHeight = Math.max(0, panel.getBoundingClientRect().height);
+        var top = buttonRect.bottom + 6;
+        if (top + panelHeight > viewportHeight - 8 && buttonRect.top - panelHeight - 6 >= 8) {
+            top = buttonRect.top - panelHeight - 6;
+        }
+        panel.style.setProperty('--tidy-menu-top', Math.max(8, top) + 'px');
+    }
+
+    function repositionOpenMenu() {
+        var panel = document.getElementById('tidy-quick-panel');
+        var btn = document.getElementById('btn-tidy-quick');
+        if (!panel || !btn || panel.classList.contains('hidden')) return;
+        positionMenu(panel, btn);
     }
 
     function toggleMenu(forceOpen) {
@@ -16,6 +73,7 @@
         bindDismiss();
         var shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
         panel.classList.toggle('hidden', !shouldOpen);
+        if (shouldOpen) positionMenu(panel, btn);
     }
 
     function bindDismiss() {
@@ -29,6 +87,10 @@
             if (panel.contains(target) || btn.contains(target)) return;
             panel.classList.add('hidden');
         });
+        if (typeof global.addEventListener === 'function') {
+            global.addEventListener('resize', repositionOpenMenu);
+            global.addEventListener('scroll', repositionOpenMenu, true);
+        }
     }
 
     function getEditorState(deps) {
@@ -187,6 +249,45 @@
         if (typeof deps.showToast === 'function') deps.showToast('HTML 문서의 줄바꿈과 들여쓰기를 정리했습니다.');
     }
 
+    function applyNoteCover(deps) {
+        deps = deps || {};
+        var state = getEditorState(deps);
+        if (!state.isEditMode || !state.editorTextarea) {
+            if (typeof deps.showToast === 'function') deps.showToast('편집 모드에서 사용하세요.');
+            return;
+        }
+        closeMenu();
+
+        var ta = state.editorTextarea;
+        var start = ta.selectionStart;
+        var end = ta.selectionEnd;
+        var hasSelection = start !== end;
+        var sourceText = hasSelection ? ta.value.substring(start, end) : ta.value;
+        var result = formatNoteCoverBlocks(sourceText);
+        if (!result.foundCount) {
+            if (typeof deps.showToast === 'function') deps.showToast('정리할 note-cover 블록이 없습니다.');
+            return;
+        }
+        if (result.invalidCount) {
+            if (!result.changed) {
+                if (typeof deps.showToast === 'function') {
+                    deps.showToast('note-cover JSON 오류 ' + result.invalidCount + '개가 있어 정리하지 못했습니다.');
+                }
+                return;
+            }
+        }
+        if (!result.changed) {
+            if (typeof deps.showToast === 'function') deps.showToast('note-cover가 이미 보기 좋게 정리되어 있습니다.');
+            return;
+        }
+        applyResultToEditor(result, sourceText, deps);
+        if (typeof deps.showToast === 'function') {
+            var scope = hasSelection ? '선택 영역' : '문서 전체';
+            var skipped = result.invalidCount ? (' (JSON 오류 ' + result.invalidCount + '개 제외)') : '';
+            deps.showToast(scope + ' note-cover ' + result.formattedCount + '개를 JSON 들여쓰기로 정리했습니다.' + skipped);
+        }
+    }
+
     async function applyBase64ToUrl(deps) {
         deps = deps || {};
         var state = getEditorState(deps);
@@ -259,7 +360,10 @@
         applyEnter: applyEnter,
         applyMath: applyMath,
         applyHtml: applyHtml,
+        applyNoteCover: applyNoteCover,
         applyBase64ToUrl: applyBase64ToUrl,
-        formatHtml: formatHtml
+        formatHtml: formatHtml,
+        formatNoteCoverBlocks: formatNoteCoverBlocks,
+        applyResultToEditor: applyResultToEditor
     };
 })(window);

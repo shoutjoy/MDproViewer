@@ -51,6 +51,40 @@
     return extractInternalImageIds(markdown).length > 0;
   }
 
+  function extractInternalImageIdsDeep(value) {
+    var ids = new Set();
+    var seen = new Set();
+
+    function visit(current) {
+      if (typeof current === 'string') {
+        extractInternalImageIds(current).forEach(function (id) { ids.add(id); });
+        return;
+      }
+      if (!current || typeof current !== 'object' || seen.has(current)) return;
+      if ((typeof Blob !== 'undefined' && current instanceof Blob)
+          || (typeof ArrayBuffer !== 'undefined' && current instanceof ArrayBuffer)
+          || (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(current))) return;
+      seen.add(current);
+      if (Array.isArray(current)) {
+        current.forEach(visit);
+      } else {
+        Object.keys(current).forEach(function (key) { visit(current[key]); });
+      }
+    }
+
+    visit(value);
+    return Array.from(ids);
+  }
+
+  function findUnusedImageIds(imageRecords, referenceValues) {
+    var referenced = new Set(extractInternalImageIdsDeep(referenceValues));
+    return Array.from(imageRecords || []).map(function (record) {
+      return String(record && record.id || '').trim();
+    }).filter(function (id) {
+      return id && !referenced.has(id);
+    });
+  }
+
   function dataUrlToBlob(dataUrl) {
     var raw = String(dataUrl || '');
     var comma = raw.indexOf(',');
@@ -300,6 +334,8 @@
     parseInternalUrl: parseInternalUrl,
     hasInternalImages: hasInternalImages,
     extractInternalImageIds: extractInternalImageIds,
+    extractInternalImageIdsDeep: extractInternalImageIdsDeep,
+    findUnusedImageIds: findUnusedImageIds,
     saveBlob: saveBlob,
     saveDataUrl: saveDataUrl,
     getBase64MarkdownImages: getBase64MarkdownImages,

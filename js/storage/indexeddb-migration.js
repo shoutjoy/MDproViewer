@@ -24,6 +24,7 @@
         googleDocsClientId: ['integrations', 'workspace'], googleCalendarOpenMode: ['integrations', 'profile'],
         googleCalendarEmail: ['integrations', 'profile'], naverBlogId: ['integrations', 'profile'],
         sitesList: ['collections', 'workspace'], templateCustomList: ['collections', 'workspace'],
+        tidyCustomScripts: ['collections', 'workspace'],
         shareSites: ['collections', 'workspace'], customShareDestinations: ['collections', 'workspace'],
         userInfo: ['profile', 'profile'],
         encryptedToolVault: ['security', 'profile'],

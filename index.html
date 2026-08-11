@@ -28,7 +28,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-1&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-image-replace-1&amp;viewImageResize=20260811-1&amp;tidyUi=20260811-1&amp;indbUi=20260811-1&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260810-ai-jena-button-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -43,6 +43,56 @@
             min-height: 420px;
             max-width: 96vw;
             max-height: 92vh;
+        }
+        #settings-modal-move-handle {
+            position: absolute;
+            z-index: 3;
+            top: 0;
+            right: 0;
+            left: 0;
+            height: 20px;
+            border-radius: 0.75rem 0.75rem 0 0;
+            cursor: move;
+            touch-action: none;
+        }
+        #settings-modal-move-handle::after {
+            content: "";
+            position: absolute;
+            top: 6px;
+            left: 50%;
+            width: 52px;
+            height: 3px;
+            border-radius: 999px;
+            background: #cbd5e1;
+            transform: translateX(-50%);
+            transition: width 120ms ease, background-color 120ms ease;
+        }
+        #settings-modal-move-handle:hover::after {
+            width: 68px;
+            background: #64748b;
+        }
+        .dark #settings-modal-move-handle::after {
+            background: #475569;
+        }
+        .dark #settings-modal-move-handle:hover::after {
+            background: #94a3b8;
+        }
+        #settings-modal-header {
+            cursor: move;
+        }
+        #settings-modal-header button {
+            cursor: pointer;
+        }
+        #settings-modal-panel.settings-modal-fullscreen #settings-modal-move-handle {
+            display: none;
+        }
+        #settings-modal-panel.settings-modal-fullscreen #settings-modal-header {
+            cursor: default;
+        }
+        body.settings-modal-is-dragging,
+        body.settings-modal-is-dragging * {
+            cursor: move !important;
+            user-select: none !important;
         }
         #settings-modal-resize-handle {
             position: absolute;
@@ -843,19 +893,28 @@
                             class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
                             title="Tidy options">Tidy</button>
                         <div id="tidy-quick-panel"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[180px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
-                            <div class="grid grid-cols-1 gap-2">
+                            class="tidy-quick-panel hidden absolute z-[70] top-[calc(100%+6px)] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            <div class="tidy-action-grid">
                                 <button type="button" onclick="applyEnterTidyInEditor()"
-                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">엔터정리</button>
+                                    class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">엔터정리</button>
                                 <button type="button" onclick="applyMathTidyInEditor()"
-                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">수식정리</button>
+                                    class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">수식정리</button>
                                 <button type="button" onclick="applyHtmlTidyInEditor()"
-                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">HTML정리</button>
+                                    class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">HTML정리</button>
                                 <button type="button" onclick="convertSelectionMarkdownToHtml(); closeTidyQuickMenu && closeTidyQuickMenu()"
-                                    class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">MD2HTML</button>
+                                    class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">MD2HTML</button>
                                 <button type="button" onclick="convertBase64ImagesToInternalInEditor()"
-                                    class="px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                                    class="tidy-action-button px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                                     title="선택 영역 또는 문서 전체의 Base64 이미지를 IndexedDB internal:// 링크로 변환">base64tourl</button>
+                                <button type="button" onclick="applyNoteCoverTidyInEditor()"
+                                    class="tidy-action-button px-2 py-1 rounded border border-violet-300 dark:border-violet-700 text-[11px] font-semibold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20"
+                                    title="선택 영역 또는 문서 전체의 note-cover JSON을 보기 좋게 정리">noteCover</button>
+                                <div id="tidy-custom-script-buttons"></div>
+                                <div class="tidy-feature-manager-row pt-2 mt-1 border-t border-slate-200 dark:border-slate-700">
+                                    <button type="button" onclick="openTidyScriptManager()"
+                                        class="tidy-add-feature-button w-full px-2 py-1.5 rounded border border-dashed border-cyan-400 dark:border-cyan-700 text-[11px] font-semibold text-cyan-700 dark:text-cyan-300 hover:bg-cyan-50 dark:hover:bg-cyan-900/20"
+                                        title="TIDY 기능 추가 및 관리">+ 기능 추가</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1257,7 +1316,7 @@
 
     <!-- Toast Notification -->
     <div id="toast" role="status" aria-live="polite" aria-atomic="true" aria-hidden="true"
-        class="fixed top-4 left-1/2 z-[2147483647] flex max-w-[min(92vw,720px)] -translate-x-1/2 items-start gap-3 rounded-lg bg-slate-800 px-4 py-3 text-sm text-white opacity-0 shadow-2xl transition-opacity pointer-events-none dark:bg-slate-700">
+        class="fixed bottom-4 left-4 z-[2147483647] flex max-w-[min(calc(100vw-2rem),720px)] items-start gap-3 rounded-lg bg-slate-800 px-4 py-3 text-sm text-white opacity-0 shadow-2xl transition-opacity pointer-events-none dark:bg-slate-700">
         <span id="toast-message" class="min-w-0 whitespace-normal break-words">알림 메시지</span>
         <button id="toast-close" type="button" class="hidden -mr-1 shrink-0 rounded px-1.5 py-0.5 text-lg leading-none text-slate-200 hover:bg-white/15 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/70"
             aria-label="알림 닫기" title="알림 닫기">&times;</button>
@@ -1267,6 +1326,7 @@
     <div id="settings-modal" class="fixed top-10 inset-x-0 hidden z-[2147483645] no-print flex justify-center">
         <div id="settings-modal-panel"
             class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-[min(92vw,420px)] max-h-[90vh] flex flex-col">
+            <div id="settings-modal-move-handle" title="드래그하여 설정 창 이동" aria-hidden="true"></div>
             <h3 id="settings-modal-header" class="text-lg font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2 shrink-0 select-none">
                 <i data-lucide="settings" class="w-5 h-5"></i> ENV
                 <div class="ml-auto flex items-center gap-1">
@@ -2092,19 +2152,30 @@
     </div>
 
     <!-- inDB Status Modal -->
-    <div id="indb-status-modal" class="fixed inset-0 bg-black/30 hidden items-center justify-center z-[2147483646] no-print" onclick="if(event.target===this) closeInDbStatusModal()">
-        <div class="w-[min(680px,92vw)] h-[min(680px,86vh)] bg-white dark:bg-slate-900 border-2 border-slate-800 shadow-2xl flex flex-col">
-            <div class="px-4 py-2 bg-indigo-600 text-white text-2xl text-center tracking-wide">inDB Status</div>
-            <div id="indb-status-list" class="flex-1 overflow-auto p-4 space-y-3 bg-slate-100 dark:bg-slate-800"></div>
-            <div class="border-t-2 border-slate-700 p-2 flex items-center justify-center gap-2 bg-white dark:bg-slate-900">
-                <button type="button" id="btn-download-all-indb" onclick="downloadAllInDbAsZip()"
-                    class="px-4 py-1.5 bg-emerald-600 text-white font-bold rounded hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait">전체 다운로드</button>
-                <button type="button" onclick="deleteAllInDbStatusItems()"
-                    class="px-4 py-1.5 bg-red-600 text-white font-bold rounded hover:bg-red-700">전체지우기</button>
-                <button type="button" onclick="closeInDbStatusModal()"
-                    class="px-4 py-1.5 border border-slate-400 rounded text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800">닫기</button>
-            </div>
-        </div>
+    <div id="indb-status-modal" class="indb-status-backdrop fixed inset-0 hidden items-center justify-center z-[2147483646] no-print" onclick="if(event.target===this) closeInDbStatusModal()">
+        <section id="indb-status-panel" class="indb-status-panel" role="dialog" aria-modal="true" aria-labelledby="indb-status-title">
+            <header class="indb-status-header">
+                <div class="indb-status-mark" aria-hidden="true">DB</div>
+                <div class="indb-status-heading">
+                    <h2 id="indb-status-title">inDB 저장소</h2>
+                    <p id="indb-status-subtitle">브라우저 내부 데이터와 이미지 사용 상태를 확인합니다.</p>
+                </div>
+                <button type="button" class="indb-icon-button" onclick="renderInDbStatusModal()" title="새로고침" aria-label="inDB 새로고침">↻</button>
+                <button type="button" class="indb-icon-button" onclick="closeInDbStatusModal()" title="닫기" aria-label="inDB 창 닫기">×</button>
+            </header>
+            <div id="indb-status-list" class="indb-status-list" aria-live="polite"></div>
+            <footer class="indb-status-footer">
+                <div class="indb-footer-group">
+                    <button type="button" id="btn-open-indb-images-fma" class="indb-action-button indb-action-fma" onclick="openAllInDbImagesInFmaViewer()">FMA 전체보기</button>
+                    <button type="button" id="btn-clean-unused-indb-images" class="indb-action-button indb-action-clean" onclick="deleteUnusedInDbImages()">미사용 이미지 정리</button>
+                </div>
+                <div class="indb-footer-group indb-footer-group-end">
+                    <button type="button" id="btn-download-all-indb" class="indb-action-button indb-action-backup" onclick="downloadAllInDbAsZip()">전체 백업</button>
+                    <button type="button" class="indb-action-button indb-action-danger" onclick="deleteAllInDbStatusItems()">전체 삭제</button>
+                    <button type="button" class="indb-action-button indb-action-neutral" onclick="closeInDbStatusModal()">닫기</button>
+                </div>
+            </footer>
+        </section>
     </div>
 
     <!-- SQLite read-only explorer -->
@@ -2488,7 +2559,7 @@
 
 <!-- 이미지 데이터베이스 -->
 <script
-    src="./imageDB/imageDB.js?v=20260811-base64tourl-1"
+    src="./imageDB/imageDB.js?v=20260811-unused-images-1"
     charset="utf-8"
     defer>
 </script>
@@ -2641,7 +2712,7 @@
     defer>
 </script>
 <script
-    src="./js/storage/storage-service.js?v=20260807-wasm-opfs-default-1"
+    src="./js/storage/storage-service.js?v=20260807-wasm-opfs-default-1&amp;tidyScripts=20260811-1"
     charset="utf-8"
     defer>
 </script>
@@ -2653,7 +2724,7 @@
 </script>
 
 <script
-    src="./js/storage/indexeddb-migration.js?v=20260806-settings-migration-1"
+    src="./js/storage/indexeddb-migration.js?v=20260806-settings-migration-1&amp;tidyScripts=20260811-1"
     charset="utf-8"
     defer>
 </script>
@@ -2681,7 +2752,12 @@
 
 <!-- 문서 정리 기능 -->
 <script
-    src="./js/Tidy/tidy-actions.js?v=20260811-base64tourl-1"
+    src="./js/Tidy/tidy-actions.js?v=20260811-menu-ui-2"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/Tidy/tidy-script-manager.js?v=20260811-custom-js-2"
     charset="utf-8"
     defer>
 </script>
@@ -2695,7 +2771,7 @@
 
 <!-- Markdown 내장 A4 표지(note-cover) 렌더링 -->
 <script
-    src="./js/note-cover/note-cover.js?v=20260811-1"
+    src="./js/note-cover/note-cover.js?v=20260811-image-replace-1"
     charset="utf-8"
     defer>
 </script>
@@ -2741,7 +2817,12 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260810-3&amp;perf=20260810-10"
+    src="./js/viewmode/image-resize.js?v=20260811-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/app.js?v=20260811-note-cover-transform-1&amp;viewImageResize=20260811-1&amp;indbImages=20260811-1&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260810-3&amp;perf=20260810-10"
     charset="utf-8"
     defer>
 </script>
@@ -2767,7 +2848,7 @@
 
 <!-- GitHub 실제 기능 -->
 <script
-    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260810-1"
+    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260810-1&amp;tidyTextFiles=20260811-1"
     charset="utf-8"
     defer>
 </script>

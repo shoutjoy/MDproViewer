@@ -39,7 +39,7 @@ let database = null;
 let initializationPromise = null;
 let operationQueue = Promise.resolve();
 
-importScripts('./settings-policy.js');
+importScripts('./settings-policy.js?v=20260811-tidy-scripts-1');
 importScripts(SQLITE_JS_URL);
 
 function appError(code, message, status, details) {

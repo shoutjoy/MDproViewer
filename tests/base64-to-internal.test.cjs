@@ -105,6 +105,31 @@ test('MDD import rewrites exported internal image ids to restored ids', async ()
   assert.ok(harness.records.has(restoredId));
 });
 
+test('unused image detection scans nested inDB records and the current draft', () => {
+  const sandbox = createSandbox();
+  loadBrowserModule('imageDB/imageDB.js', sandbox);
+  const imageRecords = [
+    { id: 'img_current' },
+    { id: 'img_document' },
+    { id: 'img_nested' },
+    { id: 'img_unused' }
+  ];
+  const references = [
+    '![현재](internal://img_current)',
+    { content: '<!-- note-cover {"path":"internal://img_document"} -->' },
+    { nested: [{ url: 'internal://img_nested' }] }
+  ];
+
+  assert.deepEqual(
+    Array.from(sandbox.ImageDB.extractInternalImageIdsDeep(references)).sort(),
+    ['img_current', 'img_document', 'img_nested']
+  );
+  assert.deepEqual(
+    Array.from(sandbox.ImageDB.findUnusedImageIds(imageRecords, references)),
+    ['img_unused']
+  );
+});
+
 test('TIDY UI exposes the base64tourl action and selection-aware wiring', () => {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');

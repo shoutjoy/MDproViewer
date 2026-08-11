@@ -30,6 +30,8 @@ assert.match(launcher, /^@echo off & cd \/d "%~dp0" & py -3 run\.py\s*$/);
 assert.match(indexHtml, /settings-ui\.js\?v=20260811-folder-picker-1/);
 assert.match(indexHtml, /id="toast-close"/);
 assert.match(indexHtml, /z-\[2147483647\]/);
+assert.match(indexHtml, /id="toast"[\s\S]*?class="fixed bottom-4 left-4/);
+assert.doesNotMatch(indexHtml, /id="toast"[\s\S]*?class="fixed top-4 left-1\/2/);
 assert.match(appJs, /function hideToast\(\)/);
 assert.match(appJs, /config\.persistent !== true/);
 assert.match(appJs, /toast\.style\.display = 'none'/);

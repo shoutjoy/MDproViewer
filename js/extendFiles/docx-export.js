@@ -2,6 +2,14 @@
   'use strict';
 
   var DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  var NOTE_COVER_BLOCK_RE = /<!--\s*note-cover\b([\s\S]*?)-->/gi;
+  var NOTE_COVER_PAGE_SIZES = {
+    a3: { width: 297, height: 420, screenWidth: 1123 },
+    a4: { width: 210, height: 297, screenWidth: 794 },
+    a5: { width: 148, height: 210, screenWidth: 559 },
+    letter: { width: 216, height: 279, screenWidth: 816 },
+    legal: { width: 216, height: 356, screenWidth: 816 }
+  };
 
   function escapeXml(value) {
     return String(value == null ? '' : value)
@@ -28,6 +36,31 @@
         var code = parseInt(number, 16);
         return Number.isFinite(code) ? String.fromCodePoint(code) : '';
       });
+  }
+
+  function extractNoteCoverBlocks(markdown) {
+    var covers = [];
+    var errors = [];
+    NOTE_COVER_BLOCK_RE.lastIndex = 0;
+    var body = String(markdown == null ? '' : markdown).replace(
+      NOTE_COVER_BLOCK_RE,
+      function (_match, jsonText) {
+        try {
+          var config = JSON.parse(String(jsonText || '').trim());
+          if (config && typeof config === 'object' && !Array.isArray(config) && config.enabled !== false) {
+            covers.push(config);
+          }
+        } catch (error) {
+          errors.push(error && error.message ? error.message : String(error || '알 수 없는 오류'));
+        }
+        return '';
+      }
+    );
+    return {
+      covers: covers,
+      errors: errors,
+      markdown: body.replace(/^\s*\n/, '').replace(/\n{3,}/g, '\n\n')
+    };
   }
 
   function stripInlineMarkdown(value) {
@@ -972,6 +1005,301 @@
     });
   }
 
+  function readCoverNumber(value, fallback, minimum, maximum) {
+    var number = Number(value);
+    if (!Number.isFinite(number)) number = fallback;
+    if (Number.isFinite(minimum)) number = Math.max(minimum, number);
+    if (Number.isFinite(maximum)) number = Math.min(maximum, number);
+    return number;
+  }
+
+  function getNoteCoverPageSize(config) {
+    var id = String(config && config.pageSizeId || 'a4').toLowerCase();
+    var size = NOTE_COVER_PAGE_SIZES[id] || NOTE_COVER_PAGE_SIZES.a4;
+    return { id: id, width: size.width, height: size.height, screenWidth: size.screenWidth };
+  }
+
+  function getNoteCoverElements(config) {
+    if (global.NoteCoverRenderer && typeof global.NoteCoverRenderer.collectLayerElements === 'function') {
+      return global.NoteCoverRenderer.collectLayerElements(config);
+    }
+    var elements = Array.isArray(config && config.elements) ? config.elements.filter(function (item) {
+      return item && typeof item === 'object' && item.id;
+    }) : [];
+    var groups = Array.isArray(config && config.groups) ? config.groups : [];
+    var elementMap = new Map();
+    var groupMap = new Map();
+    var output = [];
+    var visited = new Set();
+    elements.forEach(function (item) { elementMap.set(String(item.id), item); });
+    groups.forEach(function (item) {
+      if (item && item.id) groupMap.set(String(item.id), item);
+    });
+    function walk(id) {
+      var key = String(id || '');
+      if (!key || visited.has(key)) return;
+      visited.add(key);
+      if (elementMap.has(key)) {
+        output.push(elementMap.get(key));
+        return;
+      }
+      var group = groupMap.get(key);
+      if (group && Array.isArray(group.childIds)) group.childIds.forEach(walk);
+    }
+    var roots = Array.isArray(config && config.rootLayerIds) && config.rootLayerIds.length
+      ? config.rootLayerIds
+      : elements.map(function (item) { return item.id; });
+    roots.forEach(walk);
+    elements.forEach(function (item) {
+      if (!visited.has(String(item.id))) output.push(item);
+    });
+    return output;
+  }
+
+  function getEditableNoteCoverTextElements(config, pageSize) {
+    var layout = config && config.layout && typeof config.layout === 'object' ? config.layout : {};
+    var align = /^(?:left|center|right)$/.test(String(layout.align || '').toLowerCase())
+      ? String(layout.align).toLowerCase()
+      : 'center';
+    var containerWidthPct = readCoverNumber(layout.containerWidthPct, 100, 10, 100);
+    var pageWidthPt = pageSize.width / 25.4 * 72;
+    var pageHeightPt = pageSize.height / 25.4 * 72;
+    var containerWidthPt = pageWidthPt * containerWidthPct / 100;
+    var containerLeftPt = align === 'center'
+      ? (pageWidthPt - containerWidthPt) / 2
+      : (align === 'right' ? pageWidthPt - containerWidthPt : 0);
+    var fontScale = containerWidthPt / pageSize.screenWidth;
+    return getNoteCoverElements(config).map(function (element, index) {
+      if (String(element && element.type || '').toLowerCase() !== 'text') return null;
+      return {
+        id: String(element.id || ('text-' + index)),
+        text: String(element.text || ''),
+        xPt: containerLeftPt + containerWidthPt * readCoverNumber(element.x, 0, -1000, 1000) / 100,
+        yPt: pageHeightPt * readCoverNumber(element.y, 0, -1000, 1000) / 100,
+        widthPt: containerWidthPt * readCoverNumber(element.w, 10, 0, 2000) / 100,
+        heightPt: pageHeightPt * readCoverNumber(element.h, 10, 0, 2000) / 100,
+        rotation: readCoverNumber(element.rotation, 0, -3600, 3600),
+        fontSizePt: readCoverNumber(element.fontSize, 16, 4, 600) * fontScale,
+        fontFamily: String(element.fontFamily || '').replace(/[;{}<>]/g, '').trim() || 'Arial',
+        fontWeight: String(element.fontWeight == null ? 400 : element.fontWeight).trim(),
+        textAlign: String(element.textAlign || 'left').toLowerCase(),
+        color: String(element.color || '#111111'),
+        zIndex: index + 2
+      };
+    }).filter(Boolean);
+  }
+
+  function getCoverImageSource(value) {
+    var source = String(value || '').trim();
+    if (!source) return '';
+    if (/^(?:https?:|blob:|internal:\/\/)/i.test(source)) return source;
+    if (/^data:image\/[a-z0-9.+-]+(?:;[a-z0-9=.+-]+)*;base64,/i.test(source)) return source;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(source)) return '';
+    return source;
+  }
+
+  function getCoverColor(value, fallback) {
+    var color = String(value || '').trim();
+    if (/^#[0-9a-f]{3,8}$/i.test(color) ||
+        /^(?:rgb|rgba|hsl|hsla)\([0-9.,%\s+-]+\)$/i.test(color) ||
+        /^[a-z]{3,24}$/i.test(color)) return color;
+    return fallback || '#ffffff';
+  }
+
+  function drawImageCover(context, image, x, y, width, height) {
+    var imageWidth = Number(image.naturalWidth || image.width || 0);
+    var imageHeight = Number(image.naturalHeight || image.height || 0);
+    if (!imageWidth || !imageHeight || !width || !height) return;
+    var scale = Math.max(width / imageWidth, height / imageHeight);
+    var sourceWidth = width / scale;
+    var sourceHeight = height / scale;
+    var sourceX = (imageWidth - sourceWidth) / 2;
+    var sourceY = (imageHeight - sourceHeight) / 2;
+    context.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height);
+  }
+
+  function drawImageContain(context, image, x, y, width, height) {
+    var imageWidth = Number(image.naturalWidth || image.width || 0);
+    var imageHeight = Number(image.naturalHeight || image.height || 0);
+    if (!imageWidth || !imageHeight || !width || !height) return;
+    var scale = Math.min(width / imageWidth, height / imageHeight);
+    var targetWidth = imageWidth * scale;
+    var targetHeight = imageHeight * scale;
+    context.drawImage(
+      image,
+      x + (width - targetWidth) / 2,
+      y + (height - targetHeight) / 2,
+      targetWidth,
+      targetHeight
+    );
+  }
+
+  function wrapCoverText(context, value, maximumWidth) {
+    var output = [];
+    String(value == null ? '' : value).replace(/\r\n?/g, '\n').split('\n').forEach(function (line) {
+      if (!line) {
+        output.push('');
+        return;
+      }
+      var words = line.split(/(\s+)/).filter(Boolean);
+      var current = '';
+      words.forEach(function (word) {
+        var candidate = current + word;
+        if (current && !/^\s+$/.test(word) && context.measureText(candidate).width > maximumWidth) {
+          output.push(current.trimEnd());
+          current = word.replace(/^\s+/, '');
+        } else {
+          current = candidate;
+        }
+      });
+      output.push(current.trimEnd());
+    });
+    return output;
+  }
+
+  async function loadCoverImage(source, alt, payload) {
+    var resolved = await resolveImageBlob({ src: source, alt: alt || '' }, payload);
+    if (!resolved || !resolved.blob) throw new Error('Cover image data is missing.');
+    return loadImageFromBlob(resolved.blob);
+  }
+
+  async function renderNoteCoverToPng(config, payload, options) {
+    if (!global.document || typeof global.document.createElement !== 'function') {
+      throw new Error('표지 이미지 렌더링을 위한 Canvas를 사용할 수 없습니다.');
+    }
+    if (global.document.fonts && global.document.fonts.ready) {
+      try { await global.document.fonts.ready; } catch (_) {}
+    }
+    var pageSize = getNoteCoverPageSize(config);
+    var renderOptions = options || {};
+    var dpi = 144;
+    var canvas = global.document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(pageSize.width / 25.4 * dpi));
+    canvas.height = Math.max(1, Math.round(pageSize.height / 25.4 * dpi));
+    var context = canvas.getContext && canvas.getContext('2d');
+    if (!context) throw new Error('표지 이미지 Canvas를 초기화할 수 없습니다.');
+
+    var background = config && config.bg && typeof config.bg === 'object' ? config.bg : {};
+    context.fillStyle = getCoverColor(background.color, '#ffffff');
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    var backgroundSource = getCoverImageSource(background.imagePath || '');
+    if (backgroundSource) {
+      try {
+        drawImageCover(context, await loadCoverImage(backgroundSource, '표지 배경', payload), 0, 0, canvas.width, canvas.height);
+      } catch (error) {
+        if (global.console && typeof global.console.warn === 'function') {
+          global.console.warn('[DOCX export] 표지 배경 이미지를 불러오지 못했습니다.', error);
+        }
+      }
+    }
+
+    var layout = config && config.layout && typeof config.layout === 'object' ? config.layout : {};
+    var align = /^(?:left|center|right)$/.test(String(layout.align || '').toLowerCase())
+      ? String(layout.align).toLowerCase()
+      : 'center';
+    var containerWidthPct = readCoverNumber(layout.containerWidthPct, 100, 10, 100);
+    var containerWidth = canvas.width * containerWidthPct / 100;
+    var containerLeft = align === 'center'
+      ? (canvas.width - containerWidth) / 2
+      : (align === 'right' ? canvas.width - containerWidth : 0);
+    var fontScale = containerWidth / pageSize.screenWidth;
+
+    var elements = getNoteCoverElements(config);
+    for (var index = 0; index < elements.length; index += 1) {
+      var element = elements[index] || {};
+      var x = containerLeft + containerWidth * readCoverNumber(element.x, 0, -1000, 1000) / 100;
+      var y = canvas.height * readCoverNumber(element.y, 0, -1000, 1000) / 100;
+      var width = containerWidth * readCoverNumber(element.w, 10, 0, 2000) / 100;
+      var height = canvas.height * readCoverNumber(element.h, 10, 0, 2000) / 100;
+      var rotation = readCoverNumber(element.rotation, 0, -3600, 3600) * Math.PI / 180;
+      context.save();
+      context.globalAlpha = readCoverNumber(element.opacity, 1, 0, 1);
+      context.translate(x + width / 2, y + height / 2);
+      if (rotation) context.rotate(rotation);
+      var localX = -width / 2;
+      var localY = -height / 2;
+      var type = String(element.type || '').toLowerCase();
+      if (type === 'text' && renderOptions.omitText === true) {
+        context.restore();
+        continue;
+      }
+      if (type === 'image') {
+        var imageSource = getCoverImageSource(element.path || element.src || '');
+        try {
+          if (!imageSource) throw new Error('이미지 경로 없음');
+          drawImageContain(
+            context,
+            await loadCoverImage(imageSource, element.name || '표지 이미지', payload),
+            localX,
+            localY,
+            width,
+            height
+          );
+        } catch (_) {
+          context.fillStyle = '#f8fafc';
+          context.strokeStyle = '#cbd5e1';
+          context.lineWidth = Math.max(1, canvas.width / 800);
+          context.setLineDash([8, 6]);
+          context.fillRect(localX, localY, width, height);
+          context.strokeRect(localX, localY, width, height);
+          context.setLineDash([]);
+          context.fillStyle = '#64748b';
+          context.textAlign = 'center';
+          context.textBaseline = 'middle';
+          context.font = Math.max(12, 12 * fontScale) + 'px sans-serif';
+          context.fillText(String(element.name || '표지 이미지'), 0, 0, Math.max(1, width - 12));
+        }
+      } else if (type === 'text') {
+        var fontSize = readCoverNumber(element.fontSize, 16, 4, 600) * fontScale;
+        var family = String(element.fontFamily || '').replace(/[;{}<>]/g, '').trim() || 'Arial, sans-serif';
+        var weight = String(element.fontWeight == null ? 400 : element.fontWeight).trim();
+        if (!/^(?:normal|bold|bolder|lighter|[1-9]00)$/i.test(weight)) weight = '400';
+        var textAlign = /^(?:left|center|right)$/.test(String(element.textAlign || '').toLowerCase())
+          ? String(element.textAlign).toLowerCase()
+          : 'left';
+        context.fillStyle = getCoverColor(element.color, '#111111');
+        context.font = weight + ' ' + fontSize + 'px ' + family;
+        context.textAlign = textAlign;
+        context.textBaseline = 'top';
+        var textX = textAlign === 'center' ? 0 : (textAlign === 'right' ? width / 2 : localX);
+        var lines = wrapCoverText(context, element.text || '', Math.max(1, width));
+        var lineHeight = fontSize * 1.15;
+        lines.forEach(function (line, lineIndex) {
+          context.fillText(line, textX, localY + lineIndex * lineHeight);
+        });
+      }
+      context.restore();
+    }
+
+    return {
+      blob: await canvasToBlob(canvas),
+      width: canvas.width,
+      height: canvas.height,
+      pageSize: pageSize
+    };
+  }
+
+  async function prepareNoteCoverAsset(item, payload, index) {
+    var config = item.config || {};
+    var rendered = await renderNoteCoverToPng(config, payload, { omitText: true });
+    var bytes = new Uint8Array(await rendered.blob.arrayBuffer());
+    var pageSize = rendered.pageSize || NOTE_COVER_PAGE_SIZES.a4;
+    return {
+      blob: rendered.blob,
+      bytes: bytes,
+      mime: 'image/png',
+      extension: 'png',
+      fileName: 'cover' + index + '.png',
+      widthEmu: Math.round(pageSize.width / 25.4 * 914400),
+      heightEmu: Math.round(pageSize.height / 25.4 * 914400),
+      pageWidthTwips: Math.round(pageSize.width / 25.4 * 1440),
+      pageHeightTwips: Math.round(pageSize.height / 25.4 * 1440),
+      editableTextElements: getEditableNoteCoverTextElements(config, pageSize),
+      alt: '문서 표지',
+      source: 'note-cover'
+    };
+  }
+
   async function rasterizeToPng(blob) {
     var image = await loadImageFromBlob(blob);
     var width = Number(image.naturalWidth || image.width || 0);
@@ -1038,14 +1366,14 @@
     };
   }
 
-  function makeDocxImageParagraph(item) {
+  function makeDocxDrawingRun(item) {
     var id = Math.max(1, Number(item.drawingId) || 1);
     var relationshipId = escapeXml(item.relationshipId || '');
     var name = escapeXml(item.fileName || ('Image ' + id));
     var description = escapeXml(item.alt || '');
     var width = Math.max(1, Number(item.widthEmu) || 1);
     var height = Math.max(1, Number(item.heightEmu) || 1);
-    return '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing>' +
+    return '<w:r><w:drawing>' +
       '<wp:inline distT="0" distB="0" distL="0" distR="0">' +
       '<wp:extent cx="' + width + '" cy="' + height + '"/>' +
       '<wp:effectExtent l="0" t="0" r="0" b="0"/>' +
@@ -1056,7 +1384,115 @@
       '<pic:blipFill><a:blip r:embed="' + relationshipId + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
       '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + width + '" cy="' + height + '"/></a:xfrm>' +
       '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>' +
-      '</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+      '</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>';
+  }
+
+  function makeDocxImageParagraph(item) {
+    return '<w:p><w:pPr><w:jc w:val="center"/></w:pPr>' + makeDocxDrawingRun(item) + '</w:p>';
+  }
+
+  function makeDocxCoverDrawingRun(item) {
+    var id = Math.max(1, Number(item.drawingId) || 1);
+    var relationshipId = escapeXml(item.relationshipId || '');
+    var name = escapeXml(item.fileName || ('Cover ' + id));
+    var description = escapeXml(item.alt || '문서 표지');
+    var width = Math.max(1, Number(item.widthEmu) || 1);
+    var height = Math.max(1, Number(item.heightEmu) || 1);
+    return '<w:r><w:drawing>' +
+      '<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="0" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1">' +
+      '<wp:simplePos x="0" y="0"/>' +
+      '<wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>' +
+      '<wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV>' +
+      '<wp:extent cx="' + width + '" cy="' + height + '"/>' +
+      '<wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>' +
+      '<wp:docPr id="' + id + '" name="' + name + '" descr="' + description + '"/>' +
+      '<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>' +
+      '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+      '<pic:pic><pic:nvPicPr><pic:cNvPr id="' + id + '" name="' + name + '" descr="' + description + '"/><pic:cNvPicPr/></pic:nvPicPr>' +
+      '<pic:blipFill><a:blip r:embed="' + relationshipId + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+      '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + width + '" cy="' + height + '"/></a:xfrm>' +
+      '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>' +
+      '</a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>';
+  }
+
+  function getWordCoverColor(value) {
+    var source = String(value || '').trim();
+    var hex = source.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+    if (hex) {
+      var digits = hex[1];
+      if (digits.length === 3) digits = digits.split('').map(function (digit) { return digit + digit; }).join('');
+      return digits.slice(0, 6).toUpperCase();
+    }
+    var rgb = source.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+    if (rgb) {
+      return rgb.slice(1, 4).map(function (part) {
+        return Math.max(0, Math.min(255, Number(part) || 0)).toString(16).padStart(2, '0');
+      }).join('').toUpperCase();
+    }
+    var named = {
+      black: '000000', white: 'FFFFFF', red: 'FF0000', blue: '0000FF', green: '008000',
+      gray: '808080', grey: '808080', navy: '000080', teal: '008080', purple: '800080',
+      orange: 'FFA500', yellow: 'FFFF00'
+    };
+    return named[source.toLowerCase()] || '111111';
+  }
+
+  function makeDocxEditableCoverTextRun(element) {
+    var fontFamily = escapeXml(element.fontFamily || 'Arial');
+    var fontSize = Math.max(2, Math.round((Number(element.fontSizePt) || 12) * 2));
+    var numericWeight = Number(element.fontWeight);
+    var isBold = /^(?:bold|bolder)$/i.test(element.fontWeight || '') ||
+      (Number.isFinite(numericWeight) && numericWeight >= 600);
+    var properties = '<w:rPr>' +
+      '<w:rFonts w:ascii="' + fontFamily + '" w:hAnsi="' + fontFamily + '" w:eastAsia="' + fontFamily + '"/>' +
+      '<w:color w:val="' + getWordCoverColor(element.color) + '"/>' +
+      '<w:sz w:val="' + fontSize + '"/><w:szCs w:val="' + fontSize + '"/>' +
+      (isBold ? '<w:b/><w:bCs/>' : '') +
+      '</w:rPr>';
+    var content = String(element.text || '').replace(/\r\n?/g, '\n').split('\n').map(function (line, index) {
+      return (index ? '<w:br/>' : '') + '<w:t xml:space="preserve">' + escapeXml(line) + '</w:t>';
+    }).join('');
+    return '<w:r>' + properties + content + '</w:r>';
+  }
+
+  function makeDocxEditableCoverTextBox(element, index) {
+    var x = Number(element.xPt) || 0;
+    var y = Number(element.yPt) || 0;
+    var width = Math.max(1, Number(element.widthPt) || 1);
+    var height = Math.max(1, Number(element.heightPt) || 1);
+    var rotation = Number(element.rotation) || 0;
+    var alignment = /^(?:center|right)$/.test(element.textAlign || '')
+      ? element.textAlign
+      : (element.textAlign === 'justify' ? 'both' : 'left');
+    var style = 'position:absolute;'
+      + 'margin-left:' + x.toFixed(2) + 'pt;margin-top:' + y.toFixed(2) + 'pt;'
+      + 'width:' + width.toFixed(2) + 'pt;height:' + height.toFixed(2) + 'pt;'
+      + (rotation ? 'rotation:' + rotation.toFixed(2) + ';' : '')
+      + 'z-index:' + Math.max(2, Number(element.zIndex) || (index + 2)) + ';'
+      + 'mso-position-horizontal-relative:page;mso-position-vertical-relative:page;'
+      + 'mso-wrap-style:none';
+    return '<w:r><w:pict>' +
+      '<v:rect id="_x0000_s' + (2048 + index) + '" style="' + escapeXml(style) + '" ' +
+      'filled="f" stroked="f" o:allowincell="f">' +
+      '<v:textbox inset="0,0,0,0" style="mso-fit-shape-to-text:t">' +
+      '<w:txbxContent><w:p><w:pPr><w:jc w:val="' + alignment + '"/>' +
+      '<w:spacing w:before="0" w:after="0" w:line="276" w:lineRule="auto"/></w:pPr>' +
+      makeDocxEditableCoverTextRun(element) +
+      '</w:p></w:txbxContent></v:textbox></v:rect></w:pict></w:r>';
+  }
+
+  function makeDocxCoverBlock(item) {
+    var pageWidth = Math.max(1, Number(item.pageWidthTwips) || 11906);
+    var pageHeight = Math.max(1, Number(item.pageHeightTwips) || 16838);
+    var orientation = pageWidth > pageHeight ? ' w:orient="landscape"' : '';
+    return '<w:p><w:pPr>' +
+      '<w:spacing w:before="0" w:after="0"/><w:jc w:val="center"/>' +
+      '<w:sectPr><w:type w:val="nextPage"/>' +
+      '<w:pgSz w:w="' + pageWidth + '" w:h="' + pageHeight + '"' + orientation + '/>' +
+      '<w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/>' +
+      '</w:sectPr></w:pPr>' + makeDocxCoverDrawingRun(item) +
+      (Array.isArray(item.editableTextElements) ? item.editableTextElements.map(makeDocxEditableCoverTextBox).join('') : '') +
+      '</w:p>';
   }
 
   function makeDocxCellParagraphs(text, isHeader) {
@@ -1120,6 +1556,7 @@
   function makeDocxBlock(item) {
     if (item && item.type === 'table') return makeDocxTable(item);
     if (item && item.type === 'image') return makeDocxImageParagraph(item);
+    if (item && item.type === 'coverImage') return makeDocxCoverBlock(item);
     return makeDocxParagraph(item);
   }
 
@@ -1129,19 +1566,26 @@
     }
 
     var data = payload || {};
-    var markdown = String(data.content || '');
+    var extractedCovers = extractNoteCoverBlocks(String(data.content || ''));
+    var markdown = extractedCovers.markdown;
     var html = String(data.html || '').trim();
     var useHtmlSource = /<(?:html|body|article|section|div|table|h[1-6]|p|ul|ol|blockquote|pre)\b/i.test(markdown) &&
       !/^(?:\s{0,3}#{1,6}\s|\s*[-*+]\s|\s*\d+[.)]\s)/m.test(markdown);
     var items = useHtmlSource ? htmlToDocxItems(markdown) : markdownToDocxItems(markdown);
-    if (!items.length && html) items = htmlToDocxItems(html);
+    if (!items.length && html && !extractedCovers.covers.length) items = htmlToDocxItems(html);
+    items = extractedCovers.covers.map(function (config) {
+      return { type: 'cover', config: config };
+    }).concat(extractedCovers.errors.map(function (message) {
+      return { type: 'paragraph', text: '[표지 렌더링 오류: ' + message + ']' };
+    }), items);
     if (!items.length) items = [{ type: 'paragraph', text: '' }];
 
     var imageSequence = 0;
     var preparedImages = await Promise.all(items.map(async function (item) {
-      if (!item || item.type !== 'image') return null;
+      if (!item || (item.type !== 'image' && item.type !== 'cover')) return null;
       imageSequence += 1;
       try {
+        if (item.type === 'cover') return await prepareNoteCoverAsset(item, data, imageSequence);
         return await prepareImageAsset(item, data, imageSequence);
       } catch (error) {
         if (global.console && typeof global.console.warn === 'function') {
@@ -1155,9 +1599,12 @@
     var relationshipSequence = 2;
     var drawingSequence = 1;
     items = items.map(function (item, itemIndex) {
-      if (!item || item.type !== 'image') return item;
+      if (!item || (item.type !== 'image' && item.type !== 'cover')) return item;
       var prepared = preparedImages[itemIndex];
       if (!prepared || prepared.error) {
+        if (item.type === 'cover') {
+          return { type: 'paragraph', text: '[표지를 DOCX 이미지로 렌더링하지 못했습니다.]' };
+        }
         var label = item.alt ? item.alt + ' — ' : '';
         return {
           type: 'paragraph',
@@ -1169,7 +1616,9 @@
       relationshipSequence += 1;
       drawingSequence += 1;
       media.push(prepared);
-      return Object.assign({}, item, prepared);
+      return Object.assign({}, item, prepared, {
+        type: item.type === 'cover' ? 'coverImage' : 'image'
+      });
     });
 
     var documentXml =
@@ -1178,7 +1627,9 @@
       'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
       'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" ' +
       'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ' +
-      'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+      'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" ' +
+      'xmlns:v="urn:schemas-microsoft-com:vml" ' +
+      'xmlns:o="urn:schemas-microsoft-com:office:office">' +
       '<w:body>' +
       items.map(makeDocxBlock).join('') +
       '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>' +
@@ -1243,6 +1694,7 @@
 
   global.DocxExport = Object.freeze({
     createBlob: createBlob,
+    extractNoteCoverBlocks: extractNoteCoverBlocks,
     mimeType: DOCX_MIME
   });
 })(window);

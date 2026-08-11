@@ -466,6 +466,123 @@
         return btoa(bin);
     }
 
+    function decodeGithubBase64ToText(encoded) {
+        const binary = atob(String(encoded || '').replace(/\s+/g, ''));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new TextDecoder().decode(bytes);
+    }
+
+    function normalizeGithubTextFilePath(path) {
+        return String(path || '')
+            .trim()
+            .replace(/\\/g, '/')
+            .split('/')
+            .map(function (part) { return part.trim().replace(/[\\:*?"<>|]+/g, '_'); })
+            .filter(Boolean)
+            .join('/');
+    }
+
+    async function getGithubTextFileContext(path) {
+        const settings = await getAiSettings() || {};
+        const cfg = getGithubConfigFromSettings(settings);
+        if (!cfg.enabled || !cfg.token || !cfg.owner || !cfg.name || !cfg.branch) {
+            throw new Error('GitHub PAT / 저장소 / 브랜치 설정이 필요합니다.');
+        }
+        const relativePath = normalizeGithubTextFilePath(path);
+        if (!relativePath) throw new Error('GitHub 파일 경로가 비어 있습니다.');
+        const remotePath = cfg.basePath
+            ? normalizeGithubTextFilePath(cfg.basePath + '/' + relativePath)
+            : relativePath;
+        const encodedPath = remotePath.split('/').map(encodeURIComponent).join('/');
+        const url = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner)
+            + '/' + encodeURIComponent(cfg.name) + '/contents/' + encodedPath;
+        return { cfg: cfg, relativePath: relativePath, remotePath: remotePath, url: url };
+    }
+
+    async function readTextFile(path) {
+        const context = await getGithubTextFileContext(path);
+        const data = await githubApiRequest(
+            context.url + '?ref=' + encodeURIComponent(context.cfg.branch),
+            {},
+            context.cfg.token
+        );
+        return decodeGithubBase64ToText(data && data.content ? data.content : '');
+    }
+
+    async function upsertTextFile(path, content, message) {
+        const context = await getGithubTextFileContext(path);
+        let sha = '';
+        try {
+            const existing = await githubApiRequest(
+                context.url + '?ref=' + encodeURIComponent(context.cfg.branch),
+                {},
+                context.cfg.token
+            );
+            sha = String(existing && existing.sha ? existing.sha : '');
+        } catch (error) {
+            if (Number(error && error.status || 0) !== 404) throw error;
+        }
+        const body = {
+            message: String(message || ('update: ' + context.relativePath)),
+            content: encodeTextToGithubBase64(content),
+            branch: context.cfg.branch
+        };
+        if (sha) body.sha = sha;
+        return githubApiRequest(context.url, { method: 'PUT', body: JSON.stringify(body) }, context.cfg.token);
+    }
+
+    async function deleteTextFile(path, message) {
+        const context = await getGithubTextFileContext(path);
+        let existing;
+        try {
+            existing = await githubApiRequest(
+                context.url + '?ref=' + encodeURIComponent(context.cfg.branch),
+                {},
+                context.cfg.token
+            );
+        } catch (error) {
+            if (Number(error && error.status || 0) === 404) return false;
+            throw error;
+        }
+        await githubApiRequest(context.url, {
+            method: 'DELETE',
+            body: JSON.stringify({
+                message: String(message || ('delete: ' + context.relativePath)),
+                sha: String(existing && existing.sha ? existing.sha : ''),
+                branch: context.cfg.branch
+            })
+        }, context.cfg.token);
+        return true;
+    }
+
+    async function listTextFiles(prefix, extension) {
+        const settings = await getAiSettings() || {};
+        const cfg = getGithubConfigFromSettings(settings);
+        if (!cfg.enabled || !cfg.token || !cfg.owner || !cfg.name || !cfg.branch) {
+            throw new Error('GitHub PAT / 저장소 / 브랜치 설정이 필요합니다.');
+        }
+        const relativePrefix = normalizeGithubTextFilePath(prefix).replace(/\/+$/, '');
+        const basePrefix = normalizeGithubTextFilePath(cfg.basePath).replace(/\/+$/, '');
+        const remotePrefix = [basePrefix, relativePrefix].filter(Boolean).join('/');
+        const treeUrl = 'https://api.github.com/repos/' + encodeURIComponent(cfg.owner)
+            + '/' + encodeURIComponent(cfg.name) + '/git/trees/' + encodeURIComponent(cfg.branch) + '?recursive=1';
+        const tree = await githubApiRequest(treeUrl, {}, cfg.token);
+        const suffix = String(extension || '').toLowerCase();
+        return (Array.isArray(tree && tree.tree) ? tree.tree : []).filter(function (item) {
+            const remotePath = String(item && item.path || '');
+            if (!item || item.type !== 'blob') return false;
+            if (remotePrefix && remotePath !== remotePrefix && !remotePath.startsWith(remotePrefix + '/')) return false;
+            return !suffix || remotePath.toLowerCase().endsWith(suffix);
+        }).map(function (item) {
+            const remotePath = String(item.path || '');
+            const relativePath = basePrefix && remotePath.startsWith(basePrefix + '/')
+                ? remotePath.slice(basePrefix.length + 1)
+                : remotePath;
+            return { path: relativePath, remotePath: remotePath, sha: String(item.sha || '') };
+        });
+    }
+
     function getGithubDocTitleFromPath(path) {
         const p = String(path || '');
         const parts = p.split('/');
@@ -1286,6 +1403,10 @@
         loadFromGithubCache: loadFromGithubCache,
         getGithubPushSource: getGithubPushSource,
         createGithubDocumentInFolder: createGithubDocumentInFolder,
+        readTextFile: readTextFile,
+        upsertTextFile: upsertTextFile,
+        deleteTextFile: deleteTextFile,
+        listTextFiles: listTextFiles,
         pushDocToGithub: pushDocToGithub,
         pushCurrentContentToGithub: pushCurrentContentToGithub,
         isGithubExportEnabled: isGithubExportEnabled,
