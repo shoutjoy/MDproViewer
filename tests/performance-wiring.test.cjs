@@ -14,6 +14,7 @@ test('heavy optional features are absent from the initial script graph', () => {
     'mammoth.browser.min.js',
     'docx-export.js',
     'html-export.js',
+    'pdf-export.js',
     'AI_App/aiChat/ai-chat.js',
     'js/Scholarref/scholarref.js',
     'js/Scholarref/crossref-search.js',

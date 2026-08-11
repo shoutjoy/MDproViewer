@@ -35,7 +35,7 @@
             if (typeof root.toggleMode === 'function') root.toggleMode('edit');
             const fixtures = [
                 { name: 'plain', unit: '본문 일반 텍스트 다음 줄\n' },
-                { name: 'comments', unit: '본문 <-- 주석 메모 --> 다음 줄\n' }
+                { name: 'comments', unit: '본문 <!-- 주석 메모 --> 다음 줄\n' }
             ];
             for (const fixture of fixtures) {
                 for (const size of SIZES) {

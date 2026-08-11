@@ -2,29 +2,36 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const mdComment = require('../js/md-comment.js');
 
-test('custom comments are removed while line positions remain stable', () => {
-    assert.equal(mdComment.stripForRender('앞<-- 숨김 -->뒤'), '앞뒤');
+test('HTML comments are removed while line positions remain stable', () => {
+    assert.equal(mdComment.stripForRender('앞<!-- 숨김 -->뒤'), '앞뒤');
     assert.equal(
-        mdComment.stripForRender('# 제목\n<-- 첫 줄\n둘째 줄 -->\n본문'),
+        mdComment.stripForRender('# 제목\n<!-- 첫 줄\n둘째 줄 -->\n본문'),
         '# 제목\n\n\n본문'
     );
-    assert.equal(mdComment.stripForRender('앞<-- 닫히지 않음'), '앞<-- 닫히지 않음');
+    assert.equal(mdComment.stripForRender('앞<!-- 닫히지 않음'), '앞<!-- 닫히지 않음');
+    assert.equal(mdComment.stripForRender('Mermaid A <-- B'), 'Mermaid A <-- B');
+});
+
+test('note-cover metadata remains available to its renderer', () => {
+    const cover = '<!-- note-cover\n{"v":2}\n-->';
+    assert.equal(mdComment.stripForRender(cover + '\n<!-- 일반 주석 -->\n본문'), cover + '\n\n본문');
 });
 
 test('comment selection toggles without losing the selected text', () => {
     const commented = mdComment.getToggleReplacement('선택 영역');
-    assert.deepEqual(commented, { replacement: '<-- 선택 영역 -->', commented: true });
+    assert.deepEqual(commented, { replacement: '<!-- 선택 영역 -->', commented: true });
     assert.deepEqual(
         mdComment.getToggleReplacement(commented.replacement),
         { replacement: '선택 영역', commented: false }
     );
 });
 
-test('editor markup highlights only custom comment ranges', () => {
+test('editor markup highlights only HTML comment ranges', () => {
     assert.equal(
-        mdComment.createHighlightMarkup('일반 <-- 주석 --> 일반'),
-        '일반 <span class="md-editor-comment">&lt;-- 주석 --&gt;</span> 일반'
+        mdComment.createHighlightMarkup('일반 <!-- 주석 --> 일반'),
+        '일반 <span class="md-editor-comment">&lt;!-- 주석 --&gt;</span> 일반'
     );
+    assert.equal(mdComment.createHighlightMarkup('Mermaid A <-- B'), 'Mermaid A &lt;-- B');
 });
 
 test('highlight mode keeps native textarea fast path and simplifies very large documents', () => {
@@ -34,9 +41,9 @@ test('highlight mode keeps native textarea fast path and simplifies very large d
         largeDocumentDelayMs: 10
     };
     assert.equal(mdComment.getHighlightMode('일반 문서', options), 'native');
-    assert.equal(mdComment.getHighlightMode('<-- 주석 -->', options), 'mirror');
-    assert.equal(mdComment.getHighlightMode('<-- 주석 -->' + 'a'.repeat(100), options), 'mirror-large');
-    assert.equal(mdComment.getHighlightMode('<-- 주석 -->' + 'a'.repeat(200), options), 'plain-large');
+    assert.equal(mdComment.getHighlightMode('<!-- 주석 -->', options), 'mirror');
+    assert.equal(mdComment.getHighlightMode('<!-- 주석 -->' + 'a'.repeat(100), options), 'mirror-large');
+    assert.equal(mdComment.getHighlightMode('<!-- 주석 -->' + 'a'.repeat(200), options), 'plain-large');
 });
 
 test('default large document thresholds remain ordered and configurable', () => {

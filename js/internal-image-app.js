@@ -18,6 +18,8 @@
         dragBound: false,
         viewerReady: false,
         activeKind: '',
+        layout: '',
+        preDockStyle: '',
         imageCountRequestSequence: 0,
         imageCountWaiters: new Map()
     };
@@ -149,8 +151,39 @@
         return url.href;
     }
 
-    function show(title) {
+    function applyPanelLayout(options) {
         ensureShell();
+        const opts = options || {};
+        if (opts.layout === 'settings-left') {
+            if (state.layout !== 'settings-left') state.preDockStyle = state.panel.getAttribute('style') || '';
+            state.layout = 'settings-left';
+            state.maximized = false;
+            const leftOffset = Math.max(0, Number(opts.leftOffset) || 0);
+            state.panel.style.position = 'fixed';
+            state.panel.style.inset = 'auto';
+            state.panel.style.left = leftOffset + 'px';
+            state.panel.style.top = '10px';
+            state.panel.style.right = '10px';
+            state.panel.style.margin = '0';
+            state.panel.style.width = 'calc(100vw - ' + (leftOffset + 10) + 'px)';
+            state.panel.style.height = 'calc(100vh - 20px)';
+            state.panel.style.maxWidth = 'none';
+            state.panel.style.maxHeight = 'none';
+            state.panel.style.minWidth = '0';
+            state.panel.style.minHeight = '360px';
+            state.panel.style.resize = 'horizontal';
+            return;
+        }
+        if (state.layout === 'settings-left') {
+            state.panel.setAttribute('style', state.preDockStyle);
+            state.layout = '';
+            state.preDockStyle = '';
+        }
+    }
+
+    function show(title, options) {
+        ensureShell();
+        applyPanelLayout(options);
         state.title.textContent = title ? title + ' · 이미지 앱' : '이미지 앱';
         state.shell.style.display = 'flex';
     }
@@ -240,7 +273,7 @@
             selectedName: selectedName || list[0].name || '',
             importMode: opts.importMode === 'append' ? 'append' : 'replace'
         };
-        show(selectedName || list[0].name || '이미지');
+        show(selectedName || list[0].name || '이미지', opts);
         showViewerFrame(selectedName || list[0].name || '');
         if (state.viewerReady) sendPendingOpen().catch(function (error) {
             showStatus(error && error.message ? error.message : error, true);
@@ -352,7 +385,7 @@
         const opts = options || {};
         state.objectUrls = Array.isArray(opts.objectUrls) ? opts.objectUrls.slice() : [];
         state.pendingOpen = null;
-        show(title || '파일 보기');
+        show(title || '파일 보기', opts);
         if (isFmaViewerUrl(targetUrl)) showViewerFrame(title || 'FMA Viewer');
         else showPreviewFrame(targetUrl);
     }

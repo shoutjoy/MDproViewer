@@ -17,6 +17,146 @@
         return Array.from(String(text || '').trim()).slice(0, n).join('');
     }
 
+    function buildFolderPath(folders, folderId) {
+        const rows = Array.isArray(folders) ? folders : [];
+        const byId = new Map(rows.map(function (folder) {
+            return [String(folder && folder.id || ''), folder || {}];
+        }));
+        const targetId = String(folderId || 'root');
+        if (targetId === 'root') {
+            const rootFolder = byId.get('root');
+            return String(rootFolder && rootFolder.name || 'ROOT');
+        }
+
+        const names = [];
+        const visited = new Set();
+        let currentId = targetId;
+        while (currentId && currentId !== 'root' && !visited.has(currentId)) {
+            visited.add(currentId);
+            const folder = byId.get(currentId);
+            if (!folder) break;
+            names.unshift(String(folder.name || currentId));
+            currentId = String(folder.parentId || 'root');
+        }
+        return names.length ? names.join(' / ') : 'ROOT';
+    }
+
+    function buildFolderTreeModel(folders, documents, searchTerm) {
+        const normalizedFolders = (Array.isArray(folders) ? folders : []).filter(function (folder) {
+            return folder && String(folder.id || '').trim();
+        });
+        if (!normalizedFolders.some(function (folder) { return String(folder.id) === 'root'; })) {
+            normalizedFolders.push({ id: 'root', name: 'ROOT', parentId: null });
+        }
+
+        const folderById = new Map(normalizedFolders.map(function (folder) {
+            return [String(folder.id), folder];
+        }));
+        const topLevel = [];
+        const childrenByParent = new Map();
+        normalizedFolders.forEach(function (folder) {
+            const id = String(folder.id);
+            const parentId = id === 'root' ? '' : String(folder.parentId || 'root');
+            if (!parentId || parentId === 'root' || parentId === id || !folderById.has(parentId)) {
+                topLevel.push(folder);
+                return;
+            }
+            if (!childrenByParent.has(parentId)) childrenByParent.set(parentId, []);
+            childrenByParent.get(parentId).push(folder);
+        });
+
+        const documentsByFolder = new Map();
+        (Array.isArray(documents) ? documents : []).forEach(function (documentRecord) {
+            let folderId = String(documentRecord && documentRecord.folderId || 'root');
+            if (!folderById.has(folderId)) folderId = 'root';
+            if (!documentsByFolder.has(folderId)) documentsByFolder.set(folderId, []);
+            documentsByFolder.get(folderId).push(documentRecord);
+        });
+
+        let visibleFolderIds = null;
+        if (String(searchTerm || '').trim()) {
+            visibleFolderIds = new Set();
+            documentsByFolder.forEach(function (items, folderId) {
+                if (!items.length) return;
+                let currentId = folderId;
+                const visited = new Set();
+                while (currentId && !visited.has(currentId)) {
+                    visited.add(currentId);
+                    visibleFolderIds.add(currentId);
+                    const folder = folderById.get(currentId);
+                    if (!folder || currentId === 'root') break;
+                    currentId = String(folder.parentId || 'root');
+                }
+            });
+        }
+
+        return { folders: normalizedFolders, folderById, topLevel, childrenByParent, documentsByFolder, visibleFolderIds };
+    }
+
+    function beginDocumentTitleEdit(titleElement, documentRecord, ctx, cancelPendingClick) {
+        if (!titleElement || titleElement.dataset.editing === '1') return;
+        if (typeof cancelPendingClick === 'function') cancelPendingClick();
+        titleElement.dataset.editing = '1';
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'sidebar-doc-title-input';
+        input.value = String(documentRecord && documentRecord.title || '');
+        input.setAttribute('aria-label', '문서명 수정');
+        input.title = 'Enter로 저장 · Esc로 취소';
+        let finished = false;
+
+        function restore() {
+            if (finished) return;
+            finished = true;
+            delete titleElement.dataset.editing;
+            if (input.parentNode) input.replaceWith(titleElement);
+        }
+
+        async function commit() {
+            if (finished) return;
+            const nextTitle = String(input.value || '').trim().replace(/\.md$/i, '');
+            const previousTitle = String(documentRecord && documentRecord.title || '');
+            if (!nextTitle || nextTitle === previousTitle) {
+                restore();
+                return;
+            }
+            finished = true;
+            input.disabled = true;
+            try {
+                if (!ctx || typeof ctx.renameDocument !== 'function') throw new Error('문서명 변경 기능을 사용할 수 없습니다.');
+                const updated = await ctx.renameDocument(documentRecord.id, nextTitle);
+                documentRecord.title = String(updated && updated.title || nextTitle);
+                if (updated && updated.version) documentRecord.version = updated.version;
+                titleElement.textContent = documentRecord.title;
+                titleElement.title = documentRecord.title + ' · 더블클릭하여 이름 수정';
+            } catch (error) {
+                if (typeof window.showToast === 'function') {
+                    window.showToast('문서명 변경 실패: ' + (error && error.message ? error.message : error));
+                }
+            }
+            delete titleElement.dataset.editing;
+            if (input.parentNode) input.replaceWith(titleElement);
+        }
+
+        input.addEventListener('click', function (event) { event.stopPropagation(); });
+        input.addEventListener('dblclick', function (event) { event.stopPropagation(); });
+        input.addEventListener('keydown', function (event) {
+            event.stopPropagation();
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                commit();
+            } else if (event.key === 'Escape') {
+                event.preventDefault();
+                restore();
+            }
+        });
+        input.addEventListener('blur', commit);
+        titleElement.replaceWith(input);
+        input.focus();
+        input.select();
+    }
+
     function getSidebarShellHtml() {
         return [
             '<div class="p-4 border-b border-slate-200 dark:border-slate-700 space-y-4">',
@@ -61,12 +201,25 @@
 
     function installSidebarShell() {
         const sidebar = document.getElementById('sidebar');
-        if (!sidebar || sidebar.dataset.sidebarLeftReady === '1') return;
-        if (sidebar.children.length === 0) sidebar.innerHTML = getSidebarShellHtml();
+        if (!sidebar) return;
+
+        const hasSidebarShell = !!(
+            sidebar.querySelector('#db-list')
+            && sidebar.querySelector('#toc-list')
+            && sidebar.querySelector('#storage-source-tabs')
+        );
+        if (sidebar.dataset.sidebarLeftReady === '1' && hasSidebarShell) return;
+
+        if (!hasSidebarShell) {
+            const resizeHandle = sidebar.querySelector('#sidebar-resize-handle');
+            if (resizeHandle) resizeHandle.insertAdjacentHTML('beforebegin', getSidebarShellHtml());
+            else sidebar.insertAdjacentHTML('afterbegin', getSidebarShellHtml());
+        }
         sidebar.dataset.sidebarLeftReady = '1';
     }
 
-    document.addEventListener('DOMContentLoaded', installSidebarShell);
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSidebarShell);
+    else installSidebarShell();
 
     function switchSidebarTab(tab, ctx) {
         activeTab = tab === 'toc' ? 'toc' : 'files';
@@ -288,85 +441,190 @@
         folders = folders || [];
         docs = docs || [];
 
-                folders.forEach(function (folder) {
-                    const folderDocs = docs.filter(function (d) {
-                        return d.folderId === folder.id && (documentsAlreadyFiltered
-                            || String(d.title || '').toLowerCase().includes(searchTerm));
-                    });
-                    const folderDisplayName = folder.id === 'root' ? rootFolderName : String(folder.name || 'Folder');
-                    const isCollapsedFolder = !searchTerm && !!(ctx.isFolderCollapsed && ctx.isFolderCollapsed(folder.id));
+        if (!documentsAlreadyFiltered && searchTerm) {
+            docs = docs.filter(function (documentRecord) {
+                return String(documentRecord && documentRecord.title || '').toLowerCase().includes(searchTerm);
+            });
+        }
+        const tree = buildFolderTreeModel(folders, docs, searchTerm);
+        const renderedFolderIds = new Set();
 
-                    const folderDiv = document.createElement('div');
-                    folderDiv.className = 'mb-2';
-                    const folderHeader = document.createElement('div');
-                    folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
-                    folderHeader.innerHTML = '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3"></i><i data-lucide="folder" class="w-3 h-3"></i><span class="sidebar-text">' + esc(folderDisplayName) + '</span>';
+        function createActionButton(iconName, title, className, action) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'sidebar-folder-action-btn ' + (className || '');
+            button.title = title;
+            button.setAttribute('aria-label', title);
+            button.innerHTML = '<i data-lucide="' + iconName + '" class="w-3.5 h-3.5" aria-hidden="true"></i>';
+            button.addEventListener('click', function (event) {
+                event.stopPropagation();
+                action();
+            });
+            return button;
+        }
 
-                    const folderActions = document.createElement('span');
-                    folderActions.className = 'ml-auto flex items-center gap-1 sidebar-text';
+        function createDocumentCard(doc) {
+            const docItem = document.createElement('div');
+            docItem.dataset.storageDocId = String(doc.id || '');
+            docItem.dataset.storageMode = storageMode;
+            if (storageMode === 'indb') docItem.dataset.indbDocId = String(doc.id || '');
+            docItem.className = isSidebarCollapsed
+                ? 'sidebar-folder-document group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
+                : 'sidebar-folder-document group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
+            docItem.title = String(doc.title || '');
 
-                    const folderCreateBtn = document.createElement('button');
-                    folderCreateBtn.type = 'button';
-                    folderCreateBtn.className = 'text-[11px] leading-none px-1.5 py-0.5 rounded border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white';
-                    folderCreateBtn.title = folderDisplayName + ' 폴더에 문서 생성';
-                    folderCreateBtn.setAttribute('aria-label', folderDisplayName + ' 폴더에 문서 생성');
-                    folderCreateBtn.textContent = '+';
-                    folderCreateBtn.addEventListener('click', function (event) {
-                        event.stopPropagation();
-                        if (typeof window.createDocumentInFolder === 'function') {
-                            window.createDocumentInFolder(folder.id);
-                        }
-                    });
-                    folderActions.appendChild(folderCreateBtn);
+            const inner = document.createElement('div');
+            inner.className = 'flex flex-col gap-1 doc-item-inner';
+            const titleRow = document.createElement('div');
+            titleRow.className = 'sidebar-doc-title-row flex items-start gap-2';
+            titleRow.innerHTML = '<i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>';
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? '' : 'sidebar-text');
+            titleSpan.textContent = isSidebarCollapsed ? shortText(doc.title, 3) : String(doc.title || '');
+            titleSpan.title = String(doc.title || '') + (isSidebarCollapsed ? '' : ' · 더블클릭하여 이름 수정');
+            if (!isSidebarCollapsed) titleSpan.dataset.inlineRename = '1';
+            titleRow.appendChild(titleSpan);
+            inner.appendChild(titleRow);
 
-                    if (folder.id !== 'root') {
-                        const folderDeleteBtn = document.createElement('button');
-                        folderDeleteBtn.type = 'button';
-                        folderDeleteBtn.className = 'text-[10px] px-1 py-0.5 rounded border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 hover:bg-red-600 hover:text-white';
-                        folderDeleteBtn.title = '폴더 삭제';
-                        folderDeleteBtn.setAttribute('aria-label', folderDisplayName + ' 폴더 삭제');
-                        folderDeleteBtn.textContent = 'x';
-                        folderDeleteBtn.addEventListener('click', function (event) {
-                            event.stopPropagation();
-                            if (typeof window.deleteFolderFromDB === 'function') {
-                                window.deleteFolderFromDB(folder.id);
-                            }
-                        });
-                        folderActions.appendChild(folderDeleteBtn);
-                    }
-                    folderHeader.appendChild(folderActions);
-                    folderHeader.addEventListener('click', function () {
-                        if (typeof ctx.toggleFolderCollapse === 'function') ctx.toggleFolderCollapse(folder.id);
-                    });
-                    folderDiv.appendChild(folderHeader);
+            const actions = document.createElement('div');
+            actions.className = 'flex gap-1 doc-action-btns';
+            actions.setAttribute('aria-label', '문서 작업');
 
-                    const docContainer = document.createElement('div');
-                    docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'pl-2 space-y-1') + (isCollapsedFolder ? ' hidden' : '');
-
-                    folderDocs.forEach(function (doc) {
-                        const docItem = document.createElement('div');
-                        docItem.dataset.storageDocId = String(doc.id || '');
-                        docItem.dataset.storageMode = storageMode;
-                        if (storageMode === 'indb') docItem.dataset.indbDocId = String(doc.id || '');
-                        docItem.className = isSidebarCollapsed
-                            ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
-                            : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
-                        docItem.title = String(doc.title || '');
-                        docItem.onclick = function () { if (typeof window.loadFromDB === 'function') window.loadFromDB(doc.id); };
-
-                        const pushBtn = githubReady
-                            ? '<button onclick="event.stopPropagation(); pushDocToGithub(\'' + esc(doc.id) + '\', \'' + esc(storageMode) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600" title="' + (storageMode === 'sqlite' ? 'SQLite 문서를 GitHub로 전송' : 'inDB 문서를 GitHub로 전송') + '">github</button>'
-                            : '';
-
-                        docItem.innerHTML = '<div class="flex flex-col gap-1 doc-item-inner"><div class="flex items-center gap-2"><i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i><span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">' + esc(isSidebarCollapsed ? shortText(doc.title, 3) : doc.title) + '</span></div><div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns"><button onclick="event.stopPropagation(); loadFromDB(\'' + esc(doc.id) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button><button onclick="event.stopPropagation(); openMoveModal(\'' + esc(doc.id) + '\')" class="text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold hover:bg-slate-200 dark:hover:bg-slate-600">이동</button>' + pushBtn + '<button onclick="event.stopPropagation(); deleteFromDB(\'' + esc(doc.id) + '\')" class="text-[10px] bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded border border-red-100 dark:border-red-800 font-bold hover:bg-red-600 hover:text-white ml-auto">X</button></div></div>';
-                        docContainer.appendChild(docItem);
-                    });
-
-                    if (folderDocs.length > 0 || searchTerm === '') {
-                        folderDiv.appendChild(docContainer);
-                        listEl.appendChild(folderDiv);
-                    }
+            function addDocumentAction(label, className, title, action) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = className;
+                button.textContent = label;
+                button.title = title || label;
+                button.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                    action();
                 });
+                actions.appendChild(button);
+            }
+
+            addDocumentAction('열기', 'doc-open-btn text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold', '문서 열기', function () {
+                if (typeof window.loadFromDB === 'function') window.loadFromDB(doc.id);
+            });
+            addDocumentAction('이동', 'doc-move-btn text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold', '문서 이동', function () {
+                if (typeof window.openMoveModal === 'function') window.openMoveModal(doc.id);
+            });
+            if (githubReady) {
+                addDocumentAction('github', 'doc-github-btn text-[10px] bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-600 font-bold', storageMode === 'sqlite' ? 'SQLite 문서를 GitHub로 전송' : 'inDB 문서를 GitHub로 전송', function () {
+                    if (typeof window.pushDocToGithub === 'function') window.pushDocToGithub(doc.id, storageMode);
+                });
+            }
+            addDocumentAction('삭제', 'doc-delete-btn text-[10px] px-1.5 py-0.5 rounded border font-bold ml-auto', '문서 삭제', function () {
+                if (typeof window.deleteFromDB === 'function') window.deleteFromDB(doc.id);
+            });
+            inner.appendChild(actions);
+            docItem.appendChild(inner);
+
+            let titleClickTimer = null;
+            function cancelTitleClick() {
+                if (titleClickTimer) clearTimeout(titleClickTimer);
+                titleClickTimer = null;
+            }
+            docItem.addEventListener('click', function (event) {
+                if (event.target && event.target.closest && event.target.closest('button,input')) return;
+                if (event.target && event.target.closest && event.target.closest('.sidebar-doc-title')) {
+                    cancelTitleClick();
+                    if (event.detail > 1) return;
+                    titleClickTimer = setTimeout(function () {
+                        titleClickTimer = null;
+                        if (typeof window.loadFromDB === 'function') window.loadFromDB(doc.id);
+                    }, 240);
+                    return;
+                }
+                if (typeof window.loadFromDB === 'function') window.loadFromDB(doc.id);
+            });
+            titleSpan.addEventListener('dblclick', function (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                beginDocumentTitleEdit(titleSpan, doc, ctx, cancelTitleClick);
+            });
+            return docItem;
+        }
+
+        function renderFolder(folder, depth, ancestry) {
+            const folderId = String(folder && folder.id || '');
+            if (!folderId || ancestry.has(folderId)) return null;
+            if (tree.visibleFolderIds && !tree.visibleFolderIds.has(folderId)) return null;
+            renderedFolderIds.add(folderId);
+            const nextAncestry = new Set(ancestry);
+            nextAncestry.add(folderId);
+            const folderDocs = tree.documentsByFolder.get(folderId) || [];
+            const childFolders = tree.childrenByParent.get(folderId) || [];
+            const folderDisplayName = folderId === 'root' ? rootFolderName : String(folder.name || 'Folder');
+            const isCollapsedFolder = !searchTerm && !!(ctx.isFolderCollapsed && ctx.isFolderCollapsed(folderId));
+
+            const folderDiv = document.createElement('div');
+            folderDiv.className = 'sidebar-folder-node mb-2';
+            folderDiv.dataset.folderId = folderId;
+            folderDiv.dataset.folderDepth = String(depth);
+
+            const folderHeader = document.createElement('div');
+            folderHeader.className = 'sidebar-folder-header flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-500 dark:text-slate-400 tracking-tight cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
+            folderHeader.setAttribute('role', 'treeitem');
+            folderHeader.setAttribute('aria-level', String(depth + 1));
+            folderHeader.setAttribute('aria-expanded', String(!isCollapsedFolder));
+            folderHeader.innerHTML = '<i data-lucide="' + (isCollapsedFolder ? 'chevron-right' : 'chevron-down') + '" class="w-3 h-3 shrink-0"></i><i data-lucide="' + (isCollapsedFolder ? 'folder' : 'folder-open') + '" class="w-3.5 h-3.5 shrink-0"></i>';
+            const folderName = document.createElement('span');
+            folderName.className = 'sidebar-folder-name sidebar-text';
+            folderName.textContent = folderDisplayName;
+            folderName.title = buildFolderPath(tree.folders, folderId);
+            folderHeader.appendChild(folderName);
+
+            const folderActions = document.createElement('span');
+            folderActions.className = 'sidebar-folder-actions ml-auto sidebar-text';
+            folderActions.appendChild(createActionButton('file-plus-2', folderDisplayName + ' 폴더에 문서 생성', 'sidebar-folder-document-btn', function () {
+                if (typeof ctx.createDocument === 'function') ctx.createDocument(folderId);
+                else if (typeof window.createDocumentInFolder === 'function') window.createDocumentInFolder(folderId);
+            }));
+            folderActions.appendChild(createActionButton('folder-plus', folderDisplayName + ' 아래에 하위 폴더 생성', 'sidebar-folder-create-btn', function () {
+                if (typeof ctx.createFolder === 'function') ctx.createFolder(folderId, folderDisplayName);
+                else if (typeof window.createNewFolder === 'function') window.createNewFolder(folderId, folderDisplayName);
+            }));
+            if (folderId !== 'root') {
+                folderActions.appendChild(createActionButton('x', folderDisplayName + ' 폴더 삭제', 'sidebar-folder-delete-btn', function () {
+                    if (typeof ctx.deleteFolder === 'function') ctx.deleteFolder(folderId);
+                    else if (typeof window.deleteFolderFromDB === 'function') window.deleteFolderFromDB(folderId);
+                }));
+            }
+            folderHeader.appendChild(folderActions);
+            folderHeader.addEventListener('click', function (event) {
+                if (event.target && event.target.closest && event.target.closest('button')) return;
+                if (typeof ctx.toggleFolderCollapse === 'function') ctx.toggleFolderCollapse(folderId);
+            });
+            folderDiv.appendChild(folderHeader);
+
+            const folderBody = document.createElement('div');
+            folderBody.className = (isSidebarCollapsed ? '' : 'sidebar-folder-body') + (isCollapsedFolder ? ' hidden' : '');
+            const childContainer = document.createElement('div');
+            childContainer.className = 'sidebar-folder-children';
+            childFolders.forEach(function (childFolder) {
+                const childNode = renderFolder(childFolder, depth + 1, nextAncestry);
+                if (childNode) childContainer.appendChild(childNode);
+            });
+            if (childContainer.childNodes.length) folderBody.appendChild(childContainer);
+
+            const docContainer = document.createElement('div');
+            docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'sidebar-folder-documents space-y-1') + (childContainer.childNodes.length ? ' mt-1' : '');
+            folderDocs.forEach(function (doc) { docContainer.appendChild(createDocumentCard(doc)); });
+            if (folderDocs.length) folderBody.appendChild(docContainer);
+            folderDiv.appendChild(folderBody);
+            return folderDiv;
+        }
+
+        tree.topLevel.forEach(function (folder) {
+            const node = renderFolder(folder, 0, new Set());
+            if (node) listEl.appendChild(node);
+        });
+        tree.folders.forEach(function (folder) {
+            if (renderedFolderIds.has(String(folder.id || ''))) return;
+            const node = renderFolder(folder, 0, new Set());
+            if (node) listEl.appendChild(node);
+        });
         return undefined;
     }
 
@@ -379,6 +637,8 @@
         installSidebarShell,
         setActiveTab: function (tab) { activeTab = tab === 'toc' ? 'toc' : 'files'; return activeTab; },
         getLastTocItems: function () { return lastTocItems.slice(); },
+        buildFolderPath,
+        buildFolderTreeModel,
         switchSidebarTab,
         parseTocItemsFromMarkdown,
         renderTOC,

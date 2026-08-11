@@ -319,7 +319,7 @@
         try {
             var result = await imageDb.convertBase64ImagesInMarkdown(db, sourceText);
             if (!result || !result.convertedCount) {
-                if (typeof deps.showToast === 'function') deps.showToast('변환할 Base64 Markdown 이미지가 없습니다.');
+                if (typeof deps.showToast === 'function') deps.showToast('변환할 Base64 Markdown/HTML 이미지가 없습니다.');
                 return;
             }
             if (ta.value !== originalText) {

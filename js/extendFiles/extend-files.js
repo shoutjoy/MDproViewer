@@ -12,6 +12,7 @@
     purple: { background: '#6d28d9', border: '#8b5cf6', hover: '#7c3aed', focus: 'rgba(139,92,246,.38)' },
     amber:  { background: '#b45309', border: '#f59e0b', hover: '#d97706', focus: 'rgba(245,158,11,.38)' },
     teal:   { background: '#0f766e', border: '#14b8a6', hover: '#0d9488', focus: 'rgba(20,184,166,.38)' },
+    yellow: { background: '#a16207', border: '#eab308', hover: '#ca8a04', focus: 'rgba(234,179,8,.42)' },
     green:  { background: '#15803d', border: '#22c55e', hover: '#16a34a', focus: 'rgba(34,197,94,.38)' },
     red:    { background: '#b91c1c', border: '#ef4444', hover: '#dc2626', focus: 'rgba(239,68,68,.38)' },
     slate:  { background: '#1e293b', border: '#475569', hover: '#334155', focus: 'rgba(148,163,184,.32)' }
@@ -253,7 +254,8 @@
       { key: 'docx', label: 'MS Word (.docx)', tone: 'blue' },
       { key: 'mdd', label: 'MDD file (bundle)', tone: 'purple' },
       { key: 'zip', label: 'ZIP file', tone: 'amber' },
-      { key: 'html', label: 'HTML file', tone: 'teal' }
+      { key: 'html', label: 'HTML file', tone: 'teal' },
+      { key: 'pdf', label: 'PDF file', tone: 'yellow' }
     ];
     try {
       if (typeof global.isGithubExportEnabled === 'function' && global.isGithubExportEnabled()) {
@@ -264,7 +266,7 @@
 
     return showChoiceDialog(
       'Export Format',
-      'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document',
+      'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: direct-download A4 PDF',
       choices,
       'cancel'
     );

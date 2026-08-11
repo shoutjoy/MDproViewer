@@ -838,11 +838,17 @@
                 + visibleSettings.map(function (entry) {
                 const item = entry.item;
                 const index = entry.index;
+                const isCustomFonts = item.key === 'textStyleCustomFonts';
+                const settingLabel = isCustomFonts ? '사용자 폰트 · textStyleCustomFonts' : item.key;
                 let renderedValue = '';
-                try { renderedValue = JSON.stringify(item.value); } catch (_) { renderedValue = '[표시할 수 없음]'; }
+                try {
+                    renderedValue = isCustomFonts && Array.isArray(item.value)
+                        ? '저장된 사용자 폰트 ' + item.value.length + '개\n' + item.value.map(function (font) { return font && font.family; }).filter(Boolean).join(', ')
+                        : JSON.stringify(item.value);
+                } catch (_) { renderedValue = '[표시할 수 없음]'; }
                 return '<button type="button" data-sqlite-setting-index="' + index + '" '
                     + 'class="mb-2 block w-full rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-emerald-500 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900 dark:hover:bg-emerald-950/20">'
-                    + '<div class="flex items-center justify-between gap-2"><b class="truncate">' + escapeMigrationText(item.key) + '</b>'
+                    + '<div class="flex items-center justify-between gap-2"><b class="truncate">' + escapeMigrationText(settingLabel) + '</b>'
                     + '<span class="text-[10px] text-violet-600 dark:text-violet-400">' + escapeMigrationText(item.scopeType) + '</span></div>'
                     + '<p class="mt-1 text-[10px] text-slate-500">' + escapeMigrationText(item.group) + ' · '
                     + escapeMigrationText(item.scopeId || '(global)') + ' · ' + escapeMigrationText(item.valueType) + '</p>'
@@ -1177,6 +1183,9 @@
         const item = settings[index];
         if (!detail || !item) return;
         if (item.key === 'encryptedToolVault') return openSqliteExplorerToolOverview();
+        const settingLabel = item.key === 'textStyleCustomFonts'
+            ? '사용자 폰트 · textStyleCustomFonts'
+            : (item.key || '(키 없음)');
         sqliteExplorerSelectedSettingIndex = index;
         document.querySelectorAll('[data-sqlite-setting-index]').forEach(function (button) {
             const selected = Number(button.dataset.sqliteSettingIndex) === sqliteExplorerSelectedSettingIndex;
@@ -1188,7 +1197,7 @@
         detail.innerHTML = [
             '<div class="flex flex-wrap items-start justify-between gap-2">',
             '<div class="min-w-0"><p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">저장된 설정</p>',
-            '<h3 class="mt-1 break-all text-lg font-bold text-slate-900 dark:text-slate-100">' + escapeMigrationText(item.key || '(키 없음)') + '</h3></div>',
+            '<h3 class="mt-1 break-all text-lg font-bold text-slate-900 dark:text-slate-100">' + escapeMigrationText(settingLabel) + '</h3></div>',
             '<span class="rounded-full border border-violet-300 px-2 py-0.5 text-[10px] font-bold text-violet-600 dark:border-violet-800 dark:text-violet-300">' + escapeMigrationText(item.scopeType || '-') + '</span>',
             '</div>',
             '<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40 sm:grid-cols-4">',

@@ -138,7 +138,7 @@
         return {
             sqlite: sqliteCheckbox ? sqliteCheckbox.checked : !!(settings && settings.sqliteEnabled === true),
             github: githubCheckbox ? githubCheckbox.checked : !!(settings && settings.githubEnabled === true),
-            local: localCheckbox ? localCheckbox.checked : !!(settings && settings.localEnabled === true)
+            local: localCheckbox ? localCheckbox.checked : !(settings && settings.localEnabled === false)
         };
     }
 
@@ -1331,7 +1331,7 @@
             folderDiv.appendChild(folderHeader);
 
             const docContainer = document.createElement('div');
-            docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'pl-2 space-y-1') + (isCollapsedFolder ? ' hidden' : '');
+            docContainer.className = (isSidebarCollapsed ? 'space-y-1' : 'sidebar-folder-documents space-y-1') + (isCollapsedFolder ? ' hidden' : '');
             items.forEach(function (doc) {
                 const path = String(doc && doc.path ? doc.path : '');
                 const title = String(doc && doc.title ? doc.title : getGithubDocTitleFromPath(path));
@@ -1344,14 +1344,14 @@
                 docItem.onclick = function () { loadFromGithubCache(path); };
                 docItem.innerHTML = ''
                     + '<div class="flex flex-col gap-1 doc-item-inner">'
-                    + '<div class="flex items-center gap-2">'
+                    + '<div class="sidebar-doc-title-row flex items-start gap-2">'
                     + '<i data-lucide="file-code-2" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>'
-                    + '<span class="text-sm font-semibold text-slate-700 dark:text-slate-300 truncate ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
+                    + '<span class="sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
                     + escapeHtmlText(isSidebarCollapsed ? shortTitle : title)
                     + '</span>'
                     + '</div>'
-                    + '<div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity doc-action-btns">'
-                    + '<button onclick="event.stopPropagation(); loadFromGithubCache(\'' + escapeHtmlText(path) + '\')" class="text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold hover:bg-indigo-600 hover:text-white">열기</button>'
+                    + '<div class="flex gap-1 doc-action-btns" aria-label="문서 작업">'
+                    + '<button type="button" onclick="event.stopPropagation(); loadFromGithubCache(\'' + escapeHtmlText(path) + '\')" class="doc-open-btn text-[10px] bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded border border-indigo-100 dark:border-indigo-800 font-bold">열기</button>'
                     + '</div>'
                     + '</div>';
                 docContainer.appendChild(docItem);

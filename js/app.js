@@ -1,9 +1,9 @@
 ﻿// IndexedDB Logic
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 let db;
 
-const FEATURE_DATA_STORE_NAMES = ['ai_chat', 'scholar_ai', 'ssp_image_ai', 'highlights', 'genslides'];
+const FEATURE_DATA_STORE_NAMES = ['fonts', 'ai_chat', 'scholar_ai', 'ssp_image_ai', 'highlights', 'genslides'];
 const AI_SETTINGS_KEY = 'ai_settings';
 const AI_SETTINGS_FALLBACK_KEY = 'md_viewer_ai_settings_fallback';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
@@ -14,6 +14,8 @@ const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
 const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
 const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const SETTINGS_CONTAINER_FOLD_STATE_KEY = 'md_viewer_settings_container_fold_state_v1';
+const FILE_DOWNLOAD_PREFIX_KEY = 'mdpro_file_download_prefix_v1';
+const DEFAULT_FILE_DOWNLOAD_PREFIX = 'mdpro';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const AI_CHAT_SETTINGS_FOLD_KEY = 'md_viewer_ai_chat_settings_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
@@ -25,8 +27,11 @@ const VIEW_COPY_FAB_POSITION_KEY = 'md_viewer_view_copy_fab_position_v2';
 const VIEW_COPY_FAB_EDGE_GAP = 8;
 const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
-    docxExport: './js/extendFiles/docx-export.js?v=20260811-note-cover-editable-2',
+    docxExport: './js/extendFiles/docx-export.js?v=20260811-note-cover-editor-3',
     htmlExport: './js/export/html-export.js?v=20260805-image-1',
+    pdfExport: './js/export/pdf-export.js?v=20260811-direct-download-2',
+    html2canvas: './vendor/html2canvas/html2canvas.min.js?v=1.4.1',
+    jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
     aiAcademicSearch: './AI_App/aiChat/academic-search.js?v=20260729-crossref-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
     aiChat: './AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1',
@@ -230,6 +235,10 @@ const EDITOR_HORIZONTAL_SHIFT_KEY = 'md_viewer_editor_horizontal_shift_px';
 let currentMarkdown = "";
 let currentFileName = "untitled.md";
 let currentFilePath = null;
+let currentFileMetadata = { createdAt: null, dateLabel: '생성일' };
+let currentDocumentVirtualPath = '';
+let currentDocumentDisplayRequest = 0;
+let currentDocumentMetadataTimer = null;
 let currentDbDocId = null;
 let currentDocumentRef = null;
 let storageStatusUnsubscribe = null;
@@ -259,7 +268,7 @@ let movingDocId = null;
 let previewPopupWindow = null;
 let previewPopupScale = 1.0;
 let previewPopupWidthScale = 1.0;
-let previewPopupFontSize = 21;
+let previewPopupFontSize = 16;
 let previewPopupRenderToken = 0;
 let previewPopupMermaidLoadPromise = null;
 let imageInsertCurrentDataUrl = '';
@@ -396,6 +405,8 @@ const fileNameDisplay = document.getElementById('file-name-display');
 const fileTitleDisplay = document.getElementById('file-title-display');
 const filePathDisplay = document.getElementById('file-path-display');
 const filePathSeparator = document.getElementById('file-path-separator');
+const fileSizeDisplay = document.getElementById('file-size-display');
+const fileCreatedDisplay = document.getElementById('file-created-display');
 const dropZone = document.getElementById('drop-zone');
 const inputModal = document.getElementById('input-modal');
 
@@ -733,20 +744,35 @@ function setCurrentDocumentRef(documentRecord, storageMode) {
         currentDocumentRef = null;
         return null;
     }
+    const previousRef = currentDocumentRef;
+    const normalizedStorageMode = storageMode === 'sqlite' ? 'sqlite' : 'indb';
+    const folderId = String(record.folderId || 'root');
+    const sameLocation = !!(previousRef
+        && previousRef.id === id
+        && previousRef.storageMode === normalizedStorageMode
+        && previousRef.folderId === folderId);
     const numericVersion = Number(record.version);
     currentDbDocId = id;
     currentDocumentRef = {
         id: id,
-        storageMode: storageMode === 'sqlite' ? 'sqlite' : 'indb',
+        storageMode: normalizedStorageMode,
         version: Number.isInteger(numericVersion) && numericVersion > 0 ? numericVersion : null,
-        folderId: String(record.folderId || 'root')
+        folderId: folderId,
+        title: String(record.title || (previousRef && previousRef.title) || ''),
+        createdAt: record.createdAt || (sameLocation && previousRef && previousRef.createdAt) || record.updatedAt || null,
+        updatedAt: record.updatedAt || null
     };
+    currentFileMetadata = { createdAt: currentDocumentRef.createdAt, dateLabel: '생성일' };
+    if (!sameLocation) currentDocumentVirtualPath = '';
     return currentDocumentRef;
 }
 
 function clearCurrentDocumentRef() {
     currentDbDocId = null;
     currentDocumentRef = null;
+    currentDocumentVirtualPath = '';
+    currentFileMetadata = { createdAt: null, dateLabel: '생성일' };
+    currentDocumentDisplayRequest += 1;
 }
 
 function escapeHtmlText(value) {
@@ -766,14 +792,26 @@ function getNameFromPath(pathValue) {
 }
 
 function normalizeExternalOpenPayload(raw) {
-    if (!raw) return { path: '', text: '', hasText: false, fileName: '' };
-    if (typeof raw === 'string') return { path: String(raw), text: '', hasText: false, fileName: '' };
+    if (!raw) return { path: '', text: '', hasText: false, fileName: '', sizeBytes: null, createdAt: null, dateLabel: '생성일' };
+    if (typeof raw === 'string') return { path: String(raw), text: '', hasText: false, fileName: '', sizeBytes: null, createdAt: null, dateLabel: '생성일' };
     const path = String(raw.path || raw.filePath || '').trim();
     const textCandidate = raw.text ?? raw.content ?? raw.markdown;
     const hasText = textCandidate !== undefined && textCandidate !== null;
     const text = hasText ? String(textCandidate) : '';
     const fileName = String(raw.fileName || raw.name || '').trim();
-    return { path, text, hasText, fileName };
+    const rawSize = raw.sizeBytes ?? raw.size;
+    const sizeBytes = Number.isFinite(Number(rawSize)) ? Number(rawSize) : null;
+    const trueCreatedAt = raw.createdAt ?? raw.birthtimeMs ?? raw.birthTime;
+    const modifiedAt = raw.modifiedAt ?? raw.lastModified ?? raw.mtimeMs;
+    return {
+        path,
+        text,
+        hasText,
+        fileName,
+        sizeBytes,
+        createdAt: trueCreatedAt ?? modifiedAt ?? null,
+        dateLabel: trueCreatedAt != null ? '생성일' : (modifiedAt != null ? '수정일' : '생성일')
+    };
 }
 
 function buildExternalOpenSignature(payload) {
@@ -835,7 +873,11 @@ async function applyIncomingOpenedFile(rawPayload, options) {
     }
 
     const fileName = payload.fileName || getNameFromPath(payload.path) || currentFileName || 'document.md';
-    setCurrentDocumentInfo(fileName, payload.path || null);
+    setCurrentDocumentInfo(fileName, payload.path || null, {
+        sizeBytes: payload.sizeBytes,
+        createdAt: payload.createdAt,
+        dateLabel: payload.dateLabel
+    });
     updateContent(payload.text);
     markPersistedState();
     lastExternalOpenSignature = sig;
@@ -930,6 +972,9 @@ function initDB() {
             }
             if (!db.objectStoreNames.contains('images')) {
                 db.createObjectStore('images', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('fonts')) {
+                db.createObjectStore('fonts', { keyPath: 'id' });
             }
             if (!db.objectStoreNames.contains('scholar_refs')) {
                 db.createObjectStore('scholar_refs', { keyPath: 'id' });
@@ -1099,6 +1144,7 @@ function organizeSettingsDashboard() {
     const codeColors = document.getElementById('code-color-settings-card');
     const mermaidDisplay = document.getElementById('mermaid-display-settings-card');
     const shortcuts = document.getElementById('shortcuts-settings-card');
+    const inDbBackupPrefix = document.getElementById('indb-backup-prefix-settings-card');
     const aiUser = document.getElementById('ai-user-settings-card');
     if (aiUser) {
         aiUser.className = 'border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50 space-y-2';
@@ -1108,6 +1154,7 @@ function organizeSettingsDashboard() {
     if (codeColors) appendToColumn(generalColumn, codeColors);
     if (mermaidDisplay) appendToColumn(generalColumn, mermaidDisplay);
     if (shortcuts) appendToColumn(generalColumn, shortcuts);
+    if (inDbBackupPrefix) appendToColumn(generalColumn, inDbBackupPrefix);
 
     const githubSettings = document.getElementById('github-settings-slot');
 
@@ -1237,10 +1284,30 @@ window.onload = async () => {
         toggleMode('edit');
 
         await initDB();
+        if (window.TextStyleTool && typeof window.TextStyleTool.setDatabase === 'function') {
+            try {
+                await window.TextStyleTool.setDatabase(db);
+            } catch (error) {
+                console.warn('Custom font inDB initialization failed:', error);
+                showToast('사용자 폰트 저장소를 열지 못해 임시 저장 방식으로 동작합니다.');
+            }
+        }
         if (window.MDPStorage && typeof window.MDPStorage.initialize === 'function') {
             const storageState = await window.MDPStorage.initialize({ getIndexedDb: function () { return db; } });
+            if (window.TextStyleTool && typeof window.TextStyleTool.setSqliteStorage === 'function') {
+                const fontSync = await window.TextStyleTool.setSqliteStorage(window.MDPStorage);
+                if (fontSync && fontSync.pending) {
+                    console.info('Custom font SQLite mirror is pending:', fontSync.error || 'SQLite unavailable');
+                }
+            }
             if (storageStatusUnsubscribe) storageStatusUnsubscribe();
             storageStatusUnsubscribe = window.MDPStorage.subscribe(function (nextState) {
+                if (nextState && nextState.sqliteHealth && nextState.sqliteHealth.available
+                    && window.TextStyleTool && typeof window.TextStyleTool.syncToSqlite === 'function') {
+                    window.TextStyleTool.syncToSqlite().catch(function (error) {
+                        console.warn('Custom font SQLite mirror retry skipped:', error && error.message ? error.message : error);
+                    });
+                }
                 if (currentStorageSourceTab === 'github' || currentStorageSourceTab === 'local') return;
                 const nextMode = nextState && nextState.activeMode === 'sqlite' ? 'sqlite' : 'indb';
                 const modeChanged = currentStorageSourceTab !== nextMode;
@@ -1413,6 +1480,7 @@ window.onload = async () => {
 
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
+        scheduleCurrentDocumentMetadataDisplay();
         syncRenderSourceRevision(currentMarkdown);
         if (window.__mdPerformanceBenchmarkActive) return;
         const baseDelay = getEditorInputDebounceMs();
@@ -1773,6 +1841,7 @@ function updateContent(md) {
     notebookLmEqualsHrPreprocess = false;
     currentMarkdown = md;
     if (editorTextarea) editorTextarea.value = md;
+    updateCurrentDocumentMetadataDisplay();
     mainRenderDirty = true;
     renderMarkdown({ force: !isEditMode });
     renderTOC();
@@ -1834,6 +1903,7 @@ async function saveCurrentToInDbAuto() {
         title: title,
         content: String(currentMarkdown || ''),
         folderId: 'root',
+        createdAt: new Date(),
         updatedAt: new Date()
     };
     await new Promise(function (resolve, reject) {
@@ -2043,7 +2113,8 @@ function hideMarkdownCommentsForRender(raw) {
     if (window.MDComment && typeof window.MDComment.stripForRender === 'function') {
         return window.MDComment.stripForRender(raw);
     }
-    return String(raw ?? '').replace(/<--[\s\S]*?-->/g, function (comment) {
+    return String(raw ?? '').replace(/<!--[\s\S]*?-->/g, function (comment) {
+        if (/^<!--\s*note-cover\b/i.test(comment)) return comment;
         return comment.replace(/[^\r\n]/g, '');
     });
 }
@@ -2081,6 +2152,31 @@ function detectRenderFeatures(source) {
         hasNoteCover: /class="note-cover-page\b/i.test(value)
     };
 }
+
+function applyMarkdownImageSizeHints(rootElement) {
+    if (!rootElement || typeof rootElement.querySelectorAll !== 'function') return 0;
+    let applied = 0;
+    rootElement.querySelectorAll('img').forEach(function (image) {
+        const hintNode = image.nextSibling;
+        if (!hintNode || hintNode.nodeType !== 3) return;
+        const text = String(hintNode.nodeValue || '');
+        const match = text.match(/^\s*\{\s*(w(?:idth)?|h(?:eight)?)\s*=\s*(\d+(?:\.\d+)?)\s*(px|mm|cm|in|pt|%)?\s*\}/i);
+        if (!match) return;
+        const property = String(match[1] || '').toLowerCase().startsWith('h') ? 'height' : 'width';
+        const unit = String(match[3] || 'px').toLowerCase();
+        image.style[property] = match[2] + unit;
+        image.style[property === 'height' ? 'width' : 'height'] = 'auto';
+        image.style.maxWidth = '100%';
+        image.style.objectFit = 'contain';
+        const remainder = text.slice(match[0].length);
+        if (remainder) hintNode.nodeValue = remainder;
+        else hintNode.remove();
+        applied += 1;
+    });
+    return applied;
+}
+
+window.applyMarkdownImageSizeHints = applyMarkdownImageSizeHints;
 
 function prepareMarkdownRenderSnapshot(raw) {
     const sourceRaw = String(raw ?? '');
@@ -2187,6 +2283,11 @@ window.getRenderCoordinatorDebugState = function () {
     return renderCoordinator ? renderCoordinator.getStats() : null;
 };
 
+const NOTE_COVER_HISTORY_LIMIT = 100;
+let noteCoverUndoStack = [];
+let noteCoverRedoStack = [];
+let noteCoverHistoryApplying = false;
+
 function getNoteCoverMarkdownSource() {
     let source = String(currentMarkdown ?? '');
     const cmView = editorTextarea && editorTextarea.__mdCm6View;
@@ -2198,9 +2299,34 @@ function getNoteCoverMarkdownSource() {
     return source;
 }
 
-function applyNoteCoverMarkdownUpdate(updated, userEvent) {
+function recordNoteCoverHistory(beforeMarkdown, afterMarkdown, historyKey, coalesce) {
+    if (noteCoverHistoryApplying || beforeMarkdown === afterMarkdown) return;
+    const key = String(historyKey || 'note-cover');
+    const now = Date.now();
+    const last = noteCoverUndoStack[noteCoverUndoStack.length - 1];
+    if (coalesce && last && last.key === key && last.after === beforeMarkdown && now - last.time < 1200) {
+        last.after = afterMarkdown;
+        last.time = now;
+    } else {
+        noteCoverUndoStack.push({ before: beforeMarkdown, after: afterMarkdown, key: key, time: now });
+        if (noteCoverUndoStack.length > NOTE_COVER_HISTORY_LIMIT) noteCoverUndoStack.shift();
+    }
+    noteCoverRedoStack = [];
+}
+
+function applyNoteCoverMarkdownUpdate(updated, userEvent, options) {
     if (!updated || updated.changed !== true || typeof updated.markdown !== 'string') return false;
+    const opts = options || {};
+    const beforeMarkdown = getNoteCoverMarkdownSource();
     const nextMarkdown = updated.markdown;
+    if (nextMarkdown === beforeMarkdown) return false;
+    if (opts.recordHistory !== false) {
+        recordNoteCoverHistory(beforeMarkdown, nextMarkdown, opts.historyKey || userEvent, !!opts.coalesce);
+    }
+    if (window.NoteCoverRenderer && typeof window.NoteCoverRenderer.setPendingSelection === 'function') {
+        if (opts.clearSelection) window.NoteCoverRenderer.setPendingSelection(opts.coverIndex, '');
+        else if (opts.selectElementId) window.NoteCoverRenderer.setPendingSelection(opts.coverIndex, opts.selectElementId);
+    }
     const cmView = editorTextarea && editorTextarea.__mdCm6View;
     if (cmView && cmView.state && typeof cmView.dispatch === 'function') {
         cmView.dispatch({
@@ -2217,6 +2343,63 @@ function applyNoteCoverMarkdownUpdate(updated, userEvent) {
         mainRenderDirty = true;
         schedulePerformAutoSave(120);
     }
+    if (opts.renderAfter) renderMarkdown({ force: true });
+    return true;
+}
+
+function undoNoteCoverEdit() {
+    const entry = noteCoverUndoStack[noteCoverUndoStack.length - 1];
+    if (!entry) {
+        showToast('되돌릴 표지 편집이 없습니다.');
+        return false;
+    }
+    if (getNoteCoverMarkdownSource() !== entry.after) {
+        noteCoverUndoStack = [];
+        noteCoverRedoStack = [];
+        showToast('문서가 다른 곳에서 변경되어 표지 Undo 기록을 초기화했습니다.');
+        return false;
+    }
+    noteCoverUndoStack.pop();
+    noteCoverRedoStack.push(entry);
+    noteCoverHistoryApplying = true;
+    try {
+        applyNoteCoverMarkdownUpdate(
+            { changed: true, markdown: entry.before },
+            'input.noteCoverUndo',
+            { recordHistory: false, renderAfter: true }
+        );
+    } finally {
+        noteCoverHistoryApplying = false;
+    }
+    showToast('표지 편집을 되돌렸습니다.');
+    return true;
+}
+
+function redoNoteCoverEdit() {
+    const entry = noteCoverRedoStack[noteCoverRedoStack.length - 1];
+    if (!entry) {
+        showToast('다시 실행할 표지 편집이 없습니다.');
+        return false;
+    }
+    if (getNoteCoverMarkdownSource() !== entry.before) {
+        noteCoverUndoStack = [];
+        noteCoverRedoStack = [];
+        showToast('문서가 다른 곳에서 변경되어 표지 Redo 기록을 초기화했습니다.');
+        return false;
+    }
+    noteCoverRedoStack.pop();
+    noteCoverUndoStack.push(entry);
+    noteCoverHistoryApplying = true;
+    try {
+        applyNoteCoverMarkdownUpdate(
+            { changed: true, markdown: entry.after },
+            'input.noteCoverRedo',
+            { recordHistory: false, renderAfter: true }
+        );
+    } finally {
+        noteCoverHistoryApplying = false;
+    }
+    showToast('표지 편집을 다시 실행했습니다.');
     return true;
 }
 
@@ -2231,7 +2414,10 @@ function applyNoteCoverTextChange(change) {
         coverIndex,
         elementId,
         String(change.text == null ? '' : change.text)
-    ));
+    ), 'input.noteCoverText', {
+        historyKey: 'text:' + coverIndex + ':' + elementId,
+        coalesce: change.phase !== 'commit'
+    });
 }
 
 function applyNoteCoverGeometryChange(change) {
@@ -2245,7 +2431,69 @@ function applyNoteCoverGeometryChange(change) {
         coverIndex,
         elementId,
         change.geometry || {}
-    ), 'input.noteCoverGeometry');
+    ), 'input.noteCoverGeometry', {
+        historyKey: 'geometry:' + coverIndex + ':' + elementId
+    });
+}
+
+function applyNoteCoverTextStyleChange(change) {
+    if (!change || !window.NoteCoverRenderer ||
+        typeof window.NoteCoverRenderer.updateTextElementStyleInMarkdown !== 'function') return false;
+    const coverIndex = Math.max(0, Number(change.coverIndex) || 0);
+    const elementId = String(change.elementId || '');
+    if (!elementId) return false;
+    return applyNoteCoverMarkdownUpdate(window.NoteCoverRenderer.updateTextElementStyleInMarkdown(
+        getNoteCoverMarkdownSource(),
+        coverIndex,
+        elementId,
+        change.style || {}
+    ), 'input.noteCoverStyle', {
+        historyKey: 'style:' + coverIndex + ':' + elementId,
+        coalesce: true
+    });
+}
+
+function addNoteCoverTextElement(change) {
+    if (!window.NoteCoverRenderer || typeof window.NoteCoverRenderer.addElementInMarkdown !== 'function') return false;
+    const coverIndex = Math.max(0, Number(change && change.coverIndex) || 0);
+    const updated = window.NoteCoverRenderer.addElementInMarkdown(
+        getNoteCoverMarkdownSource(),
+        coverIndex,
+        {
+            type: 'text', text: '새 텍스트', x: 12, y: 12, w: 38, h: 8,
+            fontSize: 32, fontFamily: 'Arial', color: '#111111', fontWeight: 400,
+            fontStyle: 'normal', textAlign: 'left'
+        }
+    );
+    const applied = applyNoteCoverMarkdownUpdate(updated, 'input.noteCoverAddText', {
+        historyKey: 'add-text:' + coverIndex,
+        renderAfter: true,
+        coverIndex: coverIndex,
+        selectElementId: updated.elementId
+    });
+    if (applied) showToast('표지에 텍스트 상자를 추가했습니다.');
+    return applied;
+}
+
+function deleteNoteCoverElement(change) {
+    if (!change || !window.NoteCoverRenderer ||
+        typeof window.NoteCoverRenderer.removeElementInMarkdown !== 'function') return false;
+    const coverIndex = Math.max(0, Number(change.coverIndex) || 0);
+    const elementId = String(change.elementId || '');
+    if (!elementId) return false;
+    const updated = window.NoteCoverRenderer.removeElementInMarkdown(
+        getNoteCoverMarkdownSource(),
+        coverIndex,
+        elementId
+    );
+    const applied = applyNoteCoverMarkdownUpdate(updated, 'input.noteCoverDelete', {
+        historyKey: 'delete:' + coverIndex + ':' + elementId,
+        renderAfter: true,
+        coverIndex: coverIndex,
+        clearSelection: true
+    });
+    if (applied) showToast(change.elementType === 'image' ? '표지 이미지를 삭제했습니다.' : '표지 텍스트 상자를 삭제했습니다.');
+    return applied;
 }
 
 function requestNoteCoverImageRelink(change) {
@@ -2287,7 +2535,12 @@ function requestNoteCoverImageRelink(change) {
                 elementId,
                 saved && saved.url
             );
-            if (!applyNoteCoverMarkdownUpdate(updated, 'input.noteCoverImage')) {
+            if (!applyNoteCoverMarkdownUpdate(updated, 'input.noteCoverImage', {
+                historyKey: 'image-path:' + coverIndex + ':' + elementId,
+                renderAfter: true,
+                coverIndex: coverIndex,
+                selectElementId: elementId
+            })) {
                 throw new Error('표지 이미지 경로를 문서에 저장하지 못했습니다.');
             }
             showToast('표지 이미지를 내부 저장소에 연결했습니다. MDD 내보내기에 포함됩니다.');
@@ -2303,9 +2556,69 @@ function requestNoteCoverImageRelink(change) {
     return true;
 }
 
+function requestNoteCoverImageAdd(change) {
+    if (!window.NoteCoverRenderer || typeof window.NoteCoverRenderer.addElementInMarkdown !== 'function') return false;
+    if (!db || !window.ImageDB || typeof window.ImageDB.saveBlob !== 'function') {
+        showToast('이미지 저장소가 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요.');
+        return false;
+    }
+    const coverIndex = Math.max(0, Number(change && change.coverIndex) || 0);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,.png,.jpg,.jpeg,.gif,.webp,.svg,.bmp,.avif';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    let settled = false;
+    const cleanup = function () {
+        if (settled) return;
+        settled = true;
+        if (input.parentNode) input.parentNode.removeChild(input);
+    };
+    input.addEventListener('change', async function () {
+        const file = input.files && input.files[0];
+        if (!file) { cleanup(); return; }
+        try {
+            const saved = await window.ImageDB.saveBlob(db, file, {
+                name: file.name,
+                mime: file.type || 'application/octet-stream'
+            });
+            const updated = window.NoteCoverRenderer.addElementInMarkdown(
+                getNoteCoverMarkdownSource(),
+                coverIndex,
+                {
+                    type: 'image', path: saved && saved.url, name: file.name || '새 이미지',
+                    x: 16, y: 16, w: 32, h: 24
+                }
+            );
+            if (!applyNoteCoverMarkdownUpdate(updated, 'input.noteCoverAddImage', {
+                historyKey: 'add-image:' + coverIndex,
+                renderAfter: true,
+                coverIndex: coverIndex,
+                selectElementId: updated.elementId
+            })) {
+                throw new Error('새 표지 이미지를 문서에 저장하지 못했습니다.');
+            }
+            showToast('표지에 이미지를 추가했습니다. 이동·크기 조절이 가능합니다.');
+        } catch (error) {
+            showToast('표지 이미지를 추가하지 못했습니다: ' + (error && error.message ? error.message : error));
+        } finally {
+            cleanup();
+        }
+    }, { once: true });
+    input.click();
+    window.setTimeout(cleanup, 300000);
+    return true;
+}
+
 window.applyNoteCoverTextChange = applyNoteCoverTextChange;
 window.applyNoteCoverGeometryChange = applyNoteCoverGeometryChange;
+window.applyNoteCoverTextStyleChange = applyNoteCoverTextStyleChange;
+window.addNoteCoverTextElement = addNoteCoverTextElement;
+window.deleteNoteCoverElement = deleteNoteCoverElement;
+window.undoNoteCoverEdit = undoNoteCoverEdit;
+window.redoNoteCoverEdit = redoNoteCoverEdit;
 window.requestNoteCoverImageRelink = requestNoteCoverImageRelink;
+window.requestNoteCoverImageAdd = requestNoteCoverImageAdd;
 
 function applyDoiLinkTargets(root) {
     if (!root || !root.querySelectorAll) return;
@@ -2436,6 +2749,7 @@ async function renderMarkdown(options) {
     };
     function runPostRenderHooks() {
         if (!isCurrentRender()) return;
+        try { applyMarkdownImageSizeHints(viewer); } catch (e) {}
         try { if (snapshot.features.hasDoiLinks) applyDoiLinkTargets(viewer); } catch (e) {}
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
         try {
@@ -2445,7 +2759,13 @@ async function renderMarkdown(options) {
                 window.NoteCoverRenderer.hydrate(viewer, {
                     onTextChange: applyNoteCoverTextChange,
                     onGeometryChange: applyNoteCoverGeometryChange,
-                    onImageRelink: requestNoteCoverImageRelink
+                    onStyleChange: applyNoteCoverTextStyleChange,
+                    onImageRelink: requestNoteCoverImageRelink,
+                    onAddText: addNoteCoverTextElement,
+                    onAddImage: requestNoteCoverImageAdd,
+                    onDelete: deleteNoteCoverElement,
+                    onUndo: undoNoteCoverEdit,
+                    onRedo: redoNoteCoverEdit
                 });
             }
         } catch (e) {}
@@ -3143,8 +3463,7 @@ window.openFileFromLocalFolderExplorer = openFileFromLocalFolderExplorer;
 
 function createNewFile() {
     currentMarkdown = "";
-    setCurrentDocumentInfo("untitled.md", null);
-    clearCurrentDocumentRef();
+    setCurrentDocumentInfo("untitled.md", null, { createdAt: new Date(), dateLabel: '생성일' });
     updateContent("");
     markPersistedState();
     performAutoSave();
@@ -3159,31 +3478,111 @@ const MPV_VERSION = (window.MdViewerFileFormat && typeof window.MdViewerFileForm
     ? window.MdViewerFileFormat.getFormatVersion('mpv')
     : 1);
 
-function setCurrentDocumentInfo(fileName, filePath = null) {
+function setCurrentDocumentInfo(fileName, filePath = null, metadata) {
     currentFileName = fileName;
     currentFilePath = filePath || null;
     clearCurrentDocumentRef();
+    const inputMetadata = metadata || {};
+    currentFileMetadata = {
+        createdAt: inputMetadata.createdAt || null,
+        dateLabel: String(inputMetadata.dateLabel || '생성일')
+    };
     updateCurrentDocumentDisplay();
     if (window.GoogleDocs && typeof window.GoogleDocs.handleActiveDocumentChanged === 'function') {
         window.GoogleDocs.handleActiveDocumentChanged();
     }
 }
 
-function updateCurrentDocumentDisplay() {
+function getUtf8ByteLength(value) {
+    const text = String(value == null ? '' : value);
+    if (typeof TextEncoder !== 'undefined') return new TextEncoder().encode(text).length;
+    try { return unescape(encodeURIComponent(text)).length; } catch (_) { return text.length; }
+}
+
+function formatDocumentBytes(value) {
+    const bytes = Math.max(0, Number(value) || 0);
+    if (bytes < 1024) return Math.round(bytes) + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(bytes < 10240 ? 1 : 0) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0) + ' MB';
+}
+
+function formatDocumentDate(value) {
+    if (!value) return '-';
+    const date = value instanceof Date ? value : new Date(value);
+    if (!Number.isFinite(date.getTime())) return '-';
+    return date.toLocaleString('ko-KR', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function updateCurrentDocumentMetadataDisplay() {
+    const sizeText = formatDocumentBytes(getUtf8ByteLength(currentMarkdown));
+    const metadata = currentDocumentRef
+        ? { createdAt: currentDocumentRef.createdAt, dateLabel: '생성일' }
+        : (currentFileMetadata || {});
+    const dateLabel = String(metadata.dateLabel || '생성일');
+    const dateText = formatDocumentDate(metadata.createdAt);
+    if (fileSizeDisplay) {
+        fileSizeDisplay.textContent = sizeText;
+        fileSizeDisplay.title = 'UTF-8 기준 문서 용량: ' + sizeText;
+    }
+    if (fileCreatedDisplay) {
+        fileCreatedDisplay.textContent = dateLabel + ' ' + dateText;
+        fileCreatedDisplay.title = dateLabel + ': ' + dateText;
+    }
+    return { sizeText, dateLabel, dateText };
+}
+
+function scheduleCurrentDocumentMetadataDisplay() {
+    if (currentDocumentMetadataTimer) clearTimeout(currentDocumentMetadataTimer);
+    const delay = String(currentMarkdown || '').length >= 180000 ? 420 : 140;
+    currentDocumentMetadataTimer = setTimeout(function () {
+        currentDocumentMetadataTimer = null;
+        updateCurrentDocumentMetadataDisplay();
+    }, delay);
+}
+
+async function refreshCurrentDocumentVirtualPath() {
+    if (!currentDocumentRef || !window.MDPStorage || typeof window.MDPStorage.listFolders !== 'function') return;
+    const requestId = ++currentDocumentDisplayRequest;
+    const documentId = currentDocumentRef.id;
+    const storageMode = currentDocumentRef.storageMode;
+    const folderId = currentDocumentRef.folderId || 'root';
+    try {
+        const folders = await window.MDPStorage.listFolders();
+        if (requestId !== currentDocumentDisplayRequest || !currentDocumentRef
+            || currentDocumentRef.id !== documentId || currentDocumentRef.storageMode !== storageMode) return;
+        const pathBuilder = window.SidebarLeft && typeof window.SidebarLeft.buildFolderPath === 'function'
+            ? window.SidebarLeft.buildFolderPath
+            : function () { return folderId === 'root' ? ROOT_FOLDER_NAME : folderId; };
+        currentDocumentVirtualPath = getStorageModeLabel(storageMode) + ' / ' + pathBuilder(folders, folderId);
+        updateCurrentDocumentDisplay({ skipVirtualPathRefresh: true });
+    } catch (_) {}
+}
+
+function updateCurrentDocumentDisplay(options) {
+    const opts = options || {};
     const fileName = currentFileName || 'untitled.md';
-    const filePath = currentFilePath ? String(currentFilePath) : '';
+    const filePath = currentFilePath ? String(currentFilePath) : String(currentDocumentVirtualPath || '');
+    const metadataText = updateCurrentDocumentMetadataDisplay();
     if (fileTitleDisplay && filePathDisplay) {
         fileTitleDisplay.textContent = fileName;
         filePathDisplay.textContent = filePath || '로컬 경로 없음';
         if (filePathSeparator) filePathSeparator.classList.toggle('hidden', !filePath);
         filePathDisplay.classList.toggle('text-slate-400', !filePath);
         filePathDisplay.classList.toggle('dark:text-slate-500', !filePath);
-        if (fileNameDisplay) fileNameDisplay.title = filePath ? fileName + '\n' + filePath : fileName;
-        return;
-    }
-    if (fileNameDisplay) {
+        if (fileNameDisplay) {
+            fileNameDisplay.title = [fileName, filePath, metadataText.sizeText, metadataText.dateLabel + ' ' + metadataText.dateText]
+                .filter(Boolean).join('\n');
+        }
+    } else if (fileNameDisplay) {
         fileNameDisplay.textContent = filePath ? fileName + ' | ' + filePath : fileName;
-        fileNameDisplay.title = filePath ? fileName + '\n' + filePath : fileName;
+        fileNameDisplay.title = [fileName, filePath, metadataText.sizeText, metadataText.dateLabel + ' ' + metadataText.dateText]
+            .filter(Boolean).join('\n');
+    }
+    if (currentDocumentRef && !currentFilePath && !currentDocumentVirtualPath && !opts.skipVirtualPathRefresh) {
+        refreshCurrentDocumentVirtualPath();
     }
 }
 
@@ -3352,7 +3751,8 @@ function showExportTypeDialogFallback() {
             { key: 'docx', label: 'MS Word (.docx)', background: '#1d4ed8', border: '#3b82f6', hover: '#2563eb', focus: 'rgba(59,130,246,.38)' },
             { key: 'mdd', label: 'MDD file (bundle)', background: '#6d28d9', border: '#8b5cf6', hover: '#7c3aed', focus: 'rgba(139,92,246,.38)' },
             { key: 'zip', label: 'ZIP file', background: '#b45309', border: '#f59e0b', hover: '#d97706', focus: 'rgba(245,158,11,.38)' },
-            { key: 'html', label: 'HTML file', background: '#0f766e', border: '#14b8a6', hover: '#0d9488', focus: 'rgba(20,184,166,.38)' }
+            { key: 'html', label: 'HTML file', background: '#0f766e', border: '#14b8a6', hover: '#0d9488', focus: 'rgba(20,184,166,.38)' },
+            { key: 'pdf', label: 'PDF file', background: '#a16207', border: '#eab308', hover: '#ca8a04', focus: 'rgba(234,179,8,.42)' }
         ];
         try {
             if (typeof isGithubExportEnabled === 'function' && isGithubExportEnabled()) {
@@ -3373,7 +3773,7 @@ function showExportTypeDialogFallback() {
         card.appendChild(title);
 
         const desc = document.createElement('p');
-        desc.textContent = 'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document';
+        desc.textContent = 'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: direct-download A4 PDF';
         desc.style.cssText = 'margin:0 0 14px;font-size:13px;line-height:1.5;color:#cbd5e1;';
         card.appendChild(desc);
 
@@ -3471,6 +3871,35 @@ async function exportCurrentDocumentByChoice() {
         markPersistedState();
         return true;
     }
+    if (choice === 'pdf') {
+        syncCurrentMarkdownFromEditor();
+        await loadOptionalScript('htmlExport', function () {
+            return !!window.HtmlExport && typeof window.HtmlExport.buildExportHtml === 'function';
+        });
+        await loadOptionalScript('pdfExport', function () {
+            return !!window.PdfExport && typeof window.PdfExport.openPreview === 'function';
+        });
+        await Promise.all([
+            loadOptionalScript('html2canvas', function () {
+                return typeof window.html2canvas === 'function';
+            }),
+            loadOptionalScript('jsPdf', function () {
+                return !!window.jspdf && typeof window.jspdf.jsPDF === 'function';
+            })
+        ]);
+        await renderMarkdown({ force: true });
+        const htmlResult = await window.HtmlExport.buildExportHtml({
+            content: String(currentMarkdown || ''),
+            fileName: getSaveCandidateFileName(),
+            renderedElement: viewer,
+            baseUrl: document.baseURI,
+            resolveImage: resolveDocxExportImage
+        });
+        return await window.PdfExport.openPreview({
+            html: htmlResult.html,
+            fileName: getSaveCandidateFileName()
+        });
+    }
     const hasInternalImages = !!(window.ImageDB
         && typeof window.ImageDB.hasInternalImages === 'function'
         && window.ImageDB.hasInternalImages(String(currentMarkdown || '')));
@@ -3565,7 +3994,10 @@ async function readFile(file, options) {
         if (kind === 'html') {
             showToast('HTML loaded in rendered preview mode.');
         }
-        setCurrentDocumentInfo(file.name, opts.filePath || file.path || null);
+        setCurrentDocumentInfo(file.name, opts.filePath || file.path || null, {
+            createdAt: file.lastModified || null,
+            dateLabel: file.lastModified ? '수정일' : '생성일'
+        });
         updateContent(parsed && typeof parsed.text === 'string' ? parsed.text : raw);
         markPersistedState();
         showToast("File loaded successfully.");
@@ -3728,7 +4160,7 @@ async function exportZip() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'mdviewer_backup_' + new Date().toISOString().slice(0, 10) + '.zip';
+    a.download = getFileDownloadPrefixFromLocal() + '_backup_' + new Date().toISOString().slice(0, 10) + '.zip';
     a.click();
     URL.revokeObjectURL(url);
     closeBackupModal();
@@ -3763,7 +4195,7 @@ async function exportMpv() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'mdviewer_backup_' + new Date().toISOString().slice(0, 10) + '.mpv';
+    a.download = getFileDownloadPrefixFromLocal() + '_backup_' + new Date().toISOString().slice(0, 10) + '.mpv';
     a.click();
     URL.revokeObjectURL(url);
     closeBackupModal();
@@ -4156,7 +4588,8 @@ async function ensureRootFolder() {
         req.onsuccess = () => {
             const current = req.result;
             if (!current) {
-                store.add({ id: 'root', name: ROOT_FOLDER_NAME });
+                const now = new Date();
+                store.add({ id: 'root', name: ROOT_FOLDER_NAME, parentId: null, createdAt: now, updatedAt: now });
                 res();
                 return;
             }
@@ -4198,10 +4631,12 @@ async function cleanupBootBlockedDocuments() {
 
 let currentActionCallback = null;
 
-function createNewFolder() {
+function createNewFolder(parentFolderId, parentFolderName) {
+    const targetParentId = String(parentFolderId || 'root').trim() || 'root';
+    const targetParentName = String(parentFolderName || ROOT_FOLDER_NAME).trim() || ROOT_FOLDER_NAME;
     const modal = document.getElementById('save-modal');
-    document.querySelector('#save-modal h3').textContent = 'Create Folder';
-    document.querySelector('#save-modal label').textContent = 'Folder name';
+    document.querySelector('#save-modal h3').textContent = targetParentId === 'root' ? '폴더 생성' : '하위 폴더 생성';
+    document.querySelector('#save-modal label').textContent = targetParentName + ' 아래에 만들 폴더 이름';
     const input = document.getElementById('save-title-input');
     input.value = '';
 
@@ -4209,15 +4644,28 @@ function createNewFolder() {
         const normalizedName = String(name || '').trim();
         if (!normalizedName || !window.MDPStorage) return;
         try {
+            const folders = await window.MDPStorage.listFolders();
+            const folderRows = Array.isArray(folders) ? folders : [];
+            if (!folderRows.some(function (folder) { return String(folder && folder.id || '') === targetParentId; })) {
+                throw new Error('상위 폴더를 찾을 수 없습니다.');
+            }
+            const duplicate = folderRows.some(function (folder) {
+                return String(folder && folder.parentId || 'root') === targetParentId
+                    && String(folder && folder.name || '').trim().toLowerCase() === normalizedName.toLowerCase();
+            });
+            if (duplicate) throw new Error('같은 위치에 같은 이름의 폴더가 있습니다.');
+            const now = new Date();
             await window.MDPStorage.createFolder({
                 id: 'folder_' + Date.now(),
                 name: normalizedName,
-                parentId: 'root'
+                parentId: targetParentId,
+                createdAt: now,
+                updatedAt: now
             });
             await renderDBList();
-            showToast(getStorageModeLabel(getActiveStorageMode()) + ' folder created.');
+            showToast(targetParentName + ' 아래에 폴더를 만들었습니다: ' + normalizedName);
         } catch (error) {
-            showToast('Create folder failed: ' + (error && error.message ? error.message : error));
+            showToast('폴더 생성 실패: ' + (error && error.message ? error.message : error));
         }
     };
 
@@ -4282,6 +4730,7 @@ async function createDocumentInFolder(folderId) {
                 title: resolvedTitle,
                 content: '',
                 folderId: targetFolderId,
+                createdAt: new Date(),
                 updatedAt: new Date()
             });
 
@@ -4320,19 +4769,30 @@ async function deleteFolderFromDB(folderId) {
     if (!window.MDPStorage) return;
 
     let docsInFolder = [];
+    let childFolders = [];
+    let folderRecord = null;
     try {
-        const allDocuments = await window.MDPStorage.listDocuments({ limit: 500 });
+        const results = await Promise.all([
+            window.MDPStorage.listDocuments({ limit: 500 }),
+            window.MDPStorage.listFolders()
+        ]);
+        const allDocuments = Array.isArray(results[0]) ? results[0] : [];
+        const allFolders = Array.isArray(results[1]) ? results[1] : [];
         docsInFolder = allDocuments.filter(function (d) { return String(d.folderId || '') === id; });
+        folderRecord = allFolders.find(function (folder) { return String(folder && folder.id || '') === id; }) || null;
+        childFolders = allFolders.filter(function (folder) { return String(folder && folder.parentId || 'root') === id; });
     } catch (error) {
         showToast('Read folder failed: ' + (error && error.message ? error.message : error));
         return;
     }
 
     const count = docsInFolder.length;
+    const childCount = childFolders.length;
     const ok = window.confirm(
-        count > 0
-            ? 'Delete this folder?\n' + count + ' document(s) will be moved to ROOT.'
-            : 'Delete this empty folder?'
+        '이 폴더를 삭제할까요?\n'
+        + (count ? count + '개 문서는 ROOT로 이동합니다.\n' : '')
+        + (childCount ? childCount + '개 하위 폴더는 한 단계 위로 이동합니다.' : '')
+        + (!count && !childCount ? '빈 폴더입니다.' : '')
     );
     if (!ok) return;
 
@@ -4343,6 +4803,11 @@ async function deleteFolderFromDB(folderId) {
             for (let i = 0; i < docsInFolder.length; i++) {
                 const doc = { ...(docsInFolder[i] || {}), folderId: 'root' };
                 await window.MDPStorage.updateDocument(doc.id, doc);
+            }
+            const nextParentId = String(folderRecord && folderRecord.parentId || 'root');
+            for (let i = 0; i < childFolders.length; i++) {
+                const child = { ...(childFolders[i] || {}), parentId: nextParentId, updatedAt: new Date() };
+                await window.MDPStorage.updateFolder(child.id, child);
             }
             await window.MDPStorage.deleteFolder(id);
         }
@@ -4356,8 +4821,43 @@ async function deleteFolderFromDB(folderId) {
         saveFolderCollapseState();
     }
     if (getActiveStorageMode() === 'indb') await ensureRootFolder();
+    if (currentDocumentRef && currentDocumentRef.storageMode === getActiveStorageMode()
+        && currentDocumentRef.folderId === id) {
+        currentDocumentRef.folderId = 'root';
+        currentDocumentVirtualPath = '';
+        updateCurrentDocumentDisplay();
+    }
     await renderDBList();
-    showToast('Folder deleted.');
+    showToast('폴더를 삭제했습니다.');
+}
+
+async function renameStoredDocument(documentId, requestedTitle) {
+    const id = String(documentId || '').trim();
+    const nextTitle = String(requestedTitle || '').trim().replace(/\.md$/i, '');
+    if (!id || !nextTitle || !window.MDPStorage) throw new Error('올바른 문서명을 입력하세요.');
+    const storageMode = getActiveStorageMode();
+    const current = await window.MDPStorage.getDocument(id);
+    if (!current) throw new Error('문서를 찾을 수 없습니다.');
+    const documents = await window.MDPStorage.listDocuments({ limit: 500 });
+    const duplicate = (Array.isArray(documents) ? documents : []).some(function (doc) {
+        return String(doc && doc.id || '') !== id
+            && String(doc && doc.folderId || 'root') === String(current.folderId || 'root')
+            && String(doc && doc.title || '').trim().toLowerCase() === nextTitle.toLowerCase();
+    });
+    if (duplicate) throw new Error('같은 폴더에 같은 문서명이 있습니다.');
+
+    const updatePayload = { ...current, title: nextTitle, updatedAt: new Date() };
+    if (storageMode === 'sqlite') updatePayload.expectedVersion = current.version;
+    const updated = await window.MDPStorage.updateDocument(id, updatePayload);
+    const savedRecord = updated || updatePayload;
+    if (currentDocumentRef && currentDocumentRef.id === id && currentDocumentRef.storageMode === storageMode) {
+        setCurrentDocumentRef(savedRecord, storageMode);
+        currentFileName = nextTitle + '.md';
+        updateCurrentDocumentDisplay();
+    }
+    await renderDBList();
+    showToast('문서명을 변경했습니다: ' + nextTitle);
+    return savedRecord;
 }
 
 function getSelectedTextForSave() {
@@ -4417,7 +4917,11 @@ async function renderLocalStorageList(listEl, searchTerm, githubReady) {
             rootFolderName: ROOT_FOLDER_NAME,
             isSidebarCollapsed,
             isFolderCollapsed,
-            toggleFolderCollapse
+            toggleFolderCollapse,
+            createDocument: createDocumentInFolder,
+            createFolder: createNewFolder,
+            deleteFolder: deleteFolderFromDB,
+            renameDocument: renameStoredDocument
         });
     }
     return Promise.resolve();
@@ -4555,6 +5059,7 @@ async function confirmDeleteModal() {
         if (currentDocumentRef && currentDocumentRef.id === targetId
             && currentDocumentRef.storageMode === getActiveStorageMode()) {
             clearCurrentDocumentRef();
+            updateCurrentDocumentDisplay();
         }
         showToast("Deleted.");
         await renderDBList();
@@ -4577,10 +5082,18 @@ async function openMoveModal(docId) {
 
     const list = document.getElementById('folder-choice-list');
     list.innerHTML = "";
-    folders.forEach(f => {
+    const pathBuilder = window.SidebarLeft && typeof window.SidebarLeft.buildFolderPath === 'function'
+        ? window.SidebarLeft.buildFolderPath
+        : function (_folders, folderId) { return folderId === 'root' ? ROOT_FOLDER_NAME : folderId; };
+    folders.slice().sort(function (a, b) {
+        return pathBuilder(folders, a.id).localeCompare(pathBuilder(folders, b.id), 'ko');
+    }).forEach(f => {
+        const folderPath = pathBuilder(folders, f.id);
         const btn = document.createElement('button');
         btn.className = "w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/40 rounded-md transition-colors flex items-center gap-2";
-        btn.innerHTML = `<i data-lucide="folder" class="w-4 h-4 text-slate-400 dark:text-slate-500"></i> ${f.name}`;
+        btn.innerHTML = '<i data-lucide="folder" class="w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0"></i><span class="truncate"></span>';
+        btn.querySelector('span').textContent = folderPath;
+        btn.title = folderPath;
         btn.onclick = () => moveDocToFolder(docId, f.id);
         list.appendChild(btn);
     });
@@ -4609,6 +5122,8 @@ async function moveDocToFolder(docId, folderId) {
         if (currentDocumentRef && currentDocumentRef.id === String(docId)
             && currentDocumentRef.storageMode === getActiveStorageMode()) {
             setCurrentDocumentRef(updated || doc, getActiveStorageMode());
+            currentDocumentVirtualPath = '';
+            updateCurrentDocumentDisplay();
         }
         showToast("Moved document to selected folder.");
         closeMoveModal();
@@ -6194,17 +6709,20 @@ function convertSelectionMarkdownToHtml() {
 }
 
 function openTextStyleModal() {
-    const modal = document.getElementById('text-style-modal');
-    if (!modal) return;
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
+    if (!window.TextStyleTool || typeof window.TextStyleTool.open !== 'function') {
+        showToast('서식 설정 모듈을 불러오지 못했습니다. 페이지를 새로고침해 주세요.');
+        return false;
+    }
+    return window.TextStyleTool.open({
+        isEditMode: isEditMode,
+        textarea: editorTextarea,
+        showToast: showToast
+    });
 }
 
 function closeTextStyleModal() {
-    const modal = document.getElementById('text-style-modal');
-    if (!modal) return;
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
+    if (!window.TextStyleTool || typeof window.TextStyleTool.close !== 'function') return false;
+    return window.TextStyleTool.close({ textarea: editorTextarea });
 }
 
 function openMermaidEditorModal() {
@@ -6374,54 +6892,23 @@ window.addEventListener('message', function (event) {
 
 function applyTextStyleToSelection() {
     if (!isEditMode || !editorTextarea) {
-        showToast('Use this in edit mode.');
-        return;
+        showToast('편집 모드에서 텍스트를 선택한 뒤 사용해 주세요.');
+        return false;
     }
-
-    const start = editorTextarea.selectionStart;
-    const end = editorTextarea.selectionEnd;
-    if (start === end) {
-        showToast('Select text first to apply style.');
-        return;
+    if (!window.TextStyleTool || typeof window.TextStyleTool.applySelection !== 'function') {
+        showToast('서식 설정 모듈을 불러오지 못했습니다.');
+        return false;
     }
-
-    const fontSizeEnabled = !!document.getElementById('style-enable-font-size')?.checked;
-    const fontSizeValue = document.getElementById('style-font-size')?.value || '';
-    const textColorEnabled = !!document.getElementById('style-enable-text-color')?.checked;
-    const textColorValue = document.getElementById('style-text-color')?.value || '#000000';
-    const bgColorEnabled = !!document.getElementById('style-enable-highlight')?.checked;
-    const bgColorValue = document.getElementById('style-highlight-color')?.value || '#fff59d';
-    const boldEnabled = !!document.getElementById('style-enable-bold')?.checked;
-    const italicEnabled = !!document.getElementById('style-enable-italic')?.checked;
-
-    const selected = editorTextarea.value.substring(start, end);
-    const escaped = selected
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>');
-
-    let html = escaped;
-    const styleParts = [];
-    if (fontSizeEnabled && fontSizeValue) styleParts.push('font-size:' + fontSizeValue);
-    if (textColorEnabled) styleParts.push('color:' + textColorValue);
-    if (bgColorEnabled) styleParts.push('background-color:' + bgColorValue);
-
-    if (styleParts.length > 0) {
-        html = '<span style="' + styleParts.join(';') + ';">' + html + '</span>';
+    const result = window.TextStyleTool.applySelection({ textarea: editorTextarea });
+    if (!result || !result.ok) {
+        showToast(result && result.message ? result.message : '선택 영역에 서식을 적용하지 못했습니다.');
+        return false;
     }
-    if (boldEnabled) html = '<strong>' + html + '</strong>';
-    if (italicEnabled) html = '<em>' + html + '</em>';
-
-    editorTextarea.focus();
-    editorTextarea.setSelectionRange(start, end);
-    document.execCommand('insertText', false, html);
     currentMarkdown = editorTextarea.value;
-    editorTextarea.setSelectionRange(start, start + html.length);
     performAutoSave();
     if (activeSidebarTab === 'toc') renderTOC();
-    closeTextStyleModal();
-    showToast('Applied text style using HTML tags.');
+    showToast('선택 영역에 서식을 적용했습니다.');
+    return true;
 }
 
 function setInputModalImagePanelToggleState() {
@@ -7096,6 +7583,11 @@ async function getAiSettings() {
     }
 }
 
+function getLocalStorageFeatureEnabledFromSettings(settings) {
+    if (!settings || typeof settings.localEnabled !== 'boolean') return true;
+    return settings.localEnabled === true;
+}
+
 async function setAiSettings(data) {
     function readFallback() {
         try {
@@ -7736,6 +8228,13 @@ function initializeSettingsContainerFolds() {
     enhanceSettingsCardFold('code-color-settings-card', ':scope > h4:first-child', '', '', '코드 색상');
     enhanceSettingsCardFold('mermaid-display-settings-card', ':scope > h4:first-child', '', '', 'Mermaid 표시');
     enhanceSettingsCardFold(
+        'indb-backup-prefix-settings-card',
+        ':scope > div:first-child',
+        '',
+        '',
+        '전체 파일 prefix'
+    );
+    enhanceSettingsCardFold(
         'sqlite-settings-tool',
         '#sqlite-settings-fold-header',
         'sqlite-runtime-settings-panel',
@@ -7824,6 +8323,47 @@ function toggleSettingsShortcutsFold() {
     const next = !getSettingsShortcutsFoldedFromLocal();
     setSettingsShortcutsFoldedToLocal(next);
     applySettingsShortcutsFold(next);
+}
+
+function normalizeFileDownloadPrefix(value) {
+    const normalized = String(value == null ? '' : value)
+        .trim()
+        .replace(/[<>:"/\\|?*\u0000-\u001f]+/g, '-')
+        .replace(/\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^[.\-]+|[.\-]+$/g, '')
+        .slice(0, 40);
+    return normalized || DEFAULT_FILE_DOWNLOAD_PREFIX;
+}
+
+function getFileDownloadPrefixFromLocal() {
+    try {
+        return normalizeFileDownloadPrefix(localStorage.getItem(FILE_DOWNLOAD_PREFIX_KEY));
+    } catch (_) {
+        return DEFAULT_FILE_DOWNLOAD_PREFIX;
+    }
+}
+
+function syncFileDownloadPrefixSettingUI() {
+    const prefix = getFileDownloadPrefixFromLocal();
+    const input = document.getElementById('indb-backup-prefix-input');
+    const preview = document.getElementById('indb-backup-prefix-preview');
+    if (input) input.value = prefix;
+    if (preview) preview.textContent = prefix + '-indb-folders-YYYYMMDD-HHMMSS.zip';
+}
+
+function saveFileDownloadPrefixSetting() {
+    const input = document.getElementById('indb-backup-prefix-input');
+    const prefix = normalizeFileDownloadPrefix(input ? input.value : '');
+    try { localStorage.setItem(FILE_DOWNLOAD_PREFIX_KEY, prefix); } catch (_) {}
+    syncFileDownloadPrefixSettingUI();
+    showToast('전체 백업 파일명 prefix를 ' + prefix + '(으)로 저장했습니다.');
+}
+
+function resetFileDownloadPrefixSetting() {
+    try { localStorage.removeItem(FILE_DOWNLOAD_PREFIX_KEY); } catch (_) {}
+    syncFileDownloadPrefixSettingUI();
+    showToast('전체 백업 파일명 prefix를 mdpro로 되돌렸습니다.');
 }
 
 function getAiUseFoldedFromLocal() {
@@ -8297,6 +8837,56 @@ function getHighlightVisibleFromSettings(settings) {
 function getTemplateVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.templateVisible === true;
+}
+
+function getNoteCoverInsertVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.noteCoverInsertVisible === true;
+}
+
+function applyNoteCoverInsertVisibility(settings) {
+    const enabled = getNoteCoverInsertVisibleFromSettings(settings || {});
+    const button = document.getElementById('btn-note-cover-insert');
+    if (button) button.classList.toggle('hidden', !enabled);
+}
+
+async function toggleNoteCoverInsertSection() {
+    const check = document.getElementById('note-cover-insert-visible');
+    const enabled = !!(check && check.checked);
+    applyNoteCoverInsertVisibility({ noteCoverInsertVisible: enabled });
+    try { await setAiSettings({ noteCoverInsertVisible: enabled }); } catch (e) { console.error(e); }
+}
+
+function insertDefaultNoteCover() {
+    if (!isEditMode) toggleMode('edit');
+    if (!editorTextarea || !window.NoteCoverRenderer ||
+        typeof window.NoteCoverRenderer.insertDefaultCover !== 'function') {
+        showToast('표지 삽입 기능을 불러오지 못했습니다.');
+        return false;
+    }
+    const fileTitle = String(currentFileName || '').replace(/\.md$/i, '').trim();
+    const title = !fileTitle || /^untitled$/i.test(fileTitle) ? '문서 제목' : fileTitle;
+    const updated = window.NoteCoverRenderer.insertDefaultCover(getNoteCoverMarkdownSource(), { title: title });
+    if (!updated.changed) {
+        editorTextarea.focus();
+        editorTextarea.setSelectionRange(updated.selectionStart || 0, updated.selectionEnd || 0);
+        editorTextarea.scrollTop = 0;
+        showToast('이미 표지가 있어 기존 note-cover 블록을 선택했습니다.');
+        return false;
+    }
+    const applied = applyNoteCoverMarkdownUpdate(updated, 'input.noteCoverInsert', {
+        historyKey: 'insert-cover',
+        coverIndex: 0,
+        selectElementId: 'title',
+        renderAfter: true
+    });
+    if (!applied) return false;
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(updated.selectionStart, updated.selectionEnd);
+    editorTextarea.scrollTop = 0;
+    lastEditCaretPos = updated.selectionEnd;
+    showToast('문서 최상단에 표지를 삽입했습니다. 보기에서 텍스트를 직접 수정할 수 있습니다.');
+    return true;
 }
 
 function getHtml2pptVisibleFromSettings(settings) {
@@ -9885,6 +10475,8 @@ async function persistAiSettingsFromModal() {
     const macroVisible = !!(macroVisibleEl && macroVisibleEl.checked);
     const templateVisibleEl = document.getElementById('template-visible');
     const templateVisible = !!(templateVisibleEl && templateVisibleEl.checked);
+    const noteCoverInsertVisibleEl = document.getElementById('note-cover-insert-visible');
+    const noteCoverInsertVisible = !!(noteCoverInsertVisibleEl && noteCoverInsertVisibleEl.checked);
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
@@ -9912,6 +10504,7 @@ async function persistAiSettingsFromModal() {
         sitesVisible: sitesVisible,
         macroVisible: macroVisible,
         templateVisible: templateVisible,
+        noteCoverInsertVisible: noteCoverInsertVisible,
         templateCustomList: normalizeTemplateCustomList(templateCustomList).map(function (item) {
             return { id: item.id, name: item.name, desc: item.desc, content: item.content };
         }),
@@ -9957,6 +10550,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     VIEW_MODE_EDIT_KEY,
     SETTINGS_SHORTCUTS_FOLD_KEY,
     SETTINGS_CONTAINER_FOLD_STATE_KEY,
+    FILE_DOWNLOAD_PREFIX_KEY,
     AI_USE_FOLD_KEY,
     AI_CHAT_SETTINGS_FOLD_KEY,
     SHARE_SETTINGS_FOLD_KEY,
@@ -10036,7 +10630,7 @@ async function exportSettingsMset() {
         const payload = buildSettingsExportPayload(aiSettings);
         const text = JSON.stringify(payload, null, 2);
         const date = new Date().toISOString().slice(0, 10);
-        downloadTextFile('mdviewer_settings_' + date + '.mset', text, 'application/json;charset=utf-8');
+        downloadTextFile(getFileDownloadPrefixFromLocal() + '_settings_' + date + '.mset', text, 'application/json;charset=utf-8');
         showToast('?섍꼍?ㅼ젙??.mset ?뚯씪濡??대낫?덉뒿?덈떎.');
     } catch (e) {
         console.error('Failed to export settings:', e);
@@ -10151,6 +10745,7 @@ async function resetSettingsMset() {
         document.documentElement.style.setProperty('--code-text-color', '#f8fafc');
         loadMarkdownCommentColorSettings();
         applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
+        syncFileDownloadPrefixSettingUI();
 
         ['ai-api-key', 'deepseek-api-key', 'openai-api-key', 'ai-imgbb-api-key', 'ai-password-input'].forEach(function (id) {
             const input = document.getElementById(id);
@@ -10174,6 +10769,7 @@ const INDB_STATUS_STORE_ORDER = [
     'documents',
     'folders',
     'images',
+    'fonts',
     'autosave',
     'ai_settings',
     'scholar_refs',
@@ -10188,6 +10784,7 @@ const INDB_STATUS_STORE_LABELS = Object.freeze({
     documents: '문서',
     folders: '폴더',
     images: '이미지',
+    fonts: '사용자 폰트',
     autosave: '자동 저장',
     ai_settings: 'AI 설정',
     scholar_refs: '학술 참고문헌',
@@ -10200,6 +10797,10 @@ const INDB_STATUS_STORE_LABELS = Object.freeze({
 });
 let featureDataSyncPromise = null;
 let inDbStatusObjectUrls = new Set();
+let inDbStatusSnapshot = null;
+let inDbStatusViewState = { storeName: '', recordId: '' };
+let inDbUnusedImageObjectUrls = new Set();
+let inDbUnusedImageSnapshot = null;
 
 function normalizeFeatureInDbRecord(storeName, record, index) {
     const source = record && typeof record === 'object' ? record : { value: record };
@@ -10444,6 +11045,7 @@ function getInDbStatusPrimaryText(storeName, item) {
     if (storeName === 'documents') return String(rec.title || rec.id || '(untitled)');
     if (storeName === 'folders') return String(rec.name || rec.id || '(folder)');
     if (storeName === 'images') return String(rec.name || rec.id || '(image)');
+    if (storeName === 'fonts') return String(rec.family || rec.id || '(font)');
     if (storeName === 'autosave') return String(rec.title || rec.id || '(autosave)');
     if (storeName === 'scholar_refs') return String(rec.title || rec.id || '(scholar ref)');
     if (storeName === 'work_files') return String(rec.name || rec.id || '(work file)');
@@ -10468,6 +11070,10 @@ function getInDbStatusSecondaryText(storeName, item) {
     if (storeName === 'images') {
         const size = rec.blob && typeof rec.blob.size === 'number' ? rec.blob.size : 0;
         return 'id=' + String(rec.id || '') + ' | bytes=' + size;
+    }
+    if (storeName === 'fonts') {
+        return String(rec.format || 'webfont') + ' | weight=' + String(rec.weight || 'normal')
+            + ' | ' + String(rec.url || '');
     }
     if (storeName === 'work_files') {
         return String(rec.appId || 'mdpro') + ' | ' + String(rec.workType || 'generic')
@@ -10589,21 +11195,132 @@ async function createInDbStatusSnapshot() {
     };
 }
 
+function releaseUnusedInDbImageObjectUrls() {
+    inDbUnusedImageObjectUrls.forEach(function (url) {
+        try { URL.revokeObjectURL(url); } catch (_) {}
+    });
+    inDbUnusedImageObjectUrls.clear();
+}
+
+function getUnusedInDbImageRecord(id) {
+    if (!inDbUnusedImageSnapshot) return null;
+    const targetId = String(id == null ? '' : id);
+    return inDbUnusedImageSnapshot.images.find(function (item) {
+        return String(item && item.id != null ? item.id : '') === targetId;
+    }) || null;
+}
+
+function updateUnusedInDbImageSelection() {
+    const inputs = Array.from(document.querySelectorAll('#indb-unused-image-grid .indb-unused-checkbox'));
+    let selectedCount = 0;
+    let selectedBytes = 0;
+    inputs.forEach(function (input) {
+        const selected = !!input.checked;
+        const card = input.closest('.indb-unused-card');
+        if (card) card.classList.toggle('is-selected', selected);
+        if (!selected) return;
+        selectedCount += 1;
+        const record = getUnusedInDbImageRecord(input.dataset.id);
+        selectedBytes += record && record.blob instanceof Blob ? record.blob.size : 0;
+    });
+    const summary = document.getElementById('indb-unused-selection-summary');
+    if (summary) summary.textContent = selectedCount + '개 선택 · ' + formatInDbBytes(selectedBytes);
+    const deleteButton = document.getElementById('btn-delete-selected-unused-images');
+    if (deleteButton) {
+        deleteButton.disabled = selectedCount === 0;
+        deleteButton.textContent = '선택 삭제 ' + selectedCount;
+    }
+}
+
+function setAllUnusedInDbImagesSelected(selected) {
+    document.querySelectorAll('#indb-unused-image-grid .indb-unused-checkbox').forEach(function (input) {
+        input.checked = !!selected;
+    });
+    updateUnusedInDbImageSelection();
+}
+
+function closeUnusedInDbImageCleaner() {
+    const modal = document.getElementById('indb-unused-image-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+    inDbUnusedImageSnapshot = null;
+    releaseUnusedInDbImageObjectUrls();
+}
+
+function renderUnusedInDbImageCleaner(snapshot) {
+    const modal = document.getElementById('indb-unused-image-modal');
+    const grid = document.getElementById('indb-unused-image-grid');
+    if (!modal || !grid) return false;
+    releaseUnusedInDbImageObjectUrls();
+    inDbUnusedImageSnapshot = snapshot;
+    const unusedRecords = snapshot.images.filter(function (item) {
+        return snapshot.unusedIds.has(String(item && item.id || ''));
+    });
+    grid.innerHTML = unusedRecords.map(function (item, index) {
+        const id = String(item && item.id || '');
+        const blob = item && item.blob instanceof Blob ? item.blob : null;
+        const mime = String(item && item.mime || (blob && blob.type) || 'application/octet-stream');
+        const title = String(item && item.name || id || ('unused-image-' + (index + 1)));
+        let preview = '<span class="indb-image-thumb-fallback">미리보기 없음</span>';
+        if (blob && /^image\//i.test(mime)) {
+            const objectUrl = URL.createObjectURL(blob);
+            inDbUnusedImageObjectUrls.add(objectUrl);
+            preview = '<img src="' + escapeInDbStatusHtml(objectUrl) + '" alt="' + escapeInDbStatusHtml(title)
+                + '" loading="lazy" decoding="async">';
+        }
+        return '<label class="indb-unused-card"><input type="checkbox" class="indb-unused-checkbox" data-id="'
+            + escapeInDbStatusHtml(id) + '" onchange="updateUnusedInDbImageSelection()">'
+            + '<span class="indb-unused-thumb">' + preview + '</span><span class="indb-unused-card-copy">'
+            + '<span class="indb-unused-card-title" title="' + escapeInDbStatusHtml(title) + '">'
+            + escapeInDbStatusHtml(title) + '</span><span class="indb-unused-card-meta">'
+            + escapeInDbStatusHtml(formatInDbBytes(blob ? blob.size : 0)) + ' · ' + escapeInDbStatusHtml(mime)
+            + '</span><span class="indb-unused-card-meta" title="' + escapeInDbStatusHtml(id) + '">'
+            + escapeInDbStatusHtml(id) + '</span></span></label>';
+    }).join('');
+    const subtitle = document.getElementById('indb-unused-subtitle');
+    if (subtitle) subtitle.textContent = '미사용 이미지 ' + unusedRecords.length + '개 · '
+        + formatInDbBytes(snapshot.unusedBytes) + ' · 기본은 미선택 상태입니다.';
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    updateUnusedInDbImageSelection();
+    try {
+        const panel = modal.firstElementChild;
+        if (panel) {
+            panel.setAttribute('tabindex', '-1');
+            panel.focus();
+        }
+    } catch (_) {}
+    return true;
+}
+
 async function deleteUnusedInDbImages() {
     if (!db || !db.objectStoreNames.contains('images')) return;
     const snapshot = await createInDbStatusSnapshot();
-    const ids = Array.from(snapshot.unusedIds);
-    if (!ids.length) {
+    if (!snapshot.unusedIds.size) {
         showToast('정리할 미사용 이미지가 없습니다.');
         return;
     }
+    renderUnusedInDbImageCleaner(snapshot);
+}
+
+async function deleteSelectedUnusedInDbImages() {
+    if (!db || !inDbUnusedImageSnapshot) return;
+    const ids = Array.from(document.querySelectorAll('#indb-unused-image-grid .indb-unused-checkbox:checked'))
+        .map(function (input) { return String(input.dataset.id || ''); })
+        .filter(Boolean);
+    if (!ids.length) return;
+    const bytes = ids.reduce(function (sum, id) {
+        const record = getUnusedInDbImageRecord(id);
+        return sum + (record && record.blob instanceof Blob ? record.blob.size : 0);
+    }, 0);
     const confirmed = window.confirm(
-        '현재 편집 문서와 inDB 전체 레코드에서 참조되지 않는 이미지 '
-        + ids.length + '개(' + formatInDbBytes(snapshot.unusedBytes) + ')를 삭제할까요?\n\n'
+        '선택한 미사용 이미지 ' + ids.length + '개(' + formatInDbBytes(bytes) + ')를 삭제할까요?\n\n'
         + '삭제 후에는 복구할 수 없습니다. 필요한 경우 먼저 전체 백업을 내려받으세요.'
     );
     if (!confirmed) return;
-    const button = document.getElementById('btn-clean-unused-indb-images');
+    const button = document.getElementById('btn-delete-selected-unused-images');
     if (button) button.disabled = true;
     try {
         await new Promise(function (resolve, reject) {
@@ -10613,13 +11330,38 @@ async function deleteUnusedInDbImages() {
             tx.oncomplete = resolve;
             tx.onerror = function () { reject(tx.error || new Error('미사용 이미지 삭제 실패')); };
         });
+        closeUnusedInDbImageCleaner();
         await renderInDbStatusModal();
-        showToast('미사용 이미지 ' + ids.length + '개를 정리했습니다. (' + formatInDbBytes(snapshot.unusedBytes) + ')');
+        showToast('선택한 미사용 이미지 ' + ids.length + '개를 정리했습니다. (' + formatInDbBytes(bytes) + ')');
     } catch (error) {
         showToast('미사용 이미지 정리에 실패했습니다: ' + (error && error.message ? error.message : error));
-    } finally {
-        if (button) button.disabled = false;
+        updateUnusedInDbImageSelection();
     }
+}
+
+function dockSettingsModalForFmaViewer() {
+    const modal = document.getElementById('settings-modal');
+    const panel = document.getElementById('settings-modal-panel');
+    if (!modal || !panel) return 0;
+    modal.classList.remove('hidden');
+    settingsModalFullscreen = false;
+    settingsModalRestoreRect = null;
+    settingsModalCompact = false;
+    panel.classList.remove('settings-modal-fullscreen', 'settings-modal-compact');
+    const viewportWidth = Math.max(0, window.innerWidth || document.documentElement.clientWidth || 0);
+    const panelWidth = Math.max(320, Math.min(420, Math.floor(viewportWidth * 0.28)));
+    panel.style.position = 'fixed';
+    panel.style.left = '10px';
+    panel.style.top = '10px';
+    panel.style.right = 'auto';
+    panel.style.margin = '0';
+    panel.style.width = panelWidth + 'px';
+    panel.style.height = 'calc(100vh - 20px)';
+    panel.style.maxWidth = 'calc(100vw - 20px)';
+    panel.style.maxHeight = 'calc(100vh - 20px)';
+    applySettingsModalFullscreenUI();
+    updateSettingsModalResponsiveLayout();
+    return Math.min(Math.max(0, viewportWidth - 360), panelWidth + 20);
 }
 
 async function openAllInDbImagesInFmaViewer() {
@@ -10648,7 +11390,12 @@ async function openAllInDbImagesInFmaViewer() {
         });
     });
     closeInDbStatusModal();
-    window.InternalImageApp.openFiles(files, files[0].name, { importMode: 'replace' });
+    const viewerLeftOffset = dockSettingsModalForFmaViewer();
+    window.InternalImageApp.openFiles(files, files[0].name, {
+        importMode: 'replace',
+        layout: 'settings-left',
+        leftOffset: viewerLeftOffset
+    });
     showToast('inDB 이미지 ' + files.length + '개를 FMA Viewer로 열었습니다.');
 }
 
@@ -10853,7 +11600,7 @@ async function serializeInDbValueForZip(value, context) {
 function getInDbBackupFileName() {
     const now = new Date();
     const pad = function (value) { return String(value).padStart(2, '0'); };
-    return 'mdviewer-indb-folders-'
+    return getFileDownloadPrefixFromLocal() + '-indb-folders-'
         + now.getFullYear()
         + pad(now.getMonth() + 1)
         + pad(now.getDate())
@@ -10914,6 +11661,20 @@ function addInDbReadableFilesToRecordFolder(zip, storeName, record, folderPath) 
     }
     if (storeName === 'autosave' && typeof item.content === 'string') {
         zip.file(folderPath + '/autosave.md', item.content);
+        return;
+    }
+    if (storeName === 'fonts') {
+        const format = item.format ? ' format("' + String(item.format).replace(/[^a-z0-9-]/gi, '') + '")' : '';
+        zip.file(
+            folderPath + '/font-face.css',
+            '@font-face {\n'
+            + '  font-family: "' + String(item.family || '').replace(/["\\\r\n]/g, '') + '";\n'
+            + '  src: url("' + String(item.url || '').replace(/["\\\r\n]/g, '') + '")' + format + ';\n'
+            + '  font-weight: ' + String(item.weight || 'normal').replace(/[^a-z0-9-]/gi, '') + ';\n'
+            + '  font-style: ' + String(item.style || 'normal').replace(/[^a-z-]/gi, '') + ';\n'
+            + '  font-display: ' + String(item.display || 'swap').replace(/[^a-z-]/gi, '') + ';\n'
+            + '}\n'
+        );
         return;
     }
     if (storeName === 'ai_chat') {
@@ -11083,96 +11844,111 @@ async function downloadAllInDbAsZip() {
     }
 }
 
-async function renderInDbStatusModal() {
-    const listEl = document.getElementById('indb-status-list');
-    if (!listEl) return;
-    releaseInDbStatusObjectUrls();
-    if (!db) {
-        listEl.innerHTML = '<div class="indb-empty-state">IndexedDB가 아직 준비되지 않았습니다.</div>';
-        return;
-    }
+function getInDbStatusEntry(snapshot, storeName) {
+    return snapshot && Array.isArray(snapshot.entries)
+        ? snapshot.entries.find(function (entry) { return entry.name === storeName; }) || null
+        : null;
+}
 
-    listEl.innerHTML = '<div class="indb-loading-state">inDB 저장 상태와 이미지 사용 여부를 분석하는 중입니다…</div>';
-    const snapshot = await createInDbStatusSnapshot();
-    if (!snapshot.stores.length) {
-        listEl.innerHTML = '<div class="indb-empty-state">표시할 inDB 저장소가 없습니다.</div>';
-        return;
-    }
+function getInDbStatusRecord(snapshot, storeName, recordId) {
+    const entry = getInDbStatusEntry(snapshot, storeName);
+    if (!entry) return null;
+    const id = String(recordId == null ? '' : recordId);
+    return entry.items.find(function (item) { return String(item && item.id != null ? item.id : '') === id; }) || null;
+}
 
-    const sections = [];
-    for (let si = 0; si < snapshot.entries.length; si++) {
-        const entry = snapshot.entries[si];
-        const storeName = entry.name;
-        const items = entry.items;
-        const rows = [];
-        for (let i = 0; i < items.length; i++) {
-            const rec = items[i] || {};
-            const id = String(rec.id || '').trim();
-            if (!id) continue;
-            const lockedRoot = storeName === 'folders' && id === 'root';
-            const title = escapeInDbStatusHtml(getInDbStatusPrimaryText(storeName, rec));
-            const sub = escapeInDbStatusHtml(getInDbStatusSecondaryText(storeName, rec));
-            const btn = lockedRoot
-                ? '<span class="indb-usage-badge is-used">ROOT</span>'
-                : '<button type="button" class="indb-delete-button" data-store="' + escapeInDbStatusHtml(storeName)
-                    + '" data-id="' + escapeInDbStatusHtml(id)
-                    + '" onclick="deleteInDbStatusItem(this.dataset.store,this.dataset.id)" aria-label="삭제: '
-                    + title + '" title="삭제">×</button>';
+function createInDbStatusObjectUrl(blob) {
+    if (!(blob instanceof Blob)) return '';
+    const objectUrl = URL.createObjectURL(blob);
+    inDbStatusObjectUrls.add(objectUrl);
+    return objectUrl;
+}
 
-            if (storeName === 'images') {
-                const blob = rec.blob instanceof Blob ? rec.blob : null;
-                const mime = String(rec.mime || (blob && blob.type) || 'application/octet-stream');
-                const isImage = !!(blob && /^image\//i.test(mime));
-                let thumb = '<span class="indb-image-thumb-fallback">미리보기 없음</span>';
-                if (isImage) {
-                    const objectUrl = URL.createObjectURL(blob);
-                    inDbStatusObjectUrls.add(objectUrl);
-                    thumb = '<img src="' + escapeInDbStatusHtml(objectUrl) + '" alt="' + title
-                        + '" loading="lazy" decoding="async">';
-                }
-                const unused = snapshot.unusedIds.has(id);
-                const refCount = snapshot.referenceCounts.get(id) || 0;
-                rows.push(
-                    '<article class="indb-image-card" data-image-id="' + escapeInDbStatusHtml(id) + '">' +
-                    '<div class="indb-image-thumb">' + thumb + '</div>' +
-                    '<div class="indb-image-info">' +
-                    '<div class="indb-image-title" title="' + title + '">' + title + '</div>' +
-                    '<div class="indb-image-id" title="' + escapeInDbStatusHtml(id) + '">' + escapeInDbStatusHtml(id) + '</div>' +
-                    '<div class="indb-image-meta">' +
-                    '<span class="indb-usage-badge ' + (unused ? 'is-unused' : 'is-used') + '">'
-                        + (unused ? '미사용' : '사용 중' + (refCount > 1 ? ' ' + refCount : '')) + '</span>' +
-                    '<span class="indb-size-label">' + escapeInDbStatusHtml(formatInDbBytes(blob ? blob.size : 0))
-                        + ' · ' + escapeInDbStatusHtml(mime) + '</span>' +
-                    '</div></div><div>' + btn + '</div></article>'
-                );
-                continue;
+function stringifyInDbDetailValue(value) {
+    const seen = new WeakSet();
+    let text = '';
+    try {
+        text = JSON.stringify(value, function (key, child) {
+            if (/api.?key|access.?token|password|secret/i.test(key)) return '[보호된 값]';
+            if (child instanceof Blob) {
+                return { type: 'Blob', mime: child.type || 'application/octet-stream', size: child.size };
             }
-            rows.push(
-                '<div class="indb-record-row">' +
-                '<div class="indb-record-type" title="' + escapeInDbStatusHtml(storeName) + '">' + escapeInDbStatusHtml(storeName) + '</div>' +
-                '<div class="indb-record-copy">' +
-                '<div class="indb-record-title">' + title + '</div>' +
-                '<div class="indb-record-meta">' + sub + '</div>' +
-                '</div><div>' + btn + '</div></div>'
-            );
-        }
-
-        const bodyClass = storeName === 'images' ? 'indb-image-grid' : 'indb-record-list';
-        const body = rows.length
-            ? '<div class="' + bodyClass + '">' + rows.join('') + '</div>'
-            : '<div class="indb-empty-state">저장된 항목이 없습니다.</div>';
-        const storeLabel = INDB_STATUS_STORE_LABELS[storeName] || storeName;
-        sections.push(
-            '<details class="indb-store-section"' + (storeName === 'images' ? ' open' : '') + '>' +
-            '<summary class="indb-store-summary">' +
-            '<span class="indb-store-chevron">›</span>' +
-            '<span class="indb-store-title">' + escapeInDbStatusHtml(storeLabel)
-                + ' <span class="indb-record-meta">' + escapeInDbStatusHtml(storeName) + '</span></span>' +
-            '<span class="indb-store-count">' + items.length + '</span>' +
-            '</summary><div class="indb-store-body">' + body + '</div>' +
-            '</details>'
-        );
+            if (child instanceof Date) return child.toISOString();
+            if (child && typeof child === 'object') {
+                if (seen.has(child)) return '[순환 참조]';
+                seen.add(child);
+            }
+            return child;
+        }, 2);
+    } catch (_) {
+        text = String(value);
     }
+    if (typeof text !== 'string') text = String(value);
+    const limit = 12000;
+    return text.length > limit ? text.slice(0, limit) + '\n… (' + (text.length - limit) + '자 생략)' : text;
+}
+
+function renderInDbStatusDetailValue(key, value) {
+    if (/api.?key|access.?token|password|secret/i.test(key)) {
+        return '<span class="indb-detail-protected">보호된 값</span>';
+    }
+    if (value instanceof Blob) {
+        return '<span class="indb-detail-scalar">Blob · '
+            + escapeInDbStatusHtml(value.type || 'application/octet-stream') + ' · '
+            + escapeInDbStatusHtml(formatInDbBytes(value.size)) + '</span>';
+    }
+    if (value == null || ['number', 'boolean', 'undefined', 'bigint'].includes(typeof value)) {
+        return '<span class="indb-detail-scalar">' + escapeInDbStatusHtml(String(value)) + '</span>';
+    }
+    const text = typeof value === 'string' ? value : stringifyInDbDetailValue(value);
+    const limit = 12000;
+    const clipped = text.length > limit ? text.slice(0, limit) + '\n… (' + (text.length - limit) + '자 생략)' : text;
+    return '<pre class="indb-detail-value">' + escapeInDbStatusHtml(clipped) + '</pre>';
+}
+
+function renderInDbStatusDetail(snapshot, storeName, record) {
+    if (!record) {
+        return '<div class="indb-detail-placeholder"><span class="indb-detail-placeholder-icon">↖</span>'
+            + '<strong>항목을 선택하세요</strong><p>가운데 목록에서 항목을 누르면 이곳에 세부내용이 나타납니다.</p></div>';
+    }
+    const id = String(record.id == null ? '' : record.id);
+    const title = escapeInDbStatusHtml(getInDbStatusPrimaryText(storeName, record));
+    const lockedRoot = storeName === 'folders' && id === 'root';
+    let imagePreview = '';
+    if (storeName === 'images' && record.blob instanceof Blob && /^image\//i.test(record.mime || record.blob.type || '')) {
+        const imageUrl = createInDbStatusObjectUrl(record.blob);
+        imagePreview = '<div class="indb-detail-image"><img src="' + escapeInDbStatusHtml(imageUrl)
+            + '" alt="' + title + '" decoding="async"></div>';
+    }
+    const keys = Object.keys(record);
+    const fields = keys.length ? keys.map(function (key) {
+        return '<div class="indb-detail-field"><div class="indb-detail-key">' + escapeInDbStatusHtml(key)
+            + '</div><div class="indb-detail-field-value">' + renderInDbStatusDetailValue(key, record[key]) + '</div></div>';
+    }).join('') : '<div class="indb-empty-state">표시할 필드가 없습니다.</div>';
+    const deleteControl = lockedRoot
+        ? '<span class="indb-usage-badge is-used">ROOT</span>'
+        : '<button type="button" class="indb-detail-delete" data-store="' + escapeInDbStatusHtml(storeName)
+            + '" data-id="' + escapeInDbStatusHtml(id)
+            + '" onclick="deleteInDbStatusItem(this.dataset.store,this.dataset.id)">이 항목 삭제</button>';
+    return '<div class="indb-detail-content"><header class="indb-detail-header"><div class="indb-detail-heading">'
+        + '<span class="indb-detail-store">' + escapeInDbStatusHtml(storeName) + '</span><h3>' + title + '</h3>'
+        + '<p>' + escapeInDbStatusHtml(getInDbStatusSecondaryText(storeName, record)) + '</p></div>' + deleteControl
+        + '</header>' + imagePreview + '<div class="indb-detail-fields">' + fields + '</div></div>';
+}
+
+function renderInDbStatusBrowser(snapshot) {
+    const listEl = document.getElementById('indb-status-list');
+    if (!listEl || !snapshot) return;
+    releaseInDbStatusObjectUrls();
+    let activeEntry = getInDbStatusEntry(snapshot, inDbStatusViewState.storeName);
+    if (!activeEntry) {
+        activeEntry = getInDbStatusEntry(snapshot, 'documents') || snapshot.entries[0] || null;
+        inDbStatusViewState.storeName = activeEntry ? activeEntry.name : '';
+        inDbStatusViewState.recordId = '';
+    }
+    const activeStore = activeEntry ? activeEntry.name : '';
+    let activeRecord = getInDbStatusRecord(snapshot, activeStore, inDbStatusViewState.recordId);
+    if (!activeRecord) inDbStatusViewState.recordId = '';
 
     const overview = '<div class="indb-overview-grid">'
         + '<div class="indb-stat-card"><span class="indb-stat-label">전체 레코드</span><strong class="indb-stat-value">'
@@ -11185,7 +11961,89 @@ async function renderInDbStatusModal() {
             + '"><span class="indb-stat-label">미사용 이미지</span><strong class="indb-stat-value">'
             + snapshot.unusedIds.size + ' · ' + escapeInDbStatusHtml(formatInDbBytes(snapshot.unusedBytes)) + '</strong></div>'
         + '</div>';
-    listEl.innerHTML = overview + '<div class="indb-store-stack">' + sections.join('') + '</div>';
+
+    const stores = snapshot.entries.map(function (entry) {
+        const label = INDB_STATUS_STORE_LABELS[entry.name] || entry.name;
+        const active = entry.name === activeStore;
+        return '<button type="button" class="indb-store-nav-button' + (active ? ' is-active' : '')
+            + '" data-store="' + escapeInDbStatusHtml(entry.name) + '" onclick="selectInDbStatusStore(this.dataset.store)"'
+            + ' aria-pressed="' + (active ? 'true' : 'false') + '"><span class="indb-store-nav-copy"><strong>'
+            + escapeInDbStatusHtml(label) + '</strong><small>' + escapeInDbStatusHtml(entry.name)
+            + '</small></span><span class="indb-store-count">' + entry.items.length + '</span></button>';
+    }).join('');
+
+    const records = activeEntry && activeEntry.items.length ? activeEntry.items.map(function (record) {
+        const id = String(record && record.id != null ? record.id : '');
+        if (!id) return '';
+        const active = id === inDbStatusViewState.recordId;
+        const title = escapeInDbStatusHtml(getInDbStatusPrimaryText(activeStore, record));
+        const sub = escapeInDbStatusHtml(getInDbStatusSecondaryText(activeStore, record));
+        const lockedRoot = activeStore === 'folders' && id === 'root';
+        let thumb = '';
+        if (activeStore === 'images') {
+            const blob = record.blob instanceof Blob ? record.blob : null;
+            const mime = String(record.mime || (blob && blob.type) || '');
+            if (blob && /^image\//i.test(mime)) {
+                const url = createInDbStatusObjectUrl(blob);
+                thumb = '<span class="indb-record-thumb"><img src="' + escapeInDbStatusHtml(url) + '" alt="" loading="lazy" decoding="async"></span>';
+            } else {
+                thumb = '<span class="indb-record-thumb indb-record-thumb-empty">IMG</span>';
+            }
+        }
+        const trailing = lockedRoot
+            ? '<span class="indb-usage-badge is-used">ROOT</span>'
+            : '<button type="button" class="indb-delete-button" data-store="' + escapeInDbStatusHtml(activeStore)
+                + '" data-id="' + escapeInDbStatusHtml(id)
+                + '" onclick="deleteInDbStatusItem(this.dataset.store,this.dataset.id)" aria-label="삭제: '
+                + title + '" title="삭제">×</button>';
+        return '<article class="indb-record-select-row' + (active ? ' is-active' : '') + '"><button type="button"'
+            + ' class="indb-record-select" data-store="' + escapeInDbStatusHtml(activeStore) + '" data-id="'
+            + escapeInDbStatusHtml(id) + '" onclick="selectInDbStatusRecord(this.dataset.store,this.dataset.id)">'
+            + thumb + '<span class="indb-record-copy"><span class="indb-record-title">' + title
+            + '</span><span class="indb-record-meta">' + sub + '</span></span></button>' + trailing + '</article>';
+    }).join('') : '<div class="indb-empty-state">저장된 항목이 없습니다.</div>';
+    const activeLabel = activeEntry ? (INDB_STATUS_STORE_LABELS[activeStore] || activeStore) : '항목';
+
+    listEl.innerHTML = overview + '<div class="indb-browser-grid">'
+        + '<nav class="indb-store-sidebar" aria-label="inDB 저장소 분류"><div class="indb-pane-title"><strong>저장소</strong><span>분류</span></div>'
+        + '<div class="indb-store-nav-list">' + stores + '</div></nav>'
+        + '<section class="indb-record-pane"><div class="indb-pane-title"><strong>' + escapeInDbStatusHtml(activeLabel)
+        + '</strong><span>' + (activeEntry ? activeEntry.items.length : 0) + '개 항목</span></div><div class="indb-record-scroll">'
+        + records + '</div></section>'
+        + '<aside class="indb-detail-pane" aria-label="선택한 inDB 항목 세부내용"><div class="indb-pane-title"><strong>세부내용</strong><span>항목 선택</span></div>'
+        + '<div class="indb-detail-scroll">' + renderInDbStatusDetail(snapshot, activeStore, activeRecord) + '</div></aside>'
+        + '</div>';
+}
+
+function selectInDbStatusStore(storeName) {
+    if (!inDbStatusSnapshot || !getInDbStatusEntry(inDbStatusSnapshot, storeName)) return;
+    inDbStatusViewState = { storeName: String(storeName), recordId: '' };
+    renderInDbStatusBrowser(inDbStatusSnapshot);
+}
+
+function selectInDbStatusRecord(storeName, recordId) {
+    if (!inDbStatusSnapshot || !getInDbStatusRecord(inDbStatusSnapshot, storeName, recordId)) return;
+    inDbStatusViewState = { storeName: String(storeName), recordId: String(recordId) };
+    renderInDbStatusBrowser(inDbStatusSnapshot);
+}
+
+async function renderInDbStatusModal() {
+    const listEl = document.getElementById('indb-status-list');
+    if (!listEl) return;
+    releaseInDbStatusObjectUrls();
+    if (!db) {
+        listEl.innerHTML = '<div class="indb-empty-state">IndexedDB가 아직 준비되지 않았습니다.</div>';
+        return;
+    }
+
+    listEl.innerHTML = '<div class="indb-loading-state">inDB 저장 상태와 이미지 사용 여부를 분석하는 중입니다…</div>';
+    const snapshot = await createInDbStatusSnapshot();
+    inDbStatusSnapshot = snapshot;
+    if (!snapshot.stores.length) {
+        listEl.innerHTML = '<div class="indb-empty-state">표시할 inDB 저장소가 없습니다.</div>';
+        return;
+    }
+    renderInDbStatusBrowser(snapshot);
 
     const cleanButton = document.getElementById('btn-clean-unused-indb-images');
     if (cleanButton) {
@@ -11215,6 +12073,8 @@ async function openInDbStatusModal() {
     modal.style.zIndex = '2147483646';
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    inDbStatusViewState = { storeName: 'documents', recordId: '' };
+    inDbStatusSnapshot = null;
     try {
         const panel = modal.firstElementChild;
         if (panel && typeof panel.focus === 'function') {
@@ -11234,8 +12094,10 @@ async function openInDbStatusModal() {
 function closeInDbStatusModal() {
     const modal = document.getElementById('indb-status-modal');
     if (!modal) return;
+    closeUnusedInDbImageCleaner();
     modal.classList.add('hidden');
     modal.classList.remove('flex');
+    inDbStatusSnapshot = null;
     releaseInDbStatusObjectUrls();
 }
 
@@ -11285,6 +12147,11 @@ async function deleteInDbStatusItem(storeName, id) {
         updateContent('');
         markPersistedState();
     }
+    if (store === 'fonts' && window.TextStyleTool && typeof window.TextStyleTool.refreshFromInDb === 'function') {
+        try { await window.TextStyleTool.refreshFromInDb(); } catch (error) {
+            console.warn('Custom font list refresh failed:', error);
+        }
+    }
 
     await ensureRootFolder();
     renderDBList();
@@ -11329,6 +12196,12 @@ async function deleteAllInDbStatusItems() {
                     resolve();
                 }
             });
+        }
+    }
+
+    if (window.TextStyleTool && typeof window.TextStyleTool.refreshFromInDb === 'function') {
+        try { await window.TextStyleTool.refreshFromInDb(); } catch (error) {
+            console.warn('Custom font list refresh after clear failed:', error);
         }
     }
 
@@ -13990,6 +14863,8 @@ async function loadAiSettingsToUI() {
         if (macroCheckEmpty) macroCheckEmpty.checked = false;
         const templateCheckEmpty = document.getElementById('template-visible');
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
+        const noteCoverInsertCheckEmpty = document.getElementById('note-cover-insert-visible');
+        if (noteCoverInsertCheckEmpty) noteCoverInsertCheckEmpty.checked = false;
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
         if (html2pptCheckEmpty) html2pptCheckEmpty.checked = true;
         const html2pptNameCheckEmpty = document.getElementById('html2ppt-name-visible');
@@ -14021,7 +14896,7 @@ async function loadAiSettingsToUI() {
             sqliteEnabledEmpty.checked = false;
         }
         const localEnabledEmpty = document.getElementById('local-storage-enabled');
-        if (localEnabledEmpty) localEnabledEmpty.checked = false;
+        if (localEnabledEmpty) localEnabledEmpty.checked = true;
         const githubEnabledEmpty = document.getElementById('ai-github-enabled');
         if (githubEnabledEmpty) githubEnabledEmpty.checked = false;
         const githubTokenEmpty = document.getElementById('github-token-input');
@@ -14052,6 +14927,7 @@ async function loadAiSettingsToUI() {
         applySitesVisibility({ sitesVisible: false });
         applyMacroVisibility({ macroVisible: false });
         applyTemplateVisibility({ templateVisible: false });
+        applyNoteCoverInsertVisibility({ noteCoverInsertVisible: false });
         applyHtml2pptVisibility({ html2pptVisible: true, html2pptNameVisible: false });
         applyFmaViewerVisibility({ fmaViewerVisible: true, fmaViewerNameVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
@@ -14095,6 +14971,8 @@ async function loadAiSettingsToUI() {
     if (macroCheck) macroCheck.checked = settings.macroVisible === true;
     const templateCheck = document.getElementById('template-visible');
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
+    const noteCoverInsertCheck = document.getElementById('note-cover-insert-visible');
+    if (noteCoverInsertCheck) noteCoverInsertCheck.checked = settings.noteCoverInsertVisible === true;
     const html2pptCheck = document.getElementById('html2ppt-visible');
     if (html2pptCheck) html2pptCheck.checked = getHtml2pptVisibleFromSettings(settings);
     const html2pptNameCheck = document.getElementById('html2ppt-name-visible');
@@ -14131,7 +15009,7 @@ async function loadAiSettingsToUI() {
         if (sqliteEnabledCheck) sqliteEnabledCheck.checked = false;
     }
     const localEnabledCheck = document.getElementById('local-storage-enabled');
-    if (localEnabledCheck) localEnabledCheck.checked = settings.localEnabled === true;
+    if (localEnabledCheck) localEnabledCheck.checked = getLocalStorageFeatureEnabledFromSettings(settings);
     if (window.GoogleDocs && typeof window.GoogleDocs.loadGoogleDocsSettingsUI === 'function') {
         window.GoogleDocs.loadGoogleDocsSettingsUI(settings);
     }
@@ -14190,7 +15068,7 @@ async function loadAiSettingsToUI() {
     if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
     if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
     if (githubEl) githubEl.checked = !!settings.githubEnabled;
-    if (localStorageEl) localStorageEl.checked = settings.localEnabled === true;
+    if (localStorageEl) localStorageEl.checked = getLocalStorageFeatureEnabledFromSettings(settings);
     if (githubTokenEl) githubTokenEl.value = settings.githubToken || '';
     if (githubRepoEl) githubRepoEl.value = settings.githubRepo || '';
     if (githubBranchEl) githubBranchEl.value = settings.githubBranch || 'main';
@@ -14215,6 +15093,7 @@ async function loadAiSettingsToUI() {
     applySitesVisibility(settings);
     applyMacroVisibility(settings);
     applyTemplateVisibility(settings);
+    applyNoteCoverInsertVisibility(settings);
     applyHtml2pptVisibility(settings);
     applyFmaViewerVisibility(settings);
     applyAiUseFold(getAiUseFoldedFromLocal());
@@ -14244,12 +15123,12 @@ async function initAiVisibility() {
         if (scholarEl) scholarEl.checked = verified ? !!settings.scholarAI : false;
         if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
         if (githubEl) githubEl.checked = !!settings.githubEnabled;
-        if (localStorageEl) localStorageEl.checked = settings.localEnabled === true;
+        if (localStorageEl) localStorageEl.checked = getLocalStorageFeatureEnabledFromSettings(settings);
     } else {
         if (scholarEl) scholarEl.checked = false;
         if (sspimgEl) sspimgEl.checked = false;
         if (githubEl) githubEl.checked = false;
-        if (localStorageEl) localStorageEl.checked = false;
+        if (localStorageEl) localStorageEl.checked = true;
     }
     enterButtonInsertBr = !!((settings && settings.enterButtonInsertBr === true) || getEnterButtonInsertBrFromLocal());
     selectionWrapEnabled = settings && typeof settings.selectionWrapEnabled === 'boolean'
@@ -14272,6 +15151,7 @@ async function initAiVisibility() {
     applySitesVisibility(settings || { sitesVisible: false });
     applyMacroVisibility(settings || { macroVisible: false });
     applyTemplateVisibility(settings || { templateVisible: false });
+    applyNoteCoverInsertVisibility(settings || { noteCoverInsertVisible: false });
     applyHtml2pptVisibility(settings || { html2pptVisible: true, html2pptNameVisible: false });
     applyFmaViewerVisibility(settings || { fmaViewerVisible: true, fmaViewerNameVisible: false });
     applyEditToolsVisibilityByMode();
@@ -14294,6 +15174,7 @@ function openSettingsModal() {
     updateSettingsModalResponsiveLayout();
     initializeSettingsContainerFolds();
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
+    syncFileDownloadPrefixSettingUI();
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -14728,6 +15609,7 @@ function saveToDB() {
                     title: resolvedTitle,
                     content: currentMarkdown,
                     folderId: 'root',
+                    createdAt: new Date(),
                     updatedAt: new Date()
                 });
             }
@@ -14793,6 +15675,7 @@ window.ensureRootFolder = ensureRootFolder;
 window.createNewFolder = createNewFolder;
 window.createDocumentInFolder = createDocumentInFolder;
 window.deleteFolderFromDB = deleteFolderFromDB;
+window.renameStoredDocument = renameStoredDocument;
 window.saveToDB = saveToDB;
 window.renderDBList = renderDBList;
 window.scheduleStorageSearch = scheduleStorageSearch;
@@ -14872,6 +15755,8 @@ window.importTemplateMdFile = importTemplateMdFile;
 window.insertSelectedTemplateToDocument = insertSelectedTemplateToDocument;
 window.insertSelectedTemplateAsNewFile = insertSelectedTemplateAsNewFile;
 window.toggleTemplateSection = toggleTemplateSection;
+window.toggleNoteCoverInsertSection = toggleNoteCoverInsertSection;
+window.insertDefaultNoteCover = insertDefaultNoteCover;
 window.toggleHtml2pptPanel = toggleHtml2pptPanel;
 window.openHtml2pptPanel = openHtml2pptPanel;
 window.closeHtml2pptPanel = closeHtml2pptPanel;
@@ -14989,11 +15874,20 @@ window.importSettingsMsetFile = importSettingsMsetFile;
 window.resetSettingsMset = resetSettingsMset;
 window.openInDbStatusModal = openInDbStatusModal;
 window.closeInDbStatusModal = closeInDbStatusModal;
+window.selectInDbStatusStore = selectInDbStatusStore;
+window.selectInDbStatusRecord = selectInDbStatusRecord;
 window.deleteInDbStatusItem = deleteInDbStatusItem;
 window.deleteUnusedInDbImages = deleteUnusedInDbImages;
+window.updateUnusedInDbImageSelection = updateUnusedInDbImageSelection;
+window.setAllUnusedInDbImagesSelected = setAllUnusedInDbImagesSelected;
+window.closeUnusedInDbImageCleaner = closeUnusedInDbImageCleaner;
+window.deleteSelectedUnusedInDbImages = deleteSelectedUnusedInDbImages;
 window.openAllInDbImagesInFmaViewer = openAllInDbImagesInFmaViewer;
 window.deleteAllInDbStatusItems = deleteAllInDbStatusItems;
 window.downloadAllInDbAsZip = downloadAllInDbAsZip;
+window.saveFileDownloadPrefixSetting = saveFileDownloadPrefixSetting;
+window.resetFileDownloadPrefixSetting = resetFileDownloadPrefixSetting;
+window.getMdProFilePrefix = getFileDownloadPrefixFromLocal;
 window.saveFeatureRecordToInDb = saveFeatureRecordToInDb;
 window.upsertFeatureStoreRecordsInDb = upsertFeatureStoreRecordsInDb;
 window.replaceFeatureStoreRecordsInDb = replaceFeatureStoreRecordsInDb;

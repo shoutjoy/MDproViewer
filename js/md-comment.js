@@ -18,7 +18,7 @@
         start();
     }
 })(typeof window !== 'undefined' ? window : null, function (root) {
-    const OPEN = '<--';
+    const OPEN = '<!--';
     const CLOSE = '-->';
     const DEFAULT_HIGHLIGHT_OPTIONS = Object.freeze({
         largeDocumentThreshold: 200000,
@@ -81,7 +81,9 @@
     }
 
     function stripForRender(value) {
-        return String(value == null ? '' : value).replace(/<--[\s\S]*?-->/g, function (comment) {
+        return String(value == null ? '' : value).replace(/<!--[\s\S]*?-->/g, function (comment) {
+            // note-cover is application metadata that must reach NoteCoverRenderer.
+            if (/^<!--\s*note-cover\b/i.test(comment)) return comment;
             return comment.replace(/[^\r\n]/g, '');
         });
     }

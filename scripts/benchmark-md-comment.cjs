@@ -14,11 +14,11 @@ function repeatToSize(unit, size) {
 function createFixture(kind, size) {
     switch (kind) {
         case 'comments':
-            return repeatToSize('본문 한 줄 <-- 짧은 주석 --> 다음 문장\n', size);
+            return repeatToSize('본문 한 줄 <!-- 짧은 주석 --> 다음 문장\n', size);
         case 'multiline-comments':
-            return repeatToSize('본문\n<-- 첫 줄 주석\n둘째 줄 주석 -->\n다음 본문\n', size);
+            return repeatToSize('본문\n<!-- 첫 줄 주석\n둘째 줄 주석 -->\n다음 본문\n', size);
         case 'unterminated-comment': {
-            const suffix = '<-- 닫히지 않은 주석 표식';
+            const suffix = '<!-- 닫히지 않은 주석 표식';
             const prefix = repeatToSize('일반 본문과 **Markdown** 내용\n', Math.max(0, size - suffix.length));
             return (prefix + suffix).slice(0, size);
         }

@@ -11,13 +11,15 @@ test('loads the view-mode image resizer before app.js and wires post-render hydr
     const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
     const css = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
 
-    const resizerPos = index.indexOf('./js/viewmode/image-resize.js?v=20260811-1');
+    const resizerPos = index.indexOf('./js/viewmode/image-resize.js?v=20260811-2');
     const appPos = index.indexOf('./js/app.js?');
     assert.ok(resizerPos >= 0 && appPos > resizerPos);
-    assert.match(index, /viewImageResize=20260811-1/);
+    assert.match(index, /viewImageResize=20260811-2/);
     assert.match(app, /ViewModeImageResize\.hydrate\(viewer/);
     assert.match(app, /performAutoSave\(\)/);
-    assert.match(css, /\.md-image-resize-handle\.is-sw/);
+    assert.match(css, /\.md-image-resize-handle\.is-se/);
+    assert.doesNotMatch(css, /\.md-image-resize-handle\.is-sw/);
+    assert.match(css, /\.md-image-resize-handle\.is-se\s*\{[\s\S]*?right:\s*0;[\s\S]*?bottom:\s*0;/);
     assert.match(css, /\.md-image-resize-confirm/);
 });
 

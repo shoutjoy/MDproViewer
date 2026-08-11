@@ -28,7 +28,9 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-image-replace-1&amp;viewImageResize=20260811-1&amp;tidyUi=20260811-1&amp;indbUi=20260811-1&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260811-2&amp;sidebarControls=20260812-4&amp;miniToc=20260812-1" charset="utf-8">
+    <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
+    <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260810-ai-jena-button-1" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260402-1" charset="utf-8">
@@ -357,7 +359,7 @@
     </style>
 </head>
 
-<body class="h-screen flex flex-col overflow-hidden transition-colors duration-200 feature-sqlite-disabled feature-github-disabled feature-local-disabled">
+<body class="h-screen flex flex-col overflow-hidden transition-colors duration-200 feature-sqlite-disabled feature-github-disabled feature-local-enabled">
 
     <!-- Top Navigation Bar (반응형: 좁은 창에서 타이틀 축소·버튼 줄바꿈) -->
     <header
@@ -833,6 +835,9 @@
                     <button id="btn-image-upload-tool" type="button" onclick="openImageUploadTool()"
                         class="hidden px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
                         title="이미지 업로드 도구 열기">imgUp</button>
+                    <button id="btn-note-cover-insert" type="button" onclick="insertDefaultNoteCover()"
+                        class="hidden px-2 py-1 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded text-[10px] font-bold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 shadow-sm"
+                        title="문서 최상단에 note-cover 표지 삽입">[표지]</button>
                     <div id="macro-toolbar-wrap" class="relative inline-flex items-center gap-1 hidden">
                         <button type="button" id="btn-macro-run" onclick="runCheckedMacroActions()"
                             class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
@@ -905,7 +910,7 @@
                                     class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">MD2HTML</button>
                                 <button type="button" onclick="convertBase64ImagesToInternalInEditor()"
                                     class="tidy-action-button px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
-                                    title="선택 영역 또는 문서 전체의 Base64 이미지를 IndexedDB internal:// 링크로 변환">base64tourl</button>
+                                    title="선택 영역 또는 문서 전체의 Markdown/HTML Base64 이미지를 IndexedDB internal:// 링크로 변환">base64ToUrl</button>
                                 <button type="button" onclick="applyNoteCoverTidyInEditor()"
                                     class="tidy-action-button px-2 py-1 rounded border border-violet-300 dark:border-violet-700 text-[11px] font-semibold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20"
                                     title="선택 영역 또는 문서 전체의 note-cover JSON을 보기 좋게 정리">noteCover</button>
@@ -1065,6 +1070,10 @@
                         <span id="file-title-display" class="shrink-0 max-w-[35%] truncate font-medium">새 문서</span>
                         <span id="file-path-separator" class="hidden shrink-0 text-slate-300 dark:text-slate-600">|</span>
                         <span id="file-path-display" class="min-w-0 flex-1 truncate text-slate-400 dark:text-slate-500">로컬 경로 없음</span>
+                        <span id="file-size-separator" class="shrink-0 text-slate-300 dark:text-slate-600">|</span>
+                        <span id="file-size-display" class="shrink-0 text-slate-500 dark:text-slate-400" title="현재 문서 용량">0 B</span>
+                        <span id="file-created-separator" class="shrink-0 text-slate-300 dark:text-slate-600">|</span>
+                        <span id="file-created-display" class="shrink-0 text-slate-500 dark:text-slate-400" title="문서 생성일">생성일 -</span>
                     </p>
                     <div id="footer-zoom-font" class="shrink-0 flex items-center gap-1 sm:gap-2 pl-2 border-l border-slate-200 dark:border-slate-700">
                         <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">헤더</span>
@@ -1140,6 +1149,12 @@
                     <input type="text" id="input-url"
                         class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
                 </div>
+                <label id="input-link-new-window-wrap"
+                    class="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+                    <input type="checkbox" id="input-link-new-window"
+                        class="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-2 focus:ring-indigo-500">
+                    <span>새 창에서 열기</span>
+                </label>
             </div>
             <div class="flex gap-2 mt-6">
                 <button onclick="closeModal()"
@@ -1670,6 +1685,32 @@
                     </div>
                 </div>
 
+                <!-- Full backup filename prefix (shortcuts 아래, 기본 접힘) -->
+                <div id="indb-backup-prefix-settings-card"
+                    class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
+                    <div class="flex items-center justify-between gap-2 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
+                        <h4 class="text-sm font-bold text-slate-700 dark:text-slate-300">전체 파일 prefix</h4>
+                    </div>
+                    <div class="space-y-3">
+                        <label for="indb-backup-prefix-input" class="block text-xs font-semibold text-slate-600 dark:text-slate-400">
+                            전체 백업·설정 파일명 prefix
+                            <input type="text" id="indb-backup-prefix-input" maxlength="40" value="mdpro"
+                                placeholder="mdpro" spellcheck="false" autocomplete="off"
+                                onkeydown="if(event.key==='Enter'){event.preventDefault();saveFileDownloadPrefixSetting();}"
+                                class="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        </label>
+                        <p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                            예: <code id="indb-backup-prefix-preview">mdpro-indb-folders-YYYYMMDD-HHMMSS.zip</code>
+                        </p>
+                        <div class="flex items-center justify-end gap-2">
+                            <button type="button" onclick="resetFileDownloadPrefixSetting()"
+                                class="rounded border border-slate-300 dark:border-slate-600 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">기본값</button>
+                            <button type="button" onclick="saveFileDownloadPrefixSetting()"
+                                class="rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">저장</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- AI API Key Settings (단축키 안내 아래) -->
                 <div id="legacy-ai-settings-card"
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
@@ -1901,7 +1942,7 @@
                         </div>
                         <div id="local-storage-settings-tool" class="pt-1">
                             <label class="inline-flex items-center gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                                <input type="checkbox" id="local-storage-enabled" onchange="onStorageFeatureCheckboxChange()"
+                                <input type="checkbox" id="local-storage-enabled" onchange="onStorageFeatureCheckboxChange()" checked
                                     class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                 <span>Local</span>
                             </label>
@@ -1996,6 +2037,11 @@
                                     <input type="checkbox" id="template-visible" onclick="setTimeout(toggleTemplateSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">양식보이기</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="note-cover-insert-visible" onclick="setTimeout(toggleNoteCoverInsertSection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">표지삽입 보이기</span>
                                 </label>
                                 <div class="flex items-center gap-4 flex-wrap">
                                     <span class="min-w-24 text-sm font-medium text-slate-700 dark:text-slate-300">GenSlide</span>
@@ -2178,6 +2224,37 @@
         </section>
     </div>
 
+    <!-- Unused inDB image selection cleaner -->
+    <div id="indb-unused-image-modal" class="indb-unused-backdrop fixed inset-0 hidden items-center justify-center z-[2147483647] no-print"
+        onclick="if(event.target===this) closeUnusedInDbImageCleaner()">
+        <section class="indb-unused-panel" role="dialog" aria-modal="true" aria-labelledby="indb-unused-title">
+            <header class="indb-unused-header">
+                <div class="indb-status-mark" aria-hidden="true">IMG</div>
+                <div class="indb-status-heading">
+                    <h2 id="indb-unused-title">미사용 이미지 선택 정리</h2>
+                    <p id="indb-unused-subtitle">삭제할 이미지를 직접 선택하세요.</p>
+                </div>
+                <button type="button" class="indb-icon-button" onclick="closeUnusedInDbImageCleaner()" title="닫기" aria-label="미사용 이미지 선택 창 닫기">×</button>
+            </header>
+            <div class="indb-unused-toolbar">
+                <div class="indb-footer-group">
+                    <button type="button" class="indb-action-button indb-action-fma" onclick="setAllUnusedInDbImagesSelected(true)">전체 선택</button>
+                    <button type="button" class="indb-action-button indb-action-neutral" onclick="setAllUnusedInDbImagesSelected(false)">전체 해제</button>
+                </div>
+                <strong id="indb-unused-selection-summary">0개 선택 · 0 B</strong>
+            </div>
+            <div id="indb-unused-image-grid" class="indb-unused-grid" aria-live="polite"></div>
+            <footer class="indb-unused-footer">
+                <span>선택한 이미지만 삭제됩니다.</span>
+                <div class="indb-footer-group">
+                    <button type="button" class="indb-action-button indb-action-neutral" onclick="closeUnusedInDbImageCleaner()">취소</button>
+                    <button type="button" id="btn-delete-selected-unused-images" class="indb-action-button indb-action-danger"
+                        onclick="deleteSelectedUnusedInDbImages()" disabled>선택 삭제 0</button>
+                </div>
+            </footer>
+        </section>
+    </div>
+
     <!-- SQLite read-only explorer -->
     <div id="sqlite-explorer-modal"
         class="pointer-events-none fixed inset-0 hidden z-[2147483647] no-print">
@@ -2257,49 +2334,87 @@
         </div>
     </div>
     <!-- Text Style Modal (Alt+L) -->
-    <div id="text-style-modal" class="fixed inset-0 bg-black/40 hidden items-center justify-center z-50 no-print">
-        <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-5 w-full max-w-xl mx-4 border border-slate-200 dark:border-slate-700">
-            <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100">서식 설정 <span class="text-xs font-medium text-slate-500">ALT+L</span></h3>
-                <button type="button" onclick="closeTextStyleModal()" class="p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500">✕</button>
+    <div id="text-style-modal" class="text-style-modal fixed inset-0 hidden items-center justify-center z-50 no-print"
+        role="dialog" aria-modal="true" aria-labelledby="text-style-title" aria-hidden="true">
+        <div id="text-style-modal-panel" class="text-style-panel" tabindex="-1">
+            <div class="text-style-header">
+                <div>
+                    <h3 id="text-style-title"><span aria-hidden="true">🖍️</span> 서식 설정 <kbd>Alt+L</kbd></h3>
+                    <p id="text-style-selection-summary">선택된 텍스트가 없습니다.</p>
+                </div>
+                <button type="button" onclick="closeTextStyleModal()" class="text-style-close" aria-label="서식 설정 닫기">×</button>
             </div>
-            <div class="space-y-3 text-sm">
-                <div class="flex items-center gap-3">
-                    <label class="w-20 text-slate-700 dark:text-slate-200">글자 크기</label>
-                    <input type="checkbox" id="style-enable-font-size" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                    <select id="style-font-size" class="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900">
-                        <option value="12px">12pt</option>
-                        <option value="14px">14pt</option>
-                        <option value="16px">16pt</option>
-                        <option value="18px">18pt</option>
-                        <option value="20px">20pt</option>
-                        <option value="24px">24pt</option>
-                    </select>
+
+            <div class="text-style-body">
+                <div class="text-style-row" data-style-row="font-size">
+                    <div class="text-style-row-label"><span>글자 크기</span><button type="button" data-style-reset="font-size" aria-label="글자 크기 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-font-size" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <div class="text-style-size-control">
+                        <button type="button" data-style-size-step="-1" aria-label="글자 크기 줄이기">−</button>
+                        <label><input type="number" id="style-font-size-number" value="12" min="6" max="96" step="1" aria-label="글자 크기"><span>pt</span></label>
+                        <button type="button" data-style-size-step="1" aria-label="글자 크기 늘리기">＋</button>
+                    </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <label class="w-20 text-slate-700 dark:text-slate-200">글자 색</label>
-                    <input type="checkbox" id="style-enable-text-color" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                    <input type="color" id="style-text-color" value="#ff3b3b" class="w-10 h-8 p-0.5 border border-slate-300 dark:border-slate-600 rounded">
+
+                <div class="text-style-row" data-style-row="font-family">
+                    <div class="text-style-row-label"><span>폰트 종류</span><button type="button" data-style-reset="font-family" aria-label="폰트 종류 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-font-family" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <select id="style-font-family" class="text-style-font-select" aria-label="폰트 종류"></select>
                 </div>
-                <div class="flex items-center gap-3">
-                    <label class="w-20 text-slate-700 dark:text-slate-200">형광펜</label>
-                    <input type="checkbox" id="style-enable-highlight" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                    <input type="color" id="style-highlight-color" value="#fff176" class="w-10 h-8 p-0.5 border border-slate-300 dark:border-slate-600 rounded">
+
+                <div class="text-style-row" data-style-row="text-color">
+                    <div class="text-style-row-label"><span>글자 색</span><button type="button" data-style-reset="text-color" aria-label="글자 색 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-text-color" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <div id="text-style-text-colors" class="text-style-palette" aria-label="글자 색 팔레트"></div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <label class="w-20 text-slate-700 dark:text-slate-200">볼드</label>
-                    <input type="checkbox" id="style-enable-bold" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                    <span class="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded font-bold">B</span>
+
+                <div class="text-style-row" data-style-row="highlight">
+                    <div class="text-style-row-label"><span>형광펜</span><button type="button" data-style-reset="highlight" aria-label="형광펜 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-highlight" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <div id="text-style-highlight-colors" class="text-style-palette" aria-label="형광펜 색 팔레트"></div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <label class="w-20 text-slate-700 dark:text-slate-200">이탤릭</label>
-                    <input type="checkbox" id="style-enable-italic" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                    <span class="px-2 py-1 border border-slate-300 dark:border-slate-600 rounded italic">I</span>
+
+                <div class="text-style-row text-style-row-compact" data-style-row="bold">
+                    <div class="text-style-row-label"><span>볼드</span><button type="button" data-style-reset="bold" aria-label="볼드 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-bold" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <button type="button" class="text-style-format-toggle is-bold" data-style-toggle="bold"><span>적용 안 함</span><b>B</b></button>
                 </div>
+
+                <div class="text-style-row text-style-row-compact" data-style-row="italic">
+                    <div class="text-style-row-label"><span>이탤릭</span><button type="button" data-style-reset="italic" aria-label="이탤릭 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-italic" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <button type="button" class="text-style-format-toggle is-italic" data-style-toggle="italic"><span>적용 안 함</span><i>I</i></button>
+                </div>
+
+                <div class="text-style-font-source-link">
+                    <div><strong>폰트를 찾고 있나요?</strong><span>눈누에서 원하는 한글 웹폰트를 고른 뒤 웹폰트 코드를 복사하세요.</span></div>
+                    <a href="https://noonnu.cc/font_page" target="_blank" rel="noopener noreferrer"
+                        aria-label="눈누 폰트 페이지를 새 창에서 열기">눈누 폰트 찾기 <span aria-hidden="true">↗</span></a>
+                </div>
+
+                <details class="text-style-custom-fonts">
+                    <summary>눈누 등 외부 폰트 추가 <span>@font-face</span></summary>
+                    <div class="text-style-font-help">
+                        눈누에서 복사한 <code>@font-face { ... }</code> 코드를 붙여 넣으세요. http/https 폰트 URL만 inDB <code>fonts</code>와 SQLite 사용자 폰트 저장소에 함께 보관하며 다음 실행 때도 자동으로 불러옵니다.
+                    </div>
+                    <textarea id="text-style-font-face-input" rows="5" spellcheck="false"
+                        placeholder="@font-face {&#10;  font-family: 'YeogiOttaeJalnan';&#10;  src: url('https://.../JalnanOTF00.woff') format('woff');&#10;  font-display: swap;&#10;}"></textarea>
+                    <div class="text-style-font-actions">
+                        <button type="button" id="text-style-add-font">폰트 추가</button>
+                        <span id="text-style-font-status" role="status" aria-live="polite"></span>
+                    </div>
+                    <div id="text-style-custom-font-list" class="text-style-custom-font-list"></div>
+                </details>
+
+                <div class="text-style-preview-wrap"><span>미리보기</span><div id="text-style-preview">서식 미리보기</div></div>
             </div>
-            <div class="mt-5 flex justify-end gap-2">
-                <button type="button" onclick="closeTextStyleModal()" class="px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200">취소</button>
-                <button type="button" onclick="applyTextStyleToSelection()" class="px-3 py-1.5 rounded bg-indigo-600 text-white hover:bg-indigo-700">적용</button>
+
+            <div class="text-style-footer">
+                <span>취소: Esc · 적용: Ctrl+Enter</span>
+                <div>
+                    <button type="button" onclick="closeTextStyleModal()" class="text-style-cancel">취소</button>
+                    <button type="button" onclick="applyTextStyleToSelection()" class="text-style-apply">적용</button>
+                </div>
             </div>
         </div>
     </div>
@@ -2559,7 +2674,7 @@
 
 <!-- 이미지 데이터베이스 -->
 <script
-    src="./imageDB/imageDB.js?v=20260811-unused-images-1"
+    src="./imageDB/imageDB.js?v=20260811-base64-html-1"
     charset="utf-8"
     defer>
 </script>
@@ -2651,12 +2766,12 @@
 
 <!-- 확장 파일 처리 -->
 <script
-    src="./js/extendFiles/extend-files.js?v=20260811-mdd-id-map-1"
+    src="./js/extendFiles/extend-files.js?v=20260811-mdd-id-map-1&amp;pdfExport=20260811-direct-download-1"
     charset="utf-8"
     defer>
 </script>
 
-<!-- DOCX/HTML 내보내기는 실제 내보내기 시점에 app.js가 지연 로드한다. -->
+<!-- DOCX/HTML/PDF 내보내기는 실제 내보내기 시점에 app.js가 지연 로드한다. -->
 
 
 <!-- =========================================================
@@ -2712,7 +2827,7 @@
     defer>
 </script>
 <script
-    src="./js/storage/storage-service.js?v=20260807-wasm-opfs-default-1&amp;tidyScripts=20260811-1"
+    src="./js/storage/storage-service.js?v=20260811-custom-fonts-1"
     charset="utf-8"
     defer>
 </script>
@@ -2731,28 +2846,33 @@
 
 <!-- 설정 UI -->
 <script
-    src="./Setting/settings-ui.js?v=20260811-folder-picker-1&amp;feature=templates-2&amp;storageVisibility=20260807-1&amp;sqliteFullscreen=20260807-1"
+    src="./Setting/settings-ui.js?v=20260811-custom-fonts-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 왼쪽 사이드바 -->
 <script
-    src="./sidebar_left/sidebar-left.js?v=20260806-local-folder-1&amp;storageVisibility=20260806-1"
+    src="./sidebar_left/sidebar-left.js?v=20260812-folder-tree-1&amp;storageVisibility=20260806-1&amp;fileControls=20260812-4&amp;shellRace=20260812-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./sidebar_left/sidebar-resize.js?v=20260812-3"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 이미지 링크 삽입 모달 -->
 <script
-    src="./js/Imagetool/link-image-modal.js?v=20260604-1"
+    src="./js/Imagetool/link-image-modal.js?v=20260811-new-window-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 문서 정리 기능 -->
 <script
-    src="./js/Tidy/tidy-actions.js?v=20260811-menu-ui-2"
+    src="./js/Tidy/tidy-actions.js?v=20260811-base64-html-1"
     charset="utf-8"
     defer>
 </script>
@@ -2762,16 +2882,23 @@
     defer>
 </script>
 
+<!-- 선택 영역 글꼴·색상·형광펜 서식 (Alt+L) -->
+<script
+    src="./js/text-style/text-style.js?v=20260811-3"
+    charset="utf-8"
+    defer>
+</script>
+
 <!-- 미니 미리보기 -->
 <script
-    src="./js/md-comment.js?v=20260810-3&amp;perf=20260810-1"
+    src="./js/md-comment.js?v=20260812-html-comment-1&amp;perf=20260810-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- Markdown 내장 A4 표지(note-cover) 렌더링 -->
 <script
-    src="./js/note-cover/note-cover.js?v=20260811-image-replace-1"
+    src="./js/note-cover/note-cover.js?v=20260811-editor-14"
     charset="utf-8"
     defer>
 </script>
@@ -2781,7 +2908,7 @@
     defer>
 </script>
 <script
-    src="./js/UI_PV/minipv.js?v=20260810-sync-directions-1&amp;comment=20260810-1&amp;perf=20260810-2"
+    src="./js/UI_PV/minipv.js?v=20260810-sync-directions-1&amp;comment=20260810-1&amp;perf=20260810-2&amp;imageSizeHint=20260811-1&amp;toc=20260812-1"
     charset="utf-8"
     defer>
 </script>
@@ -2817,17 +2944,17 @@
     defer>
 </script>
 <script
-    src="./js/viewmode/image-resize.js?v=20260811-1"
+    src="./js/viewmode/image-resize.js?v=20260811-2"
     charset="utf-8"
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-transform-1&amp;viewImageResize=20260811-1&amp;indbImages=20260811-1&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260810-3&amp;perf=20260810-10"
+    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260811-direct-download-4&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1"
     charset="utf-8"
     defer>
 </script>
 <script
-    src="./js/internal-image-app.js?v=20260806-import-choice-2"
+    src="./js/internal-image-app.js?v=20260812-settings-left-1"
     charset="utf-8"
     defer>
 </script>
@@ -2848,7 +2975,7 @@
 
 <!-- GitHub 실제 기능 -->
 <script
-    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260810-1&amp;tidyTextFiles=20260811-1"
+    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260810-1&amp;tidyTextFiles=20260811-1&amp;fileControls=20260812-3"
     charset="utf-8"
     defer>
 </script>
@@ -2862,7 +2989,7 @@
 
 <!-- 편집기·미리보기 연동 -->
 <script
-    src="./js/UI_PV/editpv.js?v=20260806-image-open-1&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2"
+    src="./js/UI_PV/editpv.js?v=20260806-image-open-1&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2&amp;pvPrint=20260811-1"
     charset="utf-8"
     defer>
 </script>

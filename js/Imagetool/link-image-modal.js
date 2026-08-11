@@ -132,6 +132,19 @@
         setImagePanelToggleState();
     }
 
+    function escapeHtmlText(value) {
+        return String(value == null ? '' : value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function escapeHtmlAttribute(value) {
+        return escapeHtmlText(value)
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function open(mode, deps) {
         deps = deps || {};
         var inputModal = deps.inputModal || document.getElementById('input-modal');
@@ -147,6 +160,8 @@
 
         var shortcuts = document.getElementById('image-link-shortcuts');
         var urlWrap = document.getElementById('input-url-wrap');
+        var newWindowWrap = document.getElementById('input-link-new-window-wrap');
+        var newWindowCheck = document.getElementById('input-link-new-window');
         if (shortcuts) {
             if (isImage) {
                 shortcuts.classList.remove('hidden');
@@ -157,6 +172,8 @@
             }
         }
         if (urlWrap) urlWrap.classList.toggle('hidden', isId);
+        if (newWindowWrap) newWindowWrap.classList.toggle('hidden', !isLink);
+        if (newWindowCheck) newWindowCheck.checked = false;
 
         document.getElementById('input-display-text').value = editorTextarea.value.substring(editorTextarea.selectionStart, editorTextarea.selectionEnd).trim();
         document.getElementById('input-url').value = isId ? '' : '';
@@ -201,7 +218,14 @@
             }
             replacement = '<div id ="' + idValue + '"></div>\n[' + idValue + ']\n\n[' + idValue + '](#' + idValue + ')';
         } else {
-            replacement = mode === 'link' ? '[' + displayText + '](' + url + ')' : '![' + displayText + '](' + url + ')';
+            var openInNewWindow = mode === 'link'
+                && !!(document.getElementById('input-link-new-window') || {}).checked;
+            if (openInNewWindow) {
+                replacement = '<a href="' + escapeHtmlAttribute(url) + '" target="_blank">'
+                    + escapeHtmlText(displayText) + '</a>';
+            } else {
+                replacement = mode === 'link' ? '[' + displayText + '](' + url + ')' : '![' + displayText + '](' + url + ')';
+            }
         }
 
         editorTextarea.focus();

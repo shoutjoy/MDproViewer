@@ -1082,6 +1082,7 @@
         fontSizePt: readCoverNumber(element.fontSize, 16, 4, 600) * fontScale,
         fontFamily: String(element.fontFamily || '').replace(/[;{}<>]/g, '').trim() || 'Arial',
         fontWeight: String(element.fontWeight == null ? 400 : element.fontWeight).trim(),
+        fontStyle: String(element.fontStyle || '').toLowerCase() === 'italic' ? 'italic' : 'normal',
         textAlign: String(element.textAlign || 'left').toLowerCase(),
         color: String(element.color || '#111111'),
         zIndex: index + 2
@@ -1254,11 +1255,12 @@
         var family = String(element.fontFamily || '').replace(/[;{}<>]/g, '').trim() || 'Arial, sans-serif';
         var weight = String(element.fontWeight == null ? 400 : element.fontWeight).trim();
         if (!/^(?:normal|bold|bolder|lighter|[1-9]00)$/i.test(weight)) weight = '400';
+        var fontStyle = String(element.fontStyle || '').toLowerCase() === 'italic' ? 'italic' : 'normal';
         var textAlign = /^(?:left|center|right)$/.test(String(element.textAlign || '').toLowerCase())
           ? String(element.textAlign).toLowerCase()
           : 'left';
         context.fillStyle = getCoverColor(element.color, '#111111');
-        context.font = weight + ' ' + fontSize + 'px ' + family;
+        context.font = fontStyle + ' ' + weight + ' ' + fontSize + 'px ' + family;
         context.textAlign = textAlign;
         context.textBaseline = 'top';
         var textX = textAlign === 'center' ? 0 : (textAlign === 'right' ? width / 2 : localX);
@@ -1443,11 +1445,13 @@
     var numericWeight = Number(element.fontWeight);
     var isBold = /^(?:bold|bolder)$/i.test(element.fontWeight || '') ||
       (Number.isFinite(numericWeight) && numericWeight >= 600);
+    var isItalic = String(element.fontStyle || '').toLowerCase() === 'italic';
     var properties = '<w:rPr>' +
       '<w:rFonts w:ascii="' + fontFamily + '" w:hAnsi="' + fontFamily + '" w:eastAsia="' + fontFamily + '"/>' +
       '<w:color w:val="' + getWordCoverColor(element.color) + '"/>' +
       '<w:sz w:val="' + fontSize + '"/><w:szCs w:val="' + fontSize + '"/>' +
       (isBold ? '<w:b/><w:bCs/>' : '') +
+      (isItalic ? '<w:i/><w:iCs/>' : '') +
       '</w:rPr>';
     var content = String(element.text || '').replace(/\r\n?/g, '\n').split('\n').map(function (line, index) {
       return (index ? '<w:br/>' : '') + '<w:t xml:space="preserve">' + escapeXml(line) + '</w:t>';

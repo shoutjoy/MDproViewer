@@ -330,7 +330,7 @@
             + '<button type="button" class="md-image-resize-handle is-e" data-direction="e" aria-label="오른쪽에서 너비 조절"></button>'
             + '<button type="button" class="md-image-resize-handle is-s" data-direction="s" aria-label="아래쪽에서 높이 조절"></button>'
             + '<button type="button" class="md-image-resize-handle is-w" data-direction="w" aria-label="왼쪽에서 너비 조절"></button>'
-            + '<button type="button" class="md-image-resize-handle is-sw" data-direction="sw" aria-label="왼쪽 아래 모서리에서 비율 조절"></button>'
+            + '<button type="button" class="md-image-resize-handle is-se" data-direction="se" aria-label="오른쪽 아래 모서리에서 비율 조절"></button>'
             + '<div class="md-image-resize-actions">'
             + '<button type="button" class="md-image-resize-confirm">Confirm</button>'
             + '<button type="button" class="md-image-resize-cancel">Cancel</button>'
@@ -413,8 +413,8 @@
             else if (direction === 'w') width = startWidth - dx;
             else if (direction === 's') height = startHeight + dy;
             else if (direction === 'n') height = startHeight - dy;
-            else if (direction === 'sw') {
-                var widthFromDrag = startWidth - dx;
+            else if (direction === 'se') {
+                var widthFromDrag = startWidth + dx;
                 var heightFromDrag = startHeight + dy;
                 if (Math.abs(dx) >= Math.abs(dy * ratio)) {
                     width = widthFromDrag;

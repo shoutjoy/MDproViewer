@@ -4,6 +4,8 @@
   var INTERNAL_PREFIX = 'internal://';
   var INTERNAL_RE = /internal:\/\/([A-Za-z0-9._~%\-]+)/g;
   var BASE64_MARKDOWN_IMAGE_RE = /!\[([^\]\r\n]*)\]\(\s*(data:(image\/[A-Za-z0-9.+-]+);base64,([A-Za-z0-9+\/_=-]+))(\s+(?:"[^"\r\n]*"|'[^'\r\n]*'|\([^\)\r\n]*\)))?\s*\)/gi;
+  var BASE64_IMAGE_DATA_URL_RE = /^data:(image\/[A-Za-z0-9.+-]+);base64,[A-Za-z0-9+\/_=\-\s]+$/i;
+  var HTML_IMAGE_TAG_START_RE = /<img(?=[\s/>])/gi;
 
   function ensureDb(db) {
     if (!db) throw new Error('IndexedDB handle is not available.');
@@ -139,6 +141,7 @@
     BASE64_MARKDOWN_IMAGE_RE.lastIndex = 0;
     while ((match = BASE64_MARKDOWN_IMAGE_RE.exec(source)) !== null) {
       matches.push({
+        type: 'markdown',
         start: match.index,
         end: BASE64_MARKDOWN_IMAGE_RE.lastIndex,
         alt: match[1] || '',
@@ -146,6 +149,59 @@
         mime: String(match[3] || 'image/png').toLowerCase(),
         title: match[5] || ''
       });
+    }
+    return matches;
+  }
+
+  function findHtmlTagEnd(source, start) {
+    var quote = '';
+    for (var i = start; i < source.length; i++) {
+      var ch = source.charAt(i);
+      if (quote) {
+        if (ch === quote) quote = '';
+        continue;
+      }
+      if (ch === '"' || ch === "'") quote = ch;
+      else if (ch === '>') return i + 1;
+    }
+    return -1;
+  }
+
+  function getBase64HtmlImages(markdown) {
+    var source = String(markdown || '');
+    var matches = [];
+    var tagStart;
+    HTML_IMAGE_TAG_START_RE.lastIndex = 0;
+    while ((tagStart = HTML_IMAGE_TAG_START_RE.exec(source)) !== null) {
+      var tagEnd = findHtmlTagEnd(source, HTML_IMAGE_TAG_START_RE.lastIndex);
+      if (tagEnd < 0) break;
+      var tag = source.slice(tagStart.index, tagEnd);
+      var srcMatch = /\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`]+))/i.exec(tag);
+      if (!srcMatch) {
+        HTML_IMAGE_TAG_START_RE.lastIndex = tagEnd;
+        continue;
+      }
+
+      var dataUrl = srcMatch[1] != null ? srcMatch[1]
+        : (srcMatch[2] != null ? srcMatch[2] : srcMatch[3]);
+      var dataMatch = BASE64_IMAGE_DATA_URL_RE.exec(dataUrl || '');
+      if (!dataMatch) {
+        HTML_IMAGE_TAG_START_RE.lastIndex = tagEnd;
+        continue;
+      }
+
+      var valueOffset;
+      if (srcMatch[1] != null) valueOffset = srcMatch.index + srcMatch[0].indexOf('"') + 1;
+      else if (srcMatch[2] != null) valueOffset = srcMatch.index + srcMatch[0].indexOf("'") + 1;
+      else valueOffset = srcMatch.index + srcMatch[0].length - srcMatch[3].length;
+      matches.push({
+        type: 'html',
+        start: tagStart.index + valueOffset,
+        end: tagStart.index + valueOffset + dataUrl.length,
+        dataUrl: dataUrl,
+        mime: String(dataMatch[1] || 'image/png').toLowerCase()
+      });
+      HTML_IMAGE_TAG_START_RE.lastIndex = tagEnd;
     }
     return matches;
   }
@@ -168,7 +224,8 @@
   async function convertBase64ImagesInMarkdown(db, markdown) {
     ensureDb(db);
     var source = String(markdown || '');
-    var matches = getBase64MarkdownImages(source);
+    var matches = getBase64MarkdownImages(source).concat(getBase64HtmlImages(source));
+    matches.sort(function (a, b) { return a.start - b.start; });
     if (!matches.length) {
       return { markdown: source, convertedCount: 0, storedCount: 0, imageIds: [] };
     }
@@ -203,8 +260,11 @@
     for (var k = matches.length - 1; k >= 0; k--) {
       var item = matches[k];
       var image = savedByDataUrl.get(item.dataUrl);
-      var alt = item.alt && item.alt.trim() ? item.alt : image.id;
-      var replacement = '![' + alt + '](' + image.url + item.title + ')';
+      var replacement = image.url;
+      if (item.type === 'markdown') {
+        var alt = item.alt && item.alt.trim() ? item.alt : image.id;
+        replacement = '![' + alt + '](' + image.url + item.title + ')';
+      }
       output = output.slice(0, item.start) + replacement + output.slice(item.end);
     }
 

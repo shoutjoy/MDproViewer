@@ -21,7 +21,8 @@ assert.doesNotMatch(html, /<span>Sqlite 사용<\/span>/);
 assert.match(html, /id="sqlite-enabled" aria-controls="sqlite-runtime-settings-panel" aria-expanded="false"/);
 assert.match(html, /id="local-storage-enabled"/);
 assert.match(html, /<span>Local<\/span>/);
-assert.match(html, /feature-sqlite-disabled feature-github-disabled feature-local-disabled/);
+assert.match(html, /feature-sqlite-disabled feature-github-disabled feature-local-enabled/);
+assert.match(html, /id="local-storage-enabled"[^>]*checked/);
 
 assert.match(sidebar, /id="tab-storage-local"[\s\S]*?<span>Local<\/span>/);
 assert.match(css, /feature-sqlite-disabled button\[id\*="sqlite" i\]/);
@@ -34,7 +35,9 @@ assert.match(css, /sidebar-storage-sqlite-hidden #tab-storage-sqlite/);
 assert.match(css, /sidebar-storage-github-hidden #tab-storage-github/);
 
 assert.match(app, /localEnabled:\s*!!\(localStorageEl && localStorageEl\.checked\)/);
-assert.match(app, /localEnabledCheck\.checked = settings\.localEnabled === true/);
+assert.match(app, /function getLocalStorageFeatureEnabledFromSettings\(settings\)/);
+assert.match(app, /localEnabledCheck\.checked = getLocalStorageFeatureEnabledFromSettings\(settings\)/);
+assert.match(app, /localEnabledEmpty\.checked = true/);
 assert.match(app, /const sqliteEnabled = !!\(sqliteEnabledEl && sqliteEnabledEl\.checked\)/);
 assert.doesNotMatch(app, /sqliteEnabledEl && sqliteEnabledEl\.checked\s*\n\s*&& sqliteStorageStatus/);
 assert.match(github, /function applyStorageFeatureVisibility/);

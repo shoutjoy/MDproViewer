@@ -65,6 +65,18 @@ def main() -> None:
     require(normalized_tidy["group"] == "collections", "TIDY script group mismatch")
     require(normalized_tidy["scopeType"] == "workspace", "TIDY script scope mismatch")
 
+    custom_fonts = [{
+        "family": "YeogiOttaeJalnan",
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.2/JalnanOTF00.woff",
+        "format": "woff",
+        "weight": "normal",
+        "style": "normal",
+        "display": "swap",
+    }]
+    normalized_fonts = validate_setting("textStyleCustomFonts", custom_fonts)
+    require(normalized_fonts["group"] == "collections", "custom font group mismatch")
+    require(normalized_fonts["scopeType"] == "workspace", "custom font scope mismatch")
+
     nested_secret_catalog = {
         **catalog,
         "tools": [{**catalog["tools"][0], "options": {"apiKey": "not-allowed"}}],
@@ -81,11 +93,15 @@ def main() -> None:
         repository = StorageRepository(manager)
         repository.put_setting({"key": "encryptedToolVault", "value": envelope, "scopeType": "profile"})
         repository.put_setting({"key": "toolSettingsCatalog", "value": catalog, "scopeType": "profile"})
+        repository.put_setting({"key": "textStyleCustomFonts", "value": custom_fonts, "scopeType": "workspace"})
         explorer = repository.get_explorer_snapshot(query="ScholarAI")
         require(len(explorer["settings"]) == 1, "catalog value search failed")
         require(explorer["settings"][0]["key"] == "toolSettingsCatalog", "catalog search returned wrong setting")
         serialized_explorer = str(explorer)
         require("AIza" not in serialized_explorer and "sk-" not in serialized_explorer, "explorer leaked a probable key")
+        font_explorer = repository.get_explorer_snapshot(query="YeogiOttaeJalnan")
+        require(len(font_explorer["settings"]) == 1, "custom font SQLite explorer search failed")
+        require(font_explorer["settings"][0]["key"] == "textStyleCustomFonts", "custom font explorer key mismatch")
 
     invalid = dict(envelope)
     invalid["plaintext"] = "AIza01234567890123456789012345678901234"

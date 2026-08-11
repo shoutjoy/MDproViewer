@@ -92,6 +92,7 @@ function sampleCover() {
       h: 10,
       text: 'DOCX 표지 제목',
       fontSize: 36,
+      fontStyle: 'italic',
       textAlign: 'center',
       color: '#111111'
     }]
@@ -112,8 +113,8 @@ test('extracts note-cover metadata and removes it from the DOCX body markdown', 
 test('loads the editable-cover DOCX exporter with a fresh cache key', () => {
   const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
   const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  assert.match(app, /docx-export\.js\?v=20260811-note-cover-editable-2/);
-  assert.match(index, /app\.js\?v=20260811-note-cover-transform-1/);
+  assert.match(app, /docx-export\.js\?v=20260811-note-cover-editor-3/);
+  assert.match(index, /app\.js\?v=20260811-note-cover-insert-1/);
 });
 
 test('writes the rendered cover as the first DOCX page and keeps the body', async () => {
@@ -135,6 +136,7 @@ test('writes the rendered cover as the first DOCX page and keeps the body', asyn
   assert.match(documentXml, /<w:txbxContent>/);
   assert.match(documentXml, /<w:t xml:space="preserve">DOCX 표지 제목<\/w:t>/);
   assert.match(documentXml, /<w:sz w:val="54"\/>/);
+  assert.match(documentXml, /<w:i\/><w:iCs\/>/);
   assert.match(documentXml, /본문 제목/);
   assert.match(documentXml, /본문 내용/);
   assert.doesNotMatch(documentXml, /note-cover|rootLayerIds/);

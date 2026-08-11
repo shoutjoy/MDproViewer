@@ -76,6 +76,30 @@ test('Base64 Markdown images become deduplicated internal IndexedDB links', asyn
   assert.doesNotMatch(result.markdown, /data:image/);
 });
 
+test('Base64 HTML img src values become internal links without changing other attributes', async () => {
+  const sandbox = createSandbox();
+  loadBrowserModule('imageDB/imageDB.js', sandbox);
+  const harness = createImageDbHarness();
+  const pixel = 'iVBORw0KGgo=';
+  const markdown = [
+    `<img class="hero" src="data:image/png;base64,${pixel}" alt="표지">`,
+    `<IMG SRC='data:image/png;base64,${pixel}' width="20">`,
+    `<img src=data:image/png;base64,${pixel} />`,
+    `![같은 이미지](data:image/png;base64,${pixel})`
+  ].join('\n');
+
+  const result = await sandbox.ImageDB.convertBase64ImagesInMarkdown(harness.db, markdown);
+
+  assert.equal(result.convertedCount, 4);
+  assert.equal(result.storedCount, 1);
+  assert.equal(harness.records.size, 1);
+  assert.match(result.markdown, /<img class="hero" src="internal:\/\/img_\d+_[a-z0-9]+" alt="표지">/);
+  assert.match(result.markdown, /<IMG SRC='internal:\/\/img_\d+_[a-z0-9]+' width="20">/);
+  assert.match(result.markdown, /<img src=internal:\/\/img_\d+_[a-z0-9]+ \/>/);
+  assert.match(result.markdown, /!\[같은 이미지\]\(internal:\/\/img_\d+_[a-z0-9]+\)/);
+  assert.doesNotMatch(result.markdown, /data:image/);
+});
+
 test('MDD import rewrites exported internal image ids to restored ids', async () => {
   const sandbox = createSandbox();
   loadBrowserModule('imageDB/imageDB.js', sandbox);
@@ -130,12 +154,13 @@ test('unused image detection scans nested inDB records and the current draft', (
   );
 });
 
-test('TIDY UI exposes the base64tourl action and selection-aware wiring', () => {
+test('TIDY UI exposes the base64ToUrl action and selection-aware wiring', () => {
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
   const tidy = fs.readFileSync(path.join(root, 'js', 'Tidy', 'tidy-actions.js'), 'utf8');
 
-  assert.match(html, />base64tourl<\/button>/);
+  assert.match(html, />base64ToUrl<\/button>/);
+  assert.match(html, /Markdown\/HTML Base64 이미지/);
   assert.match(html, /onclick="convertBase64ImagesToInternalInEditor\(\)"/);
   assert.match(app, /function convertBase64ImagesToInternalInEditor\(\)/);
   assert.match(tidy, /var hasSelection = start !== end;/);

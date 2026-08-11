@@ -3,7 +3,7 @@ import { EditorView, Decoration, keymap } from 'https://esm.sh/@codemirror/view@
 import { defaultKeymap, history, historyKeymap } from 'https://esm.sh/@codemirror/commands@6';
 import { searchKeymap, highlightSelectionMatches } from 'https://esm.sh/@codemirror/search@6';
 
-const COMMENT_START = '<--';
+const COMMENT_START = '<!--';
 const COMMENT_END = '-->';
 
 function buildCommentDecorations(state) {
@@ -54,7 +54,7 @@ function toggleComment(view) {
         anchor = from + leading;
         head = anchor + body.length;
     } else {
-        insert = '<-- ' + selected + ' -->';
+        insert = '<!-- ' + selected + ' -->';
         anchor = from + 4;
         head = anchor + selected.length;
     }
@@ -99,7 +99,7 @@ function percentile(values, ratio) {
 async function runBenchmark(view, iterations = 10) {
     const fixtures = [
         { name: 'plain', unit: '본문 일반 텍스트 다음 줄\n' },
-        { name: 'comments', unit: '본문 <-- 주석 메모 --> 다음 줄\n' }
+        { name: 'comments', unit: '본문 <!-- 주석 메모 --> 다음 줄\n' }
     ];
     const results = [];
     const original = view.state.doc.toString();
