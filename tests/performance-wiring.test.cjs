@@ -16,9 +16,9 @@ test('heavy optional features are absent from the initial script graph', () => {
     'html-export.js',
     'pdf-export.js',
     'AI_App/aiChat/ai-chat.js',
-    'js/Scholarref/scholarref.js',
-    'js/Scholarref/crossref-search.js',
-    'js/Scholarref/scholarsearch-shell.js',
+    'js/Scholarref/reference/scholarref.js',
+    'js/Scholarref/crossref/search.js',
+    'js/Scholarref/ui/scholarsearch-shell.js',
     'cdnjs.cloudflare.com/ajax/libs/mathjax',
     'cdn.jsdelivr.net/npm/katex'
   ];

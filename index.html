@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 
 <head>
@@ -29,11 +29,12 @@
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260811-2&amp;sidebarControls=20260812-4&amp;miniToc=20260812-1&amp;crossrefResults=20260812-1" charset="utf-8">
+    <link rel="stylesheet" href="./js/inDB/inDB.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260721-2" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260810-ai-jena-button-1" charset="utf-8">
-    <link rel="stylesheet" href="./js/Scholarref/scholarref.css?v=20260812-crossref-results-ui-1" charset="utf-8">
+    <link rel="stylesheet" href="./js/Scholarref/styles/scholarref.css?v=20260812-scholar-modules-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
     <style>
@@ -437,10 +438,8 @@
                 <i data-lucide="printer" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
             </button>
 
-            <div id="header-scholar-search-wrap" class="hidden items-center gap-1 shrink-0">
-                <button type="button" id="btn-scholar-search" onclick="openScholarSearchModal()"
-                    class="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"
-                    title="학술검색 입력창 열기 (Alt+S)">학술검색</button>
+            <div id="header-feature-tools-wrap" class="hidden items-center gap-1 shrink-0">
+                <div id="scholar-search-header-slot" class="contents"></div>
                 <button type="button" id="btn-sites-panel" onclick="toggleSitesPanel()"
                     class="hidden px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600"
                     title="Sites / Stat">Sites</button>
@@ -526,6 +525,7 @@
                       <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('researcher')">Researcher</button>
                       <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
                       <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
+                      <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
                     </div>
                     <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="사전 프롬프트를 입력하거나 편집하세요. 필요시 내용을 추가할 수 있습니다." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
                   </div>
@@ -590,10 +590,11 @@
                       <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">커서위치삽입</button>
                       <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">문서 한줄 아래에 삽입</button>
                       <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">선택 내용 대체</button>
-                      <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">GenSlide HTMLCode 삽입</button>
+                      <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">ToGenslide</button>
                       <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME) 삽입</button>
                     </div>
                   </div>
+                  <button type="button" id="scholar-ai-to-genslide-btn" class="sa-btn" style="display:none;background:#f59e0b;color:#111827;border:none" onclick="scholarAIToGenSlide()" title="슬라이드 HTML을 GenSlide로 보내기">ToGenslide</button>
                   <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="결과를 크게 보기">🔍 결과 크게 보기</button>
                   <span class="sa-font">font</span>
                   <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">−</button>
@@ -1685,32 +1686,6 @@
                     </div>
                 </div>
 
-                <!-- Full backup filename prefix (shortcuts 아래, 기본 접힘) -->
-                <div id="indb-backup-prefix-settings-card"
-                    class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
-                    <div class="flex items-center justify-between gap-2 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
-                        <h4 class="text-sm font-bold text-slate-700 dark:text-slate-300">전체 파일 prefix</h4>
-                    </div>
-                    <div class="space-y-3">
-                        <label for="indb-backup-prefix-input" class="block text-xs font-semibold text-slate-600 dark:text-slate-400">
-                            전체 백업·설정 파일명 prefix
-                            <input type="text" id="indb-backup-prefix-input" maxlength="40" value="mdpro"
-                                placeholder="mdpro" spellcheck="false" autocomplete="off"
-                                onkeydown="if(event.key==='Enter'){event.preventDefault();saveFileDownloadPrefixSetting();}"
-                                class="mt-1 w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
-                        </label>
-                        <p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                            예: <code id="indb-backup-prefix-preview">mdpro-indb-folders-YYYYMMDD-HHMMSS.zip</code>
-                        </p>
-                        <div class="flex items-center justify-end gap-2">
-                            <button type="button" onclick="resetFileDownloadPrefixSetting()"
-                                class="rounded border border-slate-300 dark:border-slate-600 px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800">기본값</button>
-                            <button type="button" onclick="saveFileDownloadPrefixSetting()"
-                                class="rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700">저장</button>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- AI API Key Settings (단축키 안내 아래) -->
                 <div id="legacy-ai-settings-card"
                     class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
@@ -2016,11 +1991,7 @@
                                 </div>
                             </div>
                             <div id="feature-tools-settings" class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
-                                <label class="flex items-center gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="scholar-search-visible" onclick="setTimeout(toggleScholarSearchSection,0)"
-                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">학술검색 보이기</span>
-                                </label>
+                                <div id="scholar-search-settings-slot"></div>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="highlight-visible" onclick="setTimeout(toggleHighlightSection,0)"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
@@ -2102,7 +2073,6 @@
             </div>
 
             <div class="hidden" aria-hidden="true">
-                <button type="button" id="btn-open-indb-status" onclick="openInDbStatusModal()">inDB보기</button>
                 <button type="button" id="btn-open-sqlite-explorer" onclick="SettingUI.openSqliteExplorer()"
                     title="SQLite에 저장된 데이터를 읽기 전용으로 탐색">SQLite보기</button>
             </div>
@@ -2121,12 +2091,6 @@
                 </button>
                 <input type="file" id="settings-import-file" accept=".mset,application/json,.json" class="hidden"
                     onchange="importSettingsMsetFile(event)">
-                <button type="button" id="btn-footer-open-indb-status" onclick="openInDbStatusModal()"
-                    class="settings-footer-action border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
-                    title="inDB" aria-label="inDB">
-                    <i data-lucide="database" class="h-4 w-4" aria-hidden="true"></i>
-                    <span class="settings-action-label">inDB</span>
-                </button>
                 <button type="button" id="btn-footer-open-sqlite-explorer" onclick="SettingUI.openSqliteExplorer()"
                     class="settings-footer-action border border-emerald-600 rounded-md text-xs font-semibold text-emerald-700 bg-white hover:bg-emerald-50 dark:bg-slate-800 dark:text-emerald-300 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
                     title="SQLite에 저장된 데이터를 읽기 전용으로 탐색" aria-label="SQLite">
@@ -2194,64 +2158,6 @@
                         class="font-semibold text-indigo-600 hover:underline dark:text-indigo-300">계정·열기 방식 설정</button>
                 </footer>
             </div>
-        </section>
-    </div>
-
-    <!-- inDB Status Modal -->
-    <div id="indb-status-modal" class="indb-status-backdrop fixed inset-0 hidden items-center justify-center z-[2147483646] no-print" onclick="if(event.target===this) closeInDbStatusModal()">
-        <section id="indb-status-panel" class="indb-status-panel" role="dialog" aria-modal="true" aria-labelledby="indb-status-title">
-            <header class="indb-status-header">
-                <div class="indb-status-mark" aria-hidden="true">DB</div>
-                <div class="indb-status-heading">
-                    <h2 id="indb-status-title">inDB 저장소</h2>
-                    <p id="indb-status-subtitle">브라우저 내부 데이터와 이미지 사용 상태를 확인합니다.</p>
-                </div>
-                <button type="button" class="indb-icon-button" onclick="renderInDbStatusModal()" title="새로고침" aria-label="inDB 새로고침">↻</button>
-                <button type="button" class="indb-icon-button" onclick="closeInDbStatusModal()" title="닫기" aria-label="inDB 창 닫기">×</button>
-            </header>
-            <div id="indb-status-list" class="indb-status-list" aria-live="polite"></div>
-            <footer class="indb-status-footer">
-                <div class="indb-footer-group">
-                    <button type="button" id="btn-open-indb-images-fma" class="indb-action-button indb-action-fma" onclick="openAllInDbImagesInFmaViewer()">FMA 전체보기</button>
-                    <button type="button" id="btn-clean-unused-indb-images" class="indb-action-button indb-action-clean" onclick="deleteUnusedInDbImages()">미사용 이미지 정리</button>
-                </div>
-                <div class="indb-footer-group indb-footer-group-end">
-                    <button type="button" id="btn-download-all-indb" class="indb-action-button indb-action-backup" onclick="downloadAllInDbAsZip()">전체 백업</button>
-                    <button type="button" class="indb-action-button indb-action-danger" onclick="deleteAllInDbStatusItems()">전체 삭제</button>
-                    <button type="button" class="indb-action-button indb-action-neutral" onclick="closeInDbStatusModal()">닫기</button>
-                </div>
-            </footer>
-        </section>
-    </div>
-
-    <!-- Unused inDB image selection cleaner -->
-    <div id="indb-unused-image-modal" class="indb-unused-backdrop fixed inset-0 hidden items-center justify-center z-[2147483647] no-print"
-        onclick="if(event.target===this) closeUnusedInDbImageCleaner()">
-        <section class="indb-unused-panel" role="dialog" aria-modal="true" aria-labelledby="indb-unused-title">
-            <header class="indb-unused-header">
-                <div class="indb-status-mark" aria-hidden="true">IMG</div>
-                <div class="indb-status-heading">
-                    <h2 id="indb-unused-title">미사용 이미지 선택 정리</h2>
-                    <p id="indb-unused-subtitle">삭제할 이미지를 직접 선택하세요.</p>
-                </div>
-                <button type="button" class="indb-icon-button" onclick="closeUnusedInDbImageCleaner()" title="닫기" aria-label="미사용 이미지 선택 창 닫기">×</button>
-            </header>
-            <div class="indb-unused-toolbar">
-                <div class="indb-footer-group">
-                    <button type="button" class="indb-action-button indb-action-fma" onclick="setAllUnusedInDbImagesSelected(true)">전체 선택</button>
-                    <button type="button" class="indb-action-button indb-action-neutral" onclick="setAllUnusedInDbImagesSelected(false)">전체 해제</button>
-                </div>
-                <strong id="indb-unused-selection-summary">0개 선택 · 0 B</strong>
-            </div>
-            <div id="indb-unused-image-grid" class="indb-unused-grid" aria-live="polite"></div>
-            <footer class="indb-unused-footer">
-                <span>선택한 이미지만 삭제됩니다.</span>
-                <div class="indb-footer-group">
-                    <button type="button" class="indb-action-button indb-action-neutral" onclick="closeUnusedInDbImageCleaner()">취소</button>
-                    <button type="button" id="btn-delete-selected-unused-images" class="indb-action-button indb-action-danger"
-                        onclick="deleteSelectedUnusedInDbImages()" disabled>선택 삭제 0</button>
-                </div>
-            </footer>
         </section>
     </div>
 
@@ -2581,7 +2487,7 @@
             </div>
         </div>
         <div id="html2ppt-panel-body" class="flex-1 p-2 min-h-0">
-            <iframe id="html2ppt-frame" data-src="./js/Html2pptx/jenaEditor/index.html?v=20260806-sqlite-storage-1"
+            <iframe id="html2ppt-frame" data-src="./js/Html2pptx/jenaEditor/index.html?v=20260812-export-local-deps-1"
                 class="w-full h-full border-0 rounded bg-white dark:bg-slate-900" title="GenSlide"></iframe>
         </div>
         <div id="html2ppt-panel-resizer" title="Resize"
@@ -2710,7 +2616,12 @@
      6. 학술 참고문헌·논문 검색
 ========================================================= -->
 
-<!-- 참고문헌·Crossref·학술검색 셸은 학술검색 최초 실행 시 app.js가 지연 로드한다. -->
+<!-- 가벼운 통합 객체만 먼저 연결하고 참고문헌·Crossref·결과 셸은 최초 실행 시 지연 로드한다. -->
+<script
+    src="./js/Scholarref/integration/scholar-search-app.js?v=20260812-scholar-modules-1"
+    charset="utf-8"
+    defer>
+</script>
 
 
 <!-- =========================================================
@@ -2719,7 +2630,7 @@
 
 <!-- 학술 AI 프롬프트 -->
 <script
-    src="./sidebarAI/Scholarai_prompt.js?v=20260406-1"
+    src="./sidebarAI/Scholarai_prompt.js?v=20260812-slider-maker-1"
     charset="utf-8"
     defer>
 </script>
@@ -2747,7 +2658,7 @@
 
 <!-- AI 결과 편집기 삽입 -->
 <script
-    src="./sidebarAI/insert.js?v=20260407-1"
+    src="./sidebarAI/insert.js?v=20260812-slider-maker-1"
     charset="utf-8"
     defer>
 </script>
@@ -2949,7 +2860,13 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260811-direct-download-4&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1"
+    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260811-direct-download-4&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1"
+    charset="utf-8"
+    defer>
+</script>
+<!-- inDB 초기화·저장·설정 탐색 UI -->
+<script
+    src="./js/inDB/inDB.js?v=20260812-1"
     charset="utf-8"
     defer>
 </script>

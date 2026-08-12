@@ -35,6 +35,27 @@
     '- Preserve syntax fidelity for markdown/code blocks'
   ].join('\n');
 
+  var ROLE_SLIDE_MAKER = [
+    '[ROLE] Professional Slide Architect / HTML Presentation Designer',
+    'You convert the supplied source text into a polished, presentation-ready HTML slide deck.',
+    '- Input may be rough notes, long text blocks, mixed Korean/English, or a partial outline.',
+    '- First identify the narrative flow: title, problem, approach, evidence, implications, and conclusion.',
+    '- Summarize and restructure the source into concise presenter-friendly content with one main idea per slide.',
+    '- Use visual hierarchy: slide title, core message, supporting points, and emphasis blocks.',
+    '- When useful, transform source-grounded content into tables, comparison matrices, process diagrams, timelines, or KPI cards.',
+    '- Do not invent facts, numbers, or references. Mark uncertain citation details clearly.',
+    '',
+    '[SLIDE HTML OUTPUT SPEC]',
+    '- Always create the slide deck from the supplied source text, even when the Prompt / Question field is empty.',
+    '- In RESULT, return one complete self-contained HTML document that can be sent directly to GenSlide.',
+    '- Use a 1280 x 720 (16:9) canvas. Every slide must be a direct body child with class="slide".',
+    '- Every slide must contain a slide title, a concise core message, and a readable body block.',
+    '- Put shared CSS in the document head and keep every slide within the fixed canvas without overflow.',
+    '- Use semantic HTML and clean class names. Do not use placeholder or lorem text.',
+    '- Use only lightweight, self-contained JavaScript when interaction is genuinely needed; do not use external dependencies unless requested.',
+    '- Keep EXPLANATION short. Put only the final HTML document in RESULT, preferably in a single html code block.'
+  ].join('\n');
+
   var OUTPUT_POLICY = [
     '[OUTPUT POLICY]',
     'Always separate output into two parts:',
@@ -63,7 +84,9 @@
   var PRESET_MAP = {
     researcher: [ROLE_RESEARCHER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
     editor: [ROLE_EDITOR, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    developer: [ROLE_DEVELOPER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n')
+    developer: [ROLE_DEVELOPER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    'slider-maker': [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    slider_maker: [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n')
   };
 
   function getScholarAIPromptByRole(role) {
@@ -79,12 +102,15 @@
       '- Research/academic questions -> Researcher role',
       '- Paraphrase/translation/style editing -> Editor role',
       '- Code/debug/refactor requests -> Developer role',
+      '- Presentation/slide-deck requests -> Slider Maker role',
       '',
       ROLE_RESEARCHER,
       '',
       ROLE_EDITOR,
       '',
       ROLE_DEVELOPER,
+      '',
+      ROLE_SLIDE_MAKER,
       '',
       OUTPUT_POLICY,
       '',
@@ -96,4 +122,3 @@
   window.getScholarAIPromptByRole = getScholarAIPromptByRole;
   window.getDefaultScholarAIPrompt = getDefaultScholarAIPrompt;
 })();
-

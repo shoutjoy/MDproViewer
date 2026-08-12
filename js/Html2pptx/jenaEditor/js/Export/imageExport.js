@@ -66,20 +66,18 @@ function askImageExportMode() {
 async function ensureImageExportDeps(mode) {
   if (typeof window.html2canvas !== "function") {
     if (typeof loadScriptOnce === "function") {
-      await loadScriptOnce([
-        "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
-        "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"
-      ]);
+      const html2canvasSources = (typeof EXPORT_DEPENDENCY_SOURCES !== "undefined" && EXPORT_DEPENDENCY_SOURCES.html2canvas)
+        || ["../../../vendor/html2canvas/html2canvas.min.js?v=1.4.1-local"];
+      await loadScriptOnce(html2canvasSources);
     } else {
       throw new Error("html2canvas loader missing");
     }
   }
   if (mode === "all_zip" && typeof window.JSZip === "undefined") {
     if (typeof loadScriptOnce === "function") {
-      await loadScriptOnce([
-        "https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js",
-        "https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"
-      ]);
+      const jsZipSources = (typeof EXPORT_DEPENDENCY_SOURCES !== "undefined" && EXPORT_DEPENDENCY_SOURCES.jszip)
+        || ["../../../vendor/jszip/jszip.min.js?v=3.10.1-local"];
+      await loadScriptOnce(jsZipSources);
     } else {
       throw new Error("JSZip loader missing");
     }
@@ -207,11 +205,15 @@ async function exportImage() {
       hidePptxProgress(1200);
     }
   } catch (e) {
+    console.error("[GenSlide] Image export failed:", e);
     if (typeof setPptxProgress === "function") {
       setPptxProgress(100, "실패");
       hidePptxProgress(1800);
     }
-    alert("image export failed.");
+    const detail = typeof formatExportError === "function"
+      ? formatExportError(e, "Image export failed")
+      : String(e && e.message ? e.message : e || "Image export failed");
+    alert("image export failed.\n\n" + detail);
   } finally {
     for (let i = 0; i < objectUrls.length; i++) {
       try { URL.revokeObjectURL(objectUrls[i]); } catch (_) {}

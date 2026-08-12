@@ -57,6 +57,7 @@ test('Alt+L UI와 app 연결이 문서에 포함되어 있다', () => {
   const root = path.join(__dirname, '..');
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
+  const inDb = fs.readFileSync(path.join(root, 'js', 'inDB', 'inDB.js'), 'utf8');
   const settingsUi = fs.readFileSync(path.join(root, 'Setting', 'settings-ui.js'), 'utf8');
   assert.match(html, /id="text-style-modal"/);
   assert.match(html, /id="style-font-family"/);
@@ -65,9 +66,9 @@ test('Alt+L UI와 app 연결이 문서에 포함되어 있다', () => {
   assert.match(html, /js\/text-style\/text-style\.js/);
   assert.match(app, /TextStyleTool\.open/);
   assert.match(app, /TextStyleTool\.applySelection/);
-  assert.match(app, /const DB_VERSION = 7/);
-  assert.match(app, /createObjectStore\('fonts', \{ keyPath: 'id' \}\)/);
-  assert.match(app, /fonts: '사용자 폰트'/);
+  assert.match(inDb, /const DB_VERSION = 7/);
+  assert.match(inDb, /createObjectStore\('fonts', \{ keyPath: 'id' \}\)/);
+  assert.match(inDb, /fonts: '사용자 폰트'/);
   assert.match(app, /TextStyleTool\.setDatabase\(db\)/);
   assert.match(app, /TextStyleTool\.setSqliteStorage\(window\.MDPStorage\)/);
   assert.match(settingsUi, /사용자 폰트 · textStyleCustomFonts/);

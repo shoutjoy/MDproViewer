@@ -20,6 +20,12 @@
         <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">Model</button>
       </div>
       <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px 0">
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('researcher')">Researcher</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
+        </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
       </div>
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
@@ -83,8 +89,11 @@
           <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
           <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
           <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
+          <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">ToGenslide</button>
+          <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
       </div>
+      <button type="button" id="scholar-ai-to-genslide-btn" class="sa-btn" style="display:none;background:#f59e0b;color:#111827;border:none" onclick="scholarAIToGenSlide()" title="Send slide HTML to GenSlide">ToGenslide</button>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
       <span class="sa-font">font</span>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">-</button>

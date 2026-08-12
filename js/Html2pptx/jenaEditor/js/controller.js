@@ -205,7 +205,7 @@
     "./js/sqliteStorage.js?v=20260806-storage-feature-visibility-1",
     "./js/main.js"
   ];
-  const ASSET_VERSION = "20260806-sqlite-storage-1";
+  const ASSET_VERSION = "20260812-export-local-deps-1";
 
   const loadedScripts = new Set();
   let booted = false;

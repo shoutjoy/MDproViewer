@@ -47,6 +47,7 @@
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('researcher')">Researcher</button>
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
         </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
       </div>
@@ -106,10 +107,11 @@
           <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
           <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
           <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
-          <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">GenSlide HTMLCode</button>
+          <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">ToGenslide</button>
           <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
       </div>
+      <button type="button" id="scholar-ai-to-genslide-btn" class="sa-btn" style="display:none;background:#f59e0b;color:#111827;border:none" onclick="scholarAIToGenSlide()" title="Send slide HTML to GenSlide">ToGenslide</button>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
       <span class="sa-font">font</span>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">-</button>
@@ -291,6 +293,7 @@
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('researcher')">Researcher</button>
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
+          <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
         </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
       </div>
@@ -350,10 +353,11 @@
           <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
           <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
           <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
-          <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">GenSlide HTMLCode</button>
+          <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">ToGenslide</button>
           <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
       </div>
+      <button type="button" id="scholar-ai-to-genslide-btn" class="sa-btn" style="display:none;background:#f59e0b;color:#111827;border:none" onclick="scholarAIToGenSlide()" title="Send slide HTML to GenSlide">ToGenslide</button>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
       <span class="sa-font">font</span>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultFont(-1)">-</button>
@@ -530,6 +534,7 @@
   var LS_SSP_POPUP_RECT = 'ss_viewer_ssp_popup_rect';
   var LS_SA_TONE_PRESET = 'ss_viewer_scholar_ai_tone_preset';
   var LS_SA_UI_FONT_SIZE = 'ss_viewer_scholar_ai_ui_font_size';
+  var SA_SLIDE_MAKER_MARKER = '[ROLE] Professional Slide Architect / HTML Presentation Designer';
   var SA_TONE_DEFAULT = 'academic_ida';
   var SA_UI_FONT_MIN = 12;
   var SA_UI_FONT_MAX = 20;
@@ -1526,9 +1531,35 @@
       el.addEventListener('blur', function () {
         var setter = getCallback('setScholarAISystemInstruction');
         if (typeof setter === 'function') setter(el.value || '');
+        scholarAIUpdateToGenSlideButton();
       });
+      el.addEventListener('input', scholarAIUpdateToGenSlideButton);
     }
+    scholarAIUpdateToGenSlideButton();
   }
+
+  function scholarAIIsSlideMakerActive() {
+    var el = document.getElementById('scholar-ai-pre-prompt-text');
+    var current = el && el.value ? String(el.value) : String(invokeSync('getScholarAISystemInstruction') || '');
+    return current.indexOf(SA_SLIDE_MAKER_MARKER) >= 0;
+  }
+
+  function scholarAIHasSlideHtmlResult() {
+    var result = '';
+    try { result = scholarAIGetInsertResultText(); } catch (e) { result = ''; }
+    return /<(?:section|div)\b[^>]*class\s*=\s*["'][^"']*\bslide\b/i.test(String(result || ''));
+  }
+
+  function scholarAIUpdateToGenSlideButton() {
+    var btn = document.getElementById('scholar-ai-to-genslide-btn');
+    if (!btn) return;
+    var visible = scholarAIIsSlideMakerActive() || scholarAIHasSlideHtmlResult();
+    btn.style.display = visible ? 'inline-flex' : 'none';
+    btn.disabled = !scholarAIGetInsertResultText();
+    btn.style.opacity = btn.disabled ? '0.55' : '1';
+    btn.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
+
   function scholarAIUsePromptRole(role) {
     var el = document.getElementById('scholar-ai-pre-prompt-text');
     if (!el) return;
@@ -1539,6 +1570,7 @@
     el.value = next;
     var setter = getCallback('setScholarAISystemInstruction');
     if (typeof setter === 'function') setter(next);
+    scholarAIUpdateToGenSlideButton();
   }
 
   function scholarAISetProviderStatus(message, isError) {
@@ -2119,8 +2151,17 @@
       if (explainTa.nextSibling) wrap.insertBefore(insertTa, explainTa.nextSibling);
       else wrap.appendChild(insertTa);
     }
+    if (!insertTa.__scholarAIToGenSlideBound) {
+      insertTa.__scholarAIToGenSlideBound = true;
+      insertTa.addEventListener('input', scholarAIUpdateToGenSlideButton);
+    }
+    if (!explainTa.__scholarAIToGenSlideBound) {
+      explainTa.__scholarAIToGenSlideBound = true;
+      explainTa.addEventListener('input', scholarAIUpdateToGenSlideButton);
+    }
     wrap.setAttribute('data-sa-tabs-ready', '1');
     scholarAISetResultTab(__scholarAIActiveResultTab || 'insert');
+    scholarAIUpdateToGenSlideButton();
   }
 
   function scholarAISetResultTab(tab) {
@@ -2199,6 +2240,7 @@
     if (insertEl) insertEl.value = parsed.result || '';
     if (insertEl && insertEl.value) scholarAISetResultTab('insert');
     else scholarAISetResultTab('explanation');
+    scholarAIUpdateToGenSlideButton();
     return {
       explanation: explainEl ? explainEl.value : '',
       result: insertEl ? insertEl.value : ''
@@ -2229,7 +2271,10 @@
     if (insertEl) insertEl.value = '';
     scholarAISetRunningState(true);
     try {
-      var fullPrompt = passage + '\n\nQuestion/Instruction: ' + (userQ || 'Please summarize and explain the passage clearly.');
+      var defaultInstruction = scholarAIIsSlideMakerActive()
+        ? 'Create a complete, polished HTML slide deck from this source now. Follow the Slider Maker HTML output specification and return GenSlide-ready slide HTML.'
+        : 'Please summarize and explain the passage clearly.';
+      var fullPrompt = passage + '\n\nQuestion/Instruction: ' + (userQ || defaultInstruction);
       var sys = invokeSync('getScholarAISystemInstruction') || 'You are a scholarly assistant. Answer concisely in Korean based on the given passage. If the user asks a question, answer it; otherwise summarize or explain the passage.';
       var tonePreset = scholarAIGetTonePreset();
       var toneInstruction = scholarAIGetToneInstruction(tonePreset);
@@ -2281,6 +2326,11 @@
     var insertEl = document.getElementById('scholar-ai-result-insert');
     if (explainEl) explainEl.value = '';
     if (insertEl) insertEl.value = '';
+    scholarAIUpdateToGenSlideButton();
+  }
+  function scholarAIToGenSlide() {
+    scholarAISetResultTab('insert');
+    if (typeof window.scholarAIInsertDoc === 'function') return window.scholarAIInsertDoc(3);
   }
   function scholarAIResultFont(delta) {
     var explainEl = document.getElementById('scholar-ai-result');
@@ -3850,6 +3900,7 @@ function viewerSSPFsUploadImgbb() {
   window.scholarAIStop = scholarAIStop;
   window.scholarAICopyResult = scholarAICopyResult;
   window.scholarAIClearResult = scholarAIClearResult;
+  window.scholarAIToGenSlide = scholarAIToGenSlide;
   window.scholarAIResultFont = scholarAIResultFont;
   window.scholarAIRenderZoomMarkdown = scholarAIRenderZoomMarkdown;
   window.scholarAIAdjustZoom = scholarAIAdjustZoom;

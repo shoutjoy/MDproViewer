@@ -76,7 +76,7 @@ Crossref가 초록을 제공하지 않는 문헌은 `Crossref 공개 메타데�
 
 ## 파일 구성
 
-- `crossref-search.js`
+- `crossref/search.js`
   - Crossref API 요청
   - 기간 필터 적용
   - 초록 우선 검색과 서지정보 보충
@@ -85,17 +85,17 @@ Crossref가 초록을 제공하지 않는 문헌은 `Crossref 공개 메타데�
 - `scholarsearch-shell.html`
   - Crossref 체크박스와 개수 입력 UI
   - 내부 MD/PV 결과 편집창 구조
-- `scholarsearch-shell.js`
+- `ui/scholarsearch-shell.js`
   - 검색 UI 제어
   - Google Scholar와 Crossref 동시 실행
   - 결과 편집창과 실시간 PV 미러 처리
   - 메인 Markdown 문서로 결과 전달
-- `sync-fallback-from-html.js`
+- `tools/sync-fallback-from-html.js`
   - HTML UI를 JavaScript 내장 폴백 템플릿과 동기화
 
 ## 전역 API
 
-`crossref-search.js`는 다음 API를 제공한다.
+`crossref/search.js`는 다음 API를 제공한다.
 
 ```javascript
 window.ScholarCrossrefSearch.search(query, count, options)

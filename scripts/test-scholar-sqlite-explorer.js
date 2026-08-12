@@ -4,14 +4,14 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'js', 'Scholarref', 'scholarsearch-shell.html'), 'utf8');
-const shell = fs.readFileSync(path.join(root, 'js', 'Scholarref', 'scholarsearch-shell.js'), 'utf8');
+const shell = fs.readFileSync(path.join(root, 'js', 'Scholarref', 'ui', 'scholarsearch-shell.js'), 'utf8');
 const worker = fs.readFileSync(path.join(root, 'Local_SQLiteWASM', 'sqlite-wasm-worker.js'), 'utf8');
 const settings = fs.readFileSync(path.join(root, 'Setting', 'settings-ui.js'), 'utf8');
 const storage = fs.readFileSync(path.join(root, 'js', 'storage', 'storage-service.js'), 'utf8');
 const indexedDb = fs.readFileSync(path.join(root, 'js', 'storage', 'indexeddb-adapter.js'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
-const scholarStyles = fs.readFileSync(path.join(root, 'js', 'Scholarref', 'scholarref.css'), 'utf8');
+const scholarStyles = fs.readFileSync(path.join(root, 'js', 'Scholarref', 'styles', 'scholarref.css'), 'utf8');
 
 for (const token of [
     'scholar-search-sqlite-explorer-btn',

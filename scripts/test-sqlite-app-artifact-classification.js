@@ -17,8 +17,8 @@ const pptxImport = read('js/Html2pptx/jenaEditor/js/Import/pptxImport.js');
 const app = read('js/app.js');
 const policy = read('LocalSave_sqlite/server/settings_policy.py');
 const workFiles = read('LocalSave_sqlite/server/work_files.py');
-const scholarRef = read('js/Scholarref/scholarref.js');
-const scholarShell = read('js/Scholarref/scholarsearch-shell.js');
+const scholarRef = read('js/Scholarref/reference/scholarref.js');
+const scholarShell = read('js/Scholarref/ui/scholarsearch-shell.js');
 const scholarHtml = read('js/Scholarref/scholarsearch-shell.html');
 
 assert.match(activeReadme, /js\/Html2pptx/);
@@ -51,7 +51,7 @@ assert.match(scholarRef, /loadSqliteMarkdown/);
 for (const token of ['saveScholarCrossrefMarkdown', 'saveScholarCrossrefToSqlite', 'loadScholarCrossrefFromSqlite']) {
     assert.match(scholarShell, new RegExp(token));
 }
-assert.match(scholarHtml, /GitHub 공유[\s\S]*SQLite 저장[\s\S]*SQLite 가져오기/);
+assert.match(scholarHtml, /GitHub 공유[\s\S]*STORAGE 저장[\s\S]*STORAGE 탐색기[\s\S]*inDB 저장[\s\S]*inDB 탐색기/);
 
 for (const heading of ['GenSlide', '사용자 양식', 'Reference management', 'Scholar Crossref', '다음 구현 단위']) {
     assert.match(classification, new RegExp(heading));

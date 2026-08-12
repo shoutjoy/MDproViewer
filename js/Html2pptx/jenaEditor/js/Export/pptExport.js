@@ -24,16 +24,14 @@
 
 async function ensurePptxDeps() {
   if (typeof window.html2canvas !== "function") {
-    await loadScriptOnce([
-      "https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js",
-      "https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js"
-    ]);
+    const html2canvasSources = (typeof EXPORT_DEPENDENCY_SOURCES !== "undefined" && EXPORT_DEPENDENCY_SOURCES.html2canvas)
+      || ["../../../vendor/html2canvas/html2canvas.min.js?v=1.4.1-local"];
+    await loadScriptOnce(html2canvasSources);
   }
   if (typeof window.PptxGenJS === "undefined") {
-    await loadScriptOnce([
-      "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
-      "https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"
-    ]);
+    const pptxGenSources = (typeof EXPORT_DEPENDENCY_SOURCES !== "undefined" && EXPORT_DEPENDENCY_SOURCES.pptxgen)
+      || ["../../../vendor/pptxgenjs/pptxgen.bundle.js?v=3.12.0-local"];
+    await loadScriptOnce(pptxGenSources);
   }
 }
 
@@ -921,10 +919,14 @@ async function exportPptx() {
     setPptxProgress(100, "\uC644\uB8CC");
     hidePptxProgress(1600);
   } catch (e) {
+    console.error("[GenSlide] PPTX export failed:", e);
     // Export failed
     setPptxProgress(100, "\uC2E4\uD328");
     hidePptxProgress(2200);
-    alert("pptx export failed.");
+    const detail = typeof formatExportError === "function"
+      ? formatExportError(e, "PPTX export failed")
+      : String(e && e.message ? e.message : e || "PPTX export failed");
+    alert("pptx export failed.\n\n" + detail);
   } finally {
     for (let i = 0; i < objectUrls.length; i++) {
       try { URL.revokeObjectURL(objectUrls[i]); } catch (_) {}

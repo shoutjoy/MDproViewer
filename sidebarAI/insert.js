@@ -56,19 +56,120 @@
   }
 
   function handleScholarAIInsertClick() {
-    var viewerSwitchToEdit = typeof window.viewerSwitchToEdit === 'function' ? window.viewerSwitchToEdit : function () {};
     var isEdit = document.getElementById('content-viewport') && document.getElementById('content-viewport').classList.contains('viewer-edit-active');
-    if (!isEdit) {
-      alert('Switching to edit mode first.');
-      viewerSwitchToEdit();
-      return;
-    }
     var ta = document.getElementById('viewer-edit-ta');
-    if (ta) {
+    if (isEdit && ta) {
       setSelectionState({ cursorPos: ta.selectionStart });
     }
     setResultTabInsert();
     toggleScholarAIInsertMenu();
+  }
+
+  function showInsertNotice(message, isError) {
+    if (typeof window.showToast === 'function') {
+      try { window.showToast(message); return; } catch (e) {}
+    }
+    if (isError) alert(message);
+  }
+
+  function ensureGenSlidePanelOpen() {
+    if (typeof window.openHtml2pptPanel === 'function') {
+      try { window.openHtml2pptPanel(); } catch (e) {}
+    }
+    var frame = document.getElementById('html2ppt-frame') || document.querySelector('iframe[title="GenSlide"]');
+    if (frame && !frame.getAttribute('src') && frame.dataset && frame.dataset.src) {
+      frame.setAttribute('src', frame.dataset.src);
+    }
+    return frame;
+  }
+
+  function waitForGenSlideEditor(frame, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var started = Date.now();
+      function check() {
+        if (!frame || !frame.isConnected) {
+          reject(new Error('GenSlide frame is unavailable.'));
+          return;
+        }
+        try {
+          var docRef = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document);
+          if (docRef && docRef.getElementById('code')) {
+            resolve(docRef);
+            return;
+          }
+        } catch (e) {}
+        if (Date.now() - started >= timeoutMs) {
+          reject(new Error('GenSlide editor did not finish loading.'));
+          return;
+        }
+        setTimeout(check, 60);
+      }
+      check();
+    });
+  }
+
+  function postSlidesToGenSlide(frame, resultText) {
+    return new Promise(function (resolve, reject) {
+      var targetWindow = frame && frame.contentWindow;
+      if (!targetWindow || typeof targetWindow.postMessage !== 'function') {
+        reject(new Error('GenSlide message channel is unavailable.'));
+        return;
+      }
+      var settled = false;
+      var timer = null;
+      function cleanup() {
+        window.removeEventListener('message', onMessage);
+        if (timer) clearTimeout(timer);
+      }
+      function finish(ok, error) {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (ok) resolve(true);
+        else reject(error || new Error('GenSlide did not confirm the transfer.'));
+      }
+      function onMessage(event) {
+        var data = event && event.data;
+        if (event.source !== targetWindow || !data || data.type !== 'mdv-scholar-genslide-insert-result') return;
+        finish(data.ok === true, data.ok === true ? null : new Error('GenSlide rejected the slide HTML.'));
+      }
+      window.addEventListener('message', onMessage);
+      timer = setTimeout(function () { finish(false); }, 2200);
+      try {
+        targetWindow.postMessage({
+          type: 'mdv-scholar-genslide-insert',
+          mode: 'multi',
+          strategy: 'replace-all',
+          text: String(resultText || '')
+        }, '*');
+      } catch (e) {
+        finish(false, e);
+      }
+    });
+  }
+
+  async function sendScholarAIResultToGenSlide(resultText) {
+    var frame = ensureGenSlidePanelOpen();
+    if (!frame) {
+      alert('GenSlide 창을 찾지 못했습니다. GenSlide 기능이 활성화되어 있는지 확인해주세요.');
+      return false;
+    }
+    try {
+      await waitForGenSlideEditor(frame, 6000);
+      await postSlidesToGenSlide(frame, resultText);
+      showInsertNotice('슬라이드 HTML을 GenSlide로 보냈습니다.', false);
+      return true;
+    } catch (error) {
+      var docRef = null;
+      try { docRef = frame.contentDocument || (frame.contentWindow && frame.contentWindow.document); } catch (e) {}
+      var fallbackTarget = findWritableControlInDoc(docRef, 'code');
+      if (fallbackTarget && insertIntoTextControl(fallbackTarget, resultText, false)) {
+        showInsertNotice('슬라이드 HTML을 GenSlide 코드창으로 보냈습니다.', false);
+        return true;
+      }
+      alert('GenSlide로 보내지 못했습니다: ' + ((error && error.message) || '연결 오류'));
+      return false;
+    }
   }
 
   function findDocFromFrames(selectors) {
@@ -127,23 +228,7 @@
     }
 
     if (mode === 3) {
-      var gsDoc = findDocFromFrames([
-        '#html2ppt-frame',
-        'iframe[title="GenSlide"]',
-        'iframe[src*="Html2pptx/jenaEditor"]'
-      ]);
-      var gsTarget = findWritableControlInDoc(gsDoc, 'code');
-      if (!gsTarget) {
-        alert('GenSlide HTMLCode 입력창을 찾지 못했습니다. GenSlide를 먼저 열어주세요.');
-        return;
-      }
-      insertIntoTextControl(gsTarget, resultText, false);
-      setSelectionState({
-        selStart: null,
-        selEnd: null,
-        cursorPos: isFinite(gsTarget.selectionStart) ? gsTarget.selectionStart : String(gsTarget.value || '').length,
-        lastSelectionTarget: gsTarget
-      });
+      sendScholarAIResultToGenSlide(resultText);
       return;
     }
 
@@ -279,4 +364,5 @@
   window.toggleScholarAIInsertMenu = toggleScholarAIInsertMenu;
   window.closeScholarAIInsertMenu = closeScholarAIInsertMenu;
   window.scholarAIInsertDoc = scholarAIInsertDoc;
+  window.scholarAIToGenSlide = function () { return scholarAIInsertDoc(3); };
 })();
