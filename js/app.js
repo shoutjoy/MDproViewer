@@ -4269,11 +4269,19 @@ function revokeObjectUrls(list) {
 }
 
 function registerViewerInternalObjectUrl(url) {
+    if (typeof window.TidyImageRecovery === 'object' && typeof window.TidyImageRecovery.registerInternalObjectUrl === 'function') {
+        window.TidyImageRecovery.registerInternalObjectUrl(url, viewerInternalImageObjectUrls);
+        return;
+    }
     if (!url) return;
     viewerInternalImageObjectUrls.push(url);
 }
 
 function registerPreviewInternalObjectUrl(url) {
+    if (typeof window.TidyImageRecovery === 'object' && typeof window.TidyImageRecovery.registerInternalObjectUrl === 'function') {
+        window.TidyImageRecovery.registerInternalObjectUrl(url, previewInternalImageObjectUrls);
+        return;
+    }
     if (!url) return;
     previewInternalImageObjectUrls.push(url);
 }
@@ -4318,6 +4326,14 @@ function resetImageInsertForNewImage(isCropChanged) {
 async function resolveInternalMarkdownImagesForViewer(raw) {
     const source = String(raw ?? '');
     if (!source.includes('internal://') || !window.ImageDB || !db) return source;
+    if (typeof window.TidyImageRecovery === 'object' && typeof window.TidyImageRecovery.resolveInternalMarkdownImagesForViewer === 'function') {
+        const resolved = await window.TidyImageRecovery.resolveInternalMarkdownImagesForViewer(source, {
+            db: db,
+            imageDb: window.ImageDB,
+            onObjectUrl: registerViewerInternalObjectUrl
+        });
+        return resolved && typeof resolved.markdown === 'string' ? resolved.markdown : source;
+    }
     try {
         const resolved = await window.ImageDB.resolveInternalUrlsInMarkdown(db, source, registerViewerInternalObjectUrl);
         return resolved && typeof resolved.markdown === 'string' ? resolved.markdown : source;
@@ -4329,6 +4345,14 @@ async function resolveInternalMarkdownImagesForViewer(raw) {
 async function resolveInternalMarkdownImagesForPreview(raw) {
     const source = String(raw ?? '');
     if (!source.includes('internal://') || !window.ImageDB || !db) return source;
+    if (typeof window.TidyImageRecovery === 'object' && typeof window.TidyImageRecovery.resolveInternalMarkdownImagesForPreview === 'function') {
+        const resolved = await window.TidyImageRecovery.resolveInternalMarkdownImagesForPreview(source, {
+            db: db,
+            imageDb: window.ImageDB,
+            onObjectUrl: registerPreviewInternalObjectUrl
+        });
+        return resolved && typeof resolved.markdown === 'string' ? resolved.markdown : source;
+    }
     try {
         const resolved = await window.ImageDB.resolveInternalUrlsInMarkdown(db, source, registerPreviewInternalObjectUrl);
         return resolved && typeof resolved.markdown === 'string' ? resolved.markdown : source;
@@ -4338,6 +4362,14 @@ async function resolveInternalMarkdownImagesForPreview(raw) {
 }
 
 async function hydrateInternalImagesInElement(rootEl, collector) {
+    if (typeof window.TidyImageRecovery === 'object' && typeof window.TidyImageRecovery.hydrateInternalImagesInElement === 'function') {
+        return window.TidyImageRecovery.hydrateInternalImagesInElement(rootEl, {
+            db: db,
+            imageDb: window.ImageDB,
+            cache: internalImageObjectUrlCache,
+            collector: collector
+        });
+    }
     if (!rootEl || !db || !window.ImageDB || typeof window.ImageDB.getImage !== 'function') return;
     const nodes = rootEl.querySelectorAll('img[src^="internal://"]');
     for (let i = 0; i < nodes.length; i++) {
@@ -4356,6 +4388,7 @@ async function hydrateInternalImagesInElement(rootEl, collector) {
                     type: String(rec.blob.type || rec.mime || '')
                 };
                 internalImageObjectUrlCache.set(id, cached);
+                if (typeof collector === 'function') collector(cached);
             }
             const objectUrl = cached.url;
             img.src = objectUrl;
@@ -4365,6 +4398,10 @@ async function hydrateInternalImagesInElement(rootEl, collector) {
 }
 
 function clearInternalImageObjectUrlCache(id) {
+    if (typeof window.TidyImageRecovery === 'object' && typeof window.TidyImageRecovery.clearInternalImageObjectUrlCache === 'function') {
+        window.TidyImageRecovery.clearInternalImageObjectUrlCache(internalImageObjectUrlCache, id);
+        return;
+    }
     if (id != null) {
         const key = String(id);
         const cached = internalImageObjectUrlCache.get(key);

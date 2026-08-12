@@ -2,8 +2,6 @@
     'use strict';
 
     var menuBound = false;
-    var base64ConversionBusy = false;
-
     function formatNoteCoverBlocks(source) {
         var input = String(source == null ? '' : source);
         var formattedCount = 0;
@@ -288,69 +286,20 @@
         }
     }
 
-    async function applyBase64ToUrl(deps) {
+    function applyBase64ToUrl(deps) {
         deps = deps || {};
         var state = getEditorState(deps);
-        if (!state.isEditMode || !state.editorTextarea) {
-            if (typeof deps.showToast === 'function') deps.showToast('편집 모드에서 사용하세요.');
-            return;
-        }
-        if (base64ConversionBusy) {
-            if (typeof deps.showToast === 'function') deps.showToast('Base64 이미지를 변환하고 있습니다.');
-            return;
-        }
-
-        var imageDb = deps.imageDb || global.ImageDB;
-        var db = deps.db;
-        if (!db || !imageDb || typeof imageDb.convertBase64ImagesInMarkdown !== 'function') {
-            if (typeof deps.showToast === 'function') deps.showToast('IndexedDB 이미지 저장소가 아직 준비되지 않았습니다.');
-            return;
-        }
-
         closeMenu();
-        var ta = state.editorTextarea;
-        var start = ta.selectionStart;
-        var end = ta.selectionEnd;
-        var hasSelection = start !== end;
-        var originalText = ta.value;
-        var sourceText = hasSelection ? originalText.substring(start, end) : originalText;
-
-        base64ConversionBusy = true;
-        try {
-            var result = await imageDb.convertBase64ImagesInMarkdown(db, sourceText);
-            if (!result || !result.convertedCount) {
-                if (typeof deps.showToast === 'function') deps.showToast('변환할 Base64 Markdown/HTML 이미지가 없습니다.');
-                return;
-            }
-            if (ta.value !== originalText) {
-                if (typeof deps.showToast === 'function') deps.showToast('변환 중 문서가 변경되었습니다. 다시 실행하세요.');
-                return;
-            }
-
-            if (hasSelection) {
-                ta.value = originalText.substring(0, start) + result.markdown + originalText.substring(end);
-            } else {
-                ta.value = result.markdown;
-            }
-            if (typeof deps.setCurrentMarkdown === 'function') deps.setCurrentMarkdown(ta.value);
-            ta.focus();
-            if (hasSelection) ta.setSelectionRange(start, start + result.markdown.length, ta.selectionDirection || 'none');
-            else ta.setSelectionRange(Math.min(start, ta.value.length), Math.min(start, ta.value.length));
-            if (typeof deps.renderMarkdown === 'function') deps.renderMarkdown();
-            if (deps.activeSidebarTab === 'toc' && typeof deps.renderTOC === 'function') deps.renderTOC();
-            if (typeof deps.performAutoSave === 'function') deps.performAutoSave();
-
-            if (typeof deps.showToast === 'function') {
-                var scope = hasSelection ? '선택 영역' : '문서 전체';
-                var stored = Number(result.storedCount || result.convertedCount);
-                deps.showToast(scope + ' Base64 이미지 ' + result.convertedCount + '개를 internal:// 링크로 변환했습니다. (IndexedDB ' + stored + '개 저장, MDD 저장 가능)');
-            }
-        } catch (error) {
-            if (typeof deps.showToast === 'function') {
-                deps.showToast('Base64 이미지 변환 실패: ' + (error && error.message ? error.message : error));
-            }
-        } finally {
-            base64ConversionBusy = false;
+        if (state.isEditMode && state.editorTextarea && global.TidyImageRecovery && typeof global.TidyImageRecovery.applyBase64ToUrl === 'function') {
+            return global.TidyImageRecovery.applyBase64ToUrl(deps, function (result, sourceText) {
+                return applyResultToEditor(result, sourceText, deps);
+            });
+        }
+        if (typeof deps.showToast === 'function') {
+            var isEditMode = !!state.isEditMode && !!state.editorTextarea;
+            deps.showToast(isEditMode
+                ? 'Base64 이미지 변환 모듈을 불러오지 못했습니다.'
+                : '편집 모드에서 사용하세요.');
         }
     }
 
