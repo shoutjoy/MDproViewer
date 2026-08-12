@@ -83,6 +83,8 @@ let previewPopupDraftMarkdown = '';
 let previewPopupDraftBaseMarkdown = '';
 let previewPopupDraftDirty = false;
 let previewPopupImageInsertTarget = false;
+let previewPopupRenderedSelectionRange = null;
+let previewPopupRenderedDomChanged = false;
 
 function revokePreviewPopupFileObjectUrl() {
     if (!previewPopupFileObjectUrl) return;
@@ -102,6 +104,8 @@ function onPreviewPopupClosed() {
     previewPopupDraftBaseMarkdown = '';
     previewPopupDraftDirty = false;
     previewPopupImageInsertTarget = false;
+    previewPopupRenderedSelectionRange = null;
+    previewPopupRenderedDomChanged = false;
     revokePreviewPopupFileObjectUrl();
     resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
@@ -116,6 +120,8 @@ function closePreviewPopupWindow() {
         previewPopupDraftBaseMarkdown = '';
         previewPopupDraftDirty = false;
         previewPopupImageInsertTarget = false;
+        previewPopupRenderedSelectionRange = null;
+        previewPopupRenderedDomChanged = false;
         revokePreviewPopupFileObjectUrl();
         resetPreviewPopupMermaidLoader();
         revokeObjectUrls(previewInternalImageObjectUrls);
@@ -129,6 +135,8 @@ function closePreviewPopupWindow() {
     previewPopupDraftBaseMarkdown = '';
     previewPopupDraftDirty = false;
     previewPopupImageInsertTarget = false;
+    previewPopupRenderedSelectionRange = null;
+    previewPopupRenderedDomChanged = false;
     revokePreviewPopupFileObjectUrl();
     resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
@@ -195,6 +203,27 @@ function openSelectedFileInPreviewPopup(file) {
             showToast('PPTX 파일을 읽을 수 없습니다: ' + (error && error.message ? error.message : error));
         });
     });
+}
+
+function openMergedPdfInPreviewPopup(blob, fileName) {
+    if (!blob || typeof blob.arrayBuffer !== 'function') {
+        showToast('PV로 보낼 병합 PDF 데이터가 없습니다.');
+        return false;
+    }
+    if (!ensurePreviewPopupForFile()) return false;
+    revokePreviewPopupFileObjectUrl();
+    const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+    const name = String(fileName || 'merged.pdf').toLowerCase().endsWith('.pdf')
+        ? String(fileName || 'merged.pdf')
+        : String(fileName || 'merged') + '.pdf';
+    previewPopupFileObjectUrl = URL.createObjectURL(pdfBlob);
+    const opened = openFileViewerInPreviewPopup(previewPopupFileObjectUrl, name);
+    if (!opened) {
+        revokePreviewPopupFileObjectUrl();
+        return false;
+    }
+    showToast('병합 PDF를 PV에서 열었습니다.');
+    return true;
 }
 
 function openImageInPreviewPopup(imageUrl, fileName) {
@@ -317,9 +346,7 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-toolbar .pv-divider{width:1px;height:20px;background:#475569;margin:0 2px;flex:0 0 auto;}#pv-draft-status{font-size:10px;font-weight:700;color:#a7f3d0;margin-left:2px;}#pv-draft-status.is-dirty{color:#fde68a;}'
         + '#pv-viewport{height:100%;overflow:auto;padding:58px 24px 48px;box-sizing:border-box;background:#475569;}'
         + '#pv-content{box-sizing:border-box;line-height:1.6;overflow-wrap:break-word;transform-origin:top center;margin:0 auto;width:210mm;max-width:210mm;min-height:297mm;padding:12mm 14mm;background:#fff;color:#1e293b;box-shadow:0 18px 48px rgba(15,23,42,.38);}'
-        + '#pv-editor-shell{display:none;box-sizing:border-box;margin:0 auto;width:210mm;min-height:calc(100vh - 106px);padding:0;background:#fff;box-shadow:0 18px 48px rgba(15,23,42,.38);}'
-        + '#pv-editor{display:block;box-sizing:border-box;width:100%;min-height:calc(100vh - 106px);padding:12mm 14mm;border:0;outline:0;resize:vertical;background:#fff;color:#172033;font:15px/1.65 Consolas,"D2Coding","Noto Sans Mono",monospace;tab-size:4;white-space:pre-wrap;overflow-wrap:normal;}'
-        + 'body.pv-editor-mode #pv-content{display:none;}body.pv-editor-mode #pv-editor-shell{display:block;}body.pv-file-mode #pv-view-controls{display:none;}body.pv-file-mode .pv-edit-action{display:none;}'
+        + '#pv-content[contenteditable="true"]{cursor:text;outline:3px solid #818cf8;outline-offset:4px;caret-color:#1d4ed8;}#pv-content[contenteditable="true"]:focus{outline-color:#4f46e5;box-shadow:0 18px 48px rgba(15,23,42,.38),0 0 0 6px rgba(99,102,241,.16);}#pv-content[contenteditable="true"] .pv-render-locked{cursor:not-allowed;user-select:none;}body.pv-file-mode #pv-view-controls{display:none;}body.pv-file-mode .pv-edit-action{display:none;}'
         + '#pv-view-controls{position:fixed;right:10px;bottom:10px;z-index:9999;display:flex;align-items:center;gap:4px;padding:4px 5px;border:1px solid #64748b;border-radius:7px;background:rgba(15,23,42,.94);box-shadow:0 6px 18px rgba(15,23,42,.28);color:#e2e8f0;}'
         + '#pv-view-controls .pv-control-group{display:flex;align-items:center;gap:2px;}#pv-view-controls .pv-control-name{font-size:9px;font-weight:800;color:#94a3b8;margin-right:1px;}#pv-view-controls button{width:22px;height:22px;padding:0;border:1px solid #64748b;border-radius:4px;background:#f8fafc;color:#1e293b;font-size:13px;font-weight:800;line-height:1;cursor:pointer;}#pv-view-controls .label{min-width:34px;font-size:9px;text-align:center;font-weight:800;color:#e2e8f0;}#pv-view-controls .pv-control-divider{width:1px;height:18px;background:#475569;margin:0 2px;}'
         + '#pv-content>.note-cover-page{left:50%;max-width:none!important;margin-left:0!important;margin-right:0!important;transform:translateX(-50%);}'
@@ -363,19 +390,19 @@ function getPreviewPopupDocumentHtml() {
         + '<button class=\"pv-file-button\" type=\"button\" onclick=\"window.opener&&window.opener.choosePreviewPopupFile(\'pdf\')\">PDF 열기</button>'
         + '<button class=\"pv-file-button\" type=\"button\" onclick=\"window.opener&&window.opener.choosePreviewPopupFile(\'pptx\')\">PPTX 열기</button>'
         + '<span class=\"pv-divider pv-edit-action\"></span>'
-        + '<button id=\"pv-mode-toggle\" class=\"pv-primary-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.previewPopupToggleEditor()\">MD 편집</button>'
-        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"굵게\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'bold\')\"><b>B</b></button>'
-        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"기울임\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'italic\')\"><i>I</i></button>'
-        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"글머리 기호\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'bullet\')\">•</button>'
-        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"번호 목록\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'ordered\')\">1.</button>'
-        + '<button class=\"pv-edit-action\" type=\"button\" title=\"표 삽입\" onclick=\"window.opener&&window.opener.previewPopupInsertTable()\">표</button>'
-        + '<button class=\"pv-edit-action\" type=\"button\" title=\"메인 이미지 삽입 도구 열기\" onclick=\"window.opener&&window.opener.openPreviewPopupImageInsert()\">[img]</button>'
+        + '<button id=\"pv-mode-toggle\" class=\"pv-primary-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.previewPopupToggleEditor()\">렌더 편집</button>'
+        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"굵게\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'bold\')\"><b>B</b></button>'
+        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"기울임\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'italic\')\"><i>I</i></button>'
+        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"글머리 기호\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'bullet\')\">•</button>'
+        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"번호 목록\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'ordered\')\">1.</button>'
+        + '<button class=\"pv-edit-action\" type=\"button\" title=\"표 삽입\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupInsertTable()\">표</button>'
+        + '<button class=\"pv-edit-action\" type=\"button\" title=\"메인 이미지 삽입 도구 열기\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.openPreviewPopupImageInsert()\">[img]</button>'
         + '<button class=\"pv-send-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.applyPreviewPopupEditsToOriginal()\">원본 노트에 반영</button>'
         + '<button class=\"pv-export-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.previewPopupExport()\">내보내기</button>'
         + '<button class=\"pv-export-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.openPdfMergeWindow()\">PDF 병합</button>'
         + '<span id=\"pv-draft-status\" class=\"pv-edit-action\">원본과 동기화</span>'
         + '<button type=\"button\" style=\"margin-left:auto\" onclick=\"window.close()\">닫기</button>'
-        + '</div><div id=\"pv-viewport\"><div id=\"pv-content\" class=\"markdown-body print-area\"></div><div id=\"pv-editor-shell\"><textarea id=\"pv-editor\" spellcheck=\"false\" aria-label=\"PV Markdown 편집기\" oninput=\"window.opener&&window.opener.previewPopupHandleEditorInput()\" onkeydown=\"window.opener&&window.opener.previewPopupHandleEditorKeydown(event)\"></textarea></div></div>'
+        + '</div><div id=\"pv-viewport\"><div id=\"pv-content\" class=\"markdown-body print-area\" spellcheck=\"true\" oninput=\"window.opener&&window.opener.previewPopupHandleEditorInput(true)\" onkeydown=\"window.opener&&window.opener.previewPopupHandleEditorKeydown(event)\" onkeyup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onmouseup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onclick=\"window.opener&&window.opener.previewPopupHandleRenderedClick(event)\"></div></div>'
         + '<div id=\"pv-view-controls\"><div class=\"pv-control-group\"><span class=\"pv-control-name\">Zoom</span><button type=\"button\" title=\"축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">−</button><span id=\"pv-scale-label\" class=\"label\">100%</span><button type=\"button\" title=\"확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(0.1)\">+</button></div><span class=\"pv-control-divider\"></span><div class=\"pv-control-group\"><span class=\"pv-control-name\">Width</span><button type=\"button\" title=\"너비 축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(-0.1)\">−</button><span id=\"pv-width-label\" class=\"label\">100%</span><button type=\"button\" title=\"너비 확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(0.1)\">+</button></div><span class=\"pv-control-divider\"></span><div class=\"pv-control-group\"><span class=\"pv-control-name\">Font</span><button type=\"button\" title=\"글자 축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(-1)\">−</button><span id=\"pv-font-label\" class=\"label\">16px</span><button type=\"button\" title=\"글자 확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(1)\">+</button></div></div></div>'
         + '<script>window.addEventListener(\"beforeunload\",function(){try{if(window.opener&&typeof window.opener.onPreviewPopupClosed===\"function\"){window.opener.onPreviewPopupClosed();}}catch(e){}});<\/script>'
         + '</body></html>';
@@ -882,12 +909,10 @@ function applyPreviewPopupViewport() {
     if (!isPreviewPopupAlive()) return;
     const doc = previewPopupWindow.document;
     const content = doc.getElementById('pv-content');
-    const editorShell = doc.getElementById('pv-editor-shell');
-    const editor = doc.getElementById('pv-editor');
     const scaleLabel = doc.getElementById('pv-scale-label');
     const widthLabel = doc.getElementById('pv-width-label');
     const fontLabel = doc.getElementById('pv-font-label');
-    if (!content && !editorShell) return;
+    if (!content) return;
 
     const scale = Math.max(0.1, Math.min(3, Number(previewPopupScale) || 1));
     const widthScale = Math.max(0.5, Math.min(2.5, Number(previewPopupWidthScale) || 1));
@@ -908,12 +933,6 @@ function applyPreviewPopupViewport() {
         content.style.fontSize = fs + 'px';
         content.style.setProperty('--md-app-font-size', fs + 'px');
     }
-    if (editorShell) {
-        editorShell.style.zoom = String(scale);
-        editorShell.style.width = widthMm + 'mm';
-        editorShell.style.maxWidth = 'none';
-    }
-    if (editor) editor.style.fontSize = fs + 'px';
     if (scaleLabel) scaleLabel.textContent = Math.round(scale * 100) + '%';
     if (widthLabel) widthLabel.textContent = Math.round(widthScale * 100) + '%';
     if (fontLabel) fontLabel.textContent = fs + 'px';
@@ -952,7 +971,186 @@ function getPreviewPopupSourceMarkdown() {
 
 function getPreviewPopupEditorElement() {
     if (!isPreviewPopupAlive()) return null;
-    return previewPopupWindow.document.getElementById('pv-editor');
+    return previewPopupWindow.document.getElementById('pv-content');
+}
+
+function previewPopupMarkdownText(value) {
+    return String(value || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[\t\r\n ]+/g, ' ')
+        .replace(/([\\`*_[\]~])/g, '\\$1');
+}
+
+function previewPopupMathToMarkdown(node) {
+    if (!node || node.nodeType !== 1) return '';
+    const annotation = node.querySelector && node.querySelector('annotation[encoding="application/x-tex"]');
+    const source = String(annotation ? annotation.textContent : node.getAttribute('data-math-source') || '').trim();
+    if (!source) return '';
+    const display = node.getAttribute('display') === 'true'
+        || node.classList.contains('katex-display')
+        || !!node.closest('.katex-display');
+    return display ? '$$\n' + source + '\n$$' : '$' + source + '$';
+}
+
+function previewPopupInlineHtmlToMarkdown(node) {
+    if (!node) return '';
+    if (node.nodeType === 3) return previewPopupMarkdownText(node.nodeValue || '');
+    if (node.nodeType !== 1) return '';
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'br') return '\n';
+    if (tag === 'mjx-container' || node.classList.contains('katex') || node.classList.contains('katex-display')) {
+        return previewPopupMathToMarkdown(node);
+    }
+    if (tag === 'img') {
+        const internalId = String(node.getAttribute('data-internal-id') || '').trim();
+        const src = internalId ? 'internal://' + internalId : String(node.getAttribute('src') || '').trim();
+        const alt = String(node.getAttribute('alt') || 'image').replace(/[\[\]]/g, '');
+        const title = String(node.getAttribute('title') || '').trim();
+        return src ? '![' + alt + '](' + src + (title ? ' "' + title.replace(/"/g, '\\"') + '"' : '') + ')' : '';
+    }
+    const content = Array.prototype.map.call(node.childNodes, previewPopupInlineHtmlToMarkdown).join('');
+    if (tag === 'strong' || tag === 'b') return content.trim() ? '**' + content.trim() + '**' : '';
+    if (tag === 'em' || tag === 'i') return content.trim() ? '*' + content.trim() + '*' : '';
+    if (tag === 'del' || tag === 's' || tag === 'strike') return content.trim() ? '~~' + content.trim() + '~~' : '';
+    if (tag === 'code' && (!node.parentElement || node.parentElement.tagName !== 'PRE')) {
+        return '`' + String(node.textContent || '').replace(/`/g, '\\`') + '`';
+    }
+    if (tag === 'a') {
+        const href = String(node.getAttribute('href') || '').trim();
+        const label = content.trim() || href;
+        return !href || label === href ? label : '[' + label + '](' + href + ')';
+    }
+    if (tag === 'sup' || tag === 'sub' || tag === 'mark') return '<' + tag + '>' + content + '</' + tag + '>';
+    if (tag === 'span' && node.hasAttribute('style')) {
+        return '<span style="' + escapePreviewAttribute(node.getAttribute('style') || '') + '">' + content + '</span>';
+    }
+    return content;
+}
+
+function previewPopupListHtmlToMarkdown(node, depth) {
+    const ordered = node.tagName.toLowerCase() === 'ol';
+    let number = Number.parseInt(node.getAttribute('start'), 10) || 1;
+    return Array.prototype.map.call(node.children, function (item) {
+        if (!item || item.tagName.toLowerCase() !== 'li') return '';
+        const checkbox = item.querySelector(':scope > input[type="checkbox"]');
+        const body = Array.prototype.map.call(item.childNodes, function (child) {
+            if (child.nodeType === 1 && /^(ul|ol)$/i.test(child.tagName)) return '';
+            if (checkbox && child === checkbox) return '';
+            return previewPopupInlineHtmlToMarkdown(child);
+        }).join('').trim();
+        const task = checkbox ? (checkbox.checked ? '[x] ' : '[ ] ') : '';
+        const prefix = ordered ? number++ + '. ' : '- ';
+        const line = '  '.repeat(Math.max(0, depth || 0)) + prefix + task + body;
+        const nested = Array.prototype.map.call(item.children, function (child) {
+            return /^(ul|ol)$/i.test(child.tagName) ? previewPopupListHtmlToMarkdown(child, (depth || 0) + 1) : '';
+        }).filter(Boolean).join('\n');
+        return nested ? line + '\n' + nested : line;
+    }).filter(Boolean).join('\n');
+}
+
+function previewPopupBlockHtmlToMarkdown(node, depth) {
+    if (!node) return '';
+    if (node.nodeType === 3) return previewPopupMarkdownText(node.nodeValue || '').trim();
+    if (node.nodeType !== 1) return '';
+    const tag = node.tagName.toLowerCase();
+    const level = Math.max(0, Number(depth) || 0);
+    if (node.classList.contains('note-cover-page')) return '';
+    if (node.classList.contains('trt-mermaid-wrapper')) {
+        const source = String(node.getAttribute('data-mermaid-original-source') || node.getAttribute('data-mermaid-source') || '').trim();
+        return source ? '```mermaid\n' + source + '\n```' : '';
+    }
+    if (/^h[1-6]$/.test(tag)) return '#'.repeat(Number(tag.slice(1))) + ' ' + previewPopupInlineHtmlToMarkdown(node).trim();
+    if (tag === 'p') return previewPopupInlineHtmlToMarkdown(node).trim();
+    if (tag === 'pre') {
+        const code = node.querySelector(':scope > code');
+        const match = code && String(code.className || '').match(/(?:language|lang)-([^\s]+)/i);
+        const language = match ? match[1] : '';
+        return '```' + language + '\n' + String(code ? code.textContent : node.textContent || '').replace(/\s+$/, '') + '\n```';
+    }
+    if (tag === 'blockquote') {
+        const body = Array.prototype.map.call(node.childNodes, function (child) {
+            return previewPopupBlockHtmlToMarkdown(child, level + 1);
+        }).filter(Boolean).join('\n\n');
+        return body.split('\n').map(function (line) { return line ? '> ' + line : '>'; }).join('\n');
+    }
+    if (tag === 'hr') return '---';
+    if (tag === 'ul' || tag === 'ol') return previewPopupListHtmlToMarkdown(node, level);
+    if (tag === 'table') {
+        const rows = Array.prototype.map.call(node.querySelectorAll('tr'), function (row) {
+            return Array.prototype.map.call(row.querySelectorAll(':scope > th, :scope > td'), function (cell) {
+                return previewPopupInlineHtmlToMarkdown(cell).trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+            });
+        }).filter(function (row) { return row.length; });
+        if (!rows.length) return '';
+        const width = Math.max.apply(Math, rows.map(function (row) { return row.length; }));
+        const normalized = rows.map(function (row) {
+            return row.concat(Array(Math.max(0, width - row.length)).fill(''));
+        });
+        const output = ['| ' + normalized[0].join(' | ') + ' |'];
+        output.push('| ' + normalized[0].map(function () { return '---'; }).join(' | ') + ' |');
+        normalized.slice(1).forEach(function (row) { output.push('| ' + row.join(' | ') + ' |'); });
+        return output.join('\n');
+    }
+    if (tag === 'div' && node.classList.contains('page-break')) return '<div class="page-break"></div>';
+    if (tag === 'div' || tag === 'section' || tag === 'article' || tag === 'main' || tag === 'figure') {
+        return Array.prototype.map.call(node.childNodes, function (child) {
+            return previewPopupBlockHtmlToMarkdown(child, level + 1);
+        }).filter(Boolean).join('\n\n');
+    }
+    return previewPopupInlineHtmlToMarkdown(node).trim();
+}
+
+function previewPopupRenderedHtmlToMarkdown(root, previousMarkdown) {
+    if (!root) return '';
+    const body = Array.prototype.map.call(root.childNodes, function (node) {
+        return previewPopupBlockHtmlToMarkdown(node, 0);
+    }).filter(Boolean).join('\n\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    const previous = String(previousMarkdown || '');
+    const frontmatterMatch = previous.match(/^---\s*\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/);
+    const frontmatter = frontmatterMatch && /(^|\n)\s*[\w-]+\s*:/.test(frontmatterMatch[1]) ? frontmatterMatch[0].trim() : '';
+    const coverComments = previous.match(/<!--\s*note-cover\b[\s\S]*?-->/gi) || [];
+    return [frontmatter].concat(coverComments).concat(body ? [body] : []).filter(Boolean).join('\n\n') + (body || frontmatter || coverComments.length ? '\n' : '');
+}
+
+function protectPreviewPopupRenderedWidgets() {
+    const editor = getPreviewPopupEditorElement();
+    if (!editor) return;
+    editor.querySelectorAll('.note-cover-page,.trt-mermaid-wrapper,mjx-container,.katex,.katex-display,iframe,object,embed,video,audio,canvas').forEach(function (node) {
+        node.setAttribute('contenteditable', 'false');
+        node.classList.add('pv-render-locked');
+    });
+}
+
+function rememberPreviewPopupRenderedSelection() {
+    if (!previewPopupEditMode || !isPreviewPopupAlive()) return false;
+    const editor = getPreviewPopupEditorElement();
+    const selection = previewPopupWindow.getSelection && previewPopupWindow.getSelection();
+    if (!editor || !selection || !selection.rangeCount) return false;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return false;
+    previewPopupRenderedSelectionRange = range.cloneRange();
+    return true;
+}
+
+function restorePreviewPopupRenderedSelection() {
+    if (!previewPopupRenderedSelectionRange || !isPreviewPopupAlive()) return false;
+    const selection = previewPopupWindow.getSelection && previewPopupWindow.getSelection();
+    if (!selection) return false;
+    try {
+        selection.removeAllRanges();
+        selection.addRange(previewPopupRenderedSelectionRange);
+        return true;
+    } catch (_) {
+        previewPopupRenderedSelectionRange = null;
+        return false;
+    }
+}
+
+function previewPopupHandleRenderedClick(event) {
+    if (!previewPopupEditMode || !event || !event.target) return;
+    const link = event.target.closest && event.target.closest('a[href]');
+    if (link) event.preventDefault();
+    rememberPreviewPopupRenderedSelection();
 }
 
 function syncPreviewPopupEditorUi() {
@@ -963,12 +1161,23 @@ function syncPreviewPopupEditorUi() {
     doc.body.classList.toggle('pv-file-mode', !!previewPopupFileMode);
     const toggle = doc.getElementById('pv-mode-toggle');
     const status = doc.getElementById('pv-draft-status');
+    const editor = getPreviewPopupEditorElement();
+    if (editor) {
+        if (previewPopupEditMode && !previewPopupFileMode) {
+            editor.setAttribute('contenteditable', 'true');
+            editor.setAttribute('aria-label', 'PV 렌더링 문서 편집기');
+            protectPreviewPopupRenderedWidgets();
+        } else {
+            editor.removeAttribute('contenteditable');
+            editor.removeAttribute('aria-label');
+        }
+    }
     if (toggle) {
-        toggle.textContent = previewPopupEditMode ? '렌더 보기' : 'MD 편집';
-        toggle.title = previewPopupEditMode ? '편집한 Markdown을 PV에서 렌더링' : '원본 Markdown을 PV에서 편집';
+        toggle.textContent = previewPopupEditMode ? '편집 종료' : '렌더 편집';
+        toggle.title = previewPopupEditMode ? '렌더 편집을 마치고 결과 확인' : '렌더링된 문서를 직접 편집';
     }
     if (status) {
-        status.textContent = previewPopupDraftDirty ? 'PV 초안 편집 중' : '원본과 동기화';
+        status.textContent = previewPopupDraftDirty ? '렌더 초안 편집 중' : '원본과 동기화';
         status.classList.toggle('is-dirty', !!previewPopupDraftDirty);
     }
     const editOnlyButtons = doc.querySelectorAll('.pv-format-button,#pv-toolbar button[title="표 삽입"],#pv-toolbar button[title="메인 이미지 삽입 도구 열기"]');
@@ -987,29 +1196,42 @@ function previewPopupToggleEditor() {
             previewPopupDraftMarkdown = source;
             previewPopupDraftBaseMarkdown = source;
         }
-        editor.value = previewPopupDraftMarkdown;
+        previewPopupRenderedDomChanged = false;
         previewPopupEditMode = true;
         applyPreviewPopupViewport();
         syncPreviewPopupEditorUi();
         try {
             editor.focus();
-            const caret = Math.max(0, Math.min(editor.value.length, Number(editor.selectionStart) || 0));
-            editor.setSelectionRange(caret, caret);
+            const selection = previewPopupWindow.getSelection();
+            const range = previewPopupWindow.document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            previewPopupRenderedSelectionRange = range.cloneRange();
         } catch (_) {}
         return true;
     }
     previewPopupHandleEditorInput();
     previewPopupEditMode = false;
+    previewPopupRenderedDomChanged = false;
     syncPreviewPopupEditorUi();
     updatePreviewPopupContent();
     return true;
 }
 
-function previewPopupHandleEditorInput() {
+function previewPopupHandleEditorInput(domChanged) {
     const editor = getPreviewPopupEditorElement();
     if (!editor) return false;
-    previewPopupDraftMarkdown = String(editor.value || '');
+    if (domChanged === true) previewPopupRenderedDomChanged = true;
+    if (!previewPopupRenderedDomChanged) {
+        syncPreviewPopupEditorUi();
+        return true;
+    }
+    const previous = previewPopupDraftMarkdown || previewPopupDraftBaseMarkdown || getPreviewPopupSourceMarkdown();
+    previewPopupDraftMarkdown = previewPopupRenderedHtmlToMarkdown(editor, previous);
     previewPopupDraftDirty = previewPopupDraftMarkdown !== previewPopupDraftBaseMarkdown;
+    rememberPreviewPopupRenderedSelection();
     syncPreviewPopupEditorUi();
     return true;
 }
@@ -1018,16 +1240,11 @@ function replacePreviewPopupEditorSelection(replacement, selectionStartOffset, s
     if (!previewPopupEditMode) previewPopupToggleEditor();
     const editor = getPreviewPopupEditorElement();
     if (!editor) return false;
-    const start = Math.max(0, Number(editor.selectionStart) || 0);
-    const end = Math.max(start, Number(editor.selectionEnd) || start);
-    const value = String(editor.value || '');
-    const next = String(replacement == null ? '' : replacement);
-    editor.value = value.slice(0, start) + next + value.slice(end);
-    const nextStart = start + (Number.isFinite(selectionStartOffset) ? selectionStartOffset : next.length);
-    const nextEnd = start + (Number.isFinite(selectionEndOffset) ? selectionEndOffset : next.length);
     editor.focus();
-    editor.setSelectionRange(Math.max(0, nextStart), Math.max(0, nextEnd));
-    previewPopupHandleEditorInput();
+    restorePreviewPopupRenderedSelection();
+    previewPopupWindow.document.execCommand('insertText', false, String(replacement == null ? '' : replacement));
+    rememberPreviewPopupRenderedSelection();
+    previewPopupHandleEditorInput(true);
     return true;
 }
 
@@ -1036,27 +1253,17 @@ function previewPopupFormat(type) {
     const editor = getPreviewPopupEditorElement();
     if (!editor) return false;
     const action = String(type || '');
-    const start = Math.max(0, Number(editor.selectionStart) || 0);
-    const end = Math.max(start, Number(editor.selectionEnd) || start);
-    const value = String(editor.value || '');
-    const selected = value.slice(start, end);
-    if (action === 'bold' || action === 'italic') {
-        const marker = action === 'bold' ? '**' : '*';
-        const placeholder = action === 'bold' ? '굵은 글씨' : '기울임 글씨';
-        const body = selected || placeholder;
-        return replacePreviewPopupEditorSelection(marker + body + marker, marker.length, marker.length + body.length);
-    }
-    if (action !== 'bullet' && action !== 'ordered') return false;
-    const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
-    let lineEnd = value.indexOf('\n', end);
-    if (lineEnd < 0) lineEnd = value.length;
-    const lines = value.slice(lineStart, lineEnd).split('\n');
-    const replacement = lines.map(function (line, index) {
-        const body = line.replace(/^\s*(?:[-+*]|\d+[.)])\s+/, '');
-        return action === 'bullet' ? '- ' + body : String(index + 1) + '. ' + body;
-    }).join('\n');
-    editor.setSelectionRange(lineStart, lineEnd);
-    return replacePreviewPopupEditorSelection(replacement, 0, replacement.length);
+    const command = action === 'bold' ? 'bold'
+        : action === 'italic' ? 'italic'
+            : action === 'bullet' ? 'insertUnorderedList'
+                : action === 'ordered' ? 'insertOrderedList' : '';
+    if (!command) return false;
+    editor.focus();
+    restorePreviewPopupRenderedSelection();
+    const changed = previewPopupWindow.document.execCommand(command, false, null);
+    rememberPreviewPopupRenderedSelection();
+    previewPopupHandleEditorInput(true);
+    return !!changed;
 }
 
 function previewPopupInsertTable() {
@@ -1068,13 +1275,19 @@ function previewPopupInsertTable() {
     if (colsInput === null) return false;
     const rows = Math.max(1, Math.min(20, Number.parseInt(rowsInput, 10) || 2));
     const cols = Math.max(1, Math.min(12, Number.parseInt(colsInput, 10) || 3));
-    const header = '| ' + Array.from({ length: cols }, function (_, i) { return '열 ' + (i + 1); }).join(' | ') + ' |';
-    const divider = '| ' + Array.from({ length: cols }, function () { return '---'; }).join(' | ') + ' |';
+    const header = '<tr>' + Array.from({ length: cols }, function (_, i) { return '<th>열 ' + (i + 1) + '</th>'; }).join('') + '</tr>';
     const body = Array.from({ length: rows }, function () {
-        return '| ' + Array.from({ length: cols }, function () { return ' '; }).join(' | ') + ' |';
-    });
-    const table = '\n' + [header, divider].concat(body).join('\n') + '\n';
-    return replacePreviewPopupEditorSelection(table, 1, 1 + header.length);
+        return '<tr>' + Array.from({ length: cols }, function () { return '<td><br></td>'; }).join('') + '</tr>';
+    }).join('');
+    const table = '<table><thead>' + header + '</thead><tbody>' + body + '</tbody></table><p><br></p>';
+    const editor = getPreviewPopupEditorElement();
+    if (!editor) return false;
+    editor.focus();
+    restorePreviewPopupRenderedSelection();
+    const inserted = previewPopupWindow.document.execCommand('insertHTML', false, table);
+    rememberPreviewPopupRenderedSelection();
+    previewPopupHandleEditorInput(true);
+    return !!inserted;
 }
 
 function previewPopupHandleEditorKeydown(event) {
@@ -1094,6 +1307,7 @@ function previewPopupHandleEditorKeydown(event) {
 function openPreviewPopupImageInsert() {
     if (!isPreviewPopupAlive() || previewPopupFileMode) return false;
     if (!previewPopupEditMode) previewPopupToggleEditor();
+    rememberPreviewPopupRenderedSelection();
     previewPopupImageInsertTarget = true;
     if (typeof openImageInsertModal === 'function') {
         openImageInsertModal();
@@ -1117,14 +1331,18 @@ function insertImageIntoPreviewPopupEditor(imageUrl, altText, type) {
     const source = String(imageUrl || '').trim();
     if (!source) return false;
     const alt = String(altText || 'image').trim().replace(/[\[\]]/g, '') || 'image';
-    const insertion = type === 'html'
-        ? '<img src="' + source.replace(/"/g, '&quot;') + '" alt="' + alt.replace(/"/g, '&quot;') + '" border="0" />'
-        : '![' + alt + '](' + source + ')';
-    const inserted = replacePreviewPopupEditorSelection(insertion, insertion.length, insertion.length);
+    const insertion = '<img src="' + source.replace(/"/g, '&quot;') + '" alt="' + alt.replace(/"/g, '&quot;') + '" border="0" />';
+    const editor = getPreviewPopupEditorElement();
+    if (!editor) return false;
+    editor.focus();
+    restorePreviewPopupRenderedSelection();
+    const inserted = previewPopupWindow.document.execCommand('insertHTML', false, insertion);
+    rememberPreviewPopupRenderedSelection();
+    previewPopupHandleEditorInput(true);
     previewPopupImageInsertTarget = false;
     if (inserted) {
         try { previewPopupWindow.focus(); } catch (_) {}
-        showToast('PV Markdown 초안에 이미지를 삽입했습니다.');
+        showToast('PV 렌더 초안에 이미지를 삽입했습니다.');
     }
     return inserted;
 }
@@ -1137,8 +1355,7 @@ async function applyPreviewPopupEditsToOriginal(options) {
     if (!previewPopupDraftDirty) {
         previewPopupDraftMarkdown = currentSource;
         previewPopupDraftBaseMarkdown = currentSource;
-        const editor = getPreviewPopupEditorElement();
-        if (editor && previewPopupEditMode) editor.value = currentSource;
+        previewPopupRenderedDomChanged = false;
         syncPreviewPopupEditorUi();
         if (!opts.silent) showToast('PV 초안과 원본 노트가 이미 같습니다.');
         return true;
@@ -1151,12 +1368,14 @@ async function applyPreviewPopupEditsToOriginal(options) {
     if (draft === currentSource) {
         previewPopupDraftBaseMarkdown = draft;
         previewPopupDraftDirty = false;
+        previewPopupRenderedDomChanged = false;
         syncPreviewPopupEditorUi();
         if (!opts.silent) showToast('PV 초안과 원본 노트가 이미 같습니다.');
         return true;
     }
     previewPopupDraftBaseMarkdown = draft;
     previewPopupDraftDirty = false;
+    previewPopupRenderedDomChanged = false;
     updateContent(draft);
     if (typeof syncRenderSourceRevision === 'function') syncRenderSourceRevision(draft);
     if (typeof performAutoSave === 'function') performAutoSave({ force: true });

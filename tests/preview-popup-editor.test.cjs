@@ -8,7 +8,7 @@ const preview = fs.readFileSync(path.join(root, 'js', 'UI_PV', 'editpv.js'), 'ut
 const imageInsert = fs.readFileSync(path.join(root, 'imageDB', 'image_insert.js'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
-test('PV provides a Markdown editor toggle and compact formatting toolbar', () => {
+test('PV edits the rendered document directly with a compact formatting toolbar', () => {
   assert.match(preview, /id=\\?"pv-mode-toggle\\?"/);
   assert.match(preview, /previewPopupToggleEditor\(\)/);
   assert.match(preview, /previewPopupFormat\(\\?'bold\\?'\)/);
@@ -17,7 +17,21 @@ test('PV provides a Markdown editor toggle and compact formatting toolbar', () =
   assert.match(preview, /previewPopupFormat\(\\?'ordered\\?'\)/);
   assert.match(preview, /previewPopupInsertTable\(\)/);
   assert.match(preview, /openPreviewPopupImageInsert\(\)/);
-  assert.match(preview, /id=\\?"pv-editor\\?"/);
+  assert.match(preview, />렌더 편집<\/button>/);
+  assert.match(preview, /editor\.setAttribute\('contenteditable', 'true'\)/);
+  assert.match(preview, /PV 렌더링 문서 편집기/);
+  assert.match(preview, /previewPopupRenderedHtmlToMarkdown/);
+  assert.match(preview, /document\.execCommand\(command, false, null\)/);
+  assert.doesNotMatch(preview, /id=\\?"pv-editor\\?"/);
+});
+
+test('rendered PV editing converts common rich blocks back to Markdown and protects complex widgets', () => {
+  assert.match(preview, /function previewPopupInlineHtmlToMarkdown/);
+  assert.match(preview, /function previewPopupBlockHtmlToMarkdown/);
+  assert.match(preview, /function previewPopupListHtmlToMarkdown/);
+  assert.match(preview, /data-mermaid-original-source/);
+  assert.match(preview, /data-internal-id/);
+  assert.match(preview, /note-cover-page,.trt-mermaid-wrapper,mjx-container/);
 });
 
 test('PV draft stays separate until it is sent to the original note', () => {
@@ -36,6 +50,13 @@ test('PV export delegates to the same main export entry point', () => {
   assert.match(preview, /typeof exportCurrentDocumentByChoice === 'function'/);
   assert.match(preview, /await exportCurrentDocumentByChoice\(\)/);
   assert.match(preview, /openPdfMergeWindow\(\)/);
+});
+
+test('merged PDF can be sent from the merger window to PV', () => {
+  assert.match(preview, /function openMergedPdfInPreviewPopup\(blob, fileName\)/);
+  assert.match(preview, /new Blob\(\[blob\], \{ type: 'application\/pdf' \}\)/);
+  assert.match(preview, /openFileViewerInPreviewPopup\(previewPopupFileObjectUrl, name\)/);
+  assert.match(preview, /병합 PDF를 PV에서 열었습니다/);
 });
 
 test('main image modal can target the PV editor without requiring main edit mode', () => {
@@ -57,5 +78,5 @@ test('zoom, width, and font controls are compact and fixed to the bottom-right',
 
 test('PV editor scripts use a fresh cache key', () => {
   assert.match(index, /image_insert\.js\?v=20260812-pv-editor-1/);
-  assert.match(index, /editpv\.js\?v=20260812-pv-editor-2/);
+  assert.match(index, /editpv\.js\?v=20260813-pv-render-edit-1/);
 });

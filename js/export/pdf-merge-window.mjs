@@ -4,7 +4,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../../vendor/pdfjs/build/pdf.w
 
 const els = {
   files: document.getElementById('files'), add: document.getElementById('add'), list: document.getElementById('list'),
-  merge: document.getElementById('merge'), save: document.getElementById('save'), close: document.getElementById('close'),
+  merge: document.getElementById('merge'), save: document.getElementById('save'), toPv: document.getElementById('to-pv'), close: document.getElementById('close'),
   preview: document.getElementById('preview'), placeholder: document.getElementById('placeholder'),
   busy: document.getElementById('busy'), status: document.getElementById('status'), quality: document.getElementById('quality')
 };
@@ -28,6 +28,7 @@ function formatSize(bytes) {
 function clearMergedPreview() {
   mergedBlob = null;
   els.save.disabled = true;
+  els.toPv.disabled = true;
   els.placeholder.hidden = false;
   els.preview.replaceChildren();
   previewUrls.forEach(url => URL.revokeObjectURL(url));
@@ -59,6 +60,7 @@ function setBusy(show, message) {
   els.add.disabled = show;
   els.merge.disabled = show || !items.length;
   els.save.disabled = show || !mergedBlob;
+  els.toPv.disabled = show || !mergedBlob;
 }
 
 function renderList() {
@@ -195,6 +197,7 @@ async function mergePdfs() {
     showMergedPreview(previewPages);
     els.placeholder.hidden = true;
     els.save.disabled = false;
+    els.toPv.disabled = false;
     els.status.textContent = items.length + '개 PDF를 순서대로 병합 및 검증 완료 · 총 ' + verifiedPages + '쪽';
   } catch (error) {
     alert('PDF 병합에 실패했습니다.\n' + (error?.message || error));
@@ -209,16 +212,42 @@ function saveMerged() {
   if (!mergedBlob) return;
   const link = document.createElement('a');
   link.href = mergedUrl || URL.createObjectURL(mergedBlob);
-  link.download = 'merged-' + new Date().toISOString().slice(0, 10) + '.pdf';
+  link.download = mergedFileName();
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+function mergedFileName() {
+  return 'merged-' + new Date().toISOString().slice(0, 10) + '.pdf';
+}
+
+function sendMergedToPv() {
+  if (!mergedBlob) return;
+  const parentWindow = window.opener;
+  if (!parentWindow || parentWindow.closed || typeof parentWindow.openMergedPdfInPreviewPopup !== 'function') {
+    alert('PV로 보내려면 MDproViewer의 PDF 병합 메뉴에서 이 창을 열어 주세요.');
+    return;
+  }
+  let opened = false;
+  try {
+    opened = parentWindow.openMergedPdfInPreviewPopup(mergedBlob, mergedFileName()) === true;
+  } catch (error) {
+    alert('병합 PDF를 PV로 보내지 못했습니다.\n' + (error?.message || error));
+    return;
+  }
+  if (!opened) {
+    alert('PV 창을 열지 못했습니다. 팝업 허용 설정을 확인하세요.');
+    return;
+  }
+  els.status.textContent = items.length + '개 PDF 병합 결과를 PV로 보냈습니다.';
 }
 
 els.add.addEventListener('click', () => els.files.click());
 els.files.addEventListener('change', () => { addFiles(els.files.files); els.files.value = ''; });
 els.merge.addEventListener('click', mergePdfs);
 els.save.addEventListener('click', saveMerged);
+els.toPv.addEventListener('click', sendMergedToPv);
 els.close.addEventListener('click', () => window.close());
 window.addEventListener('beforeunload', () => {
   if (mergedUrl) URL.revokeObjectURL(mergedUrl);

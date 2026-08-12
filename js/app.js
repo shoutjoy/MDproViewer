@@ -3754,7 +3754,7 @@ async function chooseExportType() {
 }
 
 function openPdfMergeWindow() {
-    const mergeUrl = new URL('./js/export/pdf-merge-window.html?v=20260812-1', window.location.href);
+    const mergeUrl = new URL('./js/export/pdf-merge-window.html?v=20260813-topv-1', window.location.href);
     const features = 'popup=yes,width=1380,height=900,left=80,top=50,resizable=yes,scrollbars=yes';
     const mergeWindow = window.open(mergeUrl.href, 'mdproviewer_pdf_merge', features);
     if (!mergeWindow) {

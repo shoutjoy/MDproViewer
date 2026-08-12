@@ -111,6 +111,7 @@ test('PDF merger opens in a new window and renders ordered PDF pages before down
   assert.match(app, /choice === 'pdf_merge'/);
   assert.match(mergeHtml, /multiple/);
   assert.match(mergeHtml, /순서대로 병합 및 미리보기/);
+  assert.match(mergeHtml, /id="to-pv"[\s\S]{0,160}병합 PDF ToPV/);
   assert.match(mergeScript, /pdfjsLib\.getDocument/);
   assert.match(mergeScript, /moveItem\(from, to\)/);
   assert.match(mergeScript, /page\.render/);
@@ -120,4 +121,7 @@ test('PDF merger opens in a new window and renders ordered PDF pages before down
   assert.match(mergeScript, /verifiedPages !== outputPages/);
   assert.match(mergeScript, /function showMergedPreview\(pages\)/);
   assert.match(mergeScript, /병합 PDF ' \+ \(index \+ 1\) \+ '쪽/);
+  assert.match(mergeScript, /function sendMergedToPv\(\)/);
+  assert.match(mergeScript, /parentWindow\.openMergedPdfInPreviewPopup\(mergedBlob, mergedFileName\(\)\)/);
+  assert.match(mergeScript, /els\.toPv\.addEventListener\('click', sendMergedToPv\)/);
 });
