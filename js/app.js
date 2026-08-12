@@ -25,7 +25,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
     docxExport: './js/extendFiles/docx-export.js?v=20260811-note-cover-editor-3',
     htmlExport: './js/export/html-export.js?v=20260805-image-1',
-    pdfExport: './js/export/pdf-export.js?v=20260811-direct-download-2',
+    pdfExport: './js/export/pdf-export.js?v=20260812-edit-merge-1',
     html2canvas: './vendor/html2canvas/html2canvas.min.js?v=1.4.1',
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
     aiAcademicSearch: './AI_App/aiChat/academic-search.js?v=20260729-crossref-1',
@@ -3554,6 +3554,16 @@ function getSaveCandidateFileName() {
         : "document.md";
 }
 
+function getPdfExportDocumentKey() {
+    if (currentDocumentRef && currentDocumentRef.id) {
+        return 'document:' + String(currentDocumentRef.storageMode || 'indb') + ':' + String(currentDocumentRef.id);
+    }
+    if (currentFilePath && String(currentFilePath).trim()) {
+        return 'local-file:' + String(currentFilePath).replace(/\\/g, '/').toLowerCase();
+    }
+    return 'draft:' + getSaveCandidateFileName().toLowerCase();
+}
+
 async function resolveCurrentFilePathForSave() {
     if (currentFilePath && String(currentFilePath).trim()) return currentFilePath;
 
@@ -3671,7 +3681,8 @@ function showExportTypeDialogFallback() {
             { key: 'mdd', label: 'MDD file (bundle)', background: '#6d28d9', border: '#8b5cf6', hover: '#7c3aed', focus: 'rgba(139,92,246,.38)' },
             { key: 'zip', label: 'ZIP file', background: '#b45309', border: '#f59e0b', hover: '#d97706', focus: 'rgba(245,158,11,.38)' },
             { key: 'html', label: 'HTML file', background: '#0f766e', border: '#14b8a6', hover: '#0d9488', focus: 'rgba(20,184,166,.38)' },
-            { key: 'pdf', label: 'PDF file', background: '#a16207', border: '#eab308', hover: '#ca8a04', focus: 'rgba(234,179,8,.42)' }
+            { key: 'pdf', label: 'PDF file', background: '#a16207', border: '#eab308', hover: '#ca8a04', focus: 'rgba(234,179,8,.42)' },
+            { key: 'pdf_merge', label: 'PDF merge', background: '#854d0e', border: '#facc15', hover: '#a16207', focus: 'rgba(250,204,21,.42)' }
         ];
         try {
             if (typeof isGithubExportEnabled === 'function' && isGithubExportEnabled()) {
@@ -3692,7 +3703,7 @@ function showExportTypeDialogFallback() {
         card.appendChild(title);
 
         const desc = document.createElement('p');
-        desc.textContent = 'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: direct-download A4 PDF';
+        desc.textContent = 'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: editable A4 PDF / PDF merge: reorder and merge multiple PDFs';
         desc.style.cssText = 'margin:0 0 14px;font-size:13px;line-height:1.5;color:#cbd5e1;';
         card.appendChild(desc);
 
@@ -3742,9 +3753,22 @@ async function chooseExportType() {
     return await showExportTypeDialogFallback();
 }
 
+function openPdfMergeWindow() {
+    const mergeUrl = new URL('./js/export/pdf-merge-window.html?v=20260812-1', window.location.href);
+    const features = 'popup=yes,width=1380,height=900,left=80,top=50,resizable=yes,scrollbars=yes';
+    const mergeWindow = window.open(mergeUrl.href, 'mdproviewer_pdf_merge', features);
+    if (!mergeWindow) {
+        showToast('PDF 병합 창을 열지 못했습니다. 팝업 허용 설정을 확인하세요.');
+        return false;
+    }
+    try { mergeWindow.focus(); } catch (_) {}
+    return true;
+}
+
 async function exportCurrentDocumentByChoice() {
     const choice = await chooseExportType();
     if (choice === 'cancel') return false;
+    if (choice === 'pdf_merge') return openPdfMergeWindow();
     if (choice === 'github') {
         const ok = await pushCurrentContentToGithub();
         if (ok) markPersistedState();
@@ -3816,7 +3840,9 @@ async function exportCurrentDocumentByChoice() {
         });
         return await window.PdfExport.openPreview({
             html: htmlResult.html,
-            fileName: getSaveCandidateFileName()
+            fileName: getSaveCandidateFileName(),
+            documentKey: getPdfExportDocumentKey(),
+            onOpenMerge: openPdfMergeWindow
         });
     }
     const hasInternalImages = !!(window.ImageDB
@@ -14057,6 +14083,8 @@ window.readFile = readFile;
 window.saveFile = saveFile;
 window.saveCurrentFile = saveCurrentFile;
 window.saveFileAs = saveFileAs;
+window.exportCurrentDocumentByChoice = exportCurrentDocumentByChoice;
+window.openPdfMergeWindow = openPdfMergeWindow;
 window.printPage = printPage;
 window.copyViewFormattedToClipboard = copyViewFormattedToClipboard;
 window.getCurrentDbDocumentId = getCurrentDbDocumentId;

@@ -610,6 +610,9 @@ function closeImageInsertModal() {
     imageInsertDragging = false;
     setImageUploadProgress(0, false);
     if (typeof window.setInputModalImagePanelToggleState === 'function') window.setInputModalImagePanelToggleState();
+    if (typeof window.cancelPreviewPopupImageInsertTarget === 'function') {
+        window.cancelPreviewPopupImageInsertTarget();
+    }
 }
 
 function applyImageInsertPanelLayout() {
@@ -897,10 +900,6 @@ async function deleteSavedInternalImage() {
 }
 
 function insertImageFromModal(type) {
-    if (!isEditMode) {
-        showToast('Use this in edit mode.');
-        return;
-    }
     const urlInput = document.getElementById('img-insert-url');
     const url = String(urlInput && urlInput.value ? urlInput.value : '').trim();
     const source = url || imageInsertCurrentDataUrl;
@@ -909,6 +908,17 @@ function insertImageFromModal(type) {
         return;
     }
     const alt = getImageAltTextFromUrl(source);
+    if (typeof window.isPreviewPopupImageInsertTargetActive === 'function'
+        && window.isPreviewPopupImageInsertTargetActive()
+        && typeof window.insertImageIntoPreviewPopupEditor === 'function') {
+        const inserted = window.insertImageIntoPreviewPopupEditor(source, alt, type);
+        if (inserted) closeImageInsertModal();
+        return;
+    }
+    if (!isEditMode) {
+        showToast('Use this in edit mode.');
+        return;
+    }
     if (type === 'html') insertHtmlImageAtCursor(source, alt);
     else insertMarkdownImageAtCursor(source, alt);
     closeImageInsertModal();
