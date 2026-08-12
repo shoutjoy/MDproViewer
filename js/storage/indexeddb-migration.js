@@ -13,6 +13,7 @@
         scholarSearchVisible: ['features', 'global'], highlightVisible: ['features', 'global'],
         sitesVisible: ['features', 'global'], macroVisible: ['features', 'global'],
         templateVisible: ['features', 'global'], noteCoverInsertVisible: ['features', 'global'],
+        pdfMergeVisible: ['features', 'global'],
         html2pptVisible: ['features', 'global'],
         html2pptNameVisible: ['features', 'global'], fmaViewerVisible: ['features', 'global'],
         fmaViewerNameVisible: ['features', 'global'], googleCalendarEnabled: ['features', 'global'],

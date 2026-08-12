@@ -62,6 +62,7 @@ SAFE_SETTING_RULES: Dict[str, SettingRule] = {
     "macroVisible": _boolean(),
     "templateVisible": _boolean(),
     "noteCoverInsertVisible": _boolean(),
+    "pdfMergeVisible": _boolean(),
     "html2pptVisible": _boolean(),
     "html2pptNameVisible": _boolean(),
     "fmaViewerVisible": _boolean(),

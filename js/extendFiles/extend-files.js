@@ -255,8 +255,7 @@
       { key: 'mdd', label: 'MDD file (bundle)', tone: 'purple' },
       { key: 'zip', label: 'ZIP file', tone: 'amber' },
       { key: 'html', label: 'HTML file', tone: 'teal' },
-      { key: 'pdf', label: 'PDF file', tone: 'yellow' },
-      { key: 'pdf_merge', label: 'PDF merge', tone: 'yellow' }
+      { key: 'pdf', label: 'PDF file', tone: 'yellow' }
     ];
     try {
       if (typeof global.isGithubExportEnabled === 'function' && global.isGithubExportEnabled()) {
@@ -267,7 +266,7 @@
 
     return showChoiceDialog(
       'Export Format',
-      'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: editable A4 PDF / PDF merge: reorder and merge multiple PDFs',
+      'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: editable A4 PDF',
       choices,
       'cancel'
     );

@@ -25,7 +25,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
     docxExport: './js/extendFiles/docx-export.js?v=20260811-note-cover-editor-3',
     htmlExport: './js/export/html-export.js?v=20260805-image-1',
-    pdfExport: './js/export/pdf-export.js?v=20260812-edit-merge-1',
+    pdfExport: './js/export/pdf-export.js?v=20260813-merge-tool-1',
     html2canvas: './vendor/html2canvas/html2canvas.min.js?v=1.4.1',
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
     aiAcademicSearch: './AI_App/aiChat/academic-search.js?v=20260729-crossref-1',
@@ -3681,8 +3681,7 @@ function showExportTypeDialogFallback() {
             { key: 'mdd', label: 'MDD file (bundle)', background: '#6d28d9', border: '#8b5cf6', hover: '#7c3aed', focus: 'rgba(139,92,246,.38)' },
             { key: 'zip', label: 'ZIP file', background: '#b45309', border: '#f59e0b', hover: '#d97706', focus: 'rgba(245,158,11,.38)' },
             { key: 'html', label: 'HTML file', background: '#0f766e', border: '#14b8a6', hover: '#0d9488', focus: 'rgba(20,184,166,.38)' },
-            { key: 'pdf', label: 'PDF file', background: '#a16207', border: '#eab308', hover: '#ca8a04', focus: 'rgba(234,179,8,.42)' },
-            { key: 'pdf_merge', label: 'PDF merge', background: '#854d0e', border: '#facc15', hover: '#a16207', focus: 'rgba(250,204,21,.42)' }
+            { key: 'pdf', label: 'PDF file', background: '#a16207', border: '#eab308', hover: '#ca8a04', focus: 'rgba(234,179,8,.42)' }
         ];
         try {
             if (typeof isGithubExportEnabled === 'function' && isGithubExportEnabled()) {
@@ -3703,7 +3702,7 @@ function showExportTypeDialogFallback() {
         card.appendChild(title);
 
         const desc = document.createElement('p');
-        desc.textContent = 'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: editable A4 PDF / PDF merge: reorder and merge multiple PDFs';
+        desc.textContent = 'MD: text only / DOCX: Microsoft Word / MDD: document + images / ZIP: markdown + images folder / HTML: single HTML document / PDF: editable A4 PDF';
         desc.style.cssText = 'margin:0 0 14px;font-size:13px;line-height:1.5;color:#cbd5e1;';
         card.appendChild(desc);
 
@@ -3765,10 +3764,11 @@ function openPdfMergeWindow() {
     return true;
 }
 
-async function exportCurrentDocumentByChoice() {
-    const choice = await chooseExportType();
+async function exportCurrentDocumentByChoice(requestedChoice) {
+    const allowedChoices = new Set(['md', 'docx', 'mdd', 'zip', 'html', 'pdf', 'github', 'cancel']);
+    const normalizedChoice = typeof requestedChoice === 'string' ? requestedChoice.trim() : '';
+    const choice = allowedChoices.has(normalizedChoice) ? normalizedChoice : await chooseExportType();
     if (choice === 'cancel') return false;
-    if (choice === 'pdf_merge') return openPdfMergeWindow();
     if (choice === 'github') {
         const ok = await pushCurrentContentToGithub();
         if (ok) markPersistedState();
@@ -3842,6 +3842,7 @@ async function exportCurrentDocumentByChoice() {
             html: htmlResult.html,
             fileName: getSaveCandidateFileName(),
             documentKey: getPdfExportDocumentKey(),
+            showMergeButton: getPdfMergeVisibleFromSettings(await getAiSettings()),
             onOpenMerge: openPdfMergeWindow
         });
     }
@@ -8784,6 +8785,27 @@ function getNoteCoverInsertVisibleFromSettings(settings) {
     return settings.noteCoverInsertVisible === true;
 }
 
+function getPdfMergeVisibleFromSettings(settings) {
+    if (!settings) return false;
+    return settings.pdfMergeVisible === true;
+}
+
+function applyPdfMergeVisibility(settings) {
+    const enabled = getPdfMergeVisibleFromSettings(settings || {});
+    const button = document.getElementById('btn-pdf-merge');
+    if (button) button.classList.toggle('hidden', !enabled);
+    const previewButton = document.querySelector('#pdf-export-preview [data-pdf-merge]');
+    if (previewButton) previewButton.classList.toggle('hidden', !enabled);
+    syncHeaderFeatureToolsVisibility();
+}
+
+async function togglePdfMergeVisibilitySection() {
+    const check = document.getElementById('pdf-merge-visible');
+    const enabled = !!(check && check.checked);
+    applyPdfMergeVisibility({ pdfMergeVisible: enabled });
+    try { await setAiSettings({ pdfMergeVisible: enabled }); } catch (e) { console.error(e); }
+}
+
 function applyNoteCoverInsertVisibility(settings) {
     const enabled = getNoteCoverInsertVisibleFromSettings(settings || {});
     const button = document.getElementById('btn-note-cover-insert');
@@ -8934,12 +8956,14 @@ function syncHeaderFeatureToolsVisibility() {
     const wrap = document.getElementById('header-feature-tools-wrap');
     if (!wrap) return;
     const scholarBtn = document.getElementById('btn-scholar-search');
+    const pdfMergeBtn = document.getElementById('btn-pdf-merge');
     const sitesBtn = document.getElementById('btn-sites-panel');
     const templateBtn = document.getElementById('btn-template-panel');
     const scholarEnabled = !!(scholarBtn && !scholarBtn.classList.contains('hidden'));
+    const pdfMergeEnabled = !!(pdfMergeBtn && !pdfMergeBtn.classList.contains('hidden'));
     const sitesEnabled = !!(sitesBtn && !sitesBtn.classList.contains('hidden'));
     const templateEnabled = !!(templateBtn && !templateBtn.classList.contains('hidden'));
-    if (scholarEnabled || sitesEnabled || templateEnabled) {
+    if (scholarEnabled || pdfMergeEnabled || sitesEnabled || templateEnabled) {
         wrap.classList.remove('hidden');
         wrap.classList.add('flex');
         wrap.style.display = 'flex';
@@ -10392,6 +10416,8 @@ async function persistAiSettingsFromModal() {
     const templateVisible = !!(templateVisibleEl && templateVisibleEl.checked);
     const noteCoverInsertVisibleEl = document.getElementById('note-cover-insert-visible');
     const noteCoverInsertVisible = !!(noteCoverInsertVisibleEl && noteCoverInsertVisibleEl.checked);
+    const pdfMergeVisibleEl = document.getElementById('pdf-merge-visible');
+    const pdfMergeVisible = !!(pdfMergeVisibleEl && pdfMergeVisibleEl.checked);
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
@@ -10420,6 +10446,7 @@ async function persistAiSettingsFromModal() {
         macroVisible: macroVisible,
         templateVisible: templateVisible,
         noteCoverInsertVisible: noteCoverInsertVisible,
+        pdfMergeVisible: pdfMergeVisible,
         templateCustomList: normalizeTemplateCustomList(templateCustomList).map(function (item) {
             return { id: item.id, name: item.name, desc: item.desc, content: item.content };
         }),
@@ -13328,6 +13355,8 @@ async function loadAiSettingsToUI() {
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
         const noteCoverInsertCheckEmpty = document.getElementById('note-cover-insert-visible');
         if (noteCoverInsertCheckEmpty) noteCoverInsertCheckEmpty.checked = false;
+        const pdfMergeCheckEmpty = document.getElementById('pdf-merge-visible');
+        if (pdfMergeCheckEmpty) pdfMergeCheckEmpty.checked = false;
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
         if (html2pptCheckEmpty) html2pptCheckEmpty.checked = true;
         const html2pptNameCheckEmpty = document.getElementById('html2ppt-name-visible');
@@ -13391,6 +13420,7 @@ async function loadAiSettingsToUI() {
         applyMacroVisibility({ macroVisible: false });
         applyTemplateVisibility({ templateVisible: false });
         applyNoteCoverInsertVisibility({ noteCoverInsertVisible: false });
+        applyPdfMergeVisibility({ pdfMergeVisible: false });
         applyHtml2pptVisibility({ html2pptVisible: true, html2pptNameVisible: false });
         applyFmaViewerVisibility({ fmaViewerVisible: true, fmaViewerNameVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
@@ -13434,6 +13464,8 @@ async function loadAiSettingsToUI() {
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
     const noteCoverInsertCheck = document.getElementById('note-cover-insert-visible');
     if (noteCoverInsertCheck) noteCoverInsertCheck.checked = settings.noteCoverInsertVisible === true;
+    const pdfMergeCheck = document.getElementById('pdf-merge-visible');
+    if (pdfMergeCheck) pdfMergeCheck.checked = settings.pdfMergeVisible === true;
     const html2pptCheck = document.getElementById('html2ppt-visible');
     if (html2pptCheck) html2pptCheck.checked = getHtml2pptVisibleFromSettings(settings);
     const html2pptNameCheck = document.getElementById('html2ppt-name-visible');
@@ -13555,6 +13587,7 @@ async function loadAiSettingsToUI() {
     applyMacroVisibility(settings);
     applyTemplateVisibility(settings);
     applyNoteCoverInsertVisibility(settings);
+    applyPdfMergeVisibility(settings);
     applyHtml2pptVisibility(settings);
     applyFmaViewerVisibility(settings);
     applyAiUseFold(getAiUseFoldedFromLocal());
@@ -13613,6 +13646,7 @@ async function initAiVisibility() {
     applyMacroVisibility(settings || { macroVisible: false });
     applyTemplateVisibility(settings || { templateVisible: false });
     applyNoteCoverInsertVisibility(settings || { noteCoverInsertVisible: false });
+    applyPdfMergeVisibility(settings || { pdfMergeVisible: false });
     applyHtml2pptVisibility(settings || { html2pptVisible: true, html2pptNameVisible: false });
     applyFmaViewerVisibility(settings || { fmaViewerVisible: true, fmaViewerNameVisible: false });
     applyEditToolsVisibilityByMode();

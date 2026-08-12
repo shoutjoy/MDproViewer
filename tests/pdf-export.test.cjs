@@ -99,16 +99,30 @@ test('PDF preview edits selected objects with undo and IndexedDB persistence', (
   assert.match(source, /previous\.objectEdits/);
 });
 
-test('PDF merger opens in a new window and renders ordered PDF pages before download', () => {
+test('PDF merger is removed from export choices and exposed as a persisted optional menu tool', () => {
   const app = read('js/app.js');
   const extendFiles = read('js/extendFiles/extend-files.js');
+  const preview = read('js/UI_PV/editpv.js');
+  const index = read('index.html');
+  const migration = read('js/storage/indexeddb-migration.js');
+  const wasmPolicy = read('Local_SQLiteWASM/settings-policy.js');
+  const pythonPolicy = read('LocalSave_sqlite/server/settings_policy.py');
   const mergeHtml = read('js/export/pdf-merge-window.html');
   const mergeScript = read('js/export/pdf-merge-window.mjs');
-  assert.match(app, /key:\s*'pdf_merge'/);
-  assert.match(extendFiles, /key:\s*'pdf_merge'/);
+  assert.doesNotMatch(app, /key:\s*'pdf_merge'/);
+  assert.doesNotMatch(extendFiles, /key:\s*'pdf_merge'/);
+  assert.doesNotMatch(preview, /key:\s*'pdf_merge'/);
   assert.match(app, /function openPdfMergeWindow\(\)/);
   assert.match(app, /pdf-merge-window\.html/);
-  assert.match(app, /choice === 'pdf_merge'/);
+  assert.doesNotMatch(app, /choice === 'pdf_merge'/);
+  assert.match(index, /id="pdf-merge-visible"/);
+  assert.match(index, /id="btn-pdf-merge"/);
+  assert.match(app, /function applyPdfMergeVisibility\(settings\)/);
+  assert.match(app, /setAiSettings\(\{ pdfMergeVisible: enabled \}\)/);
+  assert.match(app, /showMergeButton:\s*getPdfMergeVisibleFromSettings/);
+  assert.match(migration, /pdfMergeVisible: \['features', 'global'\]/);
+  assert.match(wasmPolicy, /pdfMergeVisible: \['features', 'global', \['boolean'\], 16\]/);
+  assert.match(pythonPolicy, /"pdfMergeVisible": _boolean\(\)/);
   assert.match(mergeHtml, /multiple/);
   assert.match(mergeHtml, /순서대로 병합 및 미리보기/);
   assert.match(mergeHtml, /id="to-pv"[\s\S]{0,160}병합 PDF ToPV/);

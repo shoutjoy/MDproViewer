@@ -399,7 +399,6 @@ function getPreviewPopupDocumentHtml() {
         + '<button class=\"pv-edit-action\" type=\"button\" title=\"메인 이미지 삽입 도구 열기\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.openPreviewPopupImageInsert()\">[img]</button>'
         + '<button class=\"pv-send-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.applyPreviewPopupEditsToOriginal()\">원본 노트에 반영</button>'
         + '<button class=\"pv-export-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.previewPopupExport()\">내보내기</button>'
-        + '<button class=\"pv-export-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.openPdfMergeWindow()\">PDF 병합</button>'
         + '<span id=\"pv-draft-status\" class=\"pv-edit-action\">원본과 동기화</span>'
         + '<button type=\"button\" style=\"margin-left:auto\" onclick=\"window.close()\">닫기</button>'
         + '</div><div id=\"pv-viewport\"><div id=\"pv-content\" class=\"markdown-body print-area\" spellcheck=\"true\" oninput=\"window.opener&&window.opener.previewPopupHandleEditorInput(true)\" onkeydown=\"window.opener&&window.opener.previewPopupHandleEditorKeydown(event)\" onkeyup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onmouseup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onclick=\"window.opener&&window.opener.previewPopupHandleRenderedClick(event)\"></div></div>'
@@ -1387,15 +1386,114 @@ async function applyPreviewPopupEditsToOriginal(options) {
 async function previewPopupExport() {
     if (previewPopupEditMode) previewPopupHandleEditorInput();
     if (previewPopupDraftDirty) {
-        const proceed = window.confirm('PV 편집 내용이 아직 원본 노트에 반영되지 않았습니다.\n원본 노트에 반영한 뒤 내보낼까요?');
+        const confirmWindow = isPreviewPopupAlive() ? previewPopupWindow : window;
+        const proceed = confirmWindow.confirm('PV 편집 내용이 아직 원본 노트에 반영되지 않았습니다.\n원본 노트에 반영한 뒤 내보낼까요?');
         if (!proceed) return false;
         const applied = await applyPreviewPopupEditsToOriginal({ silent: true });
         if (!applied) return false;
     }
+
+    const choice = await choosePreviewPopupExportType();
+    if (!choice || choice === 'cancel') return false;
+
+    // The format picker belongs to the PV document. Once the user has chosen a
+    // format, bring the owner window forward for exports (such as PDF preview)
+    // whose editor is intentionally hosted in the main document.
     try { window.focus(); } catch (_) {}
-    if (typeof exportCurrentDocumentByChoice === 'function') return await exportCurrentDocumentByChoice();
+    if (typeof exportCurrentDocumentByChoice === 'function') return await exportCurrentDocumentByChoice(choice);
     showToast('메인 내보내기 기능을 불러오지 못했습니다.');
     return false;
+}
+
+function choosePreviewPopupExportType() {
+    if (!isPreviewPopupAlive()) return Promise.resolve('cancel');
+
+    return new Promise(function (resolve) {
+        const doc = previewPopupWindow.document;
+        const previous = doc.getElementById('pv-export-choice-overlay');
+        if (previous && previous.parentNode) previous.parentNode.removeChild(previous);
+
+        const choices = [
+            { key: 'md', label: 'MD file', background: '#be185d', border: '#ec4899' },
+            { key: 'docx', label: 'MS Word (.docx)', background: '#1d4ed8', border: '#3b82f6' },
+            { key: 'mdd', label: 'MDD file (bundle)', background: '#6d28d9', border: '#8b5cf6' },
+            { key: 'zip', label: 'ZIP file', background: '#b45309', border: '#f59e0b' },
+            { key: 'html', label: 'HTML file', background: '#0f766e', border: '#14b8a6' },
+            { key: 'pdf', label: 'PDF file', background: '#a16207', border: '#eab308' }
+        ];
+        try {
+            if (typeof isGithubExportEnabled === 'function' && isGithubExportEnabled()) {
+                choices.push({ key: 'github', label: 'GitHub (push)', background: '#15803d', border: '#22c55e' });
+            }
+        } catch (_) {}
+        choices.push({ key: 'cancel', label: 'Cancel', background: '#b91c1c', border: '#ef4444' });
+
+        const overlay = doc.createElement('div');
+        overlay.id = 'pv-export-choice-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-labelledby', 'pv-export-choice-title');
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(15,23,42,.62);display:flex;align-items:flex-start;justify-content:center;padding:72px 16px 16px;box-sizing:border-box;';
+
+        const card = doc.createElement('div');
+        card.style.cssText = 'width:min(620px,96vw);background:#0f172a;color:#e2e8f0;border:1px solid #475569;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5);padding:16px;box-sizing:border-box;';
+
+        const title = doc.createElement('h3');
+        title.id = 'pv-export-choice-title';
+        title.textContent = '내보내기 형식';
+        title.style.cssText = 'margin:0 0 8px;font-size:16px;font-weight:800;color:#f8fafc;';
+        card.appendChild(title);
+
+        const desc = doc.createElement('p');
+        desc.textContent = '형식을 선택하세요. 선택 메뉴는 PV 창 위에 표시되며, PDF 편집 화면은 선택 후 메인 창에서 열립니다.';
+        desc.style.cssText = 'margin:0 0 14px;font-size:12px;line-height:1.5;color:#cbd5e1;';
+        card.appendChild(desc);
+
+        const row = doc.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;';
+        let settled = false;
+
+        function done(key) {
+            if (settled) return;
+            settled = true;
+            doc.removeEventListener('keydown', onKeyDown, true);
+            try { previewPopupWindow.removeEventListener('pagehide', onPageHide); } catch (_) {}
+            if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+            resolve(key || 'cancel');
+        }
+
+        function onKeyDown(event) {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                done('cancel');
+            }
+        }
+
+        function onPageHide() {
+            done('cancel');
+        }
+
+        choices.forEach(function (choice) {
+            const button = doc.createElement('button');
+            button.type = 'button';
+            button.textContent = choice.label;
+            button.dataset.exportChoice = choice.key;
+            button.style.cssText = 'padding:8px 12px;border-radius:8px;border:1px solid ' + choice.border + ';background:' + choice.background + ';color:#fff;font-size:13px;font-weight:750;cursor:pointer;';
+            button.addEventListener('click', function () { done(choice.key); });
+            row.appendChild(button);
+        });
+
+        card.appendChild(row);
+        overlay.appendChild(card);
+        overlay.addEventListener('click', function (event) {
+            if (event.target === overlay) done('cancel');
+        });
+        doc.addEventListener('keydown', onKeyDown, true);
+        try { previewPopupWindow.addEventListener('pagehide', onPageHide, { once: true }); } catch (_) {}
+        doc.body.appendChild(overlay);
+        const firstButton = row.querySelector('button');
+        if (firstButton) firstButton.focus();
+    });
 }
 
 async function updatePreviewPopupContent() {

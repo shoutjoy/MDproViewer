@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const root = path.join(__dirname, '..');
 const preview = fs.readFileSync(path.join(root, 'js', 'UI_PV', 'editpv.js'), 'utf8');
+const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
 const imageInsert = fs.readFileSync(path.join(root, 'imageDB', 'image_insert.js'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
@@ -44,12 +45,19 @@ test('PV draft stays separate until it is sent to the original note', () => {
   assert.match(preview, /performAutoSave\(\{ force: true \}\)/);
 });
 
-test('PV export delegates to the same main export entry point', () => {
+test('PV export chooser is mounted inside the PV window before delegating the chosen format', () => {
   assert.match(preview, /async function previewPopupExport/);
-  assert.match(preview, /previewPopupExport[\s\S]{0,700}window\.focus\(\)/);
+  assert.match(preview, /const choice = await choosePreviewPopupExportType\(\)/);
+  assert.match(preview, /const doc = previewPopupWindow\.document/);
+  assert.match(preview, /overlay\.id = 'pv-export-choice-overlay'/);
+  assert.match(preview, /z-index:2147483647/);
+  assert.match(preview, /doc\.body\.appendChild\(overlay\)/);
+  assert.match(preview, /data\.exportChoice|dataset\.exportChoice/);
   assert.match(preview, /typeof exportCurrentDocumentByChoice === 'function'/);
-  assert.match(preview, /await exportCurrentDocumentByChoice\(\)/);
-  assert.match(preview, /openPdfMergeWindow\(\)/);
+  assert.match(preview, /await exportCurrentDocumentByChoice\(choice\)/);
+  assert.match(app, /async function exportCurrentDocumentByChoice\(requestedChoice\)/);
+  assert.match(app, /allowedChoices\.has\(normalizedChoice\)/);
+  assert.doesNotMatch(preview, /key:\s*'pdf_merge'/);
 });
 
 test('merged PDF can be sent from the merger window to PV', () => {
@@ -78,5 +86,6 @@ test('zoom, width, and font controls are compact and fixed to the bottom-right',
 
 test('PV editor scripts use a fresh cache key', () => {
   assert.match(index, /image_insert\.js\?v=20260812-pv-editor-1/);
-  assert.match(index, /editpv\.js\?v=20260813-pv-render-edit-1/);
+  assert.match(index, /editpv\.js\?v=20260813-pv-export-modal-2/);
+  assert.match(index, /pvExport=20260813-modal-2/);
 });

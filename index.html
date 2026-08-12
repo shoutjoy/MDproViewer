@@ -440,6 +440,9 @@
 
             <div id="header-feature-tools-wrap" class="hidden items-center gap-1 shrink-0">
                 <div id="scholar-search-header-slot" class="contents"></div>
+                <button type="button" id="btn-pdf-merge" onclick="openPdfMergeWindow()"
+                    class="hidden px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-yellow-100 dark:bg-yellow-950/50 text-yellow-800 dark:text-yellow-200 hover:bg-yellow-200 dark:hover:bg-yellow-900/60 border border-yellow-300 dark:border-yellow-700"
+                    title="여러 PDF 파일 병합">PDF 병합</button>
                 <button type="button" id="btn-sites-panel" onclick="toggleSitesPanel()"
                     class="hidden px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600 border border-slate-300 dark:border-slate-600"
                     title="Sites / Stat">Sites</button>
@@ -2014,6 +2017,11 @@
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span class="text-sm font-medium text-slate-700 dark:text-slate-300">표지삽입 보이기</span>
                                 </label>
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="pdf-merge-visible" onclick="setTimeout(togglePdfMergeVisibilitySection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">PDF 병합 버튼 보이기</span>
+                                </label>
                                 <div class="flex items-center gap-4 flex-wrap">
                                     <span class="min-w-24 text-sm font-medium text-slate-700 dark:text-slate-300">GenSlide</span>
                                     <label class="flex items-center gap-1.5 cursor-pointer select-none">
@@ -2677,7 +2685,7 @@
 
 <!-- 확장 파일 처리 -->
 <script
-    src="./js/extendFiles/extend-files.js?v=20260811-mdd-id-map-1&amp;pdfExport=20260812-edit-merge-1"
+    src="./js/extendFiles/extend-files.js?v=20260811-mdd-id-map-1&amp;pdfExport=20260812-edit-merge-1&amp;pdfMergeTool=20260813-1"
     charset="utf-8"
     defer>
 </script>
@@ -2860,7 +2868,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1"
+    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260813-1&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1"
     charset="utf-8"
     defer>
 </script>
@@ -2906,7 +2914,7 @@
 
 <!-- 편집기·미리보기 연동 -->
 <script
-    src="./js/UI_PV/editpv.js?v=20260813-pv-render-edit-1&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2&amp;pvPrint=20260811-1"
+    src="./js/UI_PV/editpv.js?v=20260813-pv-export-modal-2&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2&amp;pvPrint=20260811-1"
     charset="utf-8"
     defer>
 </script>

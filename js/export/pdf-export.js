@@ -304,7 +304,7 @@
     return Promise.race([Promise.all(waits), new Promise(function (resolve) { global.setTimeout(resolve, 1600); })]);
   }
 
-  function createPreviewShell(fileName, quality) {
+  function createPreviewShell(fileName, quality, showMergeButton) {
     var overlay = global.document.createElement('div');
     overlay.id = PREVIEW_ID;
     overlay.innerHTML =
@@ -319,7 +319,7 @@
         '<button type="button" class="pdf-preview-button" data-pdf-break disabled>선택 앞에서 나누기</button>' +
         '<button type="button" class="pdf-preview-button" data-pdf-join disabled>선택 앞에서 붙이기</button>' +
         '<button type="button" class="pdf-preview-button" data-pdf-reset>수동 나눔 초기화</button>' +
-        '<button type="button" class="pdf-preview-button" data-pdf-merge>PDF 병합</button>' +
+        '<button type="button" class="pdf-preview-button' + (showMergeButton ? '' : ' hidden') + '" data-pdf-merge>PDF 병합</button>' +
         '<button type="button" class="pdf-preview-button pdf-preview-button-primary" data-pdf-download>PDF 파일 저장</button>' +
         '<button type="button" class="pdf-preview-button pdf-preview-button-danger" data-pdf-close>닫기</button>' +
       '</div>' +
@@ -670,7 +670,7 @@
     var parsed = parseSource(payload.html);
     var fileName = sanitizeFileBase(payload.fileName) + '.pdf';
     var quality = readStoredQuality();
-    var overlay = createPreviewShell(fileName, quality);
+    var overlay = createPreviewShell(fileName, quality, payload.showMergeButton === true);
     var units = sourceUnits(parsed.root);
     var documentKey = normalizeDocumentKey(payload.documentKey, payload.fileName || fileName);
 
@@ -911,10 +911,12 @@
       state.editButton.addEventListener('click', openObjectEditor);
       overlay.querySelector('[data-pdf-edit-cancel]').addEventListener('click', closeObjectEditor);
       overlay.querySelector('[data-pdf-edit-apply]').addEventListener('click', applyObjectEditorChange);
-      state.mergeButton.addEventListener('click', function () {
-        if (typeof payload.onOpenMerge === 'function') payload.onOpenMerge();
-        else if (global.PdfMerge && typeof global.PdfMerge.open === 'function') global.PdfMerge.open();
-      });
+      if (state.mergeButton) {
+        state.mergeButton.addEventListener('click', function () {
+          if (typeof payload.onOpenMerge === 'function') payload.onOpenMerge();
+          else if (global.PdfMerge && typeof global.PdfMerge.open === 'function') global.PdfMerge.open();
+        });
+      }
       overlay.querySelector('[data-pdf-reset]').addEventListener('click', function () {
         recordPaginationChange(function () {
           state.manualBreaks.clear();
