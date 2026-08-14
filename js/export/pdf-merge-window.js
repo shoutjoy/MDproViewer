@@ -16,6 +16,9 @@ function loadPdfLibModule() {
 const els = {
   files: document.getElementById('files'), add: document.getElementById('add'), list: document.getElementById('list'),
   dropZone: document.querySelector('.sidebar'),
+  split: document.getElementById('tool-split'), deletePages: document.getElementById('tool-delete-pages'), addPage: document.getElementById('tool-add-page'),
+  insertImage: document.getElementById('tool-insert-image'), fillForm: document.getElementById('tool-fill-form'), signature: document.getElementById('tool-signature'),
+  imageFile: document.getElementById('tool-image-file'), signatureModal: document.getElementById('signature-modal'), signatureCanvas: document.getElementById('signature-canvas'),
   merge: document.getElementById('merge'), save: document.getElementById('save'), toPv: document.getElementById('to-pv'), close: document.getElementById('close'),
   preview: document.getElementById('preview'), placeholder: document.getElementById('placeholder'),
   busy: document.getElementById('busy'), status: document.getElementById('status'), quality: document.getElementById('quality')
@@ -28,6 +31,7 @@ let previewUrls = [];
 let dragId = '';
 let previewRequestId = 0;
 let isBusy = false;
+let selectedItemId = '';
 
 function fileId(file) {
   return [file.name, file.size, file.lastModified, Math.random().toString(16).slice(2)].join(':');
@@ -106,6 +110,18 @@ function setBusy(show, message) {
   els.merge.disabled = show || !items.length;
   els.save.disabled = show || !mergedBlob;
   els.toPv.disabled = show || !mergedBlob;
+  updatePdfToolButtons();
+}
+
+function getSelectedItem() {
+  return items.find(item => item.id === selectedItemId) || items[0] || null;
+}
+
+function updatePdfToolButtons() {
+  const disabled = isBusy || !getSelectedItem();
+  [els.split, els.deletePages, els.addPage, els.insertImage, els.fillForm, els.signature].forEach(button => {
+    if (button) button.disabled = disabled;
+  });
 }
 
 function renderList() {
@@ -119,6 +135,7 @@ function renderList() {
   items.forEach((item, index) => {
     const row = document.createElement('article');
     row.className = 'item cursor-pointer';
+    row.classList.toggle('selected', item.id === (selectedItemId || items[0]?.id));
     row.draggable = true;
     row.dataset.id = item.id;
     row.title = '클릭하면 이 PDF를 미리보기';
@@ -131,9 +148,17 @@ function renderList() {
     row.querySelector('.down').disabled = index === items.length - 1;
     row.querySelector('.up').addEventListener('click', () => moveItem(index, index - 1));
     row.querySelector('.down').addEventListener('click', () => moveItem(index, index + 1));
-    row.querySelector('.remove').addEventListener('click', () => { items.splice(index, 1); clearMergedPreview(); renderList(); });
+    row.querySelector('.remove').addEventListener('click', () => {
+      const removedId = item.id;
+      items.splice(index, 1);
+      if (selectedItemId === removedId) selectedItemId = items[Math.min(index, items.length - 1)]?.id || '';
+      clearMergedPreview();
+      renderList();
+    });
     row.addEventListener('click', function (event) {
       if (event.target.closest('.actions') || event.target.closest('.handle')) return;
+      selectedItemId = item.id;
+      renderList();
       previewPdfItemWithBrowser(index);
     });
     row.addEventListener('dragstart', () => { dragId = item.id; row.classList.add('dragging'); });
@@ -150,6 +175,7 @@ function renderList() {
   const pageText = knownPages ? ' · 확인된 ' + knownPages + '쪽' : '';
   els.status.textContent = items.length ? items.length + '개 PDF 파일 등록 완료' + pageText + ' · 위에서 아래 순서로 병합' : '선택된 PDF 없음';
   els.merge.disabled = isBusy || !items.length;
+  updatePdfToolButtons();
 }
 
 function moveItem(from, to) {
@@ -238,6 +264,7 @@ async function addFiles(fileList) {
     pageCount: null
   }));
   items = items.concat(added);
+  if (!selectedItemId && added.length) selectedItemId = added[0].id;
   clearMergedPreview();
   renderList();
 }
@@ -367,6 +394,183 @@ function previewPdfItemWithBrowser(index) {
   els.status.textContent = item.file.name + ' · 개별 PDF 미리보기';
 }
 
+function downloadPdfBytes(bytes, fileName) {
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function outputName(item, suffix) {
+  const base = String(item?.file?.name || 'document.pdf').replace(/\.pdf$/i, '');
+  return base + '-' + suffix + '.pdf';
+}
+
+function parsePageRanges(text, pageCount) {
+  const selected = new Set();
+  String(text || '').split(',').map(part => part.trim()).filter(Boolean).forEach(part => {
+    if (part.includes('-')) {
+      const [start, end] = part.split('-').map(value => Number.parseInt(value.trim(), 10));
+      if (Number.isFinite(start) && Number.isFinite(end)) {
+        for (let page = Math.min(start, end); page <= Math.max(start, end); page += 1) selected.add(page - 1);
+      }
+    } else {
+      const page = Number.parseInt(part, 10);
+      if (Number.isFinite(page)) selected.add(page - 1);
+    }
+  });
+  return Array.from(selected).filter(index => index >= 0 && index < pageCount).sort((a, b) => a - b);
+}
+
+async function loadSelectedPdfDocument() {
+  const item = getSelectedItem();
+  if (!item) throw new Error('먼저 PDF 파일을 선택하세요.');
+  const pdfLib = await loadPdfLibModule();
+  const bytes = await item.file.arrayBuffer();
+  const document = await pdfLib.PDFDocument.load(bytes);
+  return { item, pdfLib, document };
+}
+
+async function runPdfTool(message, action) {
+  setBusy(true, message);
+  try {
+    await action();
+  } catch (error) {
+    alert('PDF 작업에 실패했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+    els.busy.textContent = 'PDF를 병합하는 중…';
+  }
+}
+
+async function splitSelectedPdf() {
+  await runPdfTool('PDF 페이지를 분할하는 중…', async () => {
+    const { item, pdfLib, document } = await loadSelectedPdfDocument();
+    for (let index = 0; index < document.getPageCount(); index += 1) {
+      const output = await pdfLib.PDFDocument.create();
+      const [page] = await output.copyPages(document, [index]);
+      output.addPage(page);
+      downloadPdfBytes(await output.save(), outputName(item, 'page-' + (index + 1)));
+    }
+    els.status.textContent = item.file.name + ' · ' + document.getPageCount() + '개 페이지 분할 완료';
+  });
+}
+
+async function deleteSelectedPages() {
+  const rangeText = prompt('삭제할 페이지를 입력하세요. 예: 1,3-5');
+  if (rangeText === null) return;
+  await runPdfTool('PDF 페이지를 삭제하는 중…', async () => {
+    const { item, pdfLib, document } = await loadSelectedPdfDocument();
+    const deleteIndices = new Set(parsePageRanges(rangeText, document.getPageCount()));
+    if (!deleteIndices.size) throw new Error('삭제할 페이지 번호가 올바르지 않습니다.');
+    const keepIndices = document.getPageIndices().filter(index => !deleteIndices.has(index));
+    if (!keepIndices.length) throw new Error('모든 페이지를 삭제할 수는 없습니다.');
+    const output = await pdfLib.PDFDocument.create();
+    const pages = await output.copyPages(document, keepIndices);
+    pages.forEach(page => output.addPage(page));
+    downloadPdfBytes(await output.save(), outputName(item, 'pages-deleted'));
+    els.status.textContent = item.file.name + ' · 페이지 삭제 파일 저장 완료';
+  });
+}
+
+async function addPageToSelectedPdf() {
+  const position = String(prompt('빈 페이지 위치를 입력하세요: start 또는 end', 'end') || '').toLowerCase();
+  if (!position) return;
+  if (position !== 'start' && position !== 'end') return alert('start 또는 end를 입력하세요.');
+  const text = prompt('빈 페이지에 넣을 텍스트를 입력하세요. 필요 없으면 비워두세요.', '') ?? '';
+  await runPdfTool('빈 페이지를 추가하는 중…', async () => {
+    const { item, pdfLib, document } = await loadSelectedPdfDocument();
+    const output = await pdfLib.PDFDocument.create();
+    const addBlank = async () => {
+      const page = output.addPage();
+      if (text) {
+        const font = await output.embedFont(pdfLib.StandardFonts.Helvetica);
+        page.drawText(text, { x: 50, y: page.getHeight() - 80, size: 18, font, color: pdfLib.rgb(0, 0, 0) });
+      }
+    };
+    if (position === 'start') await addBlank();
+    const pages = await output.copyPages(document, document.getPageIndices());
+    pages.forEach(page => output.addPage(page));
+    if (position === 'end') await addBlank();
+    downloadPdfBytes(await output.save(), outputName(item, 'page-added'));
+    els.status.textContent = item.file.name + ' · 빈 페이지 추가 파일 저장 완료';
+  });
+}
+
+async function insertImageIntoSelectedPdf(imageFile) {
+  if (!imageFile) return;
+  const pageNumber = Number.parseInt(prompt('이미지를 넣을 페이지 번호', '1') || '1', 10);
+  const x = Number.parseFloat(prompt('X 좌표', '50') || '50');
+  const y = Number.parseFloat(prompt('Y 좌표', '50') || '50');
+  const width = Number.parseFloat(prompt('이미지 너비', '200') || '200');
+  await runPdfTool('PDF에 이미지를 삽입하는 중…', async () => {
+    const { item, document } = await loadSelectedPdfDocument();
+    if (pageNumber < 1 || pageNumber > document.getPageCount()) throw new Error('페이지 번호가 올바르지 않습니다.');
+    const imageBytes = await imageFile.arrayBuffer();
+    const image = imageFile.type === 'image/png' ? await document.embedPng(imageBytes) : await document.embedJpg(imageBytes);
+    const scale = width / image.width;
+    document.getPage(pageNumber - 1).drawImage(image, { x, y, width, height: image.height * scale });
+    downloadPdfBytes(await document.save(), outputName(item, 'image-inserted'));
+    els.status.textContent = item.file.name + ' · 이미지 삽입 파일 저장 완료';
+  });
+}
+
+async function fillSelectedPdfForm() {
+  const jsonText = prompt('폼 필드 값을 JSON으로 입력하세요.', '{"name":"홍길동"}');
+  if (jsonText === null) return;
+  let values;
+  try { values = JSON.parse(jsonText); } catch { return alert('유효한 JSON이 아닙니다.'); }
+  await runPdfTool('PDF 폼을 작성하는 중…', async () => {
+    const { item, document } = await loadSelectedPdfDocument();
+    const form = document.getForm();
+    Object.entries(values).forEach(([name, value]) => {
+      const field = form.getField(name);
+      if (typeof field.setText === 'function') field.setText(String(value));
+      else if (typeof field.select === 'function') field.select(String(value));
+      else if (value && typeof field.check === 'function') field.check();
+      else if (!value && typeof field.uncheck === 'function') field.uncheck();
+    });
+    downloadPdfBytes(await document.save(), outputName(item, 'form-filled'));
+    els.status.textContent = item.file.name + ' · 폼 작성 파일 저장 완료';
+  });
+}
+
+function openSignatureModal() {
+  els.signatureModal.hidden = false;
+  const context = els.signatureCanvas.getContext('2d');
+  context.clearRect(0, 0, els.signatureCanvas.width, els.signatureCanvas.height);
+  context.lineWidth = 2;
+  context.lineCap = 'round';
+  context.strokeStyle = '#000000';
+}
+
+function closeSignatureModal() {
+  els.signatureModal.hidden = true;
+}
+
+async function applySignatureToSelectedPdf() {
+  const pageNumber = Number.parseInt(document.getElementById('signature-page').value || '1', 10);
+  const x = Number.parseFloat(document.getElementById('signature-x').value || '50');
+  const y = Number.parseFloat(document.getElementById('signature-y').value || '50');
+  const width = Number.parseFloat(document.getElementById('signature-width').value || '150');
+  closeSignatureModal();
+  await runPdfTool('PDF에 서명을 추가하는 중…', async () => {
+    const { item, document } = await loadSelectedPdfDocument();
+    if (pageNumber < 1 || pageNumber > document.getPageCount()) throw new Error('페이지 번호가 올바르지 않습니다.');
+    const signatureBlob = await new Promise((resolve, reject) => els.signatureCanvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('서명 이미지를 만들지 못했습니다.')), 'image/png'));
+    const signature = await document.embedPng(await signatureBlob.arrayBuffer());
+    const scale = width / signature.width;
+    document.getPage(pageNumber - 1).drawImage(signature, { x, y, width, height: signature.height * scale });
+    downloadPdfBytes(await document.save(), outputName(item, 'signed'));
+    els.status.textContent = item.file.name + ' · 서명 파일 저장 완료';
+  });
+}
+
 async function mergePdfsWithPdfLib() {
   if (!items.length) return;
   setBusy(true, 'PDF 병합 라이브러리를 불러오는 중…');
@@ -416,6 +620,52 @@ async function handleFileInputSelection(event) {
 }
 els.files.addEventListener('input', handleFileInputSelection);
 els.files.addEventListener('change', handleFileInputSelection);
+els.split.addEventListener('click', splitSelectedPdf);
+els.deletePages.addEventListener('click', deleteSelectedPages);
+els.addPage.addEventListener('click', addPageToSelectedPdf);
+els.insertImage.addEventListener('click', () => els.imageFile.click());
+els.imageFile.addEventListener('change', async event => {
+  const imageFile = event.currentTarget.files?.[0] || null;
+  event.currentTarget.value = '';
+  await insertImageIntoSelectedPdf(imageFile);
+});
+els.fillForm.addEventListener('click', fillSelectedPdfForm);
+els.signature.addEventListener('click', openSignatureModal);
+document.getElementById('signature-clear').addEventListener('click', () => els.signatureCanvas.getContext('2d').clearRect(0, 0, els.signatureCanvas.width, els.signatureCanvas.height));
+document.getElementById('signature-cancel').addEventListener('click', closeSignatureModal);
+document.getElementById('signature-apply').addEventListener('click', applySignatureToSelectedPdf);
+{
+  const canvas = els.signatureCanvas;
+  const context = canvas.getContext('2d');
+  let drawing = false;
+  let lastX = 0;
+  let lastY = 0;
+  const point = event => {
+    const source = event.touches?.[0] || event;
+    const rect = canvas.getBoundingClientRect();
+    return { x: (source.clientX - rect.left) * canvas.width / rect.width, y: (source.clientY - rect.top) * canvas.height / rect.height };
+  };
+  const start = event => { drawing = true; const next = point(event); lastX = next.x; lastY = next.y; };
+  const move = event => {
+    if (!drawing) return;
+    event.preventDefault();
+    const next = point(event);
+    context.beginPath();
+    context.moveTo(lastX, lastY);
+    context.lineTo(next.x, next.y);
+    context.stroke();
+    lastX = next.x;
+    lastY = next.y;
+  };
+  const end = () => { drawing = false; };
+  canvas.addEventListener('mousedown', start);
+  canvas.addEventListener('mousemove', move);
+  canvas.addEventListener('mouseup', end);
+  canvas.addEventListener('mouseleave', end);
+  canvas.addEventListener('touchstart', start, { passive: true });
+  canvas.addEventListener('touchmove', move, { passive: false });
+  canvas.addEventListener('touchend', end);
+}
 function isFileDrag(dataTransfer) {
   if (!dataTransfer) return false;
   if (dataTransfer.files && dataTransfer.files.length) return true;
