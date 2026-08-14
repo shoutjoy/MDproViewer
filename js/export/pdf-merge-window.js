@@ -2,6 +2,7 @@
 const pdfjsLib = null;
 const pdfjsReady = false;
 let pdfLibModulePromise = null;
+let pdfJsModulePromise = null;
 
 function loadPdfLibModule() {
   if (!pdfLibModulePromise) {
@@ -11,6 +12,19 @@ function loadPdfLibModule() {
     });
   }
   return pdfLibModulePromise;
+}
+
+function loadPdfJsModule() {
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs').then(module => {
+      module.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+      return module;
+    }).catch(error => {
+      pdfJsModulePromise = null;
+      throw error;
+    });
+  }
+  return pdfJsModulePromise;
 }
 
 const els = {
@@ -571,6 +585,308 @@ async function applySignatureToSelectedPdf() {
   });
 }
 
+let pageToolState = null;
+let layerEditorState = null;
+
+function closePageToolModal() {
+  document.getElementById('page-tool-modal').hidden = true;
+  pageToolState = null;
+}
+
+function updatePageToolSelectionUi() {
+  if (!pageToolState) return;
+  document.querySelectorAll('#page-grid .page-card').forEach(card => card.classList.toggle('selected', pageToolState.selected.has(Number(card.dataset.index))));
+  document.getElementById('page-selection-status').textContent = pageToolState.selected.size + '개 페이지 선택';
+}
+
+async function renderPageToolThumbnails(item) {
+  try {
+    const pdfJs = await loadPdfJsModule();
+    const pdf = await pdfJs.getDocument({ data: new Uint8Array(await item.file.arrayBuffer()) }).promise;
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+      if (!pageToolState) break;
+      const card = document.querySelector('#page-grid .page-card[data-index="' + (pageNumber - 1) + '"]');
+      if (!card) continue;
+      const page = await pdf.getPage(pageNumber);
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.min(0.36, 118 / base.width);
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+      card.insertBefore(canvas, card.firstChild);
+      page.cleanup();
+    }
+    await pdf.destroy();
+  } catch (error) {
+    console.warn('페이지 썸네일을 렌더링하지 못해 번호 선택 화면을 사용합니다.', error);
+  }
+}
+
+async function openPageToolModal(mode) {
+  const item = getSelectedItem();
+  if (!item) return alert('먼저 PDF 파일을 선택하세요.');
+  setBusy(true, 'PDF 페이지 정보를 불러오는 중…');
+  try {
+    const { pdfLib, document: pdfDocument } = await loadSelectedPdfDocument();
+    const count = pdfDocument.getPageCount();
+    pageToolState = { mode, item, pdfLib, pdfDocument, selected: new Set() };
+    if (mode === 'add' && count) pageToolState.selected.add(0);
+    const titles = { split: '페이지 분할 및 추출', delete: '페이지 선택 삭제', add: '빈 페이지 위치 선택' };
+    document.getElementById('page-tool-title').textContent = titles[mode];
+    document.getElementById('page-tool-batch').hidden = mode !== 'split';
+    document.getElementById('page-tool-apply').textContent = mode === 'split' ? '선택 페이지 하나로 추출' : mode === 'delete' ? '선택 페이지 삭제' : '빈 페이지 추가';
+    document.getElementById('page-add-position-wrap').hidden = mode !== 'add';
+    document.getElementById('page-add-text-wrap').hidden = mode !== 'add';
+    const grid = document.getElementById('page-grid');
+    grid.replaceChildren();
+    for (let index = 0; index < count; index += 1) {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'page-card';
+      card.dataset.index = String(index);
+      card.innerHTML = '<span class="page-number">' + (index + 1) + ' 페이지</span>';
+      card.addEventListener('click', () => {
+        if (!pageToolState) return;
+        if (mode === 'add') pageToolState.selected = new Set([index]);
+        else if (pageToolState.selected.has(index)) pageToolState.selected.delete(index);
+        else pageToolState.selected.add(index);
+        updatePageToolSelectionUi();
+      });
+      grid.appendChild(card);
+    }
+    document.getElementById('page-tool-modal').hidden = false;
+    updatePageToolSelectionUi();
+    renderPageToolThumbnails(item);
+  } catch (error) {
+    alert('페이지 선택 창을 열지 못했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function applyPageTool() {
+  if (!pageToolState) return;
+  const state = pageToolState;
+  const selected = Array.from(state.selected).sort((a, b) => a - b);
+  if (!selected.length) return alert('페이지를 선택하세요.');
+  closePageToolModal();
+  await runPdfTool('선택한 페이지를 처리하는 중…', async () => {
+    if (state.mode === 'split') {
+      const output = await state.pdfLib.PDFDocument.create();
+      const pages = await output.copyPages(state.pdfDocument, selected);
+      pages.forEach(page => output.addPage(page));
+      downloadPdfBytes(await output.save(), outputName(state.item, 'pages-' + selected.map(index => index + 1).join('-')));
+      els.status.textContent = state.item.file.name + ' · 선택한 ' + selected.length + '개 페이지 추출 완료';
+      return;
+    }
+    if (state.mode === 'delete') {
+      const removed = new Set(selected);
+      const keep = state.pdfDocument.getPageIndices().filter(index => !removed.has(index));
+      if (!keep.length) throw new Error('모든 페이지를 삭제할 수는 없습니다.');
+      const output = await state.pdfLib.PDFDocument.create();
+      const pages = await output.copyPages(state.pdfDocument, keep);
+      pages.forEach(page => output.addPage(page));
+      downloadPdfBytes(await output.save(), outputName(state.item, 'pages-deleted'));
+      els.status.textContent = state.item.file.name + ' · 선택 페이지 삭제 완료';
+      return;
+    }
+    const target = selected[0];
+    const position = document.getElementById('page-add-position').value;
+    const text = document.getElementById('page-add-text').value;
+    const output = await state.pdfLib.PDFDocument.create();
+    const copied = await output.copyPages(state.pdfDocument, state.pdfDocument.getPageIndices());
+    const size = state.pdfDocument.getPage(target).getSize();
+    const addBlank = async () => {
+      const page = output.addPage([size.width, size.height]);
+      if (text) {
+        const font = await output.embedFont(state.pdfLib.StandardFonts.Helvetica);
+        page.drawText(text, { x: 50, y: size.height - 80, size: 18, font, color: state.pdfLib.rgb(0, 0, 0) });
+      }
+    };
+    for (let index = 0; index < copied.length; index += 1) {
+      if (index === target && position === 'before') await addBlank();
+      output.addPage(copied[index]);
+      if (index === target && position === 'after') await addBlank();
+    }
+    downloadPdfBytes(await output.save(), outputName(state.item, 'blank-page-added'));
+    els.status.textContent = state.item.file.name + ' · 빈 페이지 추가 완료';
+  });
+}
+
+async function batchSplitAllPages() {
+  if (!pageToolState) return;
+  const state = pageToolState;
+  closePageToolModal();
+  await runPdfTool('전체 페이지를 개별 분할하는 중…', async () => {
+    for (let index = 0; index < state.pdfDocument.getPageCount(); index += 1) {
+      const output = await state.pdfLib.PDFDocument.create();
+      const [page] = await output.copyPages(state.pdfDocument, [index]);
+      output.addPage(page);
+      downloadPdfBytes(await output.save(), outputName(state.item, 'page-' + (index + 1)));
+    }
+    els.status.textContent = state.item.file.name + ' · 전체 페이지 개별 분할 완료';
+  });
+}
+
+function closeLayerEditor() {
+  document.getElementById('layer-editor-modal').hidden = true;
+  if (layerEditorState?.objectUrl) URL.revokeObjectURL(layerEditorState.objectUrl);
+  layerEditorState = null;
+}
+
+async function renderLayerEditorPage(resetLayer) {
+  if (!layerEditorState) return;
+  const pageNumber = Number(document.getElementById('layer-page-select').value || '1');
+  layerEditorState.pageIndex = pageNumber - 1;
+  const page = await layerEditorState.pdfJsDocument.getPage(pageNumber);
+  const base = page.getViewport({ scale: 1 });
+  const scale = Math.min(1.5, 880 / base.width);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.getElementById('layer-page-canvas');
+  canvas.width = Math.ceil(viewport.width);
+  canvas.height = Math.ceil(viewport.height);
+  const stage = document.getElementById('layer-stage');
+  stage.style.width = canvas.width + 'px';
+  stage.style.height = canvas.height + 'px';
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  page.cleanup();
+  if (resetLayer) {
+    const layer = document.getElementById('editable-layer');
+    layer.style.left = Math.max(20, (canvas.width - 220) / 2) + 'px';
+    layer.style.top = Math.max(20, (canvas.height - 90) / 2) + 'px';
+    layer.style.width = '220px';
+    layer.style.height = layerEditorState.type === 'form' ? '54px' : '110px';
+  }
+}
+
+async function openLayerEditor(payload) {
+  const item = getSelectedItem();
+  if (!item) return alert('먼저 PDF 파일을 선택하세요.');
+  setBusy(true, '시각적 PDF 편집기를 준비하는 중…');
+  try {
+    const [pdfLib, pdfJs] = await Promise.all([loadPdfLibModule(), loadPdfJsModule()]);
+    const sourceBytes = new Uint8Array(await item.file.arrayBuffer());
+    const pdfLibDocument = await pdfLib.PDFDocument.load(sourceBytes.slice());
+    const pdfJsDocument = await pdfJs.getDocument({ data: sourceBytes.slice() }).promise;
+    layerEditorState = { item, type: payload.type, imageFile: payload.imageFile || null, dataUrl: payload.dataUrl || '', pdfLib, pdfLibDocument, pdfJsDocument, pageIndex: Math.max(0, payload.pageIndex || 0), objectUrl: '' };
+    document.getElementById('layer-editor-title').textContent = payload.type === 'form' ? '폼 필드 위치 편집' : payload.type === 'signature' ? '서명 이미지 위치 편집' : '이미지 레이어 위치 편집';
+    const pageSelect = document.getElementById('layer-page-select');
+    pageSelect.replaceChildren();
+    for (let index = 0; index < pdfLibDocument.getPageCount(); index += 1) pageSelect.add(new Option((index + 1) + ' 페이지', String(index + 1)));
+    pageSelect.value = String(Math.min(pdfLibDocument.getPageCount(), layerEditorState.pageIndex + 1));
+    const formFields = document.getElementById('layer-form-fields');
+    formFields.hidden = payload.type !== 'form';
+    const layer = document.getElementById('editable-layer');
+    const content = document.getElementById('editable-layer-content');
+    layer.classList.toggle('form-layer', payload.type === 'form');
+    content.replaceChildren();
+    if (payload.type === 'form') content.textContent = document.getElementById('layer-form-value').value || '텍스트 입력 필드';
+    else {
+      const image = document.createElement('img');
+      if (payload.imageFile) {
+        layerEditorState.objectUrl = URL.createObjectURL(payload.imageFile);
+        image.src = layerEditorState.objectUrl;
+      } else image.src = payload.dataUrl;
+      image.alt = payload.type === 'signature' ? '서명 이미지' : '삽입 이미지';
+      content.appendChild(image);
+    }
+    document.getElementById('layer-editor-modal').hidden = false;
+    await renderLayerEditorPage(true);
+  } catch (error) {
+    closeLayerEditor();
+    alert('시각적 PDF 편집기를 열지 못했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function saveLayerEditorResult() {
+  if (!layerEditorState) return;
+  const state = layerEditorState;
+  const layer = document.getElementById('editable-layer');
+  const stage = document.getElementById('layer-stage');
+  const pageIndex = state.pageIndex;
+  const page = state.pdfLibDocument.getPage(pageIndex);
+  const pageSize = page.getSize();
+  const x = layer.offsetLeft * pageSize.width / stage.clientWidth;
+  const width = layer.offsetWidth * pageSize.width / stage.clientWidth;
+  const height = layer.offsetHeight * pageSize.height / stage.clientHeight;
+  const y = pageSize.height - (layer.offsetTop * pageSize.height / stage.clientHeight) - height;
+  closeLayerEditor();
+  await runPdfTool('레이어를 PDF에 적용하는 중…', async () => {
+    if (state.type === 'form') {
+      const form = state.pdfLibDocument.getForm();
+      const requestedName = document.getElementById('layer-form-name').value.trim() || 'field';
+      const fieldName = requestedName + '-' + Date.now();
+      const field = form.createTextField(fieldName);
+      field.setText(document.getElementById('layer-form-value').value || '');
+      field.addToPage(page, { x, y, width, height, borderWidth: 1 });
+    } else {
+      let bytes;
+      let isPng = state.type === 'signature';
+      if (state.imageFile) {
+        bytes = await state.imageFile.arrayBuffer();
+        isPng = state.imageFile.type === 'image/png';
+      } else bytes = await (await fetch(state.dataUrl)).arrayBuffer();
+      const image = isPng ? await state.pdfLibDocument.embedPng(bytes) : await state.pdfLibDocument.embedJpg(bytes);
+      page.drawImage(image, { x, y, width, height });
+    }
+    const suffix = state.type === 'form' ? 'form-added' : state.type === 'signature' ? 'signed' : 'image-inserted';
+    downloadPdfBytes(await state.pdfLibDocument.save(), outputName(state.item, suffix));
+    els.status.textContent = state.item.file.name + ' · 시각적 ' + (state.type === 'form' ? '폼' : state.type === 'signature' ? '서명' : '이미지') + ' 편집 완료';
+  });
+}
+
+function prepareSignatureLayer() {
+  const pageIndex = Math.max(0, Number.parseInt(document.getElementById('signature-page').value || '1', 10) - 1);
+  const dataUrl = els.signatureCanvas.toDataURL('image/png');
+  closeSignatureModal();
+  openLayerEditor({ type: 'signature', dataUrl, pageIndex });
+}
+
+function bindLayerPointerControls() {
+  const layer = document.getElementById('editable-layer');
+  const handle = layer.querySelector('.resize-handle');
+  let action = null;
+  let startX = 0;
+  let startY = 0;
+  let startLeft = 0;
+  let startTop = 0;
+  let startWidth = 0;
+  let startHeight = 0;
+  const begin = (event, type) => {
+    event.preventDefault();
+    action = type;
+    startX = event.clientX;
+    startY = event.clientY;
+    startLeft = layer.offsetLeft;
+    startTop = layer.offsetTop;
+    startWidth = layer.offsetWidth;
+    startHeight = layer.offsetHeight;
+    layer.setPointerCapture(event.pointerId);
+  };
+  layer.addEventListener('pointerdown', event => { if (event.target !== handle) begin(event, 'move'); });
+  handle.addEventListener('pointerdown', event => begin(event, 'resize'));
+  layer.addEventListener('pointermove', event => {
+    if (!action) return;
+    const stage = document.getElementById('layer-stage');
+    const dx = event.clientX - startX;
+    const dy = event.clientY - startY;
+    if (action === 'move') {
+      layer.style.left = Math.max(0, Math.min(stage.clientWidth - layer.offsetWidth, startLeft + dx)) + 'px';
+      layer.style.top = Math.max(0, Math.min(stage.clientHeight - layer.offsetHeight, startTop + dy)) + 'px';
+    } else {
+      layer.style.width = Math.max(30, Math.min(stage.clientWidth - layer.offsetLeft, startWidth + dx)) + 'px';
+      layer.style.height = Math.max(24, Math.min(stage.clientHeight - layer.offsetTop, startHeight + dy)) + 'px';
+    }
+  });
+  const end = () => { action = null; };
+  layer.addEventListener('pointerup', end);
+  layer.addEventListener('pointercancel', end);
+}
+
 async function mergePdfsWithPdfLib() {
   if (!items.length) return;
   setBusy(true, 'PDF 병합 라이브러리를 불러오는 중…');
@@ -620,20 +936,41 @@ async function handleFileInputSelection(event) {
 }
 els.files.addEventListener('input', handleFileInputSelection);
 els.files.addEventListener('change', handleFileInputSelection);
-els.split.addEventListener('click', splitSelectedPdf);
-els.deletePages.addEventListener('click', deleteSelectedPages);
-els.addPage.addEventListener('click', addPageToSelectedPdf);
+els.split.addEventListener('click', () => openPageToolModal('split'));
+els.deletePages.addEventListener('click', () => openPageToolModal('delete'));
+els.addPage.addEventListener('click', () => openPageToolModal('add'));
 els.insertImage.addEventListener('click', () => els.imageFile.click());
 els.imageFile.addEventListener('change', async event => {
   const imageFile = event.currentTarget.files?.[0] || null;
   event.currentTarget.value = '';
-  await insertImageIntoSelectedPdf(imageFile);
+  if (imageFile) await openLayerEditor({ type: 'image', imageFile, pageIndex: 0 });
 });
-els.fillForm.addEventListener('click', fillSelectedPdfForm);
+els.fillForm.addEventListener('click', () => openLayerEditor({ type: 'form', pageIndex: 0 }));
 els.signature.addEventListener('click', openSignatureModal);
 document.getElementById('signature-clear').addEventListener('click', () => els.signatureCanvas.getContext('2d').clearRect(0, 0, els.signatureCanvas.width, els.signatureCanvas.height));
 document.getElementById('signature-cancel').addEventListener('click', closeSignatureModal);
-document.getElementById('signature-apply').addEventListener('click', applySignatureToSelectedPdf);
+document.getElementById('signature-apply').addEventListener('click', prepareSignatureLayer);
+document.getElementById('page-tool-cancel').addEventListener('click', closePageToolModal);
+document.getElementById('page-tool-apply').addEventListener('click', applyPageTool);
+document.getElementById('page-tool-batch').addEventListener('click', batchSplitAllPages);
+document.getElementById('page-select-all').addEventListener('click', () => {
+  if (!pageToolState) return;
+  if (pageToolState.mode === 'add') pageToolState.selected = new Set([0]);
+  else pageToolState.selected = new Set(pageToolState.pdfDocument.getPageIndices());
+  updatePageToolSelectionUi();
+});
+document.getElementById('page-select-none').addEventListener('click', () => {
+  if (!pageToolState) return;
+  pageToolState.selected.clear();
+  updatePageToolSelectionUi();
+});
+document.getElementById('layer-page-select').addEventListener('change', () => renderLayerEditorPage(true));
+document.getElementById('layer-editor-cancel').addEventListener('click', closeLayerEditor);
+document.getElementById('layer-editor-apply').addEventListener('click', saveLayerEditorResult);
+document.getElementById('layer-form-value').addEventListener('input', event => {
+  if (layerEditorState?.type === 'form') document.getElementById('editable-layer-content').textContent = event.currentTarget.value || '텍스트 입력 필드';
+});
+bindLayerPointerControls();
 {
   const canvas = els.signatureCanvas;
   const context = canvas.getContext('2d');
