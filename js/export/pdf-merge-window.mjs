@@ -340,41 +340,45 @@ async function handleFileInputSelection(event) {
 }
 els.files.addEventListener('input', handleFileInputSelection);
 els.files.addEventListener('change', handleFileInputSelection);
-let dropDepth = 0;
-els.dropZone.addEventListener('dragenter', event => {
-  if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
+function isFileDrag(dataTransfer) {
+  if (!dataTransfer) return false;
+  if (dataTransfer.files && dataTransfer.files.length) return true;
+  if (Array.from(dataTransfer.items || []).some(item => item.kind === 'file')) return true;
+  return Array.from(dataTransfer.types || []).some(type => String(type).toLowerCase() === 'files');
+}
+
+document.addEventListener('dragenter', event => {
+  if (!isFileDrag(event.dataTransfer)) return;
   event.preventDefault();
-  dropDepth += 1;
   if (!isBusy) els.dropZone.classList.add('drop-active');
-});
-els.dropZone.addEventListener('dragover', event => {
-  if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
+}, true);
+
+document.addEventListener('dragover', event => {
+  if (!isFileDrag(event.dataTransfer)) return;
   event.preventDefault();
-  event.dataTransfer.dropEffect = isBusy ? 'none' : 'copy';
-});
-els.dropZone.addEventListener('dragleave', () => {
-  dropDepth = Math.max(0, dropDepth - 1);
-  if (!dropDepth) els.dropZone.classList.remove('drop-active');
-});
-els.dropZone.addEventListener('drop', async event => {
+  if (event.dataTransfer) event.dataTransfer.dropEffect = isBusy ? 'none' : 'copy';
+  if (!isBusy) els.dropZone.classList.add('drop-active');
+}, true);
+
+document.addEventListener('dragleave', event => {
+  if (event.relatedTarget) return;
+  els.dropZone.classList.remove('drop-active');
+}, true);
+
+document.addEventListener('drop', async event => {
+  if (!event.dataTransfer) return;
   event.preventDefault();
-  dropDepth = 0;
+  event.stopPropagation();
   els.dropZone.classList.remove('drop-active');
   if (isBusy) return;
-  const files = Array.from(event.dataTransfer?.files || []);
+  const files = Array.from(event.dataTransfer.files || []);
   const pdfFiles = files.filter(file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
   if (!pdfFiles.length) {
     alert('PDF 파일만 드래그해서 놓을 수 있습니다.');
     return;
   }
   await addFiles(pdfFiles);
-});
-window.addEventListener('dragover', event => {
-  if (event.dataTransfer && Array.from(event.dataTransfer.types || []).includes('Files')) event.preventDefault();
-});
-window.addEventListener('drop', event => {
-  if (event.dataTransfer && Array.from(event.dataTransfer.types || []).includes('Files')) event.preventDefault();
-});
+}, true);
 els.merge.addEventListener('click', mergePdfs);
 els.save.addEventListener('click', saveMerged);
 els.toPv.addEventListener('click', sendMergedToPv);
