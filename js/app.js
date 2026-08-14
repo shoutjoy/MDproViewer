@@ -3753,7 +3753,7 @@ async function chooseExportType() {
 }
 
 function openPdfMergeWindow() {
-    const mergeUrl = new URL('./js/export/pdf-merge-window.html?v=20260813-topv-1', window.location.href);
+    const mergeUrl = new URL('./js/export/pdf-merge-window.html?v=20260815-drop-file-2', window.location.href);
     const features = 'popup=yes,width=1380,height=900,left=80,top=50,resizable=yes,scrollbars=yes';
     const mergeWindow = window.open(mergeUrl.href, 'mdproviewer_pdf_merge', features);
     if (!mergeWindow) {
@@ -8889,7 +8889,7 @@ function insertDefaultNoteCover() {
 }
 
 function getHtml2pptVisibleFromSettings(settings) {
-    if (!settings || typeof settings.html2pptVisible !== 'boolean') return true;
+    if (!settings || typeof settings.html2pptVisible !== 'boolean') return false;
     return settings.html2pptVisible;
 }
 
@@ -8956,7 +8956,7 @@ async function verifyDeepseekApiKeyConnection(apiKey, baseUrl) {
 }
 
 function getFmaViewerVisibleFromSettings(settings) {
-    if (!settings || typeof settings.fmaViewerVisible !== 'boolean') return true;
+    if (!settings || typeof settings.fmaViewerVisible !== 'boolean') return false;
     return settings.fmaViewerVisible;
 }
 
@@ -13395,11 +13395,11 @@ async function loadAiSettingsToUI() {
         const pdfMergeCheckEmpty = document.getElementById('pdf-merge-visible');
         if (pdfMergeCheckEmpty) pdfMergeCheckEmpty.checked = false;
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
-        if (html2pptCheckEmpty) html2pptCheckEmpty.checked = true;
+        if (html2pptCheckEmpty) html2pptCheckEmpty.checked = false;
         const html2pptNameCheckEmpty = document.getElementById('html2ppt-name-visible');
         if (html2pptNameCheckEmpty) html2pptNameCheckEmpty.checked = false;
         const fmaViewerCheckEmpty = document.getElementById('fma-viewer-visible');
-        if (fmaViewerCheckEmpty) fmaViewerCheckEmpty.checked = true;
+        if (fmaViewerCheckEmpty) fmaViewerCheckEmpty.checked = false;
         const fmaViewerNameCheckEmpty = document.getElementById('fma-viewer-name-visible');
         if (fmaViewerNameCheckEmpty) fmaViewerNameCheckEmpty.checked = false;
         const enterBrCheckEmpty = document.getElementById('enter-button-insert-br');
@@ -13458,8 +13458,8 @@ async function loadAiSettingsToUI() {
         applyTemplateVisibility({ templateVisible: false });
         applyNoteCoverInsertVisibility({ noteCoverInsertVisible: false });
         applyPdfMergeVisibility({ pdfMergeVisible: false });
-        applyHtml2pptVisibility({ html2pptVisible: true, html2pptNameVisible: false });
-        applyFmaViewerVisibility({ fmaViewerVisible: true, fmaViewerNameVisible: false });
+    applyHtml2pptVisibility({ html2pptVisible: false, html2pptNameVisible: false });
+    applyFmaViewerVisibility({ fmaViewerVisible: false, fmaViewerNameVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
         applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
         applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -13684,8 +13684,8 @@ async function initAiVisibility() {
     applyTemplateVisibility(settings || { templateVisible: false });
     applyNoteCoverInsertVisibility(settings || { noteCoverInsertVisible: false });
     applyPdfMergeVisibility(settings || { pdfMergeVisible: false });
-    applyHtml2pptVisibility(settings || { html2pptVisible: true, html2pptNameVisible: false });
-    applyFmaViewerVisibility(settings || { fmaViewerVisible: true, fmaViewerNameVisible: false });
+    applyHtml2pptVisibility(settings || { html2pptVisible: false, html2pptNameVisible: false });
+    applyFmaViewerVisibility(settings || { fmaViewerVisible: false, fmaViewerNameVisible: false });
     applyEditToolsVisibilityByMode();
     await applyGithubUiState(settings || { githubEnabled: false, githubCacheDocs: [] });
     await applyAiFeatureVisibility();

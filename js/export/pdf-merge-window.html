@@ -8,8 +8,8 @@
     :root{color-scheme:dark;font-family:Inter,"Noto Sans KR","Malgun Gothic",system-ui,sans-serif}
     *{box-sizing:border-box}html,body{height:100%;margin:0;background:#111827;color:#e5e7eb}
     body{display:flex;flex-direction:column;overflow:hidden}.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #334155;background:#0f172a}
-    h1{margin:0 auto 0 0;font-size:16px}.button{height:36px;padding:0 13px;border:1px solid #475569;border-radius:8px;background:#1e293b;color:#f8fafc;font-weight:800;cursor:pointer}.button:hover{background:#334155}.button:disabled{opacity:.42;cursor:not-allowed}.primary{border-color:#eab308;background:#a16207}.primary:hover{background:#ca8a04}
-    .layout{display:grid;grid-template-columns:minmax(330px,38%) 1fr;min-height:0;flex:1}.sidebar{display:flex;min-height:0;flex-direction:column;border-right:1px solid #334155;background:#172033}.intro{padding:12px 14px;color:#cbd5e1;font-size:12px;line-height:1.55}.list{min-height:0;flex:1;overflow:auto;padding:0 12px 12px}.empty{padding:32px 14px;border:1px dashed #475569;border-radius:10px;color:#94a3b8;text-align:center}
+    h1{margin:0 auto 0 0;font-size:16px}.button{display:inline-flex;height:36px;align-items:center;padding:0 13px;border:1px solid #475569;border-radius:8px;background:#1e293b;color:#f8fafc;font-weight:800;cursor:pointer}.button:hover{background:#334155}.button:disabled,.button.disabled{opacity:.42;pointer-events:none;cursor:not-allowed}.primary{border-color:#eab308;background:#a16207}.primary:hover{background:#ca8a04}
+    .layout{display:grid;grid-template-columns:minmax(330px,38%) 1fr;min-height:0;flex:1}.sidebar{display:flex;min-height:0;flex-direction:column;border-right:1px solid #334155;background:#172033;transition:background .15s,border-color .15s,box-shadow .15s}.sidebar.drop-active{border-color:#eab308;background:#27334a;box-shadow:inset 0 0 0 3px rgba(234,179,8,.55)}.intro{padding:12px 14px;color:#cbd5e1;font-size:12px;line-height:1.55}.list{min-height:0;flex:1;overflow:auto;padding:0 12px 12px}.empty{padding:32px 14px;border:1px dashed #64748b;border-radius:10px;color:#a9bdd8;text-align:center;line-height:1.7}.drop-active .empty{border-color:#facc15;color:#fef08a;background:rgba(234,179,8,.08)}
     .item{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:9px;align-items:center;margin-top:8px;padding:10px;border:1px solid #475569;border-radius:9px;background:#1e293b}.item.dragging{opacity:.45}.handle{cursor:grab;color:#94a3b8;font-size:20px;text-align:center}.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:800}.meta{margin-top:3px;color:#94a3b8;font-size:11px}.actions{display:flex;gap:4px}.mini{width:30px;height:30px;border:1px solid #64748b;border-radius:6px;background:#334155;color:#fff;cursor:pointer}.mini:disabled{opacity:.35}.remove{color:#fecaca}
     .preview{position:relative;min-height:0;background:#374151}.preview-pages{display:flex;height:100%;min-height:0;overflow:auto;flex-direction:column;align-items:center;gap:20px;padding:24px}.preview-pages img{display:block;max-width:min(100%,900px);height:auto;background:#fff;box-shadow:0 5px 24px rgba(0,0,0,.38)}.placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;color:#cbd5e1;text-align:center}.placeholder[hidden]{display:none!important}.status{padding:7px 14px;border-top:1px solid #334155;background:#0f172a;color:#94a3b8;font-size:11px}.busy{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(15,23,42,.82);font-weight:900;z-index:3}
     input[type=file]{display:none}@media(max-width:820px){.layout{grid-template-columns:1fr;grid-template-rows:minmax(260px,44%) 1fr}.sidebar{border-right:0;border-bottom:1px solid #334155}}
@@ -19,7 +19,7 @@
   <header class="toolbar">
     <h1>PDF 병합기</h1>
     <label>화질 <select id="quality" class="button"><option value="1.25">빠르게</option><option value="1.75" selected>표준</option><option value="2.25">고품질</option></select></label>
-    <button id="add" class="button" type="button">PDF 여러 개 불러오기</button>
+    <label id="add" class="button" for="files" role="button" aria-disabled="false">PDF 여러 개 불러오기</label>
     <button id="merge" class="button primary" type="button" disabled>순서대로 병합 및 미리보기</button>
     <button id="save" class="button primary" type="button" disabled>병합 PDF 저장</button>
     <button id="to-pv" class="button primary" type="button" title="병합한 PDF를 PV 새 창에서 열기" disabled>병합 PDF ToPV</button>
@@ -28,8 +28,8 @@
   </header>
   <main class="layout">
     <aside class="sidebar">
-      <div class="intro">여러 PDF를 선택한 뒤 끌어서 놓거나 ▲·▼ 버튼으로 순서를 정하세요. 병합은 화면 모양을 유지한 이미지 기반 PDF로 생성됩니다.</div>
-      <div id="list" class="list"><div class="empty">병합할 PDF 파일을 불러오세요.</div></div>
+      <div class="intro">PDF 여러 개를 왼쪽 영역에 드래그해서 놓거나, 위의 불러오기 버튼으로 선택하세요. 추가한 뒤 끌어서 놓거나 ▲·▼ 버튼으로 순서를 정할 수 있습니다.</div>
+      <div id="list" class="list"><div class="empty">병합할 PDF 파일을 여기에 드래그해서 놓으세요.<br>또는 <b>PDF 여러 개 불러오기</b>를 누르세요.</div></div>
     </aside>
     <section class="preview">
       <div id="preview" class="preview-pages" role="region" aria-label="병합 PDF 미리보기"></div>
@@ -39,6 +39,6 @@
   </main>
   <footer id="status" class="status">선택된 PDF 없음</footer>
   <script src="../../vendor/jspdf/jspdf.umd.min.js?v=4.2.1"></script>
-  <script type="module" src="./pdf-merge-window.mjs?v=20260813-topv-1"></script>
+  <script type="module" src="./pdf-merge-window.mjs?v=20260815-drop-file-2"></script>
 </body>
 </html>

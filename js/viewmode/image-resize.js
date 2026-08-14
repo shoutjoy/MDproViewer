@@ -7,6 +7,8 @@
     var confirmButton = null;
     var cancelButton = null;
     var bound = false;
+    var imageSelector = '#viewer img';
+    var sourceMarkdown = '';
 
     function clampDimension(value) {
         return Math.max(24, Math.min(10000, Math.round(Number(value) || 24)));
@@ -364,7 +366,7 @@
         ensureOverlay();
         var rect = img.getBoundingClientRect();
         if (rect.width < 1 || rect.height < 1) return false;
-        var root = img.closest('#viewer');
+        var root = img.closest('#viewer') || img.closest('.markdown-body') || img.parentNode;
         activeSession = {
             img: img,
             record: record,
@@ -466,7 +468,7 @@
         if (!activeSession) return;
         var session = activeSession;
         var textarea = global.document.getElementById('viewer-edit-ta');
-        var source = String(textarea && textarea.value != null ? textarea.value : '');
+        var source = String(sourceMarkdown || (textarea && textarea.value != null ? textarea.value : ''));
         var result = replaceImageReference(source, session.record, session.width, session.height);
         if (!result.changed) {
             if (typeof global.showToast === 'function') global.showToast('이미지 원문이 변경되어 크기를 저장하지 못했습니다. 다시 선택해 주세요.');
@@ -486,10 +488,10 @@
         if (bound || !global.document) return;
         bound = true;
         global.document.addEventListener('click', function (event) {
-            var img = event.target && event.target.closest ? event.target.closest('#viewer img') : null;
+            var img = event.target && event.target.closest ? event.target.closest(imageSelector) : null;
             if (!img || !img.__mdImageResizeRecord) return;
             var viewport = global.document.getElementById('content-viewport');
-            if (!viewport || !viewport.classList.contains('hidden')) return;
+            if (viewport && !viewport.classList.contains('hidden')) return;
             event.preventDefault();
             event.stopPropagation();
             openForImage(img);
@@ -505,6 +507,8 @@
         if (!root) return 0;
         var opts = options || {};
         if (activeSession) closeOverlay();
+        if (opts.imageSelector) imageSelector = String(opts.imageSelector || '');
+        sourceMarkdown = String(opts.sourceMarkdown || sourceMarkdown || '');
         var markdown = String(opts.sourceMarkdown || '');
         var count = mapImages(root, markdown);
         Array.prototype.slice.call(root.querySelectorAll('img')).forEach(function (img) {

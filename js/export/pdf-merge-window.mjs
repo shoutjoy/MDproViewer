@@ -4,6 +4,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../../vendor/pdfjs/build/pdf.w
 
 const els = {
   files: document.getElementById('files'), add: document.getElementById('add'), list: document.getElementById('list'),
+  dropZone: document.querySelector('.sidebar'),
   merge: document.getElementById('merge'), save: document.getElementById('save'), toPv: document.getElementById('to-pv'), close: document.getElementById('close'),
   preview: document.getElementById('preview'), placeholder: document.getElementById('placeholder'),
   busy: document.getElementById('busy'), status: document.getElementById('status'), quality: document.getElementById('quality')
@@ -15,6 +16,7 @@ let mergedUrl = '';
 let previewUrls = [];
 let dragId = '';
 let previewRequestId = 0;
+let isBusy = false;
 
 function fileId(file) {
   return [file.name, file.size, file.lastModified, Math.random().toString(16).slice(2)].join(':');
@@ -85,9 +87,11 @@ async function renderPdfPageToImage(page, scale) {
 }
 
 function setBusy(show, message) {
+  isBusy = show;
   els.busy.style.display = show ? 'flex' : 'none';
   if (message) els.busy.textContent = message;
-  els.add.disabled = show;
+  els.add.classList.toggle('disabled', show);
+  els.add.setAttribute('aria-disabled', String(show));
   els.merge.disabled = show || !items.length;
   els.save.disabled = show || !mergedBlob;
   els.toPv.disabled = show || !mergedBlob;
@@ -198,19 +202,34 @@ async function readFile(file) {
 }
 
 async function addFiles(fileList) {
+  if (isBusy) return;
   const files = Array.from(fileList || []).filter(file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
   if (!files.length) return;
   setBusy(true, 'PDF 정보를 읽는 중…');
+  const added = [];
+  const failed = [];
   try {
-    const added = [];
-    for (const file of files) added.push(await readFile(file));
-    items = items.concat(added);
-    clearMergedPreview();
-    renderList();
-  } catch (error) {
-    alert('PDF 파일을 읽지 못했습니다.\n' + (error?.message || error));
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      els.busy.textContent = 'PDF 정보를 읽는 중… ' + (index + 1) + ' / ' + files.length;
+      try {
+        added.push(await readFile(file));
+      } catch (error) {
+        failed.push({ file, error });
+      }
+    }
+    if (added.length) {
+      items = items.concat(added);
+      clearMergedPreview();
+      renderList();
+    }
   } finally {
     setBusy(false);
+    els.busy.textContent = 'PDF를 병합하는 중…';
+  }
+  if (failed.length) {
+    const failedNames = failed.map(entry => entry.file.name).join('\n');
+    alert(failed.length + '개 PDF를 읽지 못했습니다. 나머지 파일은 목록에 추가했습니다.\n\n' + failedNames);
   }
 }
 
@@ -311,8 +330,46 @@ function sendMergedToPv() {
   els.status.textContent = items.length + '개 PDF 병합 결과를 PV로 보냈습니다.';
 }
 
-els.add.addEventListener('click', () => els.files.click());
-els.files.addEventListener('change', () => { addFiles(els.files.files); els.files.value = ''; });
+els.files.addEventListener('change', async event => {
+  const selectedFiles = Array.from(event.currentTarget.files || []);
+  event.currentTarget.value = '';
+  await addFiles(selectedFiles);
+});
+let dropDepth = 0;
+els.dropZone.addEventListener('dragenter', event => {
+  if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
+  event.preventDefault();
+  dropDepth += 1;
+  if (!isBusy) els.dropZone.classList.add('drop-active');
+});
+els.dropZone.addEventListener('dragover', event => {
+  if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = isBusy ? 'none' : 'copy';
+});
+els.dropZone.addEventListener('dragleave', () => {
+  dropDepth = Math.max(0, dropDepth - 1);
+  if (!dropDepth) els.dropZone.classList.remove('drop-active');
+});
+els.dropZone.addEventListener('drop', async event => {
+  event.preventDefault();
+  dropDepth = 0;
+  els.dropZone.classList.remove('drop-active');
+  if (isBusy) return;
+  const files = Array.from(event.dataTransfer?.files || []);
+  const pdfFiles = files.filter(file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
+  if (!pdfFiles.length) {
+    alert('PDF 파일만 드래그해서 놓을 수 있습니다.');
+    return;
+  }
+  await addFiles(pdfFiles);
+});
+window.addEventListener('dragover', event => {
+  if (event.dataTransfer && Array.from(event.dataTransfer.types || []).includes('Files')) event.preventDefault();
+});
+window.addEventListener('drop', event => {
+  if (event.dataTransfer && Array.from(event.dataTransfer.types || []).includes('Files')) event.preventDefault();
+});
 els.merge.addEventListener('click', mergePdfs);
 els.save.addEventListener('click', saveMerged);
 els.toPv.addEventListener('click', sendMergedToPv);

@@ -52,11 +52,22 @@ const PREVIEW_MERMAID_DARK_THEME_VARIABLES = {
     noteTextColor: '#ffedd5',
     noteBorderColor: '#c2410c'
 };
+const PREVIEW_PV_THEME_STORAGE_KEY = 'md_viewer_pv_theme_v1';
+
+function getPreviewPopupTheme() {
+    try {
+        return localStorage.getItem(PREVIEW_PV_THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
+    } catch (_) {
+        return 'light';
+    }
+}
 
 function isPreviewPopupDarkTheme() {
-    // PV is a print preview. Keep its paper and Mermaid output in the light
-    // print palette even when the editor itself is using the dark theme.
-    return false;
+    if (isPreviewPopupAlive()) {
+        const root = previewPopupWindow.document && previewPopupWindow.document.documentElement;
+        if (root) return root.classList.contains('dark');
+    }
+    return getPreviewPopupTheme() === 'dark';
 }
 
 function getPreviewPopupMermaidDisplayMode() {
@@ -71,9 +82,26 @@ function syncPreviewPopupTheme() {
     if (!isPreviewPopupAlive()) return;
     const doc = previewPopupWindow.document;
     if (doc && doc.documentElement) {
-        doc.documentElement.classList.remove('dark');
+        const dark = getPreviewPopupTheme() === 'dark';
+        doc.documentElement.classList.toggle('dark', dark);
         doc.documentElement.classList.add('pv-print-preview');
+        const button = doc.getElementById('pv-theme-toggle');
+        if (button) {
+            button.textContent = dark ? '라이트' : '다크';
+            button.title = dark ? 'PV를 라이트 모드로 전환' : 'PV를 다크 모드로 전환';
+            button.setAttribute('aria-pressed', dark ? 'true' : 'false');
+        }
     }
+}
+
+function previewPopupToggleTheme() {
+    if (!isPreviewPopupAlive()) return false;
+    const nextTheme = isPreviewPopupDarkTheme() ? 'light' : 'dark';
+    try { localStorage.setItem(PREVIEW_PV_THEME_STORAGE_KEY, nextTheme); } catch (_) {}
+    syncPreviewPopupTheme();
+    resetPreviewPopupMermaidLoader();
+    if (!previewPopupFileMode && !previewPopupEditMode) updatePreviewPopupContent();
+    return true;
 }
 
 let previewPopupFileMode = false;
@@ -85,6 +113,39 @@ let previewPopupDraftDirty = false;
 let previewPopupImageInsertTarget = false;
 let previewPopupRenderedSelectionRange = null;
 let previewPopupRenderedDomChanged = false;
+let previewPopupTablePickerOpen = false;
+let previewPopupTablePickerBound = false;
+let previewPopupTablePickerCloseHandler = null;
+let previewPopupMarginDialogOpen = false;
+let previewPopupMarginDialogBound = false;
+let previewPopupMarginDialogCloseHandler = null;
+
+function cancelPreviewPopupImageResize() {
+    if (!isPreviewPopupAlive()) return false;
+    const resize = previewPopupWindow.ViewModeImageResize;
+    if (!resize || typeof resize.cancel !== 'function') return false;
+    try {
+        resize.cancel();
+    } catch (_) {
+        return false;
+    }
+    return true;
+}
+
+const PREVIEW_PV_TABLE_ROWS_MAX = 10;
+const PREVIEW_PV_TABLE_COLS_MAX = 10;
+const PREVIEW_PV_TABLE_PICKER_ROWS = 10;
+const PREVIEW_PV_TABLE_PICKER_COLS = 10;
+const PREVIEW_PV_A4_WIDTH_MM = 210;
+const PREVIEW_PV_A4_HEIGHT_MM = 297;
+const PREVIEW_PV_MARGIN_STORAGE_KEY = 'md_viewer_pv_margin_mm_v1';
+const PREVIEW_PV_MARGIN_AXIS = Object.freeze(['top', 'right', 'bottom', 'left']);
+const PREVIEW_PV_DEFAULT_MARGINS = Object.freeze({
+    top: 14,
+    right: 12,
+    bottom: 14,
+    left: 12
+});
 
 function revokePreviewPopupFileObjectUrl() {
     if (!previewPopupFileObjectUrl) return;
@@ -96,7 +157,37 @@ function isPreviewPopupAlive() {
     return !!(previewPopupWindow && !previewPopupWindow.closed);
 }
 
+function getPreviewPopupImageResizeSourceMarkdown() {
+    if (previewPopupDraftDirty) return String(previewPopupDraftMarkdown || '');
+    return getPreviewPopupSourceMarkdown();
+}
+
+function applyPreviewPopupImageResizeResult(nextMarkdown) {
+    const base = String(previewPopupDraftBaseMarkdown || getPreviewPopupSourceMarkdown());
+    previewPopupDraftMarkdown = String(nextMarkdown || '');
+    previewPopupDraftDirty = previewPopupDraftMarkdown !== base;
+    previewPopupRenderedDomChanged = true;
+    syncPreviewPopupEditorUi();
+    syncPreviewPopupImageResize();
+    return true;
+}
+
+function syncPreviewPopupImageResize() {
+    if (!isPreviewPopupAlive() || !previewPopupEditMode) return false;
+    const editor = getPreviewPopupEditorElement();
+    const resize = previewPopupWindow.ViewModeImageResize;
+    if (!editor || !resize || typeof resize.hydrate !== 'function') return false;
+    const source = getPreviewPopupImageResizeSourceMarkdown();
+    resize.hydrate(editor, {
+        sourceMarkdown: source,
+        onConfirm: applyPreviewPopupImageResizeResult,
+        imageSelector: '#viewer img'
+    });
+    return true;
+}
+
 function onPreviewPopupClosed() {
+    cancelPreviewPopupImageResize();
     previewPopupWindow = null;
     previewPopupFileMode = false;
     previewPopupEditMode = false;
@@ -106,6 +197,12 @@ function onPreviewPopupClosed() {
     previewPopupImageInsertTarget = false;
     previewPopupRenderedSelectionRange = null;
     previewPopupRenderedDomChanged = false;
+    previewPopupTablePickerOpen = false;
+    previewPopupTablePickerBound = false;
+    previewPopupTablePickerCloseHandler = null;
+    previewPopupMarginDialogOpen = false;
+    previewPopupMarginDialogBound = false;
+    previewPopupMarginDialogCloseHandler = null;
     revokePreviewPopupFileObjectUrl();
     resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
@@ -122,11 +219,19 @@ function closePreviewPopupWindow() {
         previewPopupImageInsertTarget = false;
         previewPopupRenderedSelectionRange = null;
         previewPopupRenderedDomChanged = false;
+        previewPopupTablePickerOpen = false;
+        previewPopupTablePickerBound = false;
+        previewPopupTablePickerCloseHandler = null;
+        previewPopupMarginDialogOpen = false;
+        previewPopupMarginDialogBound = false;
+        previewPopupMarginDialogCloseHandler = null;
         revokePreviewPopupFileObjectUrl();
         resetPreviewPopupMermaidLoader();
+        cancelPreviewPopupImageResize();
         revokeObjectUrls(previewInternalImageObjectUrls);
         return;
     }
+    cancelPreviewPopupImageResize();
     previewPopupWindow.close();
     previewPopupWindow = null;
     previewPopupFileMode = false;
@@ -134,9 +239,15 @@ function closePreviewPopupWindow() {
     previewPopupDraftMarkdown = '';
     previewPopupDraftBaseMarkdown = '';
     previewPopupDraftDirty = false;
+    previewPopupTablePickerOpen = false;
+    previewPopupTablePickerBound = false;
+    previewPopupTablePickerCloseHandler = null;
     previewPopupImageInsertTarget = false;
     previewPopupRenderedSelectionRange = null;
     previewPopupRenderedDomChanged = false;
+    previewPopupMarginDialogOpen = false;
+    previewPopupMarginDialogBound = false;
+    previewPopupMarginDialogCloseHandler = null;
     revokePreviewPopupFileObjectUrl();
     resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
@@ -247,6 +358,7 @@ function openImageInPreviewPopup(imageUrl, fileName) {
     previewPopupEditMode = false;
     previewPopupScale = 1;
     previewPopupWidthScale = 1.5;
+    previewPopupClearPagedContent();
     doc.title = 'MDproViewer Preview - ' + String(fileName || 'Image');
     content.innerHTML = '';
     content.classList.add('pv-image-content');
@@ -274,6 +386,7 @@ function openFileViewerInPreviewPopup(viewerUrl, fileName, onReady) {
     const doc = previewPopupWindow.document;
     const viewport = doc.getElementById('pv-viewport');
     if (!viewport) return false;
+    previewPopupClearPagedContent();
 
     previewPopupFileMode = true;
     previewPopupEditMode = false;
@@ -331,22 +444,65 @@ function getPreviewPopupDocumentHtml() {
             scriptUrl: new URL('./js/math_render/math_render.js?v=20260725-stable-math-1', window.location.href).href
         })
         : '';
+    const imageResizeHead = '<script src="' + escapePreviewAttribute(new URL('./js/viewmode/image-resize.js?v=20260811-2', window.location.href).href) + '"></script>';
     const baseHref = escapePreviewAttribute(document.baseURI || window.location.href);
     return '<!doctype html><html lang="ko" class="pv-print-preview"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><base href="' + baseHref + '"><title>MDproViewer Print Preview</title>'
         + getPreviewPopupStylesheetLinks()
         + mathHead
+        + imageResizeHead
         + '<style>'
-        + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,"Noto Sans KR","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;background:#475569;color:#1e293b;}'
+        + 'html,body{margin:0;padding:0;height:100%;font-family:Inter,"Noto Sans KR","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;background:#e2e8f0;color:#1e293b;color-scheme:light;}'
+        + 'html.dark,html.dark body{background:#0b1220;color:#e2e8f0;color-scheme:dark;}'
         + '#pv-root{height:100%;}'
         + '#pv-toolbar{display:flex;align-items:center;gap:5px;padding:6px 8px;background:#0f172a;border-bottom:1px solid #334155;color:#e2e8f0;position:fixed;top:0;left:0;right:0;z-index:9999;box-sizing:border-box;overflow-x:auto;white-space:nowrap;min-height:42px;}'
         + '#pv-toolbar button{height:28px;padding:2px 8px;border:1px solid #94a3b8;background:#fff;border-radius:5px;font-size:12px;font-weight:750;color:#1e293b;cursor:pointer;line-height:1;}'
         + '#pv-toolbar button:hover{background:#e2e8f0;}#pv-toolbar button:disabled{opacity:.45;cursor:not-allowed;}'
         + '#pv-toolbar .pv-file-button{height:24px;padding:1px 6px;font-size:10px;border-color:#64748b;background:#f8fafc;}'
         + '#pv-toolbar .pv-format-button{min-width:29px;padding:2px 6px;}#pv-toolbar .pv-primary-button{border-color:#818cf8;background:#eef2ff;color:#3730a3;}#pv-toolbar .pv-send-button{border-color:#34d399;background:#ecfdf5;color:#047857;}#pv-toolbar .pv-export-button{border-color:#fbbf24;background:#fffbeb;color:#92400e;}'
+        + '#pv-toolbar .pv-table-action{min-width:48px;}#pv-toolbar .pv-theme-button{margin-left:auto;min-width:48px;background:#e0f2fe;border-color:#38bdf8;color:#075985;}html.dark #pv-toolbar .pv-theme-button{background:#1e293b;border-color:#64748b;color:#f8fafc;}'
         + '#pv-toolbar .pv-divider{width:1px;height:20px;background:#475569;margin:0 2px;flex:0 0 auto;}#pv-draft-status{font-size:10px;font-weight:700;color:#a7f3d0;margin-left:2px;}#pv-draft-status.is-dirty{color:#fde68a;}'
-        + '#pv-viewport{height:100%;overflow:auto;padding:58px 24px 48px;box-sizing:border-box;background:#475569;}'
-        + '#pv-content{box-sizing:border-box;line-height:1.6;overflow-wrap:break-word;transform-origin:top center;margin:0 auto;width:210mm;max-width:210mm;min-height:297mm;padding:12mm 14mm;background:#fff;color:#1e293b;box-shadow:0 18px 48px rgba(15,23,42,.38);}'
-        + '#pv-content[contenteditable="true"]{cursor:text;outline:3px solid #818cf8;outline-offset:4px;caret-color:#1d4ed8;}#pv-content[contenteditable="true"]:focus{outline-color:#4f46e5;box-shadow:0 18px 48px rgba(15,23,42,.38),0 0 0 6px rgba(99,102,241,.16);}#pv-content[contenteditable="true"] .pv-render-locked{cursor:not-allowed;user-select:none;}body.pv-file-mode #pv-view-controls{display:none;}body.pv-file-mode .pv-edit-action{display:none;}'
+        + '#pv-viewport{height:100%;overflow:auto;padding:58px 24px 48px;box-sizing:border-box;background:#e2e8f0;}html.dark #pv-viewport{background:#0b1220;}'
+        + '#viewer{margin:0 auto;}body.pv-editor-mode #viewer{width:max-content;min-width:210mm;min-height:297mm;}'
+        + '#pv-content{box-sizing:border-box;line-height:1.6;overflow-wrap:break-word;transform-origin:top center;width:auto;max-width:none;padding:0;color:#1e293b;}'
+        + 'body.pv-editor-mode #pv-content{min-height:297mm;padding:14mm 12mm;background:#fff;color:#1e293b;box-shadow:0 18px 48px rgba(15,23,42,.28);}html.dark body.pv-editor-mode #pv-content{background:#111827;color:#e2e8f0;box-shadow:0 18px 48px rgba(0,0,0,.52);}'
+        + '#pv-content[contenteditable=\"true\"]{cursor:text;outline:3px solid #818cf8;outline-offset:4px;caret-color:#1d4ed8;}#pv-content[contenteditable=\"true\"]:focus{outline-color:#4f46e5;box-shadow:0 18px 48px rgba(15,23,42,.38),0 0 0 6px rgba(99,102,241,.16);}#pv-content[contenteditable=\"true\"] .pv-render-locked{cursor:not-allowed;user-select:none;}body.pv-editor-mode #pv-pages{display:none;}body.pv-editor-mode #pv-content{display:block;}body:not(.pv-editor-mode):not(.pv-file-mode) #pv-content{display:none;}body:not(.pv-editor-mode):not(.pv-file-mode) #pv-pages{display:flex;}body.pv-file-mode #pv-pages{display:none;}body.pv-file-mode #pv-content{display:block;}'
+        + 'body.pv-file-mode #pv-view-controls{display:none;}body.pv-file-mode .pv-edit-action{display:none;}'
+        + '#pv-toolbar .pv-margin-controls{display:flex;align-items:center;gap:4px;margin-left:6px;font-size:9px;color:#cbd5e1;white-space:nowrap;}'
+        + '#pv-toolbar .pv-margin-button{height:20px;padding:0 5px;font-size:8px;font-weight:800;min-width:22px;max-width:22px;color:#1e293b;background:#f8fafc;border-radius:4px;}'
+        + '#pv-toolbar .pv-margin-button:hover{background:#e2e8f0;}'
+        + '#pv-margin-popover{position:absolute;top:44px;right:8px;min-width:196px;padding:8px 9px;background:#0f172a;border:1px solid #64748b;border-radius:8px;box-shadow:0 18px 36px rgba(15,23,42,.45);color:#e2e8f0;z-index:10001;display:none;box-sizing:border-box;}'
+        + '#pv-margin-popover h4{margin:0 0 5px;font-size:11px;font-weight:800;line-height:1.2;color:#cbd5e1;}'
+        + '#pv-margin-popover .pv-margin-row{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:6px;}'
+        + '#pv-margin-popover .pv-margin-control{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:10px;font-weight:700;color:#94a3b8;}'
+        + '#pv-margin-popover .pv-margin-control input{width:52px;height:22px;padding:0 3px;border:1px solid #64748b;border-radius:5px;background:#f8fafc;color:#1e293b;font-size:10px;font-weight:800;box-sizing:border-box;}'
+        + '#pv-margin-popover .pv-margin-actions{display:flex;justify-content:flex-end;gap:5px;}'
+        + '#pv-margin-popover .pv-margin-actions button{height:22px;padding:0 8px;font-size:10px;font-weight:800;min-width:48px;}'
+        + '#pv-pages{display:none;flex-direction:column;align-items:center;gap:14px;padding:12px 12px 28px;box-sizing:border-box;min-height:100%;background:linear-gradient(180deg,#e2e8f0 0,#f8fafc 70px,#f8fafc);}'
+        + '.pv-page{position:relative;width:' + PREVIEW_PV_A4_WIDTH_MM + 'mm;height:' + PREVIEW_PV_A4_HEIGHT_MM + 'mm;max-width:none;flex:0 0 auto;overflow:hidden;background:#fff;color:#1e293b;box-shadow:0 18px 40px rgba(15,23,42,.32);box-sizing:border-box;transform-origin:top center;transform:scale(var(--pv-page-scale, 1));border:1px solid #94a3b8;border-radius:2px;margin:0 0 4px 0;}'
+        + '.pv-page[data-pv-page-state]{border-radius:2px;}'
+        + '.pv-page-content{box-sizing:border-box;width:100%;height:100%;margin:0!important;padding:0!important;overflow:hidden;background:#fff!important;color:#1e293b!important;--md-header-scale:1;}'
+        + '.pv-page-content h1,.pv-page-content h2,.pv-page-content h3,.pv-page-content h4{color:#0f172a!important;}'
+        + '.pv-page-content h1{font-size:calc(var(--md-app-font-size, 21px) * 2.8)!important;line-height:1.24!important;font-weight:800!important;margin-top:1.5rem!important;margin-bottom:1rem!important;border-bottom:1px solid #bfdbfe!important;padding-bottom:.5rem!important;background:linear-gradient(90deg,rgba(219,234,254,.75),rgba(255,255,255,0))!important;}'
+        + '.pv-page-content h2{font-size:calc(var(--md-app-font-size, 21px) * 2.1)!important;line-height:1.28!important;font-weight:700!important;margin-top:1.25rem!important;margin-bottom:.75rem!important;border-bottom:1px solid #dbeafe!important;padding-bottom:.3rem!important;background:linear-gradient(90deg,rgba(219,234,254,.6),rgba(255,255,255,0))!important;}'
+        + '.pv-page-content h3{font-size:calc(var(--md-app-font-size, 21px) * 1.8)!important;line-height:1.35!important;font-weight:650!important;margin-top:1rem!important;margin-bottom:.5rem!important;}'
+        + '.pv-page-content pre{background:#f8fafc!important;color:#0f172a!important;direction:ltr!important;unicode-bidi:plaintext!important;white-space:pre!important;'
+        + 'text-align:left!important;padding:8px 10px!important;border:1px solid #cbd5e1!important;border-radius:6px!important;overflow-x:auto!important;overflow-y:auto!important;}'
+        + '.pv-page-content pre code{font-family:Consolas,Monaco,Menlo,"SFMono-Regular","Source Code Pro","Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",monospace!important;'
+        + 'direction:ltr!important;unicode-bidi:plaintext!important;white-space:pre!important;display:block!important;}'
+        + '.pv-forced-fit{max-height:100%!important;overflow:hidden!important}.pv-forced-fit>img,.pv-forced-fit>svg,.pv-forced-fit>canvas{max-height:100%!important;object-fit:contain!important}'
+        + '.pv-page-number{position:absolute;left:8mm;bottom:6mm;font-size:10px;line-height:1.15;color:#334155;font-weight:700;pointer-events:none;background:#ffffffcc;padding:1px 6px;border-radius:999px;box-shadow:0 0 0 1px #cbd5e1 inset;transform:translateZ(0);}'
+        + '.pv-cover-page{padding:0!important;}'
+        + '.pv-cover-page .pv-page-content{width:210mm!important;height:297mm!important;overflow:hidden!important;}'
+        + '.pv-cover-page .note-cover-page{width:210mm!important;height:297mm!important;max-width:none!important;min-width:210mm!important;min-height:297mm!important;aspect-ratio:210/297!important;margin:0!important;box-shadow:none!important;overflow:hidden!important;}'
+        + '.pv-cover-page .pv-page-number{display:none!important;}'
+        + '#pv-pages .pv-page-break{display:none!important;}'
+        + '.page-break{display:none!important;}'
+        + '@media print{#pv-toolbar,#pv-view-controls,#pv-table-picker{display:none!important;}@page{size:A4 portrait;margin:0;}body{background:#fff;}#pv-viewport,#pv-pages{padding:0!important;display:block!important;}#pv-pages{gap:0!important;align-items:stretch;transform:none!important;}.pv-page{box-shadow:none!important;width:210mm;height:297mm;page-break-after:always;page-break-inside:avoid;overflow:hidden;margin:0 auto!important;transform:none!important;}.pv-page:last-child{page-break-after:auto;}.pv-page-number{font-size:10px;color:#666;}}'
+        + '#pv-toolbar .pv-table-picker{position:absolute;top:46px;left:210px;min-width:188px;padding:8px 8px 10px;border:1px solid #64748b;border-radius:8px;background:#0f172a;color:#e2e8f0;box-shadow:0 16px 32px rgba(15,23,42,.52);z-index:10000;display:none;box-sizing:border-box;}'
+        + '#pv-toolbar .pv-table-picker-label{font-size:11px;font-weight:700;line-height:1.2;margin-bottom:6px;color:#e2e8f0;white-space:nowrap;}'
+        + '#pv-toolbar .pv-table-picker-grid{display:grid;grid-template-columns:repeat(' + PREVIEW_PV_TABLE_PICKER_COLS + ',minmax(11px,1fr));gap:2px;max-width:fit-content;}'
+        + '#pv-toolbar .pv-table-picker-cell{width:14px;height:14px;border:1px solid #64748b;background:#1e293b;cursor:pointer;display:block;padding:0;}'
+        + '#pv-toolbar .pv-table-picker-cell:hover,#pv-toolbar .pv-table-picker-cell.pv-table-picker-cell-active{background:#2563eb;border-color:#93c5fd;box-shadow:0 0 0 1px #93c5fd inset;}'
         + '#pv-view-controls{position:fixed;right:10px;bottom:10px;z-index:9999;display:flex;align-items:center;gap:4px;padding:4px 5px;border:1px solid #64748b;border-radius:7px;background:rgba(15,23,42,.94);box-shadow:0 6px 18px rgba(15,23,42,.28);color:#e2e8f0;}'
         + '#pv-view-controls .pv-control-group{display:flex;align-items:center;gap:2px;}#pv-view-controls .pv-control-name{font-size:9px;font-weight:800;color:#94a3b8;margin-right:1px;}#pv-view-controls button{width:22px;height:22px;padding:0;border:1px solid #64748b;border-radius:4px;background:#f8fafc;color:#1e293b;font-size:13px;font-weight:800;line-height:1;cursor:pointer;}#pv-view-controls .label{min-width:34px;font-size:9px;text-align:center;font-weight:800;color:#e2e8f0;}#pv-view-controls .pv-control-divider{width:1px;height:18px;background:#475569;margin:0 2px;}'
         + '#pv-content>.note-cover-page{left:50%;max-width:none!important;margin-left:0!important;margin-right:0!important;transform:translateX(-50%);}'
@@ -395,13 +551,34 @@ function getPreviewPopupDocumentHtml() {
         + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"기울임\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'italic\')\"><i>I</i></button>'
         + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"글머리 기호\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'bullet\')\">•</button>'
         + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"번호 목록\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'ordered\')\">1.</button>'
-        + '<button class=\"pv-edit-action\" type=\"button\" title=\"표 삽입\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupInsertTable()\">표</button>'
+        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"제목 1\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'h1\')\">H1</button>'
+        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"제목 2\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'h2\')\">H2</button>'
+        + '<button class=\"pv-format-button pv-edit-action\" type=\"button\" title=\"제목 3\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupFormat(\'h3\')\">H3</button>'
+        + '<button class=\"pv-edit-action\" type=\"button\" title=\"표 삽입\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupOpenTablePicker()\">표</button>'
+        + '<button class=\"pv-table-action pv-edit-action\" type=\"button\" title=\"표 행 추가\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupAddTableRow()\">행추가</button>'
+        + '<button class=\"pv-table-action pv-edit-action\" type=\"button\" title=\"표 열 추가\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.previewPopupAddTableColumn()\">열추가</button>'
         + '<button class=\"pv-edit-action\" type=\"button\" title=\"메인 이미지 삽입 도구 열기\" onmousedown=\"event.preventDefault()\" onclick=\"window.opener&&window.opener.openPreviewPopupImageInsert()\">[img]</button>'
+        + '<div id=\"pv-table-picker\" class=\"pv-table-picker\" role=\"dialog\" aria-hidden=\"true\" aria-label=\"표 크기 선택\">'
+        + '<div id=\"pv-table-picker-size-label\" class=\"pv-table-picker-label\">표 크기 선택</div>'
+        + '<div id=\"pv-table-picker-grid\" class=\"pv-table-picker-grid\"></div>'
+        + '</div>'
+        + '<span class=\"pv-margin-controls\"><button type=\"button\" class=\"pv-margin-button pv-edit-action\" title=\"페이지 여백 설정\" onclick=\"window.opener&&window.opener.previewPopupOpenMarginDialog()\">여백</button></span>'
+        + '<div id=\"pv-margin-popover\" role=\"dialog\" aria-hidden=\"true\" aria-label=\"페이지 여백 설정\">'
+        + '<h4>페이지 여백 설정</h4>'
+        + '<div class=\"pv-margin-row\">'
+        + '<label class=\"pv-margin-control\" title=\"상단 여백(mm)\">상 <input id=\"pv-margin-top\" type=\"number\" min=\"0\" max=\"60\" step=\"1\" value=\"14\" data-pv-margin-axis=\"top\" oninput=\"window.opener&&window.opener.previewPopupSetMargin(this)\" onblur=\"window.opener&&window.opener.previewPopupSetMargin(this)\"/></label>'
+        + '<label class=\"pv-margin-control\" title=\"우측 여백(mm)\">우 <input id=\"pv-margin-right\" type=\"number\" min=\"0\" max=\"60\" step=\"1\" value=\"12\" data-pv-margin-axis=\"right\" oninput=\"window.opener&&window.opener.previewPopupSetMargin(this)\" onblur=\"window.opener&&window.opener.previewPopupSetMargin(this)\"/></label>'
+        + '<label class=\"pv-margin-control\" title=\"하단 여백(mm)\">하 <input id=\"pv-margin-bottom\" type=\"number\" min=\"0\" max=\"60\" step=\"1\" value=\"14\" data-pv-margin-axis=\"bottom\" oninput=\"window.opener&&window.opener.previewPopupSetMargin(this)\" onblur=\"window.opener&&window.opener.previewPopupSetMargin(this)\"/></label>'
+        + '<label class=\"pv-margin-control\" title=\"좌측 여백(mm)\">좌 <input id=\"pv-margin-left\" type=\"number\" min=\"0\" max=\"60\" step=\"1\" value=\"12\" data-pv-margin-axis=\"left\" oninput=\"window.opener&&window.opener.previewPopupSetMargin(this)\" onblur=\"window.opener&&window.opener.previewPopupSetMargin(this)\"/></label>'
+        + '</div>'
+        + '<div class=\"pv-margin-actions\"><button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupCloseMarginDialog()\">닫기</button></div>'
+        + '</div>'
         + '<button class=\"pv-send-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.applyPreviewPopupEditsToOriginal()\">원본 노트에 반영</button>'
         + '<button class=\"pv-export-button pv-edit-action\" type=\"button\" onclick=\"window.opener&&window.opener.previewPopupExport()\">내보내기</button>'
         + '<span id=\"pv-draft-status\" class=\"pv-edit-action\">원본과 동기화</span>'
         + '<button type=\"button\" style=\"margin-left:auto\" onclick=\"window.close()\">닫기</button>'
-        + '</div><div id=\"pv-viewport\"><div id=\"pv-content\" class=\"markdown-body print-area\" spellcheck=\"true\" oninput=\"window.opener&&window.opener.previewPopupHandleEditorInput(true)\" onkeydown=\"window.opener&&window.opener.previewPopupHandleEditorKeydown(event)\" onkeyup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onmouseup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onclick=\"window.opener&&window.opener.previewPopupHandleRenderedClick(event)\"></div></div>'
+        + '<button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupPrint()\">인쇄</button>'
+        + '</div><div id=\"pv-viewport\"><div id=\"viewer\"><div id=\"pv-content\" class=\"markdown-body print-area\" spellcheck=\"true\" oninput=\"window.opener&&window.opener.previewPopupHandleEditorInput(true)\" onkeydown=\"window.opener&&window.opener.previewPopupHandleEditorKeydown(event)\" onkeyup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onmouseup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onclick=\"window.opener&&window.opener.previewPopupHandleRenderedClick(event)\"></div></div><div id=\"pv-pages\"></div></div>'
         + '<div id=\"pv-view-controls\"><div class=\"pv-control-group\"><span class=\"pv-control-name\">Zoom</span><button type=\"button\" title=\"축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">−</button><span id=\"pv-scale-label\" class=\"label\">100%</span><button type=\"button\" title=\"확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(0.1)\">+</button></div><span class=\"pv-control-divider\"></span><div class=\"pv-control-group\"><span class=\"pv-control-name\">Width</span><button type=\"button\" title=\"너비 축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(-0.1)\">−</button><span id=\"pv-width-label\" class=\"label\">100%</span><button type=\"button\" title=\"너비 확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(0.1)\">+</button></div><span class=\"pv-control-divider\"></span><div class=\"pv-control-group\"><span class=\"pv-control-name\">Font</span><button type=\"button\" title=\"글자 축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(-1)\">−</button><span id=\"pv-font-label\" class=\"label\">16px</span><button type=\"button\" title=\"글자 확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(1)\">+</button></div></div></div>'
         + '<script>window.addEventListener(\"beforeunload\",function(){try{if(window.opener&&typeof window.opener.onPreviewPopupClosed===\"function\"){window.opener.onPreviewPopupClosed();}}catch(e){}});<\/script>'
         + '</body></html>';
@@ -904,10 +1081,415 @@ async function renderMermaidInPreviewPopup(root) {
     }
 }
 
+function getPreviewPopupPageMargins() {
+    const source = {};
+    PREVIEW_PV_MARGIN_AXIS.forEach(function (axis) {
+        source[axis] = PREVIEW_PV_DEFAULT_MARGINS[axis];
+    });
+    try {
+        const raw = localStorage.getItem(PREVIEW_PV_MARGIN_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : null;
+        if (parsed && typeof parsed === 'object') {
+            PREVIEW_PV_MARGIN_AXIS.forEach(function (axis) {
+                const value = Number(parsed[axis]);
+                if (Number.isFinite(value)) {
+                    source[axis] = Math.max(0, Math.min(60, Math.round(value)));
+                }
+            });
+        }
+    } catch (_) {}
+    return source;
+}
+
+function previewPopupSetPageMargins(nextMargins) {
+    const next = {};
+    PREVIEW_PV_MARGIN_AXIS.forEach(function (axis) {
+        const sourceValue = Number(nextMargins && nextMargins[axis]);
+        const value = Number.isFinite(sourceValue) ? Math.max(0, Math.min(60, Math.round(sourceValue))) : PREVIEW_PV_DEFAULT_MARGINS[axis];
+        next[axis] = value;
+    });
+    try { localStorage.setItem(PREVIEW_PV_MARGIN_STORAGE_KEY, JSON.stringify(next)); } catch (_) {}
+    return next;
+}
+
+function previewPopupRefreshMarginControls() {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    if (!doc) return;
+    const margins = getPreviewPopupPageMargins();
+    PREVIEW_PV_MARGIN_AXIS.forEach(function (axis) {
+        const input = doc.getElementById('pv-margin-' + axis);
+        if (!input) return;
+        input.value = String(margins[axis]);
+    });
+}
+
+function previewPopupOpenMarginDialog() {
+    if (!isPreviewPopupAlive()) return false;
+    const doc = previewPopupWindow.document;
+    const popover = doc.getElementById('pv-margin-popover');
+    if (!popover) return false;
+    previewPopupRefreshMarginControls();
+    popover.style.display = 'block';
+    popover.setAttribute('aria-hidden', 'false');
+    previewPopupMarginDialogOpen = true;
+    if (previewPopupMarginDialogBound) return true;
+    const onDismiss = function (event) {
+        if (!previewPopupMarginDialogOpen) return;
+        const target = event && event.target ? event.target : null;
+        if (target) {
+            if (target.closest && target.closest('#pv-margin-popover')) return;
+            if (target.closest && target.closest('.pv-margin-button')) return;
+        }
+        if (event.type === 'keydown' && event.key !== 'Escape') return;
+        previewPopupCloseMarginDialog();
+    };
+    previewPopupWindow.addEventListener('mousedown', onDismiss);
+    previewPopupWindow.addEventListener('keydown', onDismiss);
+    previewPopupMarginDialogCloseHandler = onDismiss;
+    previewPopupMarginDialogBound = true;
+    return true;
+}
+
+function previewPopupCloseMarginDialog() {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const popover = doc.getElementById('pv-margin-popover');
+    if (popover) {
+        popover.style.display = 'none';
+        popover.setAttribute('aria-hidden', 'true');
+    }
+    previewPopupMarginDialogOpen = false;
+    if (typeof previewPopupMarginDialogCloseHandler === 'function') {
+        previewPopupWindow.removeEventListener('mousedown', previewPopupMarginDialogCloseHandler);
+        previewPopupWindow.removeEventListener('keydown', previewPopupMarginDialogCloseHandler);
+        previewPopupMarginDialogCloseHandler = null;
+        previewPopupMarginDialogBound = false;
+    }
+}
+
+function previewPopupSetMargin(input) {
+    if (!isPreviewPopupAlive() || !input || !input.dataset) return false;
+    const axis = String(input.dataset.pvMarginAxis || '').toLowerCase();
+    if (PREVIEW_PV_MARGIN_AXIS.indexOf(axis) < 0) return false;
+    const margins = previewPopupSetPageMargins(Object.assign({}, getPreviewPopupPageMargins(), {
+        [axis]: Number(input.value)
+    }));
+    previewPopupRefreshMarginControls();
+    previewPopupApplyPageMarginState(margins);
+    applyPreviewPopupViewport();
+    if (!previewPopupFileMode && !previewPopupEditMode) {
+        updatePreviewPopupContent();
+    }
+    return true;
+}
+
+function previewPopupApplyPageMarginState(margins) {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const pages = doc.getElementById('pv-pages');
+    if (!pages) return;
+    Array.from(pages.querySelectorAll('.pv-page')).forEach(function (page) {
+        page.style.paddingTop = String(margins.top) + 'mm';
+        page.style.paddingRight = String(margins.right) + 'mm';
+        page.style.paddingBottom = String(margins.bottom) + 'mm';
+        page.style.paddingLeft = String(margins.left) + 'mm';
+    });
+}
+
+function previewPopupClearPagedContent() {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const pages = doc.getElementById('pv-pages');
+    if (pages) pages.innerHTML = '';
+}
+
+function previewPopupFindWordBoundary(text, limit) {
+    const source = String(text || '');
+    const max = Math.max(1, Math.min(source.length - 1, Number(limit) || 1));
+    const minimum = Math.max(1, Math.floor(max * 0.62));
+    for (let index = max; index >= minimum; index -= 1) {
+        if (/\s|[.,;:!?\u3002\u3001)]/.test(source.charAt(index - 1))) return index;
+    }
+    return max;
+}
+
+function previewPopupFits(content) {
+    return content.scrollHeight <= content.clientHeight + 2;
+}
+
+function previewPopupMeasureCandidate(content, node) {
+    content.appendChild(node);
+    const fit = previewPopupFits(content);
+    content.removeChild(node);
+    return fit;
+}
+
+function previewPopupCloneTextSlice(element, start, end) {
+    let cursor = 0;
+    function visit(node) {
+        if (node.nodeType === 3) {
+            const text = String(node.nodeValue || '');
+            const nodeStart = cursor;
+            const nodeEnd = cursor + text.length;
+            cursor = nodeEnd;
+            const from = Math.max(start, nodeStart);
+            const to = Math.min(end, nodeEnd);
+            if (to > from) return node.ownerDocument.createTextNode(text.slice(from - nodeStart, to - nodeStart));
+            return null;
+        }
+        if (node.nodeType !== 1) return null;
+        const clone = node.cloneNode(false);
+        Array.prototype.slice.call(node.childNodes).forEach(function (child) {
+            const childClone = visit(child);
+            if (childClone) clone.appendChild(childClone);
+        });
+        return clone.childNodes.length ? clone : null;
+    }
+    return visit(element);
+}
+
+function previewPopupSplitTextElement(element, content) {
+    if (String(element.tagName || '').toLowerCase() === 'pre') return null;
+    if (!element || element.querySelector('img,svg,canvas,video,iframe,table')) return null;
+    const text = String(element.textContent || '');
+    if (text.length < 2) return null;
+    let low = 1;
+    let high = text.length - 1;
+    let best = 0;
+    while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        const trial = previewPopupCloneTextSlice(element, 0, middle);
+        if (trial && previewPopupMeasureCandidate(content, trial)) {
+            best = middle;
+            low = middle + 1;
+        } else {
+            high = middle - 1;
+        }
+    }
+    if (!best || best >= text.length) return null;
+    const boundary = previewPopupFindWordBoundary(text, best);
+    const first = previewPopupCloneTextSlice(element, 0, boundary);
+    const second = previewPopupCloneTextSlice(element, boundary, text.length);
+    return first && second ? [first, second] : null;
+}
+
+function previewPopupSplitContainerChildren(element, content) {
+    const tag = String(element.tagName || '').toLowerCase();
+    if (!/^(?:div|section|article|blockquote|ul|ol|dl)$/.test(tag)) return null;
+    const children = Array.prototype.slice.call(element.children);
+    if (children.length < 2) return null;
+    const fragments = [];
+    let current = element.cloneNode(false);
+    for (let index = 0; index < children.length; index += 1) {
+        const child = children[index].cloneNode(true);
+        current.appendChild(child);
+        if (!previewPopupMeasureCandidate(content, current.cloneNode(true)) && current.children.length > 1) {
+            current.removeChild(child);
+            fragments.push(current);
+            current = element.cloneNode(false);
+            current.appendChild(child);
+        }
+    }
+    if (current.children.length) fragments.push(current);
+    return fragments.length > 1 ? fragments : null;
+}
+
+function previewPopupSplitTableRows(table, content) {
+    if (String(table.tagName || '').toLowerCase() !== 'table') return null;
+    const rows = Array.prototype.slice.call(table.querySelectorAll('tbody > tr'));
+    if (rows.length < 2) return null;
+    const fragments = [];
+    const makeTable = function () {
+        const clone = table.cloneNode(false);
+        Array.prototype.slice.call(table.children).forEach(function (child) {
+            const tag = String(child.tagName || '').toLowerCase();
+            if (tag === 'tbody' || tag === 'tfoot') return;
+            clone.appendChild(child.cloneNode(true));
+        });
+        clone.appendChild(table.ownerDocument.createElement('tbody'));
+        return clone;
+    };
+    let current = makeTable();
+    for (let index = 0; index < rows.length; index += 1) {
+        const body = current.querySelector('tbody');
+        const row = rows[index].cloneNode(true);
+        body.appendChild(row);
+        if (!previewPopupMeasureCandidate(content, current.cloneNode(true)) && body.children.length > 1) {
+            body.removeChild(row);
+            fragments.push(current);
+            current = makeTable();
+            current.querySelector('tbody').appendChild(row);
+        }
+    }
+    if (current.querySelector('tbody').children.length) fragments.push(current);
+    return fragments.length > 1 ? fragments : null;
+}
+
+function previewPopupSplitOversized(element, content) {
+    if (String(element.tagName || '').toLowerCase() === 'pre') return null;
+    return previewPopupSplitTableRows(element, content)
+        || previewPopupSplitContainerChildren(element, content)
+        || previewPopupSplitTextElement(element, content);
+}
+
+function previewPopupAddPage(pagesRoot, margins, options) {
+    const pageOptions = options || {};
+    const page = previewPopupWindow.document.createElement('section');
+    page.className = 'pv-page' + (pageOptions.cover ? ' pv-cover-page' : '');
+    if (!pageOptions.cover) {
+        page.style.paddingTop = String(margins.top) + 'mm';
+        page.style.paddingRight = String(margins.right) + 'mm';
+        page.style.paddingBottom = String(margins.bottom) + 'mm';
+        page.style.paddingLeft = String(margins.left) + 'mm';
+    }
+    const content = previewPopupWindow.document.createElement('div');
+    content.className = 'pv-page-content markdown-body';
+    page.appendChild(content);
+    const number = previewPopupWindow.document.createElement('div');
+    number.className = 'pv-page-number';
+    page.appendChild(number);
+    pagesRoot.appendChild(page);
+    return { page, content, number };
+}
+
+function previewPopupPageIsEmpty(page) {
+    if (!page) return true;
+    return !page.content.children.length && !String(page.content.textContent || '').trim();
+}
+
+function previewPopupIsExplicitBreak(element) {
+    return !!(element && element.nodeType === 1 && element.classList && element.classList.contains('page-break'));
+}
+
+function previewPopupIsCoverPage(element) {
+    return !!(element && element.nodeType === 1 && element.classList && element.classList.contains('note-cover-page'));
+}
+
+function previewPopupRenderPaginatedPages(sourceRoot) {
+    if (!isPreviewPopupAlive() || !sourceRoot) return;
+    const doc = previewPopupWindow.document;
+    const pagesRoot = doc.getElementById('pv-pages');
+    if (!pagesRoot) return;
+
+    const prepared = doc.createElement('div');
+    prepared.innerHTML = String(sourceRoot.innerHTML || '');
+
+    try {
+        Array.prototype.slice.call(prepared.querySelectorAll('script, button, .no-print, .note-cover-transform-handle, .note-cover-image-replace'))
+            .forEach(function (node) {
+                if (node.parentNode) node.parentNode.removeChild(node);
+            });
+        Array.prototype.slice.call(prepared.querySelectorAll('[contenteditable]')).forEach(function (node) {
+            node.removeAttribute('contenteditable');
+            node.removeAttribute('aria-label');
+        });
+    } catch (_) {}
+
+    const units = Array.prototype.slice.call(prepared.childNodes).reduce(function (acc, node) {
+        if (node.nodeType === 1) {
+            acc.push(node);
+            return acc;
+        }
+        if (node.nodeType === 3 && String(node.textContent || '').trim()) {
+            const paragraph = doc.createElement('p');
+            paragraph.textContent = String(node.textContent || '');
+            acc.push(paragraph);
+        }
+        return acc;
+    }, []);
+
+    const margins = getPreviewPopupPageMargins();
+    previewPopupApplyPageMarginState(margins);
+    pagesRoot.innerHTML = '';
+    pagesRoot.style.setProperty('--pv-page-scale', '1');
+    const state = { pages: [] };
+    let current = previewPopupAddPage(pagesRoot, margins);
+    state.pages.push(current);
+
+    function place(element, depth) {
+        if (!element || depth > 24) {
+            if (element && element.nodeType === 1) current.content.appendChild(element);
+            return;
+        }
+
+        if (previewPopupIsCoverPage(element)) {
+            if (previewPopupPageIsEmpty(current)) {
+                if (current.page && current.page.parentNode === pagesRoot) pagesRoot.removeChild(current.page);
+                if (state.pages[state.pages.length - 1] === current) state.pages.pop();
+            }
+            current = previewPopupAddPage(pagesRoot, margins, { cover: true });
+            current.content.appendChild(element.cloneNode(true));
+            state.pages.push(current);
+            current = previewPopupAddPage(pagesRoot, margins);
+            state.pages.push(current);
+            return;
+        }
+
+        if (previewPopupIsExplicitBreak(element)) {
+            if (!previewPopupPageIsEmpty(current)) current = previewPopupAddPage(pagesRoot, margins);
+            state.pages.push(current);
+            return;
+        }
+
+        const normal = element.cloneNode(true);
+        current.content.appendChild(normal);
+        if (previewPopupFits(current.content)) return;
+        current.content.removeChild(normal);
+
+        const split = previewPopupSplitOversized(element, current.content);
+        if (split && split.length > 1) {
+            split.forEach(function (fragment) {
+                place(fragment, depth + 1);
+            });
+            return;
+        }
+
+        if (!previewPopupPageIsEmpty(current)) {
+            current = previewPopupAddPage(pagesRoot, margins);
+            state.pages.push(current);
+        }
+
+        const retry = element.cloneNode(true);
+        current.content.appendChild(retry);
+        if (previewPopupFits(current.content)) return;
+        current.content.removeChild(retry);
+
+        const splitAgain = previewPopupSplitOversized(element, current.content);
+        if (splitAgain && splitAgain.length > 1) {
+            splitAgain.forEach(function (fragment) {
+                place(fragment, depth + 1);
+            });
+            return;
+        }
+
+        if (retry.classList) retry.classList.add('pv-forced-fit');
+        current.content.appendChild(retry);
+        if (!previewPopupFits(current.content)) {
+            retry.style.maxHeight = current.content.clientHeight + 'px';
+            retry.style.overflow = 'hidden';
+        }
+    }
+
+    units.forEach(function (unit) {
+        place(unit, 0);
+    });
+
+    if (state.pages.length > 1 && previewPopupPageIsEmpty(state.pages[state.pages.length - 1])) {
+        pagesRoot.removeChild(state.pages.pop().page);
+    }
+    state.pages.forEach(function (pageState, index) {
+        if (pageState.number) {
+            pageState.number.textContent = (index + 1) + ' / ' + state.pages.length;
+        }
+    });
+}
+
 function applyPreviewPopupViewport() {
     if (!isPreviewPopupAlive()) return;
     const doc = previewPopupWindow.document;
     const content = doc.getElementById('pv-content');
+    const pages = doc.getElementById('pv-pages');
     const scaleLabel = doc.getElementById('pv-scale-label');
     const widthLabel = doc.getElementById('pv-width-label');
     const fontLabel = doc.getElementById('pv-font-label');
@@ -920,21 +1502,46 @@ function applyPreviewPopupViewport() {
     previewPopupWidthScale = widthScale;
     previewPopupFontSize = fs;
 
-    const basePageWidthMm = 210;
-    const widthMm = Math.max(148, basePageWidthMm * widthScale);
-    if (content) {
-        content.style.zoom = String(scale);
-        content.style.transform = 'none';
-        content.style.width = widthMm + 'mm';
-        content.style.maxWidth = 'none';
-        content.style.marginLeft = 'auto';
-        content.style.marginRight = 'auto';
-        content.style.fontSize = fs + 'px';
-        content.style.setProperty('--md-app-font-size', fs + 'px');
+    const widthMm = Math.max(148, PREVIEW_PV_A4_WIDTH_MM * widthScale);
+    content.style.zoom = String(scale);
+    content.style.transform = 'none';
+    content.style.width = previewPopupEditMode ? (widthMm + 'mm') : '100%';
+    content.style.maxWidth = 'none';
+    content.style.marginLeft = 'auto';
+    content.style.marginRight = 'auto';
+    content.style.fontSize = fs + 'px';
+    content.style.setProperty('--md-app-font-size', fs + 'px');
+    if (pages) pages.style.setProperty('--md-app-font-size', fs + 'px');
+
+    if (pages && !previewPopupFileMode) {
+        pages.style.setProperty('--pv-page-scale', String(scale));
     }
+
     if (scaleLabel) scaleLabel.textContent = Math.round(scale * 100) + '%';
     if (widthLabel) widthLabel.textContent = Math.round(widthScale * 100) + '%';
     if (fontLabel) fontLabel.textContent = fs + 'px';
+    previewPopupRefreshMarginControls();
+}
+
+function previewPopupPrint() {
+    if (!isPreviewPopupAlive()) return false;
+    try {
+        const doc = previewPopupWindow.document;
+        if (doc && doc.body) {
+            applyPreviewPopupViewport();
+            previewPopupApplyPageMarginState(getPreviewPopupPageMargins());
+            previewPopupRenderPaginatedPages(doc.getElementById('pv-content'));
+            previewPopupRefreshMarginControls();
+            doc.body.classList.add('pv-printing');
+            setTimeout(function () {
+                try { doc.body.classList.remove('pv-printing'); } catch (_) {}
+            }, 1);
+            previewPopupWindow.print();
+        }
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 function previewPopupAdjustScale(delta) {
@@ -1005,6 +1612,19 @@ function previewPopupInlineHtmlToMarkdown(node) {
         const src = internalId ? 'internal://' + internalId : String(node.getAttribute('src') || '').trim();
         const alt = String(node.getAttribute('alt') || 'image').replace(/[\[\]]/g, '');
         const title = String(node.getAttribute('title') || '').trim();
+        const styleText = String(node.getAttribute('style') || '');
+        const styleWidth = styleText.match(/(?:^|;)\s*width\s*:\s*([0-9]+)(?:px)?/i);
+        const styleHeight = styleText.match(/(?:^|;)\s*height\s*:\s*([0-9]+)(?:px)?/i);
+        const width = Number(node.getAttribute('width')) || (styleWidth ? Number(styleWidth[1]) : 0);
+        const height = Number(node.getAttribute('height')) || (styleHeight ? Number(styleHeight[1]) : 0);
+        if (src && (width || height)) {
+            let html = '<img src="' + escapePreviewAttribute(src) + '" alt="' + escapePreviewAttribute(alt) + '"';
+            if (title) html += ' title="' + escapePreviewAttribute(title) + '"';
+            if (width) html += ' width="' + width + '"';
+            if (height) html += ' height="' + height + '"';
+            html += '>';
+            return html;
+        }
         return src ? '![' + alt + '](' + src + (title ? ' "' + title.replace(/"/g, '\\"') + '"' : '') + ')' : '';
     }
     const content = Array.prototype.map.call(node.childNodes, previewPopupInlineHtmlToMarkdown).join('');
@@ -1150,6 +1770,7 @@ function previewPopupHandleRenderedClick(event) {
     const link = event.target.closest && event.target.closest('a[href]');
     if (link) event.preventDefault();
     rememberPreviewPopupRenderedSelection();
+    syncPreviewPopupEditorUi();
 }
 
 function syncPreviewPopupEditorUi() {
@@ -1179,10 +1800,31 @@ function syncPreviewPopupEditorUi() {
         status.textContent = previewPopupDraftDirty ? '렌더 초안 편집 중' : '원본과 동기화';
         status.classList.toggle('is-dirty', !!previewPopupDraftDirty);
     }
-    const editOnlyButtons = doc.querySelectorAll('.pv-format-button,#pv-toolbar button[title="표 삽입"],#pv-toolbar button[title="메인 이미지 삽입 도구 열기"]');
+    const editOnlyButtons = doc.querySelectorAll(
+        '.pv-format-button,' +
+        '#pv-toolbar button[title="표 삽입"],' +
+        '#pv-toolbar button[title="표 행 추가"],' +
+        '#pv-toolbar button[title="표 열 추가"],' +
+        '#pv-toolbar button[title="메인 이미지 삽입 도구 열기"]'
+    );
+    const tableContext = previewPopupGetCurrentTableContext();
     editOnlyButtons.forEach(function (button) {
         button.disabled = !previewPopupEditMode || previewPopupFileMode;
     });
+    const tableButtonTitles = [
+        '표 행 추가',
+        '표 열 추가'
+    ];
+    tableButtonTitles.forEach(function (title) {
+        const button = doc.querySelector('#pv-toolbar button[title="' + title + '"]');
+        if (!button) return;
+        button.disabled = !previewPopupEditMode || previewPopupFileMode || !tableContext;
+    });
+    if (previewPopupEditMode && !previewPopupFileMode) {
+        syncPreviewPopupImageResize();
+    } else {
+        cancelPreviewPopupImageResize();
+    }
 }
 
 function previewPopupToggleEditor() {
@@ -1252,42 +1894,284 @@ function previewPopupFormat(type) {
     const editor = getPreviewPopupEditorElement();
     if (!editor) return false;
     const action = String(type || '');
-    const command = action === 'bold' ? 'bold'
-        : action === 'italic' ? 'italic'
-            : action === 'bullet' ? 'insertUnorderedList'
-                : action === 'ordered' ? 'insertOrderedList' : '';
-    if (!command) return false;
+    let command = '';
+    let value = null;
+    if (action === 'bold') command = 'bold';
+    else if (action === 'italic') command = 'italic';
+    else if (action === 'bullet') command = 'insertUnorderedList';
+    else if (action === 'ordered') command = 'insertOrderedList';
+    else if (action === 'h1' || action === 'h2' || action === 'h3') {
+        command = 'formatBlock';
+        value = action.toUpperCase();
+    } else {
+        return false;
+    }
     editor.focus();
     restorePreviewPopupRenderedSelection();
-    const changed = previewPopupWindow.document.execCommand(command, false, null);
-    rememberPreviewPopupRenderedSelection();
+    const changed = previewPopupWindow.document.execCommand(command, false, value);
     previewPopupHandleEditorInput(true);
     return !!changed;
 }
 
-function previewPopupInsertTable() {
+function previewPopupGetCurrentTableContext() {
+    if (!isPreviewPopupAlive()) return null;
+    const editor = getPreviewPopupEditorElement();
+    if (!editor || !previewPopupEditMode) return null;
+    const selection = previewPopupWindow.getSelection();
+    if (!selection || !selection.rangeCount) return null;
+    const range = selection.getRangeAt(0);
+    if (!range) return null;
+    let node = range.startContainer;
+    if (!node) return null;
+    if (node.nodeType === 3) node = node.parentElement;
+    if (!node || node.nodeType !== 1 || !editor.contains(node)) return null;
+    const table = node.closest ? node.closest('table') : null;
+    if (!table || !editor.contains(table)) return null;
+    const row = node.closest ? node.closest('tr') : null;
+    const cell = node.closest ? (node.closest('th') || node.closest('td')) : null;
+    return {
+        table,
+        row,
+        cell,
+        section: row ? row.parentElement : null
+    };
+}
+
+function previewPopupGetTableColumnCount(table) {
+    if (!table || !table.rows) return 1;
+    let count = 1;
+    for (let i = 0; i < table.rows.length; i += 1) {
+        const row = table.rows[i];
+        if (!row || !row.cells) continue;
+        const len = row.cells.length;
+        if (len > count) count = len;
+    }
+    return count;
+}
+
+function previewPopupEnsureTablePicker() {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const panel = doc.getElementById('pv-table-picker');
+    const grid = doc.getElementById('pv-table-picker-grid');
+    const label = doc.getElementById('pv-table-picker-size-label');
+    if (!panel || !grid || !label) return;
+
+    const existing = grid.children && grid.children.length;
+    if (existing) return;
+
+    for (let r = 1; r <= PREVIEW_PV_TABLE_PICKER_ROWS; r += 1) {
+        for (let c = 1; c <= PREVIEW_PV_TABLE_PICKER_COLS; c += 1) {
+            const cell = doc.createElement('button');
+            cell.type = 'button';
+            cell.className = 'pv-table-picker-cell';
+            cell.dataset.rows = String(r);
+            cell.dataset.cols = String(c);
+            cell.title = r + 'x' + c + ' 표';
+            cell.addEventListener('mouseenter', function () {
+                previewPopupRenderTablePickerSelection(r, c);
+            });
+            cell.addEventListener('click', function () {
+                previewPopupInsertTableAtRowsCols(r, c);
+            });
+            grid.appendChild(cell);
+        }
+    }
+
+    grid.addEventListener('mouseleave', function () {
+        previewPopupRenderTablePickerSelection(0, 0);
+    });
+}
+
+function previewPopupRenderTablePickerSelection(rows, cols) {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const label = doc.getElementById('pv-table-picker-size-label');
+    const grid = doc.getElementById('pv-table-picker-grid');
+    if (!label || !grid) return;
+    const safeRows = Number(rows) || 0;
+    const safeCols = Number(cols) || 0;
+    label.textContent = (safeRows > 0 && safeCols > 0)
+        ? (safeRows + 'x' + safeCols + ' 표')
+        : '표 크기 선택';
+    const cells = grid.querySelectorAll('.pv-table-picker-cell[data-rows][data-cols]');
+    for (let i = 0; i < cells.length; i += 1) {
+        const item = cells[i];
+        const r = Number(item.dataset.rows || 0);
+        const c = Number(item.dataset.cols || 0);
+        const on = safeRows > 0 && safeCols > 0 && r <= safeRows && c <= safeCols;
+        item.classList.toggle('pv-table-picker-cell-active', on);
+    }
+}
+
+function previewPopupOpenTablePicker() {
     if (!isPreviewPopupAlive()) return false;
     if (!previewPopupEditMode) previewPopupToggleEditor();
-    const rowsInput = previewPopupWindow.prompt('표의 본문 행 수를 입력하세요.', '2');
-    if (rowsInput === null) return false;
-    const colsInput = previewPopupWindow.prompt('표의 열 수를 입력하세요.', '3');
-    if (colsInput === null) return false;
-    const rows = Math.max(1, Math.min(20, Number.parseInt(rowsInput, 10) || 2));
-    const cols = Math.max(1, Math.min(12, Number.parseInt(colsInput, 10) || 3));
-    const header = '<tr>' + Array.from({ length: cols }, function (_, i) { return '<th>열 ' + (i + 1) + '</th>'; }).join('') + '</tr>';
-    const body = Array.from({ length: rows }, function () {
-        return '<tr>' + Array.from({ length: cols }, function () { return '<td><br></td>'; }).join('') + '</tr>';
-    }).join('');
-    const table = '<table><thead>' + header + '</thead><tbody>' + body + '</tbody></table><p><br></p>';
+    const doc = previewPopupWindow.document;
+    const panel = doc.getElementById('pv-table-picker');
+    if (!panel) return false;
+    previewPopupEnsureTablePicker();
+    if (!previewPopupTablePickerBound) {
+        const onDismiss = function (event) {
+            const target = event && event.target ? event.target : null;
+            if (!previewPopupTablePickerOpen) return;
+            if (target && (target.closest && target.closest('#pv-table-picker') || panel.contains(target))) return;
+            if (event.type === 'keydown' && event.key !== 'Escape') return;
+            previewPopupCloseTablePicker();
+        };
+        previewPopupWindow.addEventListener('mousedown', onDismiss);
+        previewPopupWindow.addEventListener('keydown', onDismiss);
+        previewPopupTablePickerCloseHandler = onDismiss;
+        previewPopupTablePickerBound = true;
+    }
+    previewPopupTablePickerOpen = true;
+    panel.style.display = 'block';
+    panel.setAttribute('aria-hidden', 'false');
+    previewPopupRenderTablePickerSelection(0, 0);
+    return true;
+}
+
+function previewPopupCloseTablePicker() {
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const panel = doc.getElementById('pv-table-picker');
+    if (panel) {
+        panel.style.display = 'none';
+        panel.setAttribute('aria-hidden', 'true');
+    }
+    if (typeof previewPopupTablePickerCloseHandler === 'function') {
+        previewPopupWindow.removeEventListener('mousedown', previewPopupTablePickerCloseHandler);
+        previewPopupWindow.removeEventListener('keydown', previewPopupTablePickerCloseHandler);
+        previewPopupTablePickerCloseHandler = null;
+        previewPopupTablePickerBound = false;
+    }
+    previewPopupTablePickerOpen = false;
+    previewPopupRenderTablePickerSelection(0, 0);
+}
+
+function previewPopupInsertHtmlAtSelection(html) {
+    if (!isPreviewPopupAlive() || !html) return false;
     const editor = getPreviewPopupEditorElement();
     if (!editor) return false;
-    editor.focus();
-    restorePreviewPopupRenderedSelection();
-    const inserted = previewPopupWindow.document.execCommand('insertHTML', false, table);
-    rememberPreviewPopupRenderedSelection();
-    previewPopupHandleEditorInput(true);
+    try {
+        editor.focus();
+        const doc = previewPopupWindow.document;
+        const selection = previewPopupWindow.getSelection && previewPopupWindow.getSelection();
+        const range = selection && selection.rangeCount ? selection.getRangeAt(0) : doc.createRange();
+        if (range) {
+            if (selection && selection.removeAllRanges) {
+                range.deleteContents();
+            }
+            if (typeof doc.execCommand === 'function') {
+                const inserted = doc.execCommand('insertHTML', false, html);
+                if (inserted) {
+                    if (selection && selection.collapseToEnd && selection.rangeCount) selection.collapseToEnd();
+                    return true;
+                }
+            }
+            const wrapper = doc.createElement('div');
+            wrapper.innerHTML = String(html);
+            const fragment = doc.createDocumentFragment();
+            while (wrapper.firstChild) {
+                fragment.appendChild(wrapper.firstChild);
+            }
+            range.deleteContents();
+            if (selection && selection.removeAllRanges) {
+                selection.removeAllRanges();
+            }
+            range.insertNode(fragment);
+            if (selection && selection.addRange) {
+                range.collapse(false);
+                selection.addRange(range);
+            }
+            return true;
+        }
+    } catch (_) {}
+    return false;
+}
+
+function previewPopupInsertTableAtRowsCols(rowsInput, colsInput) {
+    if (!isPreviewPopupAlive()) return false;
+    if (!previewPopupEditMode) previewPopupToggleEditor();
+    const rows = Math.max(1, Math.min(PREVIEW_PV_TABLE_ROWS_MAX, Number(rowsInput) || 1));
+    const cols = Math.max(1, Math.min(PREVIEW_PV_TABLE_PICKER_COLS, Number(colsInput) || 1));
+
+    const headers = [];
+    for (let index = 1; index <= cols; index += 1) headers.push('Header ' + index);
+    const lines = [];
+    lines.push('| ' + headers.join(' | ') + ' |');
+    lines.push('|' + Array(cols).fill(' --- ').join('|') + '|');
+    const bodyRows = Math.max(0, rows - 1);
+    for (let rowIndex = 0; rowIndex < bodyRows; rowIndex += 1) {
+        lines.push('| ' + Array(cols).fill(' ').join(' | ') + ' |');
+    }
+
+    const replacement = '\n' + lines.join('\n') + '\n';
+    previewPopupCloseTablePicker();
+    const inserted = replacePreviewPopupEditorSelection(replacement);
+    if (!inserted) {
+        previewPopupHandleEditorInput(true);
+        showToast('표 삽입을 수행하지 못했습니다. 편집 모드에서 다시 시도해 주세요.');
+    }
     return !!inserted;
 }
+
+function previewPopupAddTableRow() {
+    const context = previewPopupGetCurrentTableContext();
+    if (!context || !context.table) {
+        showToast('표 안에 커서를 두고 행 추가를 눌러주세요.');
+        return false;
+    }
+    if (!previewPopupEditMode) previewPopupToggleEditor();
+    const doc = previewPopupWindow.document;
+    const table = context.table;
+    const docFragment = doc;
+    const cols = previewPopupGetTableColumnCount(table);
+    let section = context.section;
+    if (!section || section.tagName.toLowerCase() === 'table') {
+        section = table.tBodies[0];
+        if (!section) {
+            section = docFragment.createElement('tbody');
+            table.appendChild(section);
+        }
+    }
+    const row = docFragment.createElement('tr');
+    for (let i = 0; i < cols; i += 1) {
+        row.appendChild(docFragment.createElement('td')).innerHTML = '<br>';
+    }
+    if (context.section && context.section === table.tBodies[0] && context.row && context.row.nextSibling) {
+        section.insertBefore(row, context.row.nextSibling);
+    } else {
+        section.appendChild(row);
+    }
+    previewPopupHandleEditorInput(true);
+    return true;
+}
+
+function previewPopupAddTableColumn() {
+    const context = previewPopupGetCurrentTableContext();
+    if (!context || !context.table) {
+        showToast('표 셀 안에 커서를 두고 열 추가를 눌러주세요.');
+        return false;
+    }
+    if (!previewPopupEditMode) previewPopupToggleEditor();
+    const table = context.table;
+    const doc = previewPopupWindow.document;
+    const targetIndex = context.cell ? (context.cell.cellIndex + 1) : previewPopupGetTableColumnCount(table);
+    const rows = table.rows;
+    for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        const ref = row.cells[targetIndex];
+        const isHeader = String(row.parentElement && row.parentElement.tagName || '').toLowerCase() === 'thead';
+        const cell = doc.createElement(isHeader ? 'th' : 'td');
+        cell.innerHTML = '<br>';
+        if (row.cells.length === 0) row.appendChild(cell);
+        else row.insertBefore(cell, ref || null);
+    }
+    previewPopupHandleEditorInput(true);
+    return true;
+}
+
 
 function previewPopupHandleEditorKeydown(event) {
     if (!event) return;
@@ -1329,8 +2213,16 @@ function insertImageIntoPreviewPopupEditor(imageUrl, altText, type) {
     if (!isPreviewPopupImageInsertTargetActive()) return false;
     const source = String(imageUrl || '').trim();
     if (!source) return false;
-    const alt = String(altText || 'image').trim().replace(/[\[\]]/g, '') || 'image';
-    const insertion = '<img src="' + source.replace(/"/g, '&quot;') + '" alt="' + alt.replace(/"/g, '&quot;') + '" border="0" />';
+    const mode = String(type || 'markdown').toLowerCase();
+    const alt = String(altText || 'image').trim().replace(/[\[\]]/g, '').replace(/"/g, '\\"') || 'image';
+    const safeSourceHtml = source.replace(/"/g, '&quot;');
+    const safeSourceMarkdown = source.replace(/\)/g, '\\)').replace(/\(/g, '\\(').replace(/]/g, '\\]').replace(/\[/g, '\\[');
+    let insertion = '';
+    if (mode === 'html') {
+        insertion = '<img src="' + safeSourceHtml + '" alt="' + alt + '" border="0" />';
+    } else {
+        insertion = '![' + alt.replace(/\[/g, '\\[').replace(/\]/g, '\\]') + '](' + safeSourceMarkdown + ')';
+    }
     const editor = getPreviewPopupEditorElement();
     if (!editor) return false;
     editor.focus();
@@ -1338,6 +2230,7 @@ function insertImageIntoPreviewPopupEditor(imageUrl, altText, type) {
     const inserted = previewPopupWindow.document.execCommand('insertHTML', false, insertion);
     rememberPreviewPopupRenderedSelection();
     previewPopupHandleEditorInput(true);
+    if (previewPopupEditMode) syncPreviewPopupImageResize();
     previewPopupImageInsertTarget = false;
     if (inserted) {
         try { previewPopupWindow.focus(); } catch (_) {}
@@ -1538,6 +2431,7 @@ async function updatePreviewPopupContent() {
         return;
     }
     if (htmlDocument !== null && typeof renderHtmlDocumentFrame === 'function') {
+        previewPopupClearPagedContent();
         applyPreviewPopupViewport();
         target.style.width = '100%';
         target.style.maxWidth = 'none';
@@ -1545,6 +2439,7 @@ async function updatePreviewPopupContent() {
         renderHtmlDocumentFrame(target, htmlDocument, {
             title: (typeof currentFileName !== 'undefined' && currentFileName) || 'HTML preview'
         });
+        previewPopupRefreshMarginControls();
         syncPreviewPopupEditorUi();
         return;
     }
@@ -1589,7 +2484,10 @@ async function updatePreviewPopupContent() {
     if (snapshot.features.hasMermaid) {
         try { await renderMermaidInPreviewPopup(target); } catch (e) {}
     }
+    previewPopupRenderPaginatedPages(target);
+    previewPopupApplyPageMarginState(getPreviewPopupPageMargins());
     applyPreviewPopupViewport();
+    previewPopupRefreshMarginControls();
     syncPreviewPopupEditorUi();
 }
 
@@ -1605,6 +2503,7 @@ function openPreviewPopupWindow() {
             } catch (_) {}
         }
         previewPopupWindow.focus();
+        previewPopupRefreshMarginControls();
         updatePreviewPopupContent();
         return;
     }
@@ -1624,6 +2523,8 @@ function openPreviewPopupWindow() {
         showToast('Failed to open preview window.');
         return;
     }
+    previewPopupRefreshMarginControls();
+    previewPopupApplyPageMarginState(getPreviewPopupPageMargins());
 
     if (previewPopupWindow) previewPopupWindow.focus();
     const renderNow = function () {
