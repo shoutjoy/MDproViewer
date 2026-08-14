@@ -24,6 +24,8 @@ const VIEW_COPY_FAB_POSITION_KEY = 'md_viewer_view_copy_fab_position_v2';
 const VIEW_COPY_FAB_EDGE_GAP = 8;
 const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
+    pdfJs: './js/extendFiles/pdfjs-loader.mjs?v=20260815-editable-2',
+    pdfOpen: './js/extendFiles/pdf-open.js?v=20260815-editable-1',
     docxExport: './js/extendFiles/docx-export.js?v=20260811-note-cover-editor-3',
     htmlExport: './js/export/html-export.js?v=20260805-image-1',
     pdfExport: './js/export/pdf-export.js?v=20260813-merge-tool-1',
@@ -402,6 +404,7 @@ async function openDroppedDocumentFile(file) {
     if (!file) return false;
     const extension = getSelectedFileExtension(file);
     if (extension === '.docx') return openDocxInEditor(file);
+    if (extension === '.pdf') return openPdfInEditor(file);
     await readFile(file);
     return true;
 }
@@ -3230,6 +3233,60 @@ async function openDocxInEditor(file) {
     }
 }
 
+async function openPdfInEditor(file) {
+    if (!file) return false;
+    try {
+        await loadOptionalScript('pdfJs', function () {
+            return !!window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function';
+        }, { module: true });
+        await loadOptionalScript('pdfOpen', function () {
+            return !!window.PdfOpen && typeof window.PdfOpen.convert === 'function';
+        });
+    } catch (_) {
+        showToast('PDF 편집 변환 모듈을 불러오지 못했습니다.');
+        return false;
+    }
+
+    showToast('PDF 텍스트를 편집 문서로 변환하는 중입니다...');
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await window.PdfOpen.convert(arrayBuffer, {
+            pdfjsLib: window.pdfjsLib,
+            standardFontDataUrl: new URL('./vendor/pdfjs/standard_fonts/', window.location.href).href,
+            onProgress: function (page, total) {
+                showToast('PDF를 변환하는 중입니다... ' + page + '/' + total);
+            }
+        });
+        if (!result || !String(result.markdown || '').replace(/<!--[\s\S]*?-->/g, '').trim()) {
+            showToast('이 PDF에서 편집 가능한 텍스트를 찾지 못했습니다. 스캔 PDF는 OCR 변환이 필요합니다.');
+            return true;
+        }
+        const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+        if (!canProceed) {
+            showToast('Open canceled.');
+            return true;
+        }
+        setCurrentDocumentInfo(file.name || 'document.pdf', null, {
+            sizeBytes: file.size || null,
+            createdAt: file.lastModified || null,
+            dateLabel: file.lastModified ? '수정일' : '생성일'
+        });
+        updateContent(result.markdown);
+        markPersistedState();
+        const missing = Array.isArray(result.scannedPages) ? result.scannedPages.length : 0;
+        showToast(missing
+            ? 'PDF를 편집 문서로 열었습니다. 텍스트가 없는 페이지 ' + missing + '쪽은 OCR이 필요합니다.'
+            : 'PDF를 편집 가능한 문서로 열었습니다.');
+        return true;
+    } catch (error) {
+        const message = error && error.name === 'PasswordException'
+            ? '암호가 설정된 PDF는 현재 열 수 없습니다.'
+            : 'PDF를 편집 문서로 변환할 수 없습니다: ' + (error && error.message ? error.message : error);
+        showToast(message);
+        return true;
+    }
+}
+
 function handleImageFolderSelect(event) {
     const input = event && event.target ? event.target : null;
     if (!isFmaViewerFeatureEnabled()) {
@@ -3340,6 +3397,8 @@ async function handleFileSelect(event) {
             } else if (!openSelectedImageInPreviewPopup(file)) {
                 showToast('이미지를 PV 창에서 열지 못했습니다. 팝업 허용 설정을 확인하세요.');
             }
+        } else if (extension === '.pdf') {
+            await openPdfInEditor(file);
         } else if (DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)
             && nativePath
             && window.web2electron
@@ -3369,6 +3428,7 @@ async function openFileFromLocalFolderExplorer(file) {
         else if (!openSelectedImageInPreviewPopup(file)) showToast('이미지를 PV 창에서 열지 못했습니다.');
         return true;
     }
+    if (extension === '.pdf') return openPdfInEditor(file);
     if (DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)
         && nativePath
         && window.web2electron
@@ -3763,7 +3823,7 @@ async function chooseExportType() {
 
 function openPdfMergeWindow() {
     const mergeUrl = new URL('./js/export/pdf-merge-window.html', window.location.href);
-    mergeUrl.searchParams.set('v', '20260815-classic-5-' + Date.now());
+    mergeUrl.searchParams.set('v', '20260815-pdf-isolated-11-' + Date.now());
     const features = 'popup=yes,width=1380,height=900,left=80,top=50,resizable=yes,scrollbars=yes';
     const mergeWindow = window.open(mergeUrl.href, 'mdproviewer_pdf_merge', features);
     if (!mergeWindow) {

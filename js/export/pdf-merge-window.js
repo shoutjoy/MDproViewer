@@ -1,8 +1,15 @@
+// This file is intentionally loaded as a classic script for file:// compatibility.
 const pdfjsLib = window.pdfjsLib;
-if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
-  throw new Error('PDF.js 클래식 라이브러리를 불러오지 못했습니다.');
+const pdfjsReady = !!(pdfjsLib && typeof pdfjsLib.getDocument === 'function');
+if (pdfjsReady) {
+  const workerUrl = new URL('../../vendor/pdfjs/build/pdf.worker.classic.min.js', window.location.href).href;
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerPort = new Worker(workerUrl);
+  } catch (error) {
+    console.warn('PDF Worker를 별도 프로세스로 열지 못해 기본 로더를 사용합니다.', error);
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+  }
 }
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../../vendor/pdfjs/build/pdf.worker.classic.min.js', window.location.href).href;
 
 const els = {
   files: document.getElementById('files'), add: document.getElementById('add'), list: document.getElementById('list'),
@@ -117,7 +124,7 @@ function renderList() {
       '<div><div class="name"></div><div class="meta"></div></div>' +
       '<div class="actions"><button type="button" class="mini up" title="위로">▲</button><button type="button" class="mini down" title="아래로">▼</button><button type="button" class="mini remove" title="제거">×</button></div>';
     row.querySelector('.name').textContent = (index + 1) + '. ' + item.file.name;
-    row.querySelector('.meta').textContent = item.pageCount + '쪽 · ' + formatSize(item.file.size);
+    row.querySelector('.meta').textContent = (item.pageCount ? item.pageCount + '쪽 · ' : '') + formatSize(item.file.size) + ' · 파일 등록 완료';
     row.querySelector('.up').disabled = index === 0;
     row.querySelector('.down').disabled = index === items.length - 1;
     row.querySelector('.up').addEventListener('click', () => moveItem(index, index - 1));
@@ -137,9 +144,10 @@ function renderList() {
     });
     els.list.appendChild(row);
   });
-  const pages = items.reduce((sum, item) => sum + item.pageCount, 0);
-  els.status.textContent = items.length ? items.length + '개 PDF · 총 ' + pages + '쪽 · 위에서 아래 순서로 병합' : '선택된 PDF 없음';
-  els.merge.disabled = !items.length;
+  const knownPages = items.reduce((sum, item) => sum + (Number(item.pageCount) || 0), 0);
+  const pageText = knownPages ? ' · 확인된 ' + knownPages + '쪽' : '';
+  els.status.textContent = items.length ? items.length + '개 PDF 파일 등록 완료' + pageText + ' · 위에서 아래 순서로 병합' : '선택된 PDF 없음';
+  els.merge.disabled = isBusy || !items.length;
 }
 
 function moveItem(from, to) {
@@ -159,6 +167,7 @@ async function previewPdfItem(index) {
   clearPreviewImages();
   els.placeholder.hidden = false;
   try {
+    await ensurePdfItemLoaded(item);
     const pdf = await pdfjsLib.getDocument({ data: item.bytes.slice(), useWorkerFetch: false }).promise;
     const totalPages = pdf.numPages;
     const scale = getPdfRenderScale();
@@ -203,36 +212,32 @@ async function readFile(file) {
   return { id: fileId(file), file, bytes, pageCount };
 }
 
+async function ensurePdfItemLoaded(item) {
+  if (!pdfjsReady) throw new Error('PDF 처리 라이브러리를 불러오지 못했습니다.');
+  if (item.bytes && Number(item.pageCount) > 0) return item;
+  const bytes = new Uint8Array(await item.file.arrayBuffer());
+  const documentTask = pdfjsLib.getDocument({ data: bytes.slice(), useWorkerFetch: false });
+  const pdf = await documentTask.promise;
+  item.bytes = bytes;
+  item.pageCount = pdf.numPages;
+  await pdf.destroy();
+  renderList();
+  return item;
+}
+
 async function addFiles(fileList) {
   if (isBusy) return;
   const files = Array.from(fileList || []).filter(file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
   if (!files.length) return;
-  setBusy(true, 'PDF 정보를 읽는 중…');
-  const added = [];
-  const failed = [];
-  try {
-    for (let index = 0; index < files.length; index += 1) {
-      const file = files[index];
-      els.busy.textContent = 'PDF 정보를 읽는 중… ' + (index + 1) + ' / ' + files.length;
-      try {
-        added.push(await readFile(file));
-      } catch (error) {
-        failed.push({ file, error });
-      }
-    }
-    if (added.length) {
-      items = items.concat(added);
-      clearMergedPreview();
-      renderList();
-    }
-  } finally {
-    setBusy(false);
-    els.busy.textContent = 'PDF를 병합하는 중…';
-  }
-  if (failed.length) {
-    const failedNames = failed.map(entry => entry.file.name).join('\n');
-    alert(failed.length + '개 PDF를 읽지 못했습니다. 나머지 파일은 목록에 추가했습니다.\n\n' + failedNames);
-  }
+  const added = files.map(file => ({
+    id: fileId(file),
+    file,
+    bytes: null,
+    pageCount: null
+  }));
+  items = items.concat(added);
+  clearMergedPreview();
+  renderList();
 }
 
 function canvasToJpeg(canvas, quality) {
@@ -244,6 +249,7 @@ function canvasToJpeg(canvas, quality) {
 
 async function mergePdfs() {
   if (!items.length) return;
+  if (!pdfjsReady) return alert('PDF 처리 라이브러리를 불러오지 못했습니다. 병합기 창을 다시 열어 주세요.');
   const JsPdf = window.jspdf?.jsPDF;
   if (!JsPdf) return alert('PDF 생성 라이브러리를 불러오지 못했습니다.');
   setBusy(true, 'PDF를 병합하는 중…');
@@ -254,6 +260,10 @@ async function mergePdfs() {
   const previewPages = [];
   const scale = getPdfRenderScale();
   try {
+    for (let index = 0; index < items.length; index += 1) {
+      els.busy.textContent = 'PDF 정보를 준비하는 중… ' + (index + 1) + ' / ' + items.length;
+      await ensurePdfItemLoaded(items[index]);
+    }
     const totalPages = items.reduce((sum, item) => sum + item.pageCount, 0);
     for (const item of items) {
       const source = await pdfjsLib.getDocument({ data: item.bytes.slice(), useWorkerFetch: false }).promise;

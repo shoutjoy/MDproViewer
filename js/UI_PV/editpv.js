@@ -139,6 +139,9 @@ let previewPopupMarginDialogCloseHandler = null;
 let previewPopupHeaderScale = getPreviewPopupHeaderScaleFromLocal();
 let previewPopupHeaderBackgroundRemoved = getPreviewPopupHeaderBackgroundRemovedFromLocal();
 let previewPopupHeaderRelayoutTimer = null;
+let previewPopupImageResizeRetryTimer = null;
+let previewPopupEditPageGuideTimer = null;
+let previewPopupEditPageGuideObserver = null;
 
 function cancelPreviewPopupImageResize() {
     if (!isPreviewPopupAlive()) return false;
@@ -198,15 +201,37 @@ function syncPreviewPopupImageResize() {
     const resize = previewPopupWindow.ViewModeImageResize;
     if (!editor || !resize || typeof resize.hydrate !== 'function') return false;
     const source = getPreviewPopupImageResizeSourceMarkdown();
-    resize.hydrate(editor, {
+    const count = resize.hydrate(editor, {
         sourceMarkdown: source,
         onConfirm: applyPreviewPopupImageResizeResult,
         imageSelector: '#viewer img'
     });
-    return true;
+    Array.prototype.slice.call(editor.querySelectorAll('img.md-view-resizable-image')).forEach(function (image) {
+        if (!image.getAttribute('title')) image.setAttribute('title', '클릭하여 이미지 크기 조절');
+    });
+    if (editor.querySelectorAll('img').length > 0 && count === 0) return false;
+    return count;
+}
+
+function schedulePreviewPopupImageResize(attempt) {
+    const retry = Math.max(0, Number(attempt) || 0);
+    if (previewPopupImageResizeRetryTimer) {
+        clearTimeout(previewPopupImageResizeRetryTimer);
+        previewPopupImageResizeRetryTimer = null;
+    }
+    const count = syncPreviewPopupImageResize();
+    if (count !== false || retry >= 5 || !isPreviewPopupAlive() || !previewPopupEditMode) return count;
+    previewPopupImageResizeRetryTimer = setTimeout(function () {
+        previewPopupImageResizeRetryTimer = null;
+        schedulePreviewPopupImageResize(retry + 1);
+    }, retry < 2 ? 80 : 180);
+    return false;
 }
 
 function onPreviewPopupClosed() {
+    previewPopupDisposeEditPageGuides();
+    if (previewPopupImageResizeRetryTimer) clearTimeout(previewPopupImageResizeRetryTimer);
+    previewPopupImageResizeRetryTimer = null;
     cancelPreviewPopupImageResize();
     previewPopupWindow = null;
     previewPopupFileMode = false;
@@ -228,6 +253,7 @@ function onPreviewPopupClosed() {
 }
 
 function closePreviewPopupWindow() {
+    previewPopupDisposeEditPageGuides();
     if (!isPreviewPopupAlive()) {
         previewPopupWindow = null;
         previewPopupFileMode = false;
@@ -268,6 +294,15 @@ function closePreviewPopupWindow() {
     revokePreviewPopupFileObjectUrl();
     resetPreviewPopupMermaidLoader();
     revokeObjectUrls(previewInternalImageObjectUrls);
+}
+
+function previewPopupDisposeEditPageGuides() {
+    if (previewPopupEditPageGuideTimer) clearTimeout(previewPopupEditPageGuideTimer);
+    previewPopupEditPageGuideTimer = null;
+    if (previewPopupEditPageGuideObserver) {
+        try { previewPopupEditPageGuideObserver.disconnect(); } catch (_) {}
+        previewPopupEditPageGuideObserver = null;
+    }
 }
 
 function ensurePreviewPopupForFile() {
@@ -461,8 +496,8 @@ function getPreviewPopupDocumentHtml() {
             scriptUrl: new URL('./js/math_render/math_render.js?v=20260725-stable-math-1', window.location.href).href
         })
         : '';
-    const imageResizeHead = '<script src="' + escapePreviewAttribute(new URL('./js/viewmode/image-resize.js?v=20260811-2', window.location.href).href) + '"></script>';
-    const pvImageInsertScript = escapePreviewAttribute(new URL('./js/UI_PV/pv-image-insert.js?v=20260815-child-2', window.location.href).href);
+    const imageResizeHead = '<script src="' + escapePreviewAttribute(new URL('./js/viewmode/image-resize.js?v=20260815-pv-restore-1', window.location.href).href) + '"></script>';
+    const pvImageInsertScript = escapePreviewAttribute(new URL('./js/UI_PV/pv-image-insert.js?v=20260815-child-3-resize', window.location.href).href);
     const baseHref = escapePreviewAttribute(document.baseURI || window.location.href);
     return '<!doctype html><html lang="ko" class="pv-print-preview"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><base href="' + baseHref + '"><title>MDproViewer Print Preview</title>'
         + getPreviewPopupStylesheetLinks()
@@ -480,9 +515,10 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-toolbar .pv-table-action{min-width:48px;}#pv-toolbar .pv-theme-button{margin-left:auto;min-width:48px;background:#e0f2fe;border-color:#38bdf8;color:#075985;}html.dark #pv-toolbar .pv-theme-button{background:#1e293b;border-color:#64748b;color:#f8fafc;}'
         + '#pv-toolbar .pv-divider{width:1px;height:20px;background:#475569;margin:0 2px;flex:0 0 auto;}#pv-draft-status{font-size:10px;font-weight:700;color:#a7f3d0;margin-left:2px;}#pv-draft-status.is-dirty{color:#fde68a;}'
         + '#pv-viewport{height:100%;overflow:auto;padding:58px 24px 48px;box-sizing:border-box;background:#e2e8f0;}html.dark #pv-viewport{background:#0b1220;}'
-        + '#viewer{margin:0 auto;}body.pv-editor-mode #viewer{width:max-content;min-width:210mm;min-height:297mm;}'
+        + '#viewer{position:relative;margin:0 auto;}body.pv-editor-mode #viewer{width:max-content;min-width:210mm;min-height:297mm;}'
         + '#pv-content{box-sizing:border-box;line-height:1.6;overflow-wrap:break-word;transform-origin:top center;width:auto;max-width:none;padding:0;color:#1e293b;}'
         + 'body.pv-editor-mode #pv-content{min-height:297mm;padding:14mm 12mm;background:#fff;color:#1e293b;box-shadow:0 18px 48px rgba(15,23,42,.28);}html.dark body.pv-editor-mode #pv-content{background:#111827;color:#e2e8f0;box-shadow:0 18px 48px rgba(0,0,0,.52);}'
+        + '#pv-edit-page-guides{display:none;position:absolute;z-index:60;pointer-events:none;overflow:visible;box-sizing:border-box;}body.pv-editor-mode #pv-edit-page-guides{display:block;}.pv-edit-page-guide{position:absolute;left:0;right:0;height:0;border-top:2px dashed #ef4444;box-sizing:border-box;}.pv-edit-page-guide-label{position:absolute;right:8px;bottom:6px;padding:2px 7px;border:1px solid #ef4444;border-radius:999px;background:rgba(255,255,255,.94);color:#b91c1c;font:800 10px/1.35 Inter,"Noto Sans KR","Malgun Gothic",sans-serif;white-space:nowrap;box-shadow:0 2px 8px rgba(127,29,29,.16);}html.dark .pv-edit-page-guide-label{background:rgba(15,23,42,.94);color:#fca5a5;border-color:#f87171;}'
         + '#pv-content[contenteditable=\"true\"]{cursor:text;outline:3px solid #818cf8;outline-offset:4px;caret-color:#1d4ed8;}#pv-content[contenteditable=\"true\"]:focus{outline-color:#4f46e5;box-shadow:0 18px 48px rgba(15,23,42,.38),0 0 0 6px rgba(99,102,241,.16);}#pv-content[contenteditable=\"true\"] .pv-render-locked{cursor:not-allowed;user-select:none;}body.pv-editor-mode #pv-pages{display:none;}body.pv-editor-mode #pv-content{display:block;}body:not(.pv-editor-mode):not(.pv-file-mode) #pv-content{display:none;}body:not(.pv-editor-mode):not(.pv-file-mode) #pv-pages{display:flex;}body.pv-file-mode #pv-pages{display:none;}body.pv-file-mode #pv-content{display:block;}'
         + 'body.pv-file-mode #pv-view-controls{display:none;}body.pv-file-mode .pv-edit-action{display:none;}'
         + '#pv-toolbar .pv-margin-controls{display:flex;align-items:center;gap:4px;margin-left:6px;font-size:9px;color:#cbd5e1;white-space:nowrap;}'
@@ -520,7 +556,7 @@ function getPreviewPopupDocumentHtml() {
         + '.pv-cover-page .pv-page-number{display:none!important;}'
         + '#pv-pages .pv-page-break{display:none!important;}'
         + '.page-break{display:none!important;}'
-        + '@media print{#pv-toolbar,#pv-view-controls,#pv-table-picker{display:none!important;}@page{size:A4 portrait;margin:0;}html,html.dark,body,html.dark body{background:#fff!important;color:#1e293b!important;color-scheme:light;}#pv-viewport,#pv-pages{padding:0!important;display:block!important;background:#fff!important;}#pv-pages{gap:0!important;align-items:stretch;transform:none!important;}.pv-page,html.dark .pv-page{background:#fff!important;color:#1e293b!important;box-shadow:none!important;width:210mm;height:297mm;page-break-after:always;page-break-inside:avoid;overflow:hidden;margin:0 auto!important;transform:none!important;border-color:transparent!important;}.pv-page-content,html.dark .pv-page-content{background:#fff!important;color:#1e293b!important;}.pv-page:last-child{page-break-after:auto;}.pv-page-number{font-size:10px;color:#666;}}'
+        + '@media print{#pv-toolbar,#pv-view-controls,#pv-table-picker,#pv-edit-page-guides{display:none!important;}@page{size:A4 portrait;margin:0;}html,html.dark,body,html.dark body{background:#fff!important;color:#1e293b!important;color-scheme:light;}#pv-viewport,#pv-pages{padding:0!important;display:block!important;background:#fff!important;}#pv-pages{gap:0!important;align-items:stretch;transform:none!important;}.pv-page,html.dark .pv-page{background:#fff!important;color:#1e293b!important;box-shadow:none!important;width:210mm;height:297mm;page-break-after:always;page-break-inside:avoid;overflow:hidden;margin:0 auto!important;transform:none!important;}.pv-page-content,html.dark .pv-page-content{background:#fff!important;color:#1e293b!important;}.pv-page:last-child{page-break-after:auto;}.pv-page-number{font-size:10px;color:#666;}}'
         + '#pv-table-picker{position:fixed;top:46px;left:8px;width:216px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#334155;box-shadow:0 16px 32px rgba(15,23,42,.32);z-index:10000;display:none;box-sizing:border-box;}html.dark #pv-table-picker{border-color:#475569;background:#0f172a;color:#e2e8f0;}'
         + '#pv-table-picker .pv-table-picker-label{font-size:11px;font-weight:700;line-height:1.2;margin-bottom:8px;color:#334155;white-space:nowrap;}html.dark #pv-table-picker .pv-table-picker-label{color:#e2e8f0;}'
         + '#pv-table-picker .pv-table-picker-grid{display:grid;grid-template-columns:repeat(' + PREVIEW_PV_TABLE_PICKER_COLS + ',16px);gap:4px;}'
@@ -604,7 +640,7 @@ function getPreviewPopupDocumentHtml() {
         + '</div>'
         + '<div class=\"pv-margin-actions\"><button type=\"button\" onclick=\"window.opener&&window.opener.previewPopupCloseMarginDialog()\">닫기</button></div>'
         + '</div>'
-        + '<div id=\"pv-viewport\"><div id=\"viewer\"><div id=\"pv-content\" class=\"markdown-body print-area\" spellcheck=\"true\" oninput=\"window.opener&&window.opener.previewPopupHandleEditorInput(true)\" onkeydown=\"window.opener&&window.opener.previewPopupHandleEditorKeydown(event)\" onkeyup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onmouseup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onclick=\"window.opener&&window.opener.previewPopupHandleRenderedClick(event)\"></div></div><div id=\"pv-pages\"></div></div>'
+        + '<div id=\"pv-viewport\"><div id=\"viewer\"><div id=\"pv-content\" class=\"markdown-body print-area\" spellcheck=\"true\" oninput=\"window.opener&&window.opener.previewPopupHandleEditorInput(true)\" onkeydown=\"window.opener&&window.opener.previewPopupHandleEditorKeydown(event)\" onkeyup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onmouseup=\"window.opener&&window.opener.rememberPreviewPopupRenderedSelection()\" onclick=\"window.opener&&window.opener.previewPopupHandleRenderedClick(event)\"></div><div id=\"pv-edit-page-guides\" aria-hidden=\"true\"></div></div><div id=\"pv-pages\"></div></div>'
         + '<div id=\"pv-view-controls\"><div class=\"pv-control-group\"><span class=\"pv-control-name\">Zoom</span><button type=\"button\" title=\"축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(-0.1)\">−</button><span id=\"pv-scale-label\" class=\"label\">100%</span><button type=\"button\" title=\"확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustScale(0.1)\">+</button></div><span class=\"pv-control-divider\"></span><div class=\"pv-control-group\"><span class=\"pv-control-name\">Width</span><button type=\"button\" title=\"너비 축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(-0.1)\">−</button><span id=\"pv-width-label\" class=\"label\">100%</span><button type=\"button\" title=\"너비 확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustWidth(0.1)\">+</button></div><span class=\"pv-control-divider\"></span><div class=\"pv-control-group\"><span class=\"pv-control-name\">Font</span><button type=\"button\" title=\"글자 축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(-1)\">−</button><span id=\"pv-font-label\" class=\"label\">16px</span><button type=\"button\" title=\"글자 확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustFontSize(1)\">+</button></div><span class=\"pv-control-divider\"></span><div class=\"pv-control-group\"><span class=\"pv-control-name\">Header</span><button type=\"button\" title=\"헤더 축소\" onclick=\"window.opener&&window.opener.previewPopupAdjustHeaderScale(-0.1)\">−</button><span id=\"pv-header-label\" class=\"label\">100%</span><button type=\"button\" title=\"헤더 확대\" onclick=\"window.opener&&window.opener.previewPopupAdjustHeaderScale(0.1)\">+</button></div><span class=\"pv-control-divider\"></span><label class=\"pv-header-background-toggle\" title=\"체크하면 헤더의 색상 배경을 제거합니다\"><input id=\"pv-header-background-remove\" type=\"checkbox\" onchange=\"window.opener&&window.opener.previewPopupSetHeaderBackgroundRemoved(this.checked)\">배경 제거</label></div></div>'
         + '<div id=\"pv-image-insert-modal\" role=\"dialog\" aria-modal=\"true\" aria-hidden=\"true\" aria-label=\"PV 이미지 삽입\" hidden><div id=\"pv-image-panel\"><div id=\"pv-image-head\"><h3>PV 이미지 삽입</h3><button type=\"button\" onclick=\"pvCloseImageInsert()\">닫기</button></div><input id=\"pv-image-file\" type=\"file\" accept=\"image/*\" hidden><div id=\"pv-image-zones\"><button id=\"pv-image-upload-zone\" type=\"button\">이미지 업로드<small>JPG, PNG, GIF, WebP · 드래그 앤 드롭</small></button><button id=\"pv-image-paste-zone\" type=\"button\">이 공간 클릭 후 Ctrl+V<small>클립보드 이미지를 PV 창으로 붙여넣기</small></button></div><div id=\"pv-image-actions\"><button class=\"imgbb\" type=\"button\" onclick=\"pvUploadImageToImgbb()\">[imgBB] Upload</button><button class=\"internal\" type=\"button\" onclick=\"pvSaveImageInternal()\">문서내부저장</button></div><div id=\"pv-image-url-wrap\"><label for=\"pv-image-url\">Image URL → PV에 삽입 (Markdown / HTML)</label><input id=\"pv-image-url\" type=\"url\" placeholder=\"https://i.ibb.co/... 또는 internal://...\"><div id=\"pv-image-output\"><button type=\"button\" onclick=\"pvInsertImage(\'markdown\')\">Markdown</button><button type=\"button\" onclick=\"pvInsertImage(\'html\')\">HTML</button></div></div><div id=\"pv-image-status\" aria-live=\"polite\"></div><img id=\"pv-image-preview\" alt=\"PV image preview\" hidden></div></div>'
         + '<script src=\"' + pvImageInsertScript + '\"><\/script>'
@@ -1599,6 +1635,7 @@ function applyPreviewPopupViewport() {
     if (backgroundCheckbox) backgroundCheckbox.checked = !!previewPopupHeaderBackgroundRemoved;
     previewPopupRefreshMarginControls();
     syncPreviewPopupHeaderSettingsUi();
+    previewPopupScheduleEditPageGuides();
 }
 
 function previewPopupApplyHeaderScaleToElements(doc, fontSize, scale) {
@@ -1942,6 +1979,99 @@ function previewPopupHandleRenderedClick(event) {
     syncPreviewPopupEditorUi();
 }
 
+function previewPopupGetA4EditPageCount(contentHeightPx, pageHeightPx) {
+    const height = Math.max(0, Number(contentHeightPx) || 0);
+    const pageHeight = Math.max(1, Number(pageHeightPx) || 1);
+    return Math.max(1, Math.ceil(Math.max(0, height - 0.5) / pageHeight));
+}
+
+function previewPopupClearEditPageGuides() {
+    if (previewPopupEditPageGuideTimer) {
+        clearTimeout(previewPopupEditPageGuideTimer);
+        previewPopupEditPageGuideTimer = null;
+    }
+    if (!isPreviewPopupAlive()) return;
+    const doc = previewPopupWindow.document;
+    const layer = doc.getElementById('pv-edit-page-guides');
+    const content = doc.getElementById('pv-content');
+    if (layer) {
+        layer.innerHTML = '';
+        layer.style.width = '';
+        layer.style.height = '';
+    }
+    if (content && (!previewPopupEditMode || previewPopupFileMode)) {
+        content.style.minHeight = '';
+    }
+}
+
+function previewPopupUpdateEditPageGuides() {
+    previewPopupEditPageGuideTimer = null;
+    if (!isPreviewPopupAlive() || !previewPopupEditMode || previewPopupFileMode) {
+        previewPopupClearEditPageGuides();
+        return false;
+    }
+    const doc = previewPopupWindow.document;
+    const viewer = doc.getElementById('viewer');
+    const content = doc.getElementById('pv-content');
+    const layer = doc.getElementById('pv-edit-page-guides');
+    if (!viewer || !content || !layer) return false;
+
+    const widthScale = Math.max(0.5, Math.min(2.5, Number(previewPopupWidthScale) || 1));
+    const widthMm = Math.max(148, PREVIEW_PV_A4_WIDTH_MM * widthScale);
+    content.style.minHeight = '0';
+    const cssWidthPx = Math.max(1, Number(content.offsetWidth) || 1);
+    const cssPageHeightPx = cssWidthPx / widthMm * PREVIEW_PV_A4_HEIGHT_MM;
+    const naturalHeightPx = Math.max(Number(content.scrollHeight) || 0, cssPageHeightPx);
+    const pageCount = previewPopupGetA4EditPageCount(naturalHeightPx, cssPageHeightPx);
+    content.style.minHeight = (PREVIEW_PV_A4_HEIGHT_MM * pageCount) + 'mm';
+
+    const contentRect = content.getBoundingClientRect();
+    const viewerRect = viewer.getBoundingClientRect();
+    const visiblePageHeight = contentRect.width / widthMm * PREVIEW_PV_A4_HEIGHT_MM;
+    layer.style.left = (contentRect.left - viewerRect.left) + 'px';
+    layer.style.top = (contentRect.top - viewerRect.top) + 'px';
+    layer.style.width = contentRect.width + 'px';
+    layer.style.height = contentRect.height + 'px';
+    layer.innerHTML = '';
+
+    for (let page = 1; page <= pageCount; page += 1) {
+        const guide = doc.createElement('div');
+        guide.className = 'pv-edit-page-guide';
+        guide.style.top = Math.min(contentRect.height, visiblePageHeight * page) + 'px';
+        const label = doc.createElement('span');
+        label.className = 'pv-edit-page-guide-label';
+        label.textContent = '페이지 ' + page + ' / ' + pageCount;
+        guide.appendChild(label);
+        layer.appendChild(guide);
+    }
+    return true;
+}
+
+function previewPopupScheduleEditPageGuides() {
+    if (previewPopupEditPageGuideTimer) clearTimeout(previewPopupEditPageGuideTimer);
+    if (!previewPopupEditMode || previewPopupFileMode || !isPreviewPopupAlive()) {
+        previewPopupClearEditPageGuides();
+        return false;
+    }
+    previewPopupEditPageGuideTimer = setTimeout(previewPopupUpdateEditPageGuides, 30);
+    return true;
+}
+
+function previewPopupSyncEditPageGuideObserver() {
+    if (previewPopupEditPageGuideObserver) {
+        try { previewPopupEditPageGuideObserver.disconnect(); } catch (_) {}
+        previewPopupEditPageGuideObserver = null;
+    }
+    if (!isPreviewPopupAlive() || !previewPopupEditMode || previewPopupFileMode) return;
+    const content = getPreviewPopupEditorElement();
+    const ResizeObserverClass = previewPopupWindow.ResizeObserver;
+    if (!content || typeof ResizeObserverClass !== 'function') return;
+    previewPopupEditPageGuideObserver = new ResizeObserverClass(function () {
+        previewPopupScheduleEditPageGuides();
+    });
+    previewPopupEditPageGuideObserver.observe(content);
+}
+
 function syncPreviewPopupEditorUi() {
     if (!isPreviewPopupAlive()) return;
     const doc = previewPopupWindow.document;
@@ -1990,13 +2120,17 @@ function syncPreviewPopupEditorUi() {
         button.disabled = !previewPopupEditMode || previewPopupFileMode || !tableContext;
     });
     if (previewPopupEditMode && !previewPopupFileMode) {
-        syncPreviewPopupImageResize();
+        schedulePreviewPopupImageResize();
+        previewPopupSyncEditPageGuideObserver();
+        previewPopupScheduleEditPageGuides();
     } else {
         cancelPreviewPopupImageResize();
+        previewPopupSyncEditPageGuideObserver();
+        previewPopupClearEditPageGuides();
     }
 }
 
-function previewPopupToggleEditor() {
+async function previewPopupToggleEditor() {
     if (!isPreviewPopupAlive() || previewPopupFileMode) return false;
     const editor = getPreviewPopupEditorElement();
     if (!editor) return false;
@@ -2023,6 +2157,12 @@ function previewPopupToggleEditor() {
         return true;
     }
     previewPopupHandleEditorInput();
+    const confirmWindow = isPreviewPopupAlive() ? previewPopupWindow : window;
+    const shouldApply = confirmWindow.confirm('렌더 편집 내용을 원본 노트에 반영할까요?');
+    if (shouldApply) {
+        const applied = await applyPreviewPopupEditsToOriginal({ silent: true });
+        if (!applied) return false;
+    }
     previewPopupEditMode = false;
     previewPopupRenderedDomChanged = false;
     syncPreviewPopupEditorUi();
@@ -2043,6 +2183,7 @@ function previewPopupHandleEditorInput(domChanged) {
     previewPopupDraftDirty = previewPopupDraftMarkdown !== previewPopupDraftBaseMarkdown;
     rememberPreviewPopupRenderedSelection();
     syncPreviewPopupEditorUi();
+    previewPopupScheduleEditPageGuides();
     return true;
 }
 

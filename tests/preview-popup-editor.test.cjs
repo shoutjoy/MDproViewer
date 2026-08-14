@@ -12,8 +12,10 @@ const pvImageInsert = fs.readFileSync(path.join(root, 'js', 'UI_PV', 'pv-image-i
 const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 
 function readFunction(source, name) {
-  const start = source.indexOf('function ' + name + '(');
+  let start = source.indexOf('function ' + name + '(');
   assert.ok(start >= 0, name + ' function must exist');
+  const asyncStart = source.lastIndexOf('async ', start);
+  if (asyncStart >= 0 && source.slice(asyncStart + 6, start).trim() === '') start = asyncStart;
   const brace = source.indexOf('{', start);
   let depth = 0;
   for (let index = brace; index < source.length; index += 1) {
@@ -128,6 +130,50 @@ test('PV draft stays separate until it is sent to the original note', () => {
   assert.match(preview, /performAutoSave\(\{ force: true \}\)/);
 });
 
+test('ending PV render edit asks whether to apply the draft to the original note', () => {
+  assert.match(preview, /async function previewPopupToggleEditor\(\)/);
+  assert.match(preview, /confirmWindow\.confirm\('렌더 편집 내용을 원본 노트에 반영할까요\?'\)/);
+  assert.match(preview, /if \(shouldApply\) \{[\s\S]{0,220}await applyPreviewPopupEditsToOriginal\(\{ silent: true \}\)/);
+  assert.match(preview, /if \(!applied\) return false/);
+  assert.match(preview, /previewPopupEditMode = false;[\s\S]{0,180}updatePreviewPopupContent\(\)/);
+});
+
+test('PV render edit exit applies on confirmation and keeps the draft separate on rejection', async () => {
+  async function runExit(shouldApply) {
+    const calls = { applied: 0, updated: 0, handled: 0 };
+    const context = {
+      isPreviewPopupAlive: () => true,
+      previewPopupFileMode: false,
+      previewPopupEditMode: true,
+      previewPopupRenderedDomChanged: true,
+      previewPopupWindow: { confirm: () => shouldApply },
+      window: { confirm: () => shouldApply },
+      getPreviewPopupEditorElement: () => ({}),
+      previewPopupHandleEditorInput: () => { calls.handled += 1; },
+      applyPreviewPopupEditsToOriginal: async () => { calls.applied += 1; return true; },
+      syncPreviewPopupEditorUi: () => {},
+      updatePreviewPopupContent: () => { calls.updated += 1; }
+    };
+    const toggle = vm.runInNewContext(
+      '(' + readFunction(preview, 'previewPopupToggleEditor') + ')',
+      context
+    );
+    const result = await toggle();
+    return { calls, result, editMode: context.previewPopupEditMode };
+  }
+
+  const accepted = await runExit(true);
+  assert.equal(accepted.result, true);
+  assert.equal(accepted.calls.applied, 1);
+  assert.equal(accepted.editMode, false);
+
+  const rejected = await runExit(false);
+  assert.equal(rejected.result, true);
+  assert.equal(rejected.calls.applied, 0);
+  assert.equal(rejected.calls.updated, 1);
+  assert.equal(rejected.editMode, false);
+});
+
 test('PV export chooser is mounted inside the PV window before delegating the chosen format', () => {
   assert.match(preview, /async function previewPopupExport/);
   assert.match(preview, /const choice = await choosePreviewPopupExportType\(\)/);
@@ -152,7 +198,7 @@ test('merged PDF can be sent from the merger window to PV', () => {
 
 test('PV owns an independent image modal and does not route through the main image modal', () => {
   assert.match(preview, /id=\\?"pv-image-insert-modal\\?"/);
-  assert.match(preview, /pv-image-insert\.js\?v=20260815-child-2/);
+  assert.match(preview, /pv-image-insert\.js\?v=20260815-child-3-resize/);
   assert.match(pvImageInsert, /function pvOpenImageInsert\(\)/);
   assert.match(pvImageInsert, /function insertImage\(outputType\)/);
   assert.match(pvImageInsert, /document\.createElement\('img'\)/);
@@ -161,6 +207,8 @@ test('PV owns an independent image modal and does not route through the main ima
   assert.match(pvImageInsert, /displaySource = await getInternalDisplayUrl\(internalId\)/);
   assert.match(pvImageInsert, /image\.src = displaySource/);
   assert.match(pvImageInsert, /image\.setAttribute\('data-internal-id', internalId\)/);
+  assert.match(pvImageInsert, /image\.addEventListener\('load'/);
+  assert.match(pvImageInsert, /schedulePreviewPopupImageResize/);
   assert.match(pvImageInsert, /function readFile\(file\)/);
   assert.match(pvImageInsert, /document\.addEventListener\('paste'/);
   assert.doesNotMatch(preview, /openPreviewPopupImageInsert/);
@@ -173,6 +221,14 @@ test('zoom, width, and font controls are compact and fixed to the bottom-right',
   assert.match(preview, /pv-control-name\\?">Width/);
   assert.match(preview, /pv-control-name\\?">Font/);
   assert.match(preview, /\.pv-file-button\{height:24px;padding:1px 6px;font-size:10px/);
+});
+
+test('PV image resize is rehydrated after popup and inserted-image loading', () => {
+  assert.match(preview, /image-resize\.js\?v=20260815-pv-restore-1/);
+  assert.match(preview, /function schedulePreviewPopupImageResize\(attempt\)/);
+  assert.match(preview, /editor\.querySelectorAll\('img'\)\.length > 0 && count === 0/);
+  assert.match(preview, /클릭하여 이미지 크기 조절/);
+  assert.match(preview, /schedulePreviewPopupImageResize\(retry \+ 1\)/);
 });
 
 test('PV header scale and background controls apply immediately and persist in settings', () => {
@@ -223,9 +279,27 @@ test('PV has a persistent independent light and dark theme toggle', () => {
   assert.match(preview, /id=\\?"pv-theme-toggle\\?"[\s\S]{0,300}>인쇄<\/button>[\s\S]{0,160}>닫기<\/button>/);
 });
 
+test('PV render edit mode shows responsive A4 page guides and page numbers', () => {
+  assert.match(preview, /id=\\?"pv-content\\?"[\s\S]{0,500}<\/div><div id=\\?"pv-edit-page-guides\\?" aria-hidden=\\?"true\\?"/);
+  assert.match(preview, /body\.pv-editor-mode #pv-edit-page-guides\{display:block;\}/);
+  assert.match(preview, /\.pv-edit-page-guide\{[^}]*border-top:2px dashed #ef4444/);
+  assert.match(preview, /label\.textContent = '페이지 ' \+ page \+ ' \/ ' \+ pageCount/);
+  assert.match(preview, /content\.style\.minHeight = \(PREVIEW_PV_A4_HEIGHT_MM \* pageCount\) \+ 'mm'/);
+  assert.match(preview, /new ResizeObserverClass\(function \(\) \{[\s\S]{0,120}previewPopupScheduleEditPageGuides\(\)/);
+  assert.match(preview, /@media print\{#pv-toolbar,#pv-view-controls,#pv-table-picker,#pv-edit-page-guides\{display:none!important;\}/);
+
+  const getPageCount = vm.runInNewContext(
+    '(' + readFunction(preview, 'previewPopupGetA4EditPageCount') + ')'
+  );
+  assert.equal(getPageCount(0, 1000), 1);
+  assert.equal(getPageCount(1000, 1000), 1);
+  assert.equal(getPageCount(1001, 1000), 2);
+  assert.equal(getPageCount(2500, 1000), 3);
+});
+
 test('PV editor scripts use a fresh cache key', () => {
   assert.match(index, /image_insert\.js\?v=20260812-pv-editor-1/);
-  assert.match(index, /editpv\.js\?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1/);
+  assert.match(index, /editpv\.js\?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1-resize-restore-1-a4-edit-guides-1-exit-confirm-1/);
   assert.match(index, /pvHeaderSettings=20260815-1/);
   assert.match(index, /pvExport=20260813-modal-2/);
 });

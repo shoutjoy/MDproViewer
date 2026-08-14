@@ -23,7 +23,7 @@
     <button id="merge" class="button primary" type="button" disabled>순서대로 병합 및 미리보기</button>
     <button id="save" class="button primary" type="button" disabled>병합 PDF 저장</button>
     <button id="to-pv" class="button primary" type="button" title="병합한 PDF를 PV 새 창에서 열기" disabled>병합 PDF ToPV</button>
-    <button id="close" class="button" type="button">닫기</button>
+    <button id="close" class="button" type="button" onclick="window.close()">닫기</button>
     <input id="files" type="file" accept=".pdf,application/pdf" multiple>
   </header>
   <main class="layout">
@@ -38,10 +38,9 @@
     </section>
   </main>
   <footer id="status" class="status">선택된 PDF 없음</footer>
-  <script src="../../vendor/pdfjs/build/pdf.worker.classic.min.js?v=20260815-classic-5"></script>
-  <script src="../../vendor/pdfjs/build/pdf.classic.min.js?v=20260815-classic-5"></script>
+  <script src="../../vendor/pdfjs/build/pdf.isolated.min.js?v=20260815-pdf-isolated-11"></script>
   <script src="../../vendor/jspdf/jspdf.umd.min.js?v=4.2.1"></script>
-  <script src="./pdf-merge-window.mjs?v=20260815-classic-drop-6"></script>
+  <script src="./pdf-merge-window.js?v=20260815-pdf-isolated-11"></script>
   <script>
     setTimeout(function () {
       if (window.__pdfMergeModuleReady) return;

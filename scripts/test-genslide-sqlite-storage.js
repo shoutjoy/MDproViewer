@@ -21,9 +21,9 @@ for (const source of [controller, header]) {
     }
 }
 assert.match(controller, /\.\/js\/sqliteStorage\.js[\s\S]*\.\/js\/main\.js/);
-assert.match(controller, /20260806-sqlite-storage-1/);
-assert.match(appIndex, /Html2pptx\/jenaEditor\/index\.html\?v=20260806-sqlite-storage-1/);
-assert.match(editorIndex, /controller\.js\?v=20260806-sqlite-storage-1/);
+assert.match(controller, /20260815-pptx-import-1/);
+assert.match(appIndex, /Html2pptx\/jenaEditor\/index\.html\?v=20260815-pptx-import-1/);
+assert.match(editorIndex, /controller\.js\?v=20260815-pptx-import-1/);
 for (const token of [
     'saveCurrentMpp', 'openFromSqlite', 'captureCurrentMpp', 'captureImportedFile',
     'captureExport', 'genslide_mpp', 'genslide_pptx', 'genslide_png', 'genslide_image_zip'

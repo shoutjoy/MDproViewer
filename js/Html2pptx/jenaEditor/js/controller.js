@@ -45,7 +45,7 @@
   <button class="btn" id="btnSqliteOpen">SQLite Open</button>
   <button class="btn" id="btnSqliteMirror" title="기존 저장 결과를 SQLite에도 보관">SQLite 자동: OFF</button>
   <button class="btn" id="btnImport">mpp Import</button>
-  <button class="btn" id="btnPptxImport">pptx Import</button>
+  <button class="btn" id="btnPptxImport" title="PPTX/PPSX 파일을 GenSlide 슬라이드로 가져오기">pptx Import</button>
   <button class="btn" id="btnExport">mpp Export</button>
   <button class="btn" id="btnImageExport">image Export</button>
   <button class="btn" id="btnPptxExport">pptx Export</button>
@@ -205,7 +205,7 @@
     "./js/sqliteStorage.js?v=20260806-storage-feature-visibility-1",
     "./js/main.js"
   ];
-  const ASSET_VERSION = "20260812-export-local-deps-1";
+  const ASSET_VERSION = "20260815-pptx-import-1";
 
   const loadedScripts = new Set();
   let booted = false;

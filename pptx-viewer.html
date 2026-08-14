@@ -156,6 +156,15 @@
       border: none !important;
       transform-origin: top left !important;
     }
+    .pptx-slide-image {
+      display: block;
+      max-width: none;
+      margin: 0;
+      border: 0;
+      transform-origin: top left;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
     .code-panel {
       position: fixed;
       inset: 42px 0 0 auto;
@@ -223,7 +232,7 @@
     <button type="button" id="code-btn" disabled style="display: none;">HTML 코드</button>
     <button type="button" id="external-btn">외부앱</button>
   </div>
-  <div id="viewer"><div class="loading">PPTX를 HTML로 렌더링하는 중입니다.</div></div>
+  <div id="viewer"><div class="loading">PPTX 슬라이드 이미지를 준비하는 중입니다.</div></div>
   <aside id="code-panel" class="code-panel" aria-label="HTML code panel">
     <div class="code-panel-header">
       <div class="code-panel-title">렌더링된 HTML 코드</div>
@@ -241,6 +250,7 @@
   <script src="./vendor/pptxjs/js/dingbat.js"></script>
   <script src="./vendor/pptxjs/js/pptxjs.js"></script>
   <script src="./vendor/pptxjs/js/divs2slides.js"></script>
+  <script src="./vendor/html2canvas/html2canvas.min.js"></script>
   <script>
     (function () {
       function getParam(name) {
@@ -251,6 +261,17 @@
         document.getElementById('viewer').innerHTML = '<div class="error"><strong>미리보기 실패</strong><br>' + String(message || '오류가 발생했습니다.') + '<br><br>상단의 외부앱 버튼을 사용하세요.</div>';
       }
       var fileCache = null;
+      var rasterRenderGeneration = 0;
+      var rasterObjectUrls = [];
+      var rasterizing = false;
+
+      function revokeRasterObjectUrls() {
+        rasterObjectUrls.forEach(function (url) {
+          try { URL.revokeObjectURL(url); } catch (_) {}
+        });
+        rasterObjectUrls = [];
+      }
+
       function getFileBuffer() {
         if (fileCache) return Promise.resolve(fileCache);
         if (!fileUrl) return Promise.reject(new Error('PPTX 데이터가 없습니다.'));
@@ -277,6 +298,9 @@
       }
       function getSlides() {
         return normalizeSlideFrames();
+      }
+      function getSlideVisual(container) {
+        return container && container.querySelector('.pptx-slide-image, .slide, .pptx-slide');
       }
       var zoomMode = 'fit';
       var manualZoom = 1;
@@ -306,7 +330,7 @@
         var gap = 24;
         var availableWidth = Math.max(160, viewer.clientWidth - 36);
         var availableHeight = Math.max(120, viewer.clientHeight - 36);
-        var firstSlide = slides[0].querySelector('.slide, .pptx-slide');
+        var firstSlide = getSlideVisual(slides[0]);
         if (!firstSlide) return;
         var naturalWidth = parseFloat(firstSlide.dataset.naturalWidth) || firstSlide.offsetWidth || 960;
         var naturalHeight = parseFloat(firstSlide.dataset.naturalHeight) || firstSlide.offsetHeight || 540;
@@ -334,7 +358,7 @@
           ? 'repeat(' + (isTwoPage ? 2 : Math.max(1, Math.floor((availableWidth + gap) / (scaledWidth + gap)))) + ', ' + scaledWidth + 'px)'
           : '';
         slides.forEach(function (container) {
-          var slide = container.querySelector('.slide, .pptx-slide');
+          var slide = getSlideVisual(container);
           if (!slide) return;
           if (!slide.dataset.naturalWidth) slide.dataset.naturalWidth = slide.offsetWidth || naturalWidth;
           if (!slide.dataset.naturalHeight) slide.dataset.naturalHeight = slide.offsetHeight || naturalHeight;
@@ -372,15 +396,123 @@
       }
       var renderObserver = null;
       function finalizeRenderedSlides() {
+        var wrapper = document.querySelector('#viewer #all_slides_warpper');
+        var isLoading = !!document.querySelector('#viewer .slides-loadnig-msg');
         var hasSlide = !!document.querySelector('#viewer .slide, #viewer .pptx-slide');
-        if (!hasSlide) return false;
+        var hasRasterImage = !!document.querySelector('#viewer .pptx-slide-image');
+        if (wrapper && hasRasterImage && !rasterizing) {
+          return true;
+        }
+        if (!wrapper || isLoading || !hasSlide) return false;
         normalizeSlideFrames();
-        document.getElementById('status').textContent = 'ready';
-        setCodeAvailable(true);
+        if (!rasterizing && !document.querySelector('#viewer .pptx-slide-image')) {
+          rasterizeSlides(rasterRenderGeneration);
+        }
+        return true;
+      }
+
+      function nextPaint() {
+        return new Promise(function (resolve) {
+          requestAnimationFrame(function () { requestAnimationFrame(resolve); });
+        });
+      }
+
+      function canvasToBlob(canvas) {
+        return new Promise(function (resolve, reject) {
+          try {
+            canvas.toBlob(function (blob) {
+              if (blob) resolve(blob);
+              else reject(new Error('슬라이드 이미지를 만들 수 없습니다.'));
+            }, 'image/jpeg', 0.9);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      }
+
+      function waitForImage(image) {
+        if (typeof image.decode === 'function') return image.decode();
+        return new Promise(function (resolve, reject) {
+          image.onload = resolve;
+          image.onerror = function () { reject(new Error('변환된 슬라이드 이미지를 읽을 수 없습니다.')); };
+        });
+      }
+
+      async function rasterizeSlide(container, slide) {
+        var width = Math.max(1, Math.round(slide.offsetWidth || parseFloat(slide.style.width) || 960));
+        var height = Math.max(1, Math.round(slide.offsetHeight || parseFloat(slide.style.height) || 540));
+        slide.style.transform = 'none';
+        var canvas = await window.html2canvas(slide, {
+          backgroundColor: '#ffffff',
+          scale: 1,
+          logging: false,
+          useCORS: false,
+          width: width,
+          height: height,
+          windowWidth: width,
+          windowHeight: height
+        });
+        var blob = await canvasToBlob(canvas);
+        var objectUrl = URL.createObjectURL(blob);
+        var image = new Image();
+        image.className = 'pptx-slide-image';
+        image.alt = 'PPTX slide image';
+        image.draggable = false;
+        image.dataset.naturalWidth = String(width);
+        image.dataset.naturalHeight = String(height);
+        image.style.width = width + 'px';
+        image.style.height = height + 'px';
+        image.src = objectUrl;
+        try {
+          await waitForImage(image);
+        } catch (error) {
+          URL.revokeObjectURL(objectUrl);
+          throw error;
+        }
+        rasterObjectUrls.push(objectUrl);
+        container.replaceChildren(image);
+      }
+
+      async function rasterizeSlides(generation) {
+        if (rasterizing || generation !== rasterRenderGeneration) return;
+        var slides = getSlides();
+        if (!slides.length) return;
+        rasterizing = true;
+        var failed = 0;
+        var initialMessage = document.querySelector('#viewer > .loading');
+        if (initialMessage) initialMessage.remove();
+        document.getElementById('status').textContent = '이미지 변환 0/' + slides.length;
+        setCodeAvailable(false);
+        setZoomControlsEnabled(false);
+        await nextPaint();
+        for (var index = 0; index < slides.length; index += 1) {
+          if (generation !== rasterRenderGeneration) break;
+          var slide = getSlideVisual(slides[index]);
+          if (!slide || slide.classList.contains('pptx-slide-image')) continue;
+          try {
+            await rasterizeSlide(slides[index], slide);
+          } catch (error) {
+            failed += 1;
+            slides[index].title = '이미지 변환 실패: HTML 화면으로 표시합니다.';
+            console.warn('[PPTX Preview] Slide rasterization failed:', error);
+          }
+          document.getElementById('status').textContent = '이미지 변환 ' + (index + 1) + '/' + slides.length;
+          if (index === 0) {
+            setZoomControlsEnabled(true);
+            setupMatrixViewControls();
+            fitSlidesToWindow();
+          }
+          await new Promise(function (resolve) { setTimeout(resolve, 0); });
+        }
+        if (generation !== rasterRenderGeneration) {
+          rasterizing = false;
+          return;
+        }
+        rasterizing = false;
+        document.getElementById('status').textContent = failed ? 'ready · HTML 대체 ' + failed : 'ready · image';
         setZoomControlsEnabled(true);
         setupMatrixViewControls();
         fitSlidesToWindow();
-        return true;
       }
       function watchRenderedSlides() {
         if (renderObserver) renderObserver.disconnect();
@@ -394,13 +526,16 @@
         renderObserver.observe(document.getElementById('viewer'), { childList: true, subtree: true });
       }
       function renderHtml(reason) {
+        rasterRenderGeneration += 1;
+        rasterizing = false;
+        revokeRasterObjectUrls();
         document.getElementById('status').textContent = 'rendering';
         zoomMode = 'fit';
         manualZoom = 1;
         setZoomControlsEnabled(false);
         updateZoomLabel(1);
         document.getElementById('viewer').classList.add('html-rendered');
-        document.getElementById('viewer').innerHTML = '<div class="loading">' + (reason || 'PPTX를 HTML로 렌더링하는 중입니다.') + '</div>';
+        document.getElementById('viewer').innerHTML = '<div class="loading">' + (reason || 'PPTX 슬라이드 이미지를 준비하는 중입니다.') + '</div>';
         watchRenderedSlides();
         
         if (window.JSZipUtils && fileCache) {
@@ -539,7 +674,7 @@
         } else if (command.type === 'pptx-zoom-fit') {
           resetFitZoom();
         } else if (command.type === 'pptx-html-render') {
-          renderHtml('PPTX를 다시 렌더링하는 중입니다.');
+          renderHtml('PPTX 슬라이드 이미지를 다시 준비하는 중입니다.');
         }
       }
 
@@ -630,6 +765,7 @@
         window.web2electron.onMenuCommand(handleMenuCommand);
       }
       setupMatrixViewControls();
+      window.addEventListener('beforeunload', revokeRasterObjectUrls);
       window.addEventListener('message', function (event) {
         if (event.origin !== window.location.origin) return;
         var payload = event.data || {};
@@ -641,7 +777,7 @@
           document.title = title;
           document.getElementById('title').textContent = title;
         }
-        renderHtml('PPTX를 HTML로 렌더링하는 중입니다.');
+        renderHtml('PPTX 슬라이드 이미지를 준비하는 중입니다.');
       });
       if (!fileUrl) {
         document.getElementById('status').textContent = 'waiting';

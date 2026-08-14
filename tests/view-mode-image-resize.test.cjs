@@ -23,6 +23,34 @@ test('loads the view-mode image resizer before app.js and wires post-render hydr
     assert.match(css, /\.md-image-resize-confirm/);
 });
 
+test('hydrates a PV internal image whose visible src is a blob URL', () => {
+    const attributes = new Map([
+        ['data-internal-id', 'img_pv_1'],
+        ['src', 'blob:http://127.0.0.1/pv-image']
+    ]);
+    const classes = new Set();
+    const image = {
+        __mdImageResizeRecord: null,
+        classList: { add: (name) => classes.add(name) },
+        closest: () => null,
+        getAttribute: (name) => attributes.has(name) ? attributes.get(name) : null
+    };
+    const root = {
+        contains: (node) => node === image,
+        querySelectorAll: (selector) => selector === 'img' ? [image] : []
+    };
+
+    const count = imageResize.hydrate(root, {
+        sourceMarkdown: '![PV image](internal://img_pv_1)',
+        imageSelector: '#viewer img',
+        onConfirm: () => {}
+    });
+
+    assert.equal(count, 1);
+    assert.equal(image.__mdImageResizeRecord.src, 'internal://img_pv_1');
+    assert.equal(classes.has('md-view-resizable-image'), true);
+});
+
 test('scans Markdown, reference, and HTML images while ignoring protected code', () => {
     const source = [
         '![첫 이미지](internal://photo%201 "표지")',

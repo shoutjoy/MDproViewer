@@ -14,6 +14,8 @@
     "../../../vendor/pptxjs/css/nv.d3.min.css"
   ];
   let vendorPromise = null;
+  const MAX_PPTX_BYTES = 512 * 1024 * 1024;
+  const MAX_PPTX_SLIDES = 500;
 
   function loadScriptOnce(relativeUrl) {
     const absoluteUrl = new URL(relativeUrl, window.location.href).href;
@@ -52,7 +54,32 @@
     return vendorPromise;
   }
 
-  function waitForRenderedSlides(host) {
+  function inspectPptxArchive(buffer) {
+    if (!buffer || buffer.byteLength < 4) {
+      throw new Error("PPTX 파일이 비어 있거나 손상되었습니다.");
+    }
+    const signature = new Uint8Array(buffer, 0, 4);
+    if (signature[0] !== 0x50 || signature[1] !== 0x4b) {
+      throw new Error("올바른 PPTX ZIP 파일이 아닙니다.");
+    }
+    let zip;
+    try {
+      zip = new window.JSZip().load(buffer);
+    } catch (_) {
+      throw new Error("PPTX 압축 내용을 읽을 수 없습니다.");
+    }
+    if (!zip.file("[Content_Types].xml") || !zip.file("ppt/presentation.xml")) {
+      throw new Error("PPTX 필수 문서 정보가 없습니다.");
+    }
+    const slideCount = Object.keys(zip.files || {}).filter((name) => /^ppt\/slides\/slide\d+\.xml$/i.test(name)).length;
+    if (!slideCount) throw new Error("PPTX에 가져올 슬라이드가 없습니다.");
+    if (slideCount > MAX_PPTX_SLIDES) {
+      throw new Error("한 번에 최대 " + MAX_PPTX_SLIDES + "장의 슬라이드를 가져올 수 있습니다.");
+    }
+    return slideCount;
+  }
+
+  function waitForRenderedSlides(host, expectedCount) {
     return new Promise((resolve, reject) => {
       const startedAt = Date.now();
       let lastCount = 0;
@@ -60,10 +87,11 @@
       const timer = setInterval(() => {
         const rendered = host.querySelectorAll("#all_slides_warpper > .slide, #all_slides_warpper > .pptx-slide");
         const count = rendered.length;
-        if (count > 0 && count === lastCount) stableTicks += 1;
+        const loading = host.querySelector(".slides-loadnig-msg, .slides-loading-msg");
+        if (count > 0 && count === lastCount && !loading) stableTicks += 1;
         else stableTicks = 0;
         lastCount = count;
-        if (count > 0 && stableTicks >= 4) {
+        if (count >= expectedCount && stableTicks >= 4) {
           clearInterval(timer);
           resolve(Array.from(rendered));
           return;
@@ -168,12 +196,16 @@
     if (!/\.(pptx|ppsx)$/i.test(String(file.name || ""))) {
       throw new Error("PPTX 또는 PPSX 파일을 선택하세요.");
     }
+    if (Number(file.size) > MAX_PPTX_BYTES) {
+      throw new Error("PPTX 파일은 512MB 이하만 가져올 수 있습니다.");
+    }
     await ensurePptxVendor();
     if (!window.jQuery || !window.jQuery.fn || typeof window.jQuery.fn.pptxToHtml !== "function") {
       throw new Error("PPTX HTML renderer를 초기화하지 못했습니다.");
     }
 
     const buffer = await file.arrayBuffer();
+    const expectedSlideCount = inspectPptxArchive(buffer);
     const host = document.createElement("div");
     host.id = "genslide-pptx-import-renderer";
     host.style.position = "fixed";
@@ -185,6 +217,7 @@
     host.style.pointerEvents = "none";
     document.body.appendChild(host);
 
+    const previousGetBinaryContent = window.JSZipUtils && window.JSZipUtils.getBinaryContent;
     try {
       if (!window.JSZipUtils) window.JSZipUtils = {};
       window.JSZipUtils.getBinaryContent = function (_url, callback) {
@@ -200,7 +233,7 @@
         themeProcess: "colorsAndImageOnly",
         incSlide: { width: 0, height: 0 }
       });
-      const renderedSlides = await waitForRenderedSlides(host);
+      const renderedSlides = await waitForRenderedSlides(host, expectedSlideCount);
       const importedSlides = renderedSlides.map((slide) => ({ html: makeSlideDocument(slide) }));
       if (!importedSlides.length) throw new Error("변환된 슬라이드가 없습니다.");
 
@@ -211,6 +244,13 @@
       loadCurrent();
       return importedSlides.length;
     } finally {
+      if (window.JSZipUtils) {
+        if (typeof previousGetBinaryContent === "function") {
+          window.JSZipUtils.getBinaryContent = previousGetBinaryContent;
+        } else {
+          delete window.JSZipUtils.getBinaryContent;
+        }
+      }
       host.remove();
     }
   }

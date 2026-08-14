@@ -142,10 +142,17 @@
         const range = restoreSelection();
         if (!range) return false;
         const image = document.createElement('img');
-        image.src = displaySource;
         image.alt = getAlt(source);
         if (internalId) image.setAttribute('data-internal-id', internalId);
         image.setAttribute('data-pv-image-output', outputType === 'html' ? 'html' : 'markdown');
+        image.addEventListener('load', function () {
+            try {
+                if (window.opener && typeof window.opener.schedulePreviewPopupImageResize === 'function') {
+                    window.opener.schedulePreviewPopupImageResize();
+                }
+            } catch (_) {}
+        }, { once: true });
+        image.src = displaySource;
         range.deleteContents();
         range.insertNode(image);
         range.setStartAfter(image);
@@ -153,6 +160,11 @@
         state.savedRange = range.cloneRange();
         restoreSelection();
         notifyChanged();
+        try {
+            if (window.opener && typeof window.opener.schedulePreviewPopupImageResize === 'function') {
+                window.opener.schedulePreviewPopupImageResize();
+            }
+        } catch (_) {}
         pvCloseImageInsert();
         return true;
     }
