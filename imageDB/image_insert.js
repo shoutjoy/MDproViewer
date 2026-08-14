@@ -610,9 +610,6 @@ function closeImageInsertModal() {
     imageInsertDragging = false;
     setImageUploadProgress(0, false);
     if (typeof window.setInputModalImagePanelToggleState === 'function') window.setInputModalImagePanelToggleState();
-    if (typeof window.cancelPreviewPopupImageInsertTarget === 'function') {
-        window.cancelPreviewPopupImageInsertTarget();
-    }
 }
 
 function applyImageInsertPanelLayout() {
@@ -908,13 +905,6 @@ function insertImageFromModal(type) {
         return;
     }
     const alt = getImageAltTextFromUrl(source);
-    if (typeof window.isPreviewPopupImageInsertTargetActive === 'function'
-        && window.isPreviewPopupImageInsertTargetActive()
-        && typeof window.insertImageIntoPreviewPopupEditor === 'function') {
-        const inserted = window.insertImageIntoPreviewPopupEditor(source, alt, type);
-        if (inserted) closeImageInsertModal();
-        return;
-    }
     if (!isEditMode) {
         showToast('Use this in edit mode.');
         return;

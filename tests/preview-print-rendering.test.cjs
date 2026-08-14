@@ -19,6 +19,7 @@ function createPreviewDocumentHtml() {
     ];
     const context = {
         URL,
+        localStorage: { getItem() { return null; } },
         document: {
             baseURI: 'http://127.0.0.1:8765/',
             querySelectorAll(selector) {
@@ -41,7 +42,7 @@ function createPreviewDocumentHtml() {
     return context.__getPreviewPopupDocumentHtml();
 }
 
-test('PV document uses the application print styles and an A4 white paper canvas', () => {
+test('PV document uses application styles with correct light/dark paper canvases', () => {
     const html = createPreviewDocumentHtml();
 
     assert.match(html, /MDproViewer Print Preview/);
@@ -50,14 +51,19 @@ test('PV document uses the application print styles and an A4 white paper canvas
     assert.match(html, /katex\.min\.css/);
     assert.doesNotMatch(html, /sidebar-ai\.css/);
     assert.match(html, /id=\"pv-content\" class=\"markdown-body print-area\"/);
-    assert.match(html, /width:210mm;max-width:210mm;min-height:297mm/);
-    assert.match(html, /background:#fff;color:#1e293b/);
+    assert.match(html, /\.pv-page\{[^}]*width:210mm;height:297mm/);
+    assert.match(html, /body\.pv-editor-mode #pv-content\{[^}]*min-height:297mm;[^}]*background:#fff;color:#1e293b/);
+    assert.match(html, /\.pv-page-content\{[^}]*background:#fff!important;color:#1e293b!important/);
+    assert.match(html, /html\.dark body\.pv-editor-mode #pv-content\{background:#111827;color:#e2e8f0/);
+    assert.match(html, /html\.dark \.pv-page-content\{background:#111827!important;color:#e2e8f0!important/);
     assert.match(html, /#pv-content>\.note-cover-page\{left:50%;max-width:none!important;[^}]+translateX\(-50%\)/);
     assert.match(html, /#pv-content>\.note-cover-size-a4\{width:210mm!important;\}/);
     assert.match(html, /#pv-content img,[^}]+max-width:100%/);
     assert.match(html, /#pv-content iframe,[^}]+max-width:100%/);
     assert.match(html, /id=\"pv-font-label\" class=\"label\">16px/);
-    assert.doesNotMatch(html, /html\.dark/);
+    assert.match(html, /id="pv-theme-toggle"/);
+    assert.match(html, />다크<\/button>/);
+    assert.match(html, /html,html\.dark,body,html\.dark body\{background:#fff!important;color:#1e293b!important;color-scheme:light;/);
     assert.doesNotMatch(html, /max-width:56rem/);
 });
 

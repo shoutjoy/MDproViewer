@@ -38,7 +38,19 @@
     </section>
   </main>
   <footer id="status" class="status">선택된 PDF 없음</footer>
+  <script src="../../vendor/pdfjs/build/pdf.worker.classic.min.js?v=20260815-classic-5"></script>
+  <script src="../../vendor/pdfjs/build/pdf.classic.min.js?v=20260815-classic-5"></script>
   <script src="../../vendor/jspdf/jspdf.umd.min.js?v=4.2.1"></script>
-  <script type="module" src="./pdf-merge-window.mjs?v=20260815-drop-file-2"></script>
+  <script src="./pdf-merge-window.mjs?v=20260815-classic-5"></script>
+  <script>
+    setTimeout(function () {
+      if (window.__pdfMergeModuleReady) return;
+      var status = document.getElementById('status');
+      if (!status) return;
+      status.textContent = 'PDF 처리 모듈을 불러오지 못했습니다. 메인 화면을 새로고침한 뒤 PDF 병합기를 다시 열어 주세요.';
+      status.style.color = '#fecaca';
+      status.style.background = '#7f1d1d';
+    }, 2500);
+  </script>
 </body>
 </html>

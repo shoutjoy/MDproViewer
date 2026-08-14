@@ -28,7 +28,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260811-2&amp;sidebarControls=20260812-4&amp;miniToc=20260812-1&amp;crossrefResults=20260812-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260811-2&amp;sidebarControls=20260812-4&amp;miniToc=20260812-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1" charset="utf-8">
     <link rel="stylesheet" href="./js/inDB/inDB.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
@@ -1086,6 +1086,10 @@
                             <span id="header-scale-display" class="text-[11px] font-mono w-9 text-center text-slate-600 dark:text-slate-300">100%</span>
                             <button type="button" onclick="adjustHeaderScale(0.05)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="헤더 확대"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
                         </div>
+                        <label for="main-header-background-remove" class="flex items-center gap-1 whitespace-nowrap text-[10px] font-semibold text-slate-500 dark:text-slate-400 cursor-pointer" title="체크하면 메인 문서의 헤더 색상 배경을 제거합니다">
+                            <input id="main-header-background-remove" type="checkbox" onchange="setMainHeaderBackgroundRemoved(this.checked)" class="w-3 h-3 accent-amber-500 cursor-pointer">
+                            <span>배경 제거</span>
+                        </label>
                         <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">화면</span>
                         <div class="flex items-center gap-0.5">
                             <button type="button" onclick="adjustPageScale(-0.1)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="화면 축소"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
@@ -1467,6 +1471,41 @@
                             class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline-offset-2 hover:underline">
                             기본값으로 초기화
                         </button>
+                    </div>
+                </div>
+
+                <!-- PV Header Setting -->
+                <div id="pv-header-settings-card"
+                    class="border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50">
+                    <div class="flex items-center justify-between gap-2 mb-3 border-b border-slate-200 dark:border-slate-700 pb-2">
+                        <h4 class="text-sm font-bold text-slate-700 dark:text-slate-300">PV 헤더 표시</h4>
+                    </div>
+                    <div class="space-y-3">
+                        <label for="pv-header-scale-setting" class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            <span class="flex items-center justify-between gap-2">
+                                <span>헤더 확대·축소</span>
+                                <span id="pv-header-scale-setting-value" class="font-mono text-indigo-600 dark:text-indigo-300">100%</span>
+                            </span>
+                            <input id="pv-header-scale-setting" type="range" min="50" max="250" step="10" value="100"
+                                oninput="previewPopupSetHeaderScalePercent(this.value)"
+                                class="mt-2 w-full accent-indigo-600">
+                        </label>
+                        <label for="pv-header-background-remove-setting"
+                            class="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
+                            <input id="pv-header-background-remove-setting" type="checkbox"
+                                onchange="previewPopupSetHeaderBackgroundRemoved(this.checked)"
+                                class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                            <span>
+                                <span class="block text-sm font-semibold text-slate-700 dark:text-slate-200">헤더 배경 제거</span>
+                                <span class="mt-0.5 block text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">체크하면 PV의 헤더 색상 배경을 숨깁니다. 기본값은 배경 표시입니다.</span>
+                            </span>
+                        </label>
+                        <div class="flex justify-end">
+                            <button type="button" onclick="previewPopupResetHeaderSettings()"
+                                class="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 underline-offset-2 hover:underline">
+                                기본값으로 초기화
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -2873,7 +2912,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-drop-file-2&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1"
+    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-classic-5&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1"
     charset="utf-8"
     defer>
 </script>
@@ -2919,7 +2958,7 @@
 
 <!-- 편집기·미리보기 연동 -->
 <script
-    src="./js/UI_PV/editpv.js?v=20260813-pv-export-modal-2&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2&amp;pvPrint=20260811-1"
+    src="./js/UI_PV/editpv.js?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2&amp;pvPrint=20260811-1"
     charset="utf-8"
     defer>
 </script>

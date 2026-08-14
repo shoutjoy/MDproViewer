@@ -1,6 +1,8 @@
-import * as pdfjsLib from '../../vendor/pdfjs/build/pdf.min.mjs';
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../../vendor/pdfjs/build/pdf.worker.min.mjs', import.meta.url).href;
+const pdfjsLib = window.pdfjsLib;
+if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function') {
+  throw new Error('PDF.js 클래식 라이브러리를 불러오지 못했습니다.');
+}
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('../../vendor/pdfjs/build/pdf.worker.classic.min.js', window.location.href).href;
 
 const els = {
   files: document.getElementById('files'), add: document.getElementById('add'), list: document.getElementById('list'),
@@ -330,11 +332,14 @@ function sendMergedToPv() {
   els.status.textContent = items.length + '개 PDF 병합 결과를 PV로 보냈습니다.';
 }
 
-els.files.addEventListener('change', async event => {
+async function handleFileInputSelection(event) {
   const selectedFiles = Array.from(event.currentTarget.files || []);
+  if (!selectedFiles.length) return;
   event.currentTarget.value = '';
   await addFiles(selectedFiles);
-});
+}
+els.files.addEventListener('input', handleFileInputSelection);
+els.files.addEventListener('change', handleFileInputSelection);
 let dropDepth = 0;
 els.dropZone.addEventListener('dragenter', event => {
   if (!event.dataTransfer || !Array.from(event.dataTransfer.types || []).includes('Files')) return;
@@ -378,3 +383,4 @@ window.addEventListener('beforeunload', () => {
   if (mergedUrl) URL.revokeObjectURL(mergedUrl);
   previewUrls.forEach(url => URL.revokeObjectURL(url));
 });
+window.__pdfMergeModuleReady = true;

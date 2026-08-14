@@ -103,6 +103,14 @@
         }
         .markdown-body h5,
         .markdown-body h6 { color: #2563eb; }
+        html.md-main-header-background-removed #viewer.markdown-body h1,
+        html.md-main-header-background-removed #viewer.markdown-body h2,
+        html.md-main-header-background-removed #viewer.markdown-body h3,
+        html.md-main-header-background-removed #viewer.markdown-body h4,
+        html.md-main-header-background-removed #viewer.markdown-body h5,
+        html.md-main-header-background-removed #viewer.markdown-body h6 {
+            background: none !important;
+        }
         .markdown-body p { margin-bottom: 1rem; }
         .markdown-body ul, .markdown-body ol { margin-bottom: 1rem; padding-left: 1.65rem; list-style-position: outside; }
         .markdown-body ul { list-style-type: disc; }

@@ -12,6 +12,7 @@ const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const SETTINGS_CONTAINER_FOLD_STATE_KEY = 'md_viewer_settings_container_fold_state_v1';
 const FILE_DOWNLOAD_PREFIX_KEY = 'mdpro_file_download_prefix_v1';
 const DEFAULT_FILE_DOWNLOAD_PREFIX = 'mdpro';
+const MAIN_HEADER_BACKGROUND_REMOVED_KEY = 'md_viewer_main_header_background_removed_v1';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const AI_CHAT_SETTINGS_FOLD_KEY = 'md_viewer_ai_chat_settings_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
@@ -236,6 +237,11 @@ let fontSize = 16;
 document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
 let headerScale = 1.0;
 document.documentElement.style.setProperty('--md-header-scale', `${headerScale}`);
+let mainHeaderBackgroundRemoved = false;
+try {
+    mainHeaderBackgroundRemoved = localStorage.getItem(MAIN_HEADER_BACKGROUND_REMOVED_KEY) === '1';
+} catch (_) {}
+document.documentElement.classList.toggle('md-main-header-background-removed', mainHeaderBackgroundRemoved);
 let modalMode = 'link';
 let movingDocId = null;
 let previewPopupWindow = null;
@@ -1122,6 +1128,7 @@ function organizeSettingsDashboard() {
 
     const googleCalendar = document.getElementById('google-calendar-settings-card');
     const codeColors = document.getElementById('code-color-settings-card');
+    const pvHeaderSettings = document.getElementById('pv-header-settings-card');
     const mermaidDisplay = document.getElementById('mermaid-display-settings-card');
     const shortcuts = document.getElementById('shortcuts-settings-card');
     const inDbBackupPrefix = document.getElementById('indb-backup-prefix-settings-card');
@@ -1132,6 +1139,7 @@ function organizeSettingsDashboard() {
     }
     if (googleCalendar) appendToColumn(generalColumn, googleCalendar);
     if (codeColors) appendToColumn(generalColumn, codeColors);
+    if (pvHeaderSettings) appendToColumn(generalColumn, pvHeaderSettings);
     if (mermaidDisplay) appendToColumn(generalColumn, mermaidDisplay);
     if (shortcuts) appendToColumn(generalColumn, shortcuts);
     if (inDbBackupPrefix) appendToColumn(generalColumn, inDbBackupPrefix);
@@ -1249,6 +1257,7 @@ window.onload = async () => {
             await window.MiniPreviewUI.ready;
         }
         initTheme();
+        setMainHeaderBackgroundRemoved(mainHeaderBackgroundRemoved, false);
         initSettings();
         miniPreviewEnabled = getMiniPreviewEnabledFromLocal();
         updateMiniPreviewButton();
@@ -3753,7 +3762,8 @@ async function chooseExportType() {
 }
 
 function openPdfMergeWindow() {
-    const mergeUrl = new URL('./js/export/pdf-merge-window.html?v=20260815-drop-file-2', window.location.href);
+    const mergeUrl = new URL('./js/export/pdf-merge-window.html', window.location.href);
+    mergeUrl.searchParams.set('v', '20260815-classic-5-' + Date.now());
     const features = 'popup=yes,width=1380,height=900,left=80,top=50,resizable=yes,scrollbars=yes';
     const mergeWindow = window.open(mergeUrl.href, 'mdproviewer_pdf_merge', features);
     if (!mergeWindow) {
@@ -7111,6 +7121,19 @@ function normalizeMarkdownCommentColor(value, fallback) {
         : String(fallback || '#facc15').toLowerCase();
 }
 
+function setMainHeaderBackgroundRemoved(removed, persist) {
+    mainHeaderBackgroundRemoved = !!removed;
+    document.documentElement.classList.toggle('md-main-header-background-removed', mainHeaderBackgroundRemoved);
+    const checkbox = document.getElementById('main-header-background-remove');
+    if (checkbox) checkbox.checked = mainHeaderBackgroundRemoved;
+    if (persist !== false) {
+        try {
+            localStorage.setItem(MAIN_HEADER_BACKGROUND_REMOVED_KEY, mainHeaderBackgroundRemoved ? '1' : '0');
+        } catch (_) {}
+    }
+    return mainHeaderBackgroundRemoved;
+}
+
 function setMarkdownCommentColorVariables(lightColor, darkColor) {
     document.documentElement.style.setProperty('--md-comment-highlight-light', lightColor);
     document.documentElement.style.setProperty('--md-comment-highlight-dark', darkColor);
@@ -7180,6 +7203,7 @@ function initSettings() {
     applyGoogleCalendarVisibility(calendarEnabled);
     loadGoogleCalendarOptionsUI();
     syncMermaidDisplayModeUI();
+    if (typeof syncPreviewPopupHeaderSettingsUi === 'function') syncPreviewPopupHeaderSettingsUi();
 }
 
 function getMermaidDisplayModeFromLocal() {
@@ -8209,6 +8233,7 @@ function initializeSettingsContainerFolds() {
     enhanceSettingsCardFold('ai-user-settings-card', ':scope > p:first-child', '', '', '사용자 정보');
     enhanceSettingsCardFold('google-calendar-settings-card', ':scope > div:first-child', '', '', 'Google 캘린더');
     enhanceSettingsCardFold('code-color-settings-card', ':scope > h4:first-child', '', '', '코드 색상');
+    enhanceSettingsCardFold('pv-header-settings-card', ':scope > div:first-child', '', '', 'PV 헤더 표시');
     enhanceSettingsCardFold('mermaid-display-settings-card', ':scope > h4:first-child', '', '', 'Mermaid 표시');
     enhanceSettingsCardFold(
         'indb-backup-prefix-settings-card',
@@ -10530,6 +10555,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     SETTINGS_SHORTCUTS_FOLD_KEY,
     SETTINGS_CONTAINER_FOLD_STATE_KEY,
     FILE_DOWNLOAD_PREFIX_KEY,
+    MAIN_HEADER_BACKGROUND_REMOVED_KEY,
     AI_USE_FOLD_KEY,
     AI_CHAT_SETTINGS_FOLD_KEY,
     SHARE_SETTINGS_FOLD_KEY,
@@ -10707,6 +10733,8 @@ async function resetSettingsMset() {
         SETTINGS_EXPORT_LOCAL_KEYS.concat(SETTINGS_RESET_EXTRA_LOCAL_KEYS).forEach(function (key) {
             localStorage.removeItem(key);
         });
+
+        setMainHeaderBackgroundRemoved(false, false);
 
         editorHorizontalShiftPx = 0;
         applyEditorHorizontalShift();
@@ -13705,6 +13733,7 @@ function openSettingsModal() {
     applySettingsModalFullscreenUI();
     updateSettingsModalResponsiveLayout();
     initializeSettingsContainerFolds();
+    if (typeof syncPreviewPopupHeaderSettingsUi === 'function') syncPreviewPopupHeaderSettingsUi();
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
     syncFileDownloadPrefixSettingUI();
     applyAiUseFold(getAiUseFoldedFromLocal());
@@ -14230,6 +14259,7 @@ window.setInputModalImagePanelToggleState = setInputModalImagePanelToggleState;
 window.adjustPageScale = adjustPageScale;
 window.adjustFontSize = adjustFontSize;
 window.adjustHeaderScale = adjustHeaderScale;
+window.setMainHeaderBackgroundRemoved = setMainHeaderBackgroundRemoved;
 window.adjustEditorHorizontalShift = adjustEditorHorizontalShift;
 window.resetEditorHorizontalShift = resetEditorHorizontalShift;
 if (window.ScholarSearchApp && typeof window.ScholarSearchApp.connectHost === 'function') {
