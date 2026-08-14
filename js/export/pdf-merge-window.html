@@ -18,7 +18,7 @@
 <body>
   <header class="toolbar">
     <h1>PDF 병합기</h1>
-    <label>화질 <select id="quality" class="button"><option value="1.25">빠르게</option><option value="1.75" selected>표준</option><option value="2.25">고품질</option></select></label>
+    <label>화질 <select id="quality" class="button" title="pdf-lib가 원본 PDF 페이지 품질을 유지합니다"><option value="original" selected>원본 유지</option></select></label>
     <label id="add" class="button" for="files" role="button" aria-disabled="false">PDF 여러 개 불러오기</label>
     <button id="merge" class="button primary" type="button" disabled>순서대로 병합 및 미리보기</button>
     <button id="save" class="button primary" type="button" disabled>병합 PDF 저장</button>
@@ -38,9 +38,7 @@
     </section>
   </main>
   <footer id="status" class="status">선택된 PDF 없음</footer>
-  <script src="../../vendor/pdfjs/build/pdf.isolated.min.js?v=20260815-pdf-isolated-11"></script>
-  <script src="../../vendor/jspdf/jspdf.umd.min.js?v=4.2.1"></script>
-  <script src="./pdf-merge-window.js?v=20260815-pdf-isolated-11"></script>
+  <script src="./pdf-merge-window.js?v=20260815-pdf-lib-12"></script>
   <script>
     setTimeout(function () {
       if (window.__pdfMergeModuleReady) return;

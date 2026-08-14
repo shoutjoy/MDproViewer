@@ -12,6 +12,7 @@ test('heavy optional features are absent from the initial script graph', () => {
     .map((match) => match[1]);
   const deferred = [
     'mammoth.browser.min.js',
+    'pdf.min.mjs',
     'docx-export.js',
     'html-export.js',
     'pdf-export.js',

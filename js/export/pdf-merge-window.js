@@ -1,14 +1,16 @@
 // This file is intentionally loaded as a classic script for file:// compatibility.
-const pdfjsLib = window.pdfjsLib;
-const pdfjsReady = !!(pdfjsLib && typeof pdfjsLib.getDocument === 'function');
-if (pdfjsReady) {
-  const workerUrl = new URL('../../vendor/pdfjs/build/pdf.worker.classic.min.js', window.location.href).href;
-  try {
-    pdfjsLib.GlobalWorkerOptions.workerPort = new Worker(workerUrl);
-  } catch (error) {
-    console.warn('PDF Worker를 별도 프로세스로 열지 못해 기본 로더를 사용합니다.', error);
-    pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+const pdfjsLib = null;
+const pdfjsReady = false;
+let pdfLibModulePromise = null;
+
+function loadPdfLibModule() {
+  if (!pdfLibModulePromise) {
+    pdfLibModulePromise = import('https://cdn.skypack.dev/pdf-lib').catch(error => {
+      pdfLibModulePromise = null;
+      throw error;
+    });
   }
+  return pdfLibModulePromise;
 }
 
 const els = {
@@ -132,7 +134,7 @@ function renderList() {
     row.querySelector('.remove').addEventListener('click', () => { items.splice(index, 1); clearMergedPreview(); renderList(); });
     row.addEventListener('click', function (event) {
       if (event.target.closest('.actions') || event.target.closest('.handle')) return;
-      previewPdfItem(index);
+      previewPdfItemWithBrowser(index);
     });
     row.addEventListener('dragstart', () => { dragId = item.id; row.classList.add('dragging'); });
     row.addEventListener('dragend', () => { dragId = ''; row.classList.remove('dragging'); });
@@ -342,6 +344,70 @@ function sendMergedToPv() {
   els.status.textContent = items.length + '개 PDF 병합 결과를 PV로 보냈습니다.';
 }
 
+function showPdfBlobInPreview(blob, label) {
+  clearPreviewImages();
+  const url = URL.createObjectURL(blob);
+  const frame = document.createElement('iframe');
+  frame.src = url;
+  frame.title = label || 'PDF 미리보기';
+  frame.style.width = '100%';
+  frame.style.height = '100%';
+  frame.style.minHeight = '100%';
+  frame.style.border = '0';
+  frame.style.background = '#ffffff';
+  previewUrls.push(url);
+  els.preview.appendChild(frame);
+  els.placeholder.hidden = true;
+}
+
+function previewPdfItemWithBrowser(index) {
+  const item = items[index];
+  if (!item || !item.file) return;
+  showPdfBlobInPreview(item.file, item.file.name);
+  els.status.textContent = item.file.name + ' · 개별 PDF 미리보기';
+}
+
+async function mergePdfsWithPdfLib() {
+  if (!items.length) return;
+  setBusy(true, 'PDF 병합 라이브러리를 불러오는 중…');
+  clearMergedPreview();
+  previewRequestId += 1;
+  try {
+    const pdfLib = await loadPdfLibModule();
+    if (!pdfLib || typeof pdfLib.PDFDocument !== 'function') {
+      throw new Error('pdf-lib의 PDFDocument를 불러오지 못했습니다.');
+    }
+    const mergedDocument = await pdfLib.PDFDocument.create();
+    let totalPages = 0;
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      els.busy.textContent = 'PDF 병합 중… ' + (index + 1) + ' / ' + items.length + ' · ' + item.file.name;
+      const bytes = await item.file.arrayBuffer();
+      const sourceDocument = await pdfLib.PDFDocument.load(bytes);
+      const pageIndices = sourceDocument.getPageIndices();
+      const copiedPages = await mergedDocument.copyPages(sourceDocument, pageIndices);
+      copiedPages.forEach(page => mergedDocument.addPage(page));
+      item.pageCount = pageIndices.length;
+      totalPages += pageIndices.length;
+    }
+    const outputBytes = await mergedDocument.save();
+    mergedBlob = new Blob([outputBytes], { type: 'application/pdf' });
+    if (mergedUrl) URL.revokeObjectURL(mergedUrl);
+    mergedUrl = URL.createObjectURL(mergedBlob);
+    showPdfBlobInPreview(mergedBlob, mergedFileName());
+    els.save.disabled = false;
+    els.toPv.disabled = false;
+    els.status.textContent = items.length + '개 PDF 원본 품질 병합 완료 · 총 ' + totalPages + '쪽';
+    renderList();
+  } catch (error) {
+    clearMergedPreview();
+    alert('PDF 병합에 실패했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+    els.busy.textContent = 'PDF를 병합하는 중…';
+  }
+}
+
 async function handleFileInputSelection(event) {
   const selectedFiles = Array.from(event.currentTarget.files || []);
   if (!selectedFiles.length) return;
@@ -389,7 +455,7 @@ document.addEventListener('drop', async event => {
   }
   await addFiles(pdfFiles);
 }, true);
-els.merge.addEventListener('click', mergePdfs);
+els.merge.addEventListener('click', mergePdfsWithPdfLib);
 els.save.addEventListener('click', saveMerged);
 els.toPv.addEventListener('click', sendMergedToPv);
 els.close.addEventListener('click', () => window.close());

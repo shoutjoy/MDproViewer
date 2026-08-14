@@ -3275,8 +3275,8 @@ async function openPdfInEditor(file) {
         markPersistedState();
         const missing = Array.isArray(result.scannedPages) ? result.scannedPages.length : 0;
         showToast(missing
-            ? 'PDF를 편집 문서로 열었습니다. 텍스트가 없는 페이지 ' + missing + '쪽은 OCR이 필요합니다.'
-            : 'PDF를 편집 가능한 문서로 열었습니다.');
+            ? 'PDF 텍스트를 편집 문서로 열었습니다. 텍스트가 없는 페이지 ' + missing + '쪽은 OCR이 필요합니다.'
+            : 'PDF 텍스트를 편집 문서로 열었습니다. 이미지와 복잡한 배치는 원본과 다를 수 있습니다.');
         return true;
     } catch (error) {
         const message = error && error.name === 'PasswordException'
@@ -3823,7 +3823,7 @@ async function chooseExportType() {
 
 function openPdfMergeWindow() {
     const mergeUrl = new URL('./js/export/pdf-merge-window.html', window.location.href);
-    mergeUrl.searchParams.set('v', '20260815-pdf-isolated-11-' + Date.now());
+    mergeUrl.searchParams.set('v', '20260815-pdf-lib-12-' + Date.now());
     const features = 'popup=yes,width=1380,height=900,left=80,top=50,resizable=yes,scrollbars=yes';
     const mergeWindow = window.open(mergeUrl.href, 'mdproviewer_pdf_merge', features);
     if (!mergeWindow) {
