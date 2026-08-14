@@ -14,6 +14,7 @@ let mergedBlob = null;
 let mergedUrl = '';
 let previewUrls = [];
 let dragId = '';
+let previewRequestId = 0;
 
 function fileId(file) {
   return [file.name, file.size, file.lastModified, Math.random().toString(16).slice(2)].join(':');
@@ -30,28 +31,57 @@ function clearMergedPreview() {
   els.save.disabled = true;
   els.toPv.disabled = true;
   els.placeholder.hidden = false;
-  els.preview.replaceChildren();
-  previewUrls.forEach(url => URL.revokeObjectURL(url));
-  previewUrls = [];
+  clearPreviewImages();
   if (mergedUrl) URL.revokeObjectURL(mergedUrl);
   mergedUrl = '';
 }
 
-function showMergedPreview(pages) {
+function clearPreviewImages() {
   els.preview.replaceChildren();
   previewUrls.forEach(url => URL.revokeObjectURL(url));
   previewUrls = [];
+}
+
+function getPdfRenderScale() {
+  return Math.max(1, Math.min(3, Number(els.quality.value) || 1.75));
+}
+
+function getJpegQuality(scale) {
+  return scale >= 2.2 ? 0.95 : scale >= 1.7 ? 0.9 : 0.82;
+}
+
+function showMergedPreview(pages) {
+  clearPreviewImages();
   pages.forEach((page, index) => {
     const url = URL.createObjectURL(new Blob([page.jpeg], { type: 'image/jpeg' }));
     const image = document.createElement('img');
     image.src = url;
-    image.alt = '병합 PDF ' + (index + 1) + '쪽';
+    image.alt = 'PDF ' + (index + 1) + '쪽 미리보기';
     image.width = Math.max(1, Math.round(page.width));
     image.height = Math.max(1, Math.round(page.height));
     image.loading = index > 1 ? 'lazy' : 'eager';
     previewUrls.push(url);
     els.preview.appendChild(image);
   });
+}
+
+async function renderPdfPageToImage(page, scale) {
+  const pageViewport = page.getViewport({ scale: 1 });
+  const renderViewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.ceil(renderViewport.width));
+  canvas.height = Math.max(1, Math.ceil(renderViewport.height));
+  const context = canvas.getContext('2d', { alpha: false });
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: context, viewport: renderViewport }).promise;
+  const jpeg = await canvasToJpeg(canvas, getJpegQuality(scale));
+  const width = pageViewport.width;
+  const height = pageViewport.height;
+  canvas.width = 1;
+  canvas.height = 1;
+  page.cleanup();
+  return { jpeg, width, height };
 }
 
 function setBusy(show, message) {
@@ -73,9 +103,10 @@ function renderList() {
   }
   items.forEach((item, index) => {
     const row = document.createElement('article');
-    row.className = 'item';
+    row.className = 'item cursor-pointer';
     row.draggable = true;
     row.dataset.id = item.id;
+    row.title = '클릭하면 이 PDF를 미리보기';
     row.innerHTML = '<div class="handle" title="끌어서 순서 변경">☰</div>' +
       '<div><div class="name"></div><div class="meta"></div></div>' +
       '<div class="actions"><button type="button" class="mini up" title="위로">▲</button><button type="button" class="mini down" title="아래로">▼</button><button type="button" class="mini remove" title="제거">×</button></div>';
@@ -86,6 +117,10 @@ function renderList() {
     row.querySelector('.up').addEventListener('click', () => moveItem(index, index - 1));
     row.querySelector('.down').addEventListener('click', () => moveItem(index, index + 1));
     row.querySelector('.remove').addEventListener('click', () => { items.splice(index, 1); clearMergedPreview(); renderList(); });
+    row.addEventListener('click', function (event) {
+      if (event.target.closest('.actions') || event.target.closest('.handle')) return;
+      previewPdfItem(index);
+    });
     row.addEventListener('dragstart', () => { dragId = item.id; row.classList.add('dragging'); });
     row.addEventListener('dragend', () => { dragId = ''; row.classList.remove('dragging'); });
     row.addEventListener('dragover', event => event.preventDefault());
@@ -107,6 +142,50 @@ function moveItem(from, to) {
   items.splice(to, 0, item);
   clearMergedPreview();
   renderList();
+}
+
+async function previewPdfItem(index) {
+  const item = items[index];
+  if (!item) return;
+  const requestId = ++previewRequestId;
+  const fileName = String(item.file && item.file.name ? item.file.name : ('문서 ' + (index + 1)));
+  setBusy(true, 'PDF를 미리보는 중…');
+  clearPreviewImages();
+  els.placeholder.hidden = false;
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: item.bytes.slice(), useWorkerFetch: false }).promise;
+    const totalPages = pdf.numPages;
+    const scale = getPdfRenderScale();
+    const previewPages = [];
+    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+      if (requestId !== previewRequestId) {
+        await pdf.destroy();
+        return;
+      }
+      els.busy.textContent = 'PDF 미리보기 중… ' + pageNumber + ' / ' + totalPages + ' · ' + fileName;
+      const page = await pdf.getPage(pageNumber);
+      const pageImage = await renderPdfPageToImage(page, scale);
+      previewPages.push(pageImage);
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    await pdf.destroy();
+    if (requestId !== previewRequestId) return;
+    showMergedPreview(previewPages);
+    els.placeholder.hidden = true;
+    els.status.textContent = fileName + ' 미리보기 · 총 ' + totalPages + '쪽';
+  } catch (error) {
+    if (requestId !== previewRequestId) return;
+    clearPreviewImages();
+    alert('개별 PDF 미리보기를 불러오지 못했습니다.\n' + (error?.message || error));
+  } finally {
+    if (requestId === previewRequestId) {
+      setBusy(false);
+      els.busy.textContent = 'PDF를 병합하는 중…';
+      if (els.placeholder.hidden && !els.preview.children.length) {
+        els.placeholder.hidden = false;
+      }
+    }
+  }
 }
 
 async function readFile(file) {
@@ -148,10 +227,11 @@ async function mergePdfs() {
   if (!JsPdf) return alert('PDF 생성 라이브러리를 불러오지 못했습니다.');
   setBusy(true, 'PDF를 병합하는 중…');
   clearMergedPreview();
+  previewRequestId += 1;
   let output = null;
   let outputPages = 0;
   const previewPages = [];
-  const scale = Math.max(1, Math.min(3, Number(els.quality.value) || 1.75));
+  const scale = getPdfRenderScale();
   try {
     const totalPages = items.reduce((sum, item) => sum + item.pageCount, 0);
     for (const item of items) {
@@ -159,27 +239,15 @@ async function mergePdfs() {
       for (let pageNumber = 1; pageNumber <= source.numPages; pageNumber += 1) {
         els.busy.textContent = 'PDF 병합 중… ' + (outputPages + 1) + ' / ' + totalPages;
         const page = await source.getPage(pageNumber);
-        const pageViewport = page.getViewport({ scale: 1 });
-        const renderViewport = page.getViewport({ scale });
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.ceil(renderViewport.width));
-        canvas.height = Math.max(1, Math.ceil(renderViewport.height));
-        const context = canvas.getContext('2d', { alpha: false });
-        context.fillStyle = '#ffffff';
-        context.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({ canvasContext: context, viewport: renderViewport }).promise;
-        const jpeg = await canvasToJpeg(canvas, scale >= 2.2 ? 0.95 : scale >= 1.7 ? 0.9 : 0.82);
-        const width = pageViewport.width;
-        const height = pageViewport.height;
+        const image = await renderPdfPageToImage(page, scale);
+        const width = image.width;
+        const height = image.height;
         const orientation = width > height ? 'landscape' : 'portrait';
         if (!output) output = new JsPdf({ unit: 'pt', format: [width, height], orientation, compress: true });
         else output.addPage([width, height], orientation);
-        output.addImage(jpeg, 'JPEG', 0, 0, width, height, undefined, 'MEDIUM');
-        previewPages.push({ jpeg, width, height });
+        output.addImage(image.jpeg, 'JPEG', 0, 0, width, height, undefined, 'MEDIUM');
+        previewPages.push(image);
         outputPages += 1;
-        canvas.width = 1;
-        canvas.height = 1;
-        page.cleanup();
         await new Promise(resolve => setTimeout(resolve, 0));
       }
       await source.destroy();
