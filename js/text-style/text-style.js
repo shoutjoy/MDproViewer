@@ -496,6 +496,13 @@
         if (checkbox) checkbox.checked = !!enabled;
         const row = checkbox && checkbox.closest('.text-style-row');
         if (row) row.classList.toggle('is-enabled', !!enabled);
+        if (enabled && (name === 'superscript' || name === 'subscript')) {
+            const otherName = name === 'superscript' ? 'subscript' : 'superscript';
+            const otherCheckbox = doc && doc.getElementById('style-enable-' + otherName);
+            if (otherCheckbox) otherCheckbox.checked = false;
+            const otherRow = otherCheckbox && otherCheckbox.closest('.text-style-row');
+            if (otherRow) otherRow.classList.remove('is-enabled');
+        }
         updatePreview();
     }
 
@@ -569,12 +576,14 @@
             color: isEnabled('text-color') && textColor ? textColor.value : '',
             backgroundColor: isEnabled('highlight') && highlightColor ? highlightColor.value : '',
             bold: isEnabled('bold'),
-            italic: isEnabled('italic')
+            italic: isEnabled('italic'),
+            superscript: isEnabled('superscript'),
+            subscript: isEnabled('subscript')
         };
     }
 
     function hasStyle(settings) {
-        return !!(settings && (settings.fontSize || settings.fontFamily || settings.color || settings.backgroundColor || settings.bold || settings.italic));
+        return !!(settings && (settings.fontSize || settings.fontFamily || settings.color || settings.backgroundColor || settings.bold || settings.italic || settings.superscript || settings.subscript));
     }
 
     function buildStyledHtml(selectedText, settings) {
@@ -595,6 +604,8 @@
         }
         if (safe.bold) html = '<strong>' + html + '</strong>';
         if (safe.italic) html = '<em>' + html + '</em>';
+        if (safe.superscript) html = '<sup>' + html + '</sup>';
+        else if (safe.subscript) html = '<sub>' + html + '</sub>';
         return html;
     }
 
@@ -622,6 +633,8 @@
         setEnabled('highlight', !!prefs.backgroundColor);
         setEnabled('bold', !!prefs.bold);
         setEnabled('italic', !!prefs.italic);
+        setEnabled('superscript', !!prefs.superscript);
+        setEnabled('subscript', !!prefs.subscript);
     }
 
     function updatePreview() {
@@ -635,6 +648,7 @@
         preview.style.backgroundColor = settings.backgroundColor || '';
         preview.style.fontWeight = settings.bold ? '700' : '';
         preview.style.fontStyle = settings.italic ? 'italic' : '';
+        preview.style.verticalAlign = settings.superscript ? 'super' : (settings.subscript ? 'sub' : '');
     }
 
     function updateSelectionSummary(textarea) {

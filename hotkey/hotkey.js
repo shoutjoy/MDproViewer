@@ -18,6 +18,8 @@
         { action: 'Find/Replace', keys: ['Ctrl', 'H'] },
         { action: 'Bold', keys: ['Ctrl', 'B'] },
         { action: 'Italic', keys: ['Ctrl', 'I'] },
+        { action: 'Superscript (<sup>)', keys: ['Ctrl', 'Shift', 'U'] },
+        { action: 'Subscript (<sub>)', keys: ['Ctrl', 'Shift', 'Y'] },
         { action: 'Comment selection', keys: ['Ctrl', '/'] },
         { action: 'Tidy', keys: ['Ctrl', 'Alt', 'T'] },
         { action: 'Insert footnote', keys: ['Ctrl', 'Alt', 'E'] },
@@ -187,6 +189,16 @@
             if (e.ctrlKey && !e.altKey && keyLower === 'i') {
                 e.preventDefault();
                 if (isEditMode && editorTextarea && typeof deps.insertAtCursor === 'function') deps.insertAtCursor('italic');
+                return;
+            }
+            if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && keyLower === 'u') {
+                e.preventDefault();
+                if (isEditMode && editorTextarea && typeof deps.insertAtCursor === 'function') deps.insertAtCursor('superscript');
+                return;
+            }
+            if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && keyLower === 'y') {
+                e.preventDefault();
+                if (isEditMode && editorTextarea && typeof deps.insertAtCursor === 'function') deps.insertAtCursor('subscript');
                 return;
             }
             if (e.ctrlKey && (keyLower === 'z' || keyLower === 'y')) {

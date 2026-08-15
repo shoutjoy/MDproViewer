@@ -47,6 +47,11 @@ test('선택한 Markdown은 보존하면서 모든 서식을 감싼다', () => {
   );
 });
 
+test('윗첨자와 아랫첨자는 HTML 태그로 선택 내용을 감싼다', () => {
+  assert.equal(api.buildStyledHtml('2', { superscript: true }), '<sup>2</sup>');
+  assert.equal(api.buildStyledHtml('2', { subscript: true }), '<sub>2</sub>');
+});
+
 test('글자 크기는 6pt~96pt 범위로 제한한다', () => {
   assert.equal(api.normalizeFontSize(2), '6pt');
   assert.equal(api.normalizeFontSize(14.26), '14.3pt');
@@ -64,8 +69,12 @@ test('Alt+L UI와 app 연결이 문서에 포함되어 있다', () => {
   assert.match(html, /id="text-style-font-face-input"/);
   assert.match(html, /href="https:\/\/noonnu\.cc\/font_page"/);
   assert.match(html, /js\/text-style\/text-style\.js/);
+  assert.match(html, /id="style-enable-superscript"/);
+  assert.match(html, /id="style-enable-subscript"/);
   assert.match(app, /TextStyleTool\.open/);
   assert.match(app, /TextStyleTool\.applySelection/);
+  assert.match(app, /insertAtCursor\('superscript'\)/);
+  assert.match(app, /insertAtCursor\('subscript'\)/);
   assert.match(inDb, /const DB_VERSION = 7/);
   assert.match(inDb, /createObjectStore\('fonts', \{ keyPath: 'id' \}\)/);
   assert.match(inDb, /fonts: '사용자 폰트'/);

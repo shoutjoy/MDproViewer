@@ -57,6 +57,29 @@ test('rendered PV editing converts common rich blocks back to Markdown and prote
   assert.match(preview, /note-cover-page,.trt-mermaid-wrapper,mjx-container/);
 });
 
+test('PV preserves the opened source syntax when rendered edits are saved', () => {
+  assert.match(preview, /function getPreviewPopupSourceSyntax/);
+  assert.match(readFunction(preview, 'getPreviewPopupSourceSyntax'), /docx\|html\?/);
+  assert.match(preview, /function previewPopupRenderedHtmlToHtml/);
+  assert.match(preview, /function previewPopupRenderedDomToSource/);
+  assert.match(preview, /getPreviewPopupSourceSyntax\(previousSource\) === 'html'/);
+  assert.match(preview, /previewPopupRenderedDomToSource\(editor, previous\)/);
+  assert.doesNotMatch(
+    readFunction(preview, 'previewPopupHandleEditorInput'),
+    /previewPopupRenderedHtmlToMarkdown\(editor, previous\)/
+  );
+
+  const syntaxFunction = readFunction(preview, 'getPreviewPopupSourceSyntax');
+  function detect(fileName, source) {
+    return vm.runInNewContext('(' + syntaxFunction + ')', { currentFileName: fileName })(source);
+  }
+  assert.equal(detect('converted.docx', '<p>Word content</p>'), 'html');
+  assert.equal(detect('page.html', '<main>HTML content</main>'), 'html');
+  assert.equal(detect('notes.md', '<p>Allowed inline HTML</p>'), 'markdown');
+  assert.equal(detect('notes.md', '<!doctype html><html><body>Page</body></html>'), 'html');
+  assert.equal(detect('', '<!doctype html><html><body>Page</body></html>'), 'html');
+});
+
 test('PV table picker inserts a rendered table matching the main document row and column choice', () => {
   let insertedHtml = '';
   let draftUpdated = false;
@@ -299,7 +322,7 @@ test('PV render edit mode shows responsive A4 page guides and page numbers', () 
 
 test('PV editor scripts use a fresh cache key', () => {
   assert.match(index, /image_insert\.js\?v=20260812-pv-editor-1/);
-  assert.match(index, /editpv\.js\?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1-resize-restore-1-a4-edit-guides-1-exit-confirm-1/);
+  assert.match(index, /editpv\.js\?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1-resize-restore-1-a4-edit-guides-1-exit-confirm-1-source-syntax-1/);
   assert.match(index, /pvHeaderSettings=20260815-1/);
   assert.match(index, /pvExport=20260813-modal-2/);
 });

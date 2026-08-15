@@ -221,6 +221,91 @@
         .dark .md-image-resize-cancel { background: #475569; color: #f8fafc; }
         body.md-image-resize-dragging,
         body.md-image-resize-dragging * { user-select: none !important; }
+        .markdown-body table.md-view-resizable-table {
+            cursor: default;
+        }
+        .markdown-body table.md-view-resizable-table:hover,
+        .markdown-body table.md-view-table-resizing {
+            outline: 2px solid rgba(99, 102, 241, .8);
+            outline-offset: 3px;
+        }
+        .md-table-resize-overlay {
+            display: none;
+            position: fixed;
+            z-index: 12001;
+            box-sizing: border-box;
+            border: 2px solid #6366f1;
+            pointer-events: none;
+        }
+        .md-table-resize-overlay.is-open { display: block; }
+        .md-table-resize-handle {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            padding: 0;
+            border: 2px solid #fff;
+            border-radius: 999px;
+            background: #4f46e5;
+            box-shadow: 0 1px 5px rgba(15, 23, 42, .45);
+            pointer-events: auto;
+            touch-action: none;
+        }
+        .md-table-resize-handle.is-w { left: 0; top: 50%; transform: translate(-50%, -50%); cursor: ew-resize; }
+        .md-table-resize-handle.is-e { right: 0; top: 50%; transform: translate(50%, -50%); cursor: ew-resize; }
+        .md-table-resize-handle.is-s { left: 50%; bottom: 0; transform: translate(-50%, 50%); cursor: ns-resize; }
+        .md-table-resize-handle.is-sw { left: 0; bottom: 0; transform: translate(-50%, 50%); cursor: nesw-resize; }
+        .md-table-resize-handle.is-se { right: 0; bottom: 0; transform: translate(50%, 50%); cursor: nwse-resize; }
+        .md-table-resize-handle.is-corner {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            background: #f59e0b;
+        }
+        .md-table-resize-size,
+        .md-table-resize-actions {
+            position: absolute;
+            left: 50%;
+            display: flex;
+            align-items: center;
+            white-space: nowrap;
+            pointer-events: auto;
+            transform: translateX(-50%);
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            background: rgba(255, 255, 255, .97);
+            color: #0f172a;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, .2);
+        }
+        .md-table-resize-size {
+            top: -36px;
+            padding: 4px 8px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .md-table-resize-actions {
+            bottom: -43px;
+            gap: 5px;
+            padding: 4px;
+        }
+        .md-table-resize-actions button {
+            border: 0;
+            border-radius: 5px;
+            padding: 5px 9px;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .md-table-resize-confirm { background: #4f46e5; color: #fff; }
+        .md-table-resize-cancel { background: #e2e8f0; color: #334155; }
+        .dark .md-table-resize-size,
+        .dark .md-table-resize-actions {
+            border-color: #475569;
+            background: rgba(15, 23, 42, .97);
+            color: #f8fafc;
+        }
+        .dark .md-table-resize-cancel { background: #475569; color: #f8fafc; }
+        body.md-table-resize-dragging,
+        body.md-table-resize-dragging * { user-select: none !important; }
         .markdown-body .tbl-caption {
             display: block;
             margin: -0.35rem 0 1rem;
@@ -2015,6 +2100,8 @@ body.sidebar-storage-github-hidden #tab-storage-github-link {
 .text-style-format-toggle b,
 .text-style-format-toggle i { font-size: 14px; font-style: normal; }
 .text-style-format-toggle.is-italic i { font-style: italic; }
+.text-style-format-toggle kbd { color: #64748b; font-size: 10px; font-weight: 700; }
+.dark .text-style-format-toggle kbd { color: #94a3b8; }
 .text-style-row.is-enabled .text-style-format-toggle span { color: #4f46e5; font-weight: 700; }
 .text-style-row.is-enabled .text-style-format-toggle span::before { content: '적용'; font-size: 0; }
 .text-style-row.is-enabled .text-style-format-toggle span { font-size: 0; }

@@ -90,12 +90,13 @@
         }
     }
 
-    async function getPermission(handle, requestAccess) {
+    async function getPermission(handle, requestAccess, mode) {
         if (!handle) return 'denied';
+        const permissionMode = mode === 'readwrite' ? 'readwrite' : 'read';
         try {
-            let state = await handle.queryPermission({ mode: 'read' });
+            let state = await handle.queryPermission({ mode: permissionMode });
             if (state === 'prompt' && requestAccess && typeof handle.requestPermission === 'function') {
-                state = await handle.requestPermission({ mode: 'read' });
+                state = await handle.requestPermission({ mode: permissionMode });
             }
             return state;
         } catch (_) {
@@ -216,7 +217,7 @@
     async function chooseFolder() {
         try {
             if (typeof window.showDirectoryPicker === 'function') {
-                const handle = await window.showDirectoryPicker({ mode: 'read' });
+                const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
                 await installRootHandle(handle);
                 await saveHandle(handle);
                 notify('로컬 폴더를 열었습니다: ' + rootNode.name);
@@ -306,7 +307,7 @@
             if (typeof window.openFileFromLocalFolderExplorer !== 'function') {
                 throw new Error('문서 열기 기능이 준비되지 않았습니다.');
             }
-            await window.openFileFromLocalFolderExplorer(file, node.path);
+            await window.openFileFromLocalFolderExplorer(file, node.path, node.handle);
         } catch (error) {
             notify('파일을 열 수 없습니다: ' + (error && error.message ? error.message : error));
         } finally {
@@ -468,6 +469,7 @@
         refresh: refresh,
         render: render,
         getRootName: function () { return rootNode ? rootNode.name : ''; },
+        getRootHandle: function () { return rootHandle || null; },
         hasFolder: function () { return !!rootNode; }
     };
 

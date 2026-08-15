@@ -939,7 +939,13 @@
                 folderCollapseState[folderStateId] = false;
                 saveFolderCollapseState();
             }
-            setCurrentDocumentInfo(requested.fileName, path);
+            setCurrentDocumentInfo(requested.fileName, path, {
+                source: 'github',
+                githubPath: path,
+                githubRemotePath: remotePath,
+                githubSha: entry.sha,
+                githubFolderPath: entry.folderPath
+            });
             updateContent('');
             markPersistedState();
             await renderDBList();
@@ -1042,7 +1048,13 @@
             return;
         }
         currentDbDocId = null;
-        setCurrentDocumentInfo((doc.title || 'github-doc') + '.md', doc.path || null);
+        setCurrentDocumentInfo((doc.title || 'github-doc') + '.md', doc.path || null, {
+            source: 'github',
+            githubPath: doc.path || target,
+            githubRemotePath: doc.remotePath || '',
+            githubSha: doc.sha || '',
+            githubFolderPath: doc.folderPath || 'root'
+        });
         updateContent(doc.content || '');
         markPersistedState();
         showToast('Loaded from GitHub cache.');
@@ -1222,13 +1234,19 @@
         let fileName = String(currentFileName || 'untitled.md').trim().replace(/[/\\:*?"<>|]+/g, '_');
         if (!fileName) fileName = 'untitled.md';
         if (!/\.[a-z0-9]+$/i.test(fileName)) fileName += '.md';
-        const pushFolder = await chooseGithubPushFolder(settings, cfg.defaultPushPath);
-        if (pushFolder === null) {
-            showToast('GitHub push canceled.');
-            return false;
+        const githubOrigin = currentGithubFileRef && currentGithubFileRef.path ? currentGithubFileRef : null;
+        let path = githubOrigin ? String(githubOrigin.path) : '';
+        if (!path) {
+            const pushFolder = await chooseGithubPushFolder(settings, cfg.defaultPushPath);
+            if (pushFolder === null) {
+                showToast('GitHub push canceled.');
+                return false;
+            }
+            path = joinGithubPath(pushFolder, fileName);
         }
-        const path = joinGithubPath(pushFolder, fileName);
-        const remotePath = cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path;
+        const remotePath = githubOrigin && githubOrigin.remotePath
+            ? String(githubOrigin.remotePath)
+            : (cfg.basePath ? (cfg.basePath.replace(/^\/+|\/+$/g, '') + '/' + path) : path);
         if (!confirmGithubDocumentPush(cfg, remotePath)) {
             showToast('GitHub push canceled.');
             return false;
@@ -1267,7 +1285,7 @@
                 path: path,
                 remotePath: remotePath,
                 title: getGithubDocTitleFromPath(path),
-                folderPath: 'root',
+                folderPath: githubOrigin ? String(githubOrigin.folderPath || 'root') : 'root',
                 content: String(currentMarkdown || ''),
                 sha: String(pushed && pushed.content && pushed.content.sha ? pushed.content.sha : ''),
                 updatedAt: new Date().toISOString()
@@ -1275,6 +1293,14 @@
             if (idx >= 0) nextCache[idx] = entry;
             else nextCache.push(entry);
             await setAiSettings({ githubCacheDocs: nextCache });
+            setCurrentDocumentInfo(fileName, path, {
+                source: 'github',
+                githubPath: path,
+                githubRemotePath: remotePath,
+                githubSha: entry.sha,
+                githubFolderPath: entry.folderPath
+            });
+            markPersistedState();
             showToast('Pushed to GitHub: ' + remotePath);
             return true;
         } catch (e) {

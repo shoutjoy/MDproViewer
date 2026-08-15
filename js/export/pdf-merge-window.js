@@ -3,6 +3,12 @@ const pdfjsLib = null;
 const pdfjsReady = false;
 let pdfLibModulePromise = null;
 let pdfJsModulePromise = null;
+const PDFM_FORMAT = 'mdpro-pdf-merge-project';
+const PDFM_VERSION = 1;
+const PDFM_APP_ID = 'mdpro-pdf-merge';
+const PDFM_WORK_TYPE = 'pdf_merge_project';
+const PDFM_STORE = 'work_files';
+const PDFM_ID_PREFIX = 'pdf_merge_project:';
 
 function loadPdfLibModule() {
   if (!pdfLibModulePromise) {
@@ -33,6 +39,10 @@ const els = {
   split: document.getElementById('tool-split'), deletePages: document.getElementById('tool-delete-pages'), addPage: document.getElementById('tool-add-page'),
   insertImage: document.getElementById('tool-insert-image'), fillForm: document.getElementById('tool-fill-form'), signature: document.getElementById('tool-signature'),
   imageFile: document.getElementById('tool-image-file'), signatureModal: document.getElementById('signature-modal'), signatureCanvas: document.getElementById('signature-canvas'),
+  projectSave: document.getElementById('project-save-indb'), projectLoad: document.getElementById('project-load-indb'),
+  projectExport: document.getElementById('project-export'), projectImport: document.getElementById('project-import'), projectImportFile: document.getElementById('project-import-file'),
+  projectModal: document.getElementById('project-modal'), projectModalTitle: document.getElementById('project-modal-title'), projectNameField: document.getElementById('project-name-field'),
+  projectName: document.getElementById('project-name'), projectList: document.getElementById('project-list'), projectModalSave: document.getElementById('project-modal-save'),
   merge: document.getElementById('merge'), save: document.getElementById('save'), toPv: document.getElementById('to-pv'), close: document.getElementById('close'),
   preview: document.getElementById('preview'), placeholder: document.getElementById('placeholder'),
   busy: document.getElementById('busy'), status: document.getElementById('status'), quality: document.getElementById('quality')
@@ -46,6 +56,8 @@ let dragId = '';
 let previewRequestId = 0;
 let isBusy = false;
 let selectedItemId = '';
+let currentProjectId = '';
+let currentProjectName = '';
 
 function fileId(file) {
   return [file.name, file.size, file.lastModified, Math.random().toString(16).slice(2)].join(':');
@@ -124,7 +136,286 @@ function setBusy(show, message) {
   els.merge.disabled = show || !items.length;
   els.save.disabled = show || !mergedBlob;
   els.toPv.disabled = show || !mergedBlob;
+  [els.projectSave, els.projectLoad, els.projectExport, els.projectImport].forEach(button => { if (button) button.disabled = show; });
   updatePdfToolButtons();
+}
+
+function defaultProjectName() {
+  if (currentProjectName) return currentProjectName;
+  const firstName = items[0]?.file?.name?.replace(/\.pdf$/i, '') || 'PDF 병합 작업';
+  return items.length > 1 ? firstName + ' 외 ' + (items.length - 1) + '개' : firstName;
+}
+
+function projectFileName(name) {
+  const safe = String(name || 'pdf-merge-project').trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').slice(0, 100) || 'pdf-merge-project';
+  return safe + '.pdfm';
+}
+
+function createProjectId() {
+  const unique = globalThis.crypto?.randomUUID?.() || (Date.now() + '-' + Math.random().toString(16).slice(2));
+  return PDFM_ID_PREFIX + unique;
+}
+
+async function getProjectDatabase() {
+  const owner = window.opener && !window.opener.closed ? window.opener : window;
+  const storage = owner.InDbStorage || window.InDbStorage;
+  if (!storage) throw new Error('메인 화면의 inDB 저장 모듈에 연결하지 못했습니다.');
+  let database = typeof storage.getDatabase === 'function' ? storage.getDatabase() : null;
+  if (!database && typeof storage.init === 'function') {
+    await storage.init();
+    database = typeof storage.getDatabase === 'function' ? storage.getDatabase() : null;
+  }
+  if (!database || !database.objectStoreNames.contains(PDFM_STORE)) throw new Error('MarkdownProDB work_files 저장소가 준비되지 않았습니다.');
+  return database;
+}
+
+function runProjectStore(mode, operation) {
+  return getProjectDatabase().then(database => new Promise((resolve, reject) => {
+    try {
+      const transaction = database.transaction(PDFM_STORE, mode);
+      const request = operation(transaction.objectStore(PDFM_STORE));
+      if (request) {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('inDB 요청을 처리하지 못했습니다.'));
+      } else {
+        transaction.oncomplete = () => resolve();
+      }
+      transaction.onerror = () => reject(transaction.error || new Error('inDB 작업에 실패했습니다.'));
+      transaction.onabort = () => reject(transaction.error || new Error('inDB 작업이 중단되었습니다.'));
+    } catch (error) {
+      reject(error);
+    }
+  }));
+}
+
+function makeInDbProjectRecord(name) {
+  const now = new Date().toISOString();
+  if (!currentProjectId) currentProjectId = createProjectId();
+  currentProjectName = String(name || defaultProjectName()).trim() || 'PDF 병합 작업';
+  return {
+    id: currentProjectId,
+    appId: PDFM_APP_ID,
+    workType: PDFM_WORK_TYPE,
+    format: PDFM_FORMAT,
+    projectVersion: PDFM_VERSION,
+    name: currentProjectName,
+    selectedItemId,
+    files: items.map(item => ({
+      itemId: item.id,
+      name: item.file.name,
+      type: item.file.type || 'application/pdf',
+      size: item.file.size,
+      lastModified: item.file.lastModified || Date.now(),
+      pageCount: item.pageCount || null,
+      blob: item.file
+    })),
+    createdAt: window.__loadedPdfmCreatedAt || now,
+    updatedAt: now
+  };
+}
+
+async function saveProjectToInDb() {
+  if (!items.length) return alert('저장할 PDF 작업이 없습니다.');
+  const name = els.projectName.value.trim() || defaultProjectName();
+  closeProjectModal();
+  setBusy(true, 'PDF 병합 프로젝트를 inDB에 저장하는 중…');
+  try {
+    const record = makeInDbProjectRecord(name);
+    await runProjectStore('readwrite', store => store.put(record));
+    window.__loadedPdfmCreatedAt = record.createdAt;
+    els.status.textContent = '프로젝트 “' + record.name + '”을 inDB에 저장했습니다. · PDF ' + items.length + '개';
+  } catch (error) {
+    alert('프로젝트를 inDB에 저장하지 못했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function listInDbProjects() {
+  const records = await runProjectStore('readonly', store => store.getAll());
+  return (Array.isArray(records) ? records : []).filter(record => record && record.appId === PDFM_APP_ID && record.workType === PDFM_WORK_TYPE)
+    .sort((left, right) => String(right.updatedAt || '').localeCompare(String(left.updatedAt || '')));
+}
+
+function fileFromStoredEntry(entry) {
+  const source = entry.blob instanceof Blob ? entry.blob : new Blob([entry.blob], { type: entry.type || 'application/pdf' });
+  return new File([source], entry.name || 'document.pdf', { type: entry.type || source.type || 'application/pdf', lastModified: Number(entry.lastModified) || Date.now() });
+}
+
+function restoreProject(record, fromFile) {
+  const entries = Array.isArray(record.files) ? record.files : [];
+  if (!entries.length) throw new Error('프로젝트에 PDF 파일이 없습니다.');
+  items = entries.map(entry => ({
+    id: entry.itemId || fileId({ name: entry.name, size: entry.size || entry.blob?.size || 0, lastModified: entry.lastModified || 0 }),
+    file: fileFromStoredEntry(entry),
+    bytes: null,
+    pageCount: Number(entry.pageCount) || null
+  }));
+  selectedItemId = items.some(item => item.id === record.selectedItemId) ? record.selectedItemId : items[0].id;
+  currentProjectId = fromFile ? '' : String(record.id || '');
+  currentProjectName = String(record.name || 'PDF 병합 작업');
+  window.__loadedPdfmCreatedAt = fromFile ? '' : String(record.createdAt || '');
+  clearMergedPreview();
+  renderList();
+  els.status.textContent = '프로젝트 “' + currentProjectName + '”을 불러왔습니다. · PDF ' + items.length + '개';
+}
+
+async function loadInDbProject(record) {
+  closeProjectModal();
+  setBusy(true, 'inDB 프로젝트를 불러오는 중…');
+  try {
+    restoreProject(record, false);
+  } catch (error) {
+    alert('프로젝트를 불러오지 못했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function deleteInDbProject(record) {
+  if (!confirm('“' + record.name + '” 프로젝트를 inDB에서 삭제할까요?')) return;
+  await runProjectStore('readwrite', store => store.delete(record.id));
+  if (currentProjectId === record.id) {
+    currentProjectId = '';
+    window.__loadedPdfmCreatedAt = '';
+  }
+  await renderProjectList();
+}
+
+async function renderProjectList() {
+  els.projectList.replaceChildren();
+  try {
+    const records = await listInDbProjects();
+    if (!records.length) {
+      const empty = document.createElement('div');
+      empty.className = 'project-empty';
+      empty.textContent = 'inDB에 저장된 PDF 병합 프로젝트가 없습니다.';
+      els.projectList.appendChild(empty);
+      return;
+    }
+    records.forEach(record => {
+      const row = document.createElement('article');
+      row.className = 'project-entry';
+      const details = document.createElement('div');
+      const name = document.createElement('div');
+      name.className = 'project-entry-name';
+      name.textContent = record.name || '이름 없는 프로젝트';
+      const meta = document.createElement('div');
+      meta.className = 'project-entry-meta';
+      const updated = record.updatedAt ? new Date(record.updatedAt).toLocaleString('ko-KR') : '날짜 없음';
+      meta.textContent = 'PDF ' + (Array.isArray(record.files) ? record.files.length : 0) + '개 · ' + updated;
+      details.append(name, meta);
+      const actions = document.createElement('div');
+      actions.className = 'project-entry-actions';
+      const load = document.createElement('button');
+      load.type = 'button'; load.className = 'button'; load.textContent = '불러오기';
+      load.addEventListener('click', () => loadInDbProject(record));
+      const remove = document.createElement('button');
+      remove.type = 'button'; remove.className = 'button'; remove.textContent = '삭제';
+      remove.addEventListener('click', () => deleteInDbProject(record).catch(error => alert('프로젝트를 삭제하지 못했습니다.\n' + (error?.message || error))));
+      actions.append(load, remove);
+      row.append(details, actions);
+      els.projectList.appendChild(row);
+    });
+  } catch (error) {
+    const failed = document.createElement('div');
+    failed.className = 'project-empty';
+    failed.textContent = 'inDB 프로젝트 목록을 읽지 못했습니다: ' + (error?.message || error);
+    els.projectList.appendChild(failed);
+  }
+}
+
+function openProjectModal(mode) {
+  const saving = mode === 'save';
+  els.projectModalTitle.textContent = saving ? '현재 PDF 병합 작업을 inDB에 저장' : 'inDB PDF 병합 프로젝트 불러오기';
+  els.projectNameField.hidden = !saving;
+  els.projectModalSave.hidden = !saving;
+  els.projectList.hidden = saving;
+  els.projectName.value = defaultProjectName();
+  els.projectModal.hidden = false;
+  if (saving) setTimeout(() => els.projectName.select(), 0);
+  else renderProjectList();
+}
+
+function closeProjectModal() {
+  els.projectModal.hidden = true;
+}
+
+function bytesToBase64(bytes) {
+  const chunkSize = 3 * 16384;
+  const chunks = [];
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const part = bytes.subarray(offset, Math.min(offset + chunkSize, bytes.length));
+    let binary = '';
+    for (let index = 0; index < part.length; index += 1) binary += String.fromCharCode(part[index]);
+    chunks.push(btoa(binary));
+  }
+  return chunks.join('');
+}
+
+function base64ToBlob(base64, type) {
+  const chunkChars = 4 * 16384;
+  const parts = [];
+  for (let offset = 0; offset < base64.length; offset += chunkChars) {
+    const binary = atob(base64.slice(offset, Math.min(offset + chunkChars, base64.length)));
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    parts.push(bytes);
+  }
+  return new Blob(parts, { type: type || 'application/pdf' });
+}
+
+async function exportPdfmProject() {
+  if (!items.length) return alert('내보낼 PDF 작업이 없습니다.');
+  setBusy(true, '.pdfm 작업 파일을 만드는 중…');
+  try {
+    const now = new Date().toISOString();
+    const project = {
+      format: PDFM_FORMAT,
+      version: PDFM_VERSION,
+      name: defaultProjectName(),
+      createdAt: window.__loadedPdfmCreatedAt || now,
+      exportedAt: now,
+      selectedItemId,
+      files: []
+    };
+    for (let index = 0; index < items.length; index += 1) {
+      els.busy.textContent = '.pdfm에 PDF 포함 중… ' + (index + 1) + ' / ' + items.length;
+      const item = items[index];
+      const bytes = new Uint8Array(await item.file.arrayBuffer());
+      project.files.push({ itemId: item.id, name: item.file.name, type: item.file.type || 'application/pdf', size: item.file.size, lastModified: item.file.lastModified || Date.now(), pageCount: item.pageCount || null, dataBase64: bytesToBase64(bytes) });
+    }
+    const blob = new Blob([JSON.stringify(project)], { type: 'application/vnd.mdviewer.pdfm+json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = projectFileName(project.name);
+    document.body.appendChild(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    els.status.textContent = '현재 작업을 ' + link.download + ' 파일로 내보냈습니다.';
+  } catch (error) {
+    alert('.pdfm 작업 파일을 만들지 못했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+    els.busy.textContent = 'PDF를 병합하는 중…';
+  }
+}
+
+async function importPdfmProject(file) {
+  if (!file) return;
+  setBusy(true, '.pdfm 작업 파일을 불러오는 중…');
+  try {
+    const project = JSON.parse(await file.text());
+    if (project?.format !== PDFM_FORMAT || Number(project.version) !== PDFM_VERSION || !Array.isArray(project.files)) throw new Error('지원하는 PDF 병합 프로젝트 파일이 아닙니다.');
+    const entries = project.files.map(entry => {
+      if (!entry?.dataBase64 || !entry?.name) throw new Error('프로젝트 안의 PDF 데이터가 손상되었습니다.');
+      return { ...entry, blob: base64ToBlob(entry.dataBase64, entry.type || 'application/pdf') };
+    });
+    restoreProject({ ...project, files: entries }, true);
+  } catch (error) {
+    alert('.pdfm 작업 파일을 불러오지 못했습니다.\n' + (error?.message || error));
+  } finally {
+    setBusy(false);
+  }
 }
 
 function getSelectedItem() {
@@ -936,6 +1227,18 @@ async function handleFileInputSelection(event) {
 }
 els.files.addEventListener('input', handleFileInputSelection);
 els.files.addEventListener('change', handleFileInputSelection);
+els.projectSave.addEventListener('click', () => openProjectModal('save'));
+els.projectLoad.addEventListener('click', () => openProjectModal('load'));
+els.projectExport.addEventListener('click', exportPdfmProject);
+els.projectImport.addEventListener('click', () => els.projectImportFile.click());
+els.projectImportFile.addEventListener('change', event => {
+  const file = event.currentTarget.files?.[0] || null;
+  event.currentTarget.value = '';
+  if (file) importPdfmProject(file);
+});
+document.getElementById('project-modal-cancel').addEventListener('click', closeProjectModal);
+els.projectModalSave.addEventListener('click', saveProjectToInDb);
+els.projectName.addEventListener('keydown', event => { if (event.key === 'Enter') saveProjectToInDb(); });
 els.split.addEventListener('click', () => openPageToolModal('split'));
 els.deletePages.addEventListener('click', () => openPageToolModal('delete'));
 els.addPage.addEventListener('click', () => openPageToolModal('add'));
@@ -1035,6 +1338,11 @@ document.addEventListener('drop', async event => {
   els.dropZone.classList.remove('drop-active');
   if (isBusy) return;
   const files = Array.from(event.dataTransfer.files || []);
+  const projectFiles = files.filter(file => /\.pdfm$/i.test(file.name));
+  if (projectFiles.length === 1 && files.length === 1) {
+    await importPdfmProject(projectFiles[0]);
+    return;
+  }
   const pdfFiles = files.filter(file => file.type === 'application/pdf' || /\.pdf$/i.test(file.name));
   if (!pdfFiles.length) {
     alert('PDF 파일만 드래그해서 놓을 수 있습니다.');

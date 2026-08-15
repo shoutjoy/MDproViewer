@@ -28,7 +28,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260811-2&amp;sidebarControls=20260812-4&amp;miniToc=20260812-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;viewTableResize=20260815-2&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260815-supsub-1&amp;sidebarControls=20260812-4&amp;miniToc=20260812-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1" charset="utf-8">
     <link rel="stylesheet" href="./js/inDB/inDB.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
@@ -422,11 +422,10 @@
                 <span class="hidden xl:inline text-sm font-medium">내보내기</span>
             </button>
 
-            <!-- 'DB에 저장' 버튼을 '저장'으로 변경 -->
             <button onclick="saveToDB()"
                 class="p-1.5 sm:p-2 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-md transition-colors flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 shrink-0"
-                title="내부 저장소에 저장">
-                <i data-lucide="database" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
+                title="현재 문서를 원래 저장소에 저장">
+                <i data-lucide="save" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
                 <span class="hidden xl:inline text-sm font-bold">저장</span>
             </button>
 
@@ -915,6 +914,9 @@
                                 <button type="button" onclick="convertBase64ImagesToInternalInEditor()"
                                     class="tidy-action-button px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                                     title="선택 영역 또는 문서 전체의 Markdown/HTML Base64 이미지를 IndexedDB internal:// 링크로 변환">base64ToUrl</button>
+                                <button type="button" onclick="convertInternalImagesToBase64InEditor()"
+                                    class="tidy-action-button px-2 py-1 rounded border border-sky-300 dark:border-sky-700 text-[11px] font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-900/20"
+                                    title="선택 영역 또는 문서 전체의 internal:// 이미지를 MD에 저장 가능한 Base64 데이터 URL로 변환">Url2base64</button>
                                 <button type="button" onclick="applyNoteCoverTidyInEditor()"
                                     class="tidy-action-button px-2 py-1 rounded border border-violet-300 dark:border-violet-700 text-[11px] font-semibold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20"
                                     title="선택 영역 또는 문서 전체의 note-cover JSON을 보기 좋게 정리">noteCover</button>
@@ -1083,7 +1085,7 @@
                         <span class="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">헤더</span>
                         <div class="flex items-center gap-0.5">
                             <button type="button" onclick="adjustHeaderScale(-0.05)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="헤더 축소"><i data-lucide="minus" class="w-3.5 h-3.5"></i></button>
-                            <span id="header-scale-display" class="text-[11px] font-mono w-9 text-center text-slate-600 dark:text-slate-300">100%</span>
+                            <span id="header-scale-display" class="text-[11px] font-mono w-9 text-center text-slate-600 dark:text-slate-300">70%</span>
                             <button type="button" onclick="adjustHeaderScale(0.05)" class="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300" title="헤더 확대"><i data-lucide="plus" class="w-3.5 h-3.5"></i></button>
                         </div>
                         <label for="main-header-background-remove" class="flex items-center gap-1 whitespace-nowrap text-[10px] font-semibold text-slate-500 dark:text-slate-400 cursor-pointer" title="체크하면 메인 문서의 헤더 색상 배경을 제거합니다">
@@ -1681,6 +1683,20 @@
                             </span>
                         </div>
                         <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">윗첨자 (&lt;sup&gt;) 적용</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>U</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm font-medium text-slate-600 dark:text-slate-400">아랫첨자 (&lt;sub&gt;) 적용</span>
+                            <span
+                                class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
+                                <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Y</kbd>
+                            </span>
+                        </div>
+                        <div class="flex items-center justify-between">
                             <span class="text-sm font-medium text-slate-600 dark:text-slate-400">줄 위아래로 이동</span>
                             <span
                                 class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 shadow-sm font-sans flex items-center gap-1">
@@ -1724,6 +1740,14 @@
                             <input type="checkbox" id="selection-wrap-enabled" onchange="toggleSelectionWrapSetting(this.checked)"
                                 class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500" checked>
                             <span>Selection wrap rules (<code>[]</code>, <code>&lt;&gt;</code>, <code>()</code>, <code>{}</code>, <code>&quot;&quot;</code>, <code>''</code>, <code>`inline`</code>, <code>```block```</code>, <code>$inline$</code> -&gt; <code>$$block$$</code>)</span>
+                        </label>
+                        <label class="mt-2 flex items-start gap-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                            <input type="checkbox" id="view-mode-edit-enabled" onchange="toggleViewModeEditSetting(this.checked)"
+                                class="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                            <span>
+                                보기모드 텍스트 입력
+                                <small class="block mt-0.5 font-normal text-slate-500 dark:text-slate-400">보기 화면을 클릭한 뒤 일반 텍스트만 입력합니다. 입력 내용은 원문과 자동 저장에 즉시 반영됩니다.</small>
+                            </span>
                         </label>
                     </div>
                 </div>
@@ -2339,6 +2363,18 @@
                     <button type="button" class="text-style-format-toggle is-italic" data-style-toggle="italic"><span>적용 안 함</span><i>I</i></button>
                 </div>
 
+                <div class="text-style-row text-style-row-compact" data-style-row="superscript">
+                    <div class="text-style-row-label"><span>윗첨자</span><button type="button" data-style-reset="superscript" aria-label="윗첨자 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-superscript" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <button type="button" class="text-style-format-toggle is-superscript" data-style-toggle="superscript"><span>적용 안 함</span><b>X<sup>2</sup></b><kbd>Ctrl+Shift+U</kbd></button>
+                </div>
+
+                <div class="text-style-row text-style-row-compact" data-style-row="subscript">
+                    <div class="text-style-row-label"><span>아랫첨자</span><button type="button" data-style-reset="subscript" aria-label="아랫첨자 적용 안 함">×</button></div>
+                    <input type="checkbox" id="style-enable-subscript" class="text-style-enable" tabindex="-1" aria-hidden="true">
+                    <button type="button" class="text-style-format-toggle is-subscript" data-style-toggle="subscript"><span>적용 안 함</span><b>X<sub>2</sub></b><kbd>Ctrl+Shift+Y</kbd></button>
+                </div>
+
                 <div class="text-style-font-source-link">
                     <div><strong>폰트를 찾고 있나요?</strong><span>눈누에서 원하는 한글 웹폰트를 고른 뒤 웹폰트 코드를 복사하세요.</span></div>
                     <a href="https://noonnu.cc/font_page" target="_blank" rel="noopener noreferrer"
@@ -2368,6 +2404,19 @@
                     <button type="button" onclick="closeTextStyleModal()" class="text-style-cancel">취소</button>
                     <button type="button" onclick="applyTextStyleToSelection()" class="text-style-apply">적용</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="storage-save-location-modal" class="fixed inset-0 bg-black/55 hidden items-center justify-center z-[70] no-print" role="dialog" aria-modal="true" aria-labelledby="storage-save-location-title">
+        <div class="w-[min(92vw,540px)] rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-2xl">
+            <h3 id="storage-save-location-title" class="text-lg font-bold text-slate-800 dark:text-slate-100">저장 위치 확인</h3>
+            <p id="storage-save-location-summary" class="mt-3 text-sm font-semibold text-amber-700 dark:text-amber-300"></p>
+            <p id="storage-save-location-detail" class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300"></p>
+            <div class="mt-5 grid gap-2 sm:grid-cols-3">
+                <button type="button" id="storage-save-cancel" class="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">취소</button>
+                <button type="button" id="storage-save-origin" class="rounded-md border border-indigo-300 dark:border-indigo-700 px-3 py-2 text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"></button>
+                <button type="button" id="storage-save-target" class="rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"></button>
             </div>
         </div>
     </div>
@@ -2724,7 +2773,7 @@
 
 <!-- 확장 파일 처리 -->
 <script
-    src="./js/extendFiles/extend-files.js?v=20260811-mdd-id-map-1&amp;pdfExport=20260812-edit-merge-1&amp;pdfMergeTool=20260813-1"
+    src="./js/extendFiles/extend-files.js?v=20260811-mdd-id-map-1&amp;pdfExport=20260812-edit-merge-1&amp;pdfMergeTool=20260815-pdfm-project-15"
     charset="utf-8"
     defer>
 </script>
@@ -2830,12 +2879,12 @@
 
 <!-- 문서 정리 기능 -->
 <script
-    src="./js/Tidy/tidy-base64-image.js?v=20260813-image-core-1"
+    src="./js/Tidy/tidy-base64-image.js?v=20260815-url2base64-1"
     charset="utf-8"
     defer>
 </script>
 <script
-    src="./js/Tidy/tidy-actions.js?v=20260811-base64-html-1"
+    src="./js/Tidy/tidy-actions.js?v=20260815-url2base64-1"
     charset="utf-8"
     defer>
 </script>
@@ -2847,7 +2896,7 @@
 
 <!-- 선택 영역 글꼴·색상·형광펜 서식 (Alt+L) -->
 <script
-    src="./js/text-style/text-style.js?v=20260811-3"
+    src="./js/text-style/text-style.js?v=20260815-supsub-1"
     charset="utf-8"
     defer>
 </script>
@@ -2890,7 +2939,7 @@
 ========================================================= -->
 
 <script
-    src="./hotkey/hotkey.js?v=20260810-comment-1"
+    src="./hotkey/hotkey.js?v=20260815-supsub-1"
     charset="utf-8"
     defer>
 </script>
@@ -2902,7 +2951,7 @@
 
 <!-- Mammoth는 DOCX 파일을 열 때만 app.js가 지연 로드한다. -->
 <script
-    src="./sidebar_left/local-folder-explorer.js?v=20260806-local-folder-1"
+    src="./sidebar_left/local-folder-explorer.js?v=20260815-storage-safety-1"
     charset="utf-8"
     defer>
 </script>
@@ -2912,7 +2961,12 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-insert-1&amp;viewImageResize=20260811-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-visual-tools-14&amp;imageSizeHint=20260811-1&amp;textStyle=20260811-2&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1"
+    src="./js/viewmode/table-resize.js?v=20260815-2"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/app.js?v=20260811-note-cover-insert-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;docxImport=20260815-table-fidelity-2&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260815-2&amp;indbImages=20260812-3&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1"
     charset="utf-8"
     defer>
 </script>
@@ -2944,21 +2998,21 @@
 
 <!-- GitHub 실제 기능 -->
 <script
-    src="./js/GithubData/github-app.js?v=20260806-local-folder-1&amp;storageVisibility=20260810-1&amp;tidyTextFiles=20260811-1&amp;fileControls=20260812-3"
+    src="./js/GithubData/github-app.js?v=20260815-storage-safety-1&amp;storageVisibility=20260810-1&amp;tidyTextFiles=20260811-1&amp;fileControls=20260812-3"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 보기 모드 편집 -->
 <script
-    src="./js/viewmode/viewmode-edit-input.js?v=20260602-1"
+    src="./js/viewmode/viewmode-edit-input.js?v=20260815-text-input-3"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 편집기·미리보기 연동 -->
 <script
-    src="./js/UI_PV/editpv.js?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1-resize-restore-1-a4-edit-guides-1-exit-confirm-1&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2&amp;pvPrint=20260811-1"
+    src="./js/UI_PV/editpv.js?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1-resize-restore-1-a4-edit-guides-1-exit-confirm-1-source-syntax-1&amp;mermaidDisplay=20260810-4&amp;comment=20260810-1&amp;perf=20260810-2&amp;pvPrint=20260811-1"
     charset="utf-8"
     defer>
 </script>

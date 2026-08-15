@@ -106,12 +106,13 @@
         var editorTextarea = state.editorTextarea;
         if (!editorTextarea) return false;
 
-        var start = editorTextarea.selectionStart;
-        var end = editorTextarea.selectionEnd;
+        var hasExplicitRange = result && Number.isInteger(result.selectionStart) && Number.isInteger(result.selectionEnd);
+        var start = hasExplicitRange ? result.selectionStart : editorTextarea.selectionStart;
+        var end = hasExplicitRange ? result.selectionEnd : editorTextarea.selectionEnd;
         var scrollTop = editorTextarea.scrollTop;
         var scrollLeft = editorTextarea.scrollLeft;
         var selectionDirection = editorTextarea.selectionDirection || 'none';
-        var hasSelection = start !== end;
+        var hasSelection = hasExplicitRange ? !!result.replaceSelection : start !== end;
 
         if (hasSelection) {
             var fullText = editorTextarea.value;
@@ -303,6 +304,22 @@
         }
     }
 
+    function applyUrl2base64(deps) {
+        deps = deps || {};
+        var state = getEditorState(deps);
+        closeMenu();
+        if (state.isEditMode && state.editorTextarea && global.TidyImageRecovery && typeof global.TidyImageRecovery.applyUrl2base64 === 'function') {
+            return global.TidyImageRecovery.applyUrl2base64(deps, function (result, sourceText) {
+                return applyResultToEditor(result, sourceText, deps);
+            });
+        }
+        if (typeof deps.showToast === 'function') {
+            deps.showToast(state.isEditMode && state.editorTextarea
+                ? '내부 이미지 Base64 변환 모듈을 불러오지 못했습니다.'
+                : '편집 모드에서 사용하세요.');
+        }
+    }
+
     global.TidyActions = {
         closeMenu: closeMenu,
         toggleMenu: toggleMenu,
@@ -311,6 +328,7 @@
         applyHtml: applyHtml,
         applyNoteCover: applyNoteCover,
         applyBase64ToUrl: applyBase64ToUrl,
+        applyUrl2base64: applyUrl2base64,
         formatHtml: formatHtml,
         formatNoteCoverBlocks: formatNoteCoverBlocks,
         applyResultToEditor: applyResultToEditor

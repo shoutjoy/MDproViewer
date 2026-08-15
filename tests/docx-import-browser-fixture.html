@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>DOCX import table fixture</title>
+  <script src="../vendor/jszip/jszip.min.js"></script>
+  <script src="../js/extendFiles/docx-import.js?v=20260815-table-fidelity-2"></script>
+  <style>
+    thead th { background:#e2e8f0; font-weight:700; }
+    .docx-import-table strong { font-weight:800; }
+  </style>
+</head>
+<body>
+  <main id="result">loading</main>
+  <script>
+    (async function () {
+      const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
+          <w:tbl>
+            <w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:jc w:val="center"/><w:tblBorders>
+              <w:top w:val="single" w:sz="8" w:color="9AA3AF"/><w:left w:val="single" w:sz="8" w:color="9AA3AF"/>
+              <w:bottom w:val="single" w:sz="8" w:color="9AA3AF"/><w:right w:val="single" w:sz="8" w:color="9AA3AF"/>
+              <w:insideH w:val="single" w:sz="8" w:color="9AA3AF"/><w:insideV w:val="single" w:sz="8" w:color="9AA3AF"/>
+            </w:tblBorders></w:tblPr>
+            <w:tblGrid><w:gridCol w:w="1800"/><w:gridCol w:w="2400"/><w:gridCol w:w="3000"/></w:tblGrid>
+            <w:tr><w:trPr><w:trHeight w:val="560"/></w:trPr>
+              <w:tc><w:tcPr><w:tcW w:w="1800" w:type="dxa"/><w:shd w:fill="E8F1FB"/><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>연구 단계</w:t></w:r></w:p></w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>훈련 상태</w:t></w:r></w:p></w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>인지공학 및 뇌과학적 함의</w:t></w:r></w:p></w:tc>
+            </w:tr>
+            <w:tr>
+              <w:tc><w:tcPr><w:tcW w:w="1800" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>1차 스캔</w:t></w:r></w:p></w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>저글링 경험 없음</w:t></w:r></w:p></w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>뇌 구조의 기본 상태 유지</w:t></w:r></w:p></w:tc>
+            </w:tr>
+          </w:tbl>
+        </w:body></w:document>`;
+      const zip = new JSZip();
+      zip.file('word/document.xml', xml);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+      const input = '<table><thead><tr><th><strong>연구 단계</strong></th><th>훈련 상태</th><th>인지공학 및 뇌과학적 함의</th></tr><tr><th>1차 스캔</th><th>저글링 경험 없음</th><th>뇌 구조의 기본 상태 유지</th></tr></thead></table>';
+      const converted = await DocxImport.enhanceHtml(buffer, input);
+      document.getElementById('result').innerHTML = converted.html;
+      document.body.dataset.ready = 'true';
+    })().catch(function (error) {
+      document.body.dataset.ready = 'error';
+      document.getElementById('result').textContent = error && error.stack || String(error);
+    });
+  </script>
+</body>
+</html>

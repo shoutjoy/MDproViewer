@@ -1937,6 +1937,48 @@ function previewPopupRenderedHtmlToMarkdown(root, previousMarkdown) {
     return [frontmatter].concat(coverComments).concat(body ? [body] : []).filter(Boolean).join('\n\n') + (body || frontmatter || coverComments.length ? '\n' : '');
 }
 
+function getPreviewPopupSourceSyntax(source) {
+    const name = String(typeof currentFileName !== 'undefined' ? currentFileName || '' : '').trim().toLowerCase();
+    if (/\.(?:docx|html?)$/.test(name)) return 'html';
+
+    const trimmed = String(source || '').replace(/^\uFEFF/, '').trim();
+    if (/^(?:<!doctype\s+html\b|<html\b)/i.test(trimmed)) return 'html';
+    if (/\.(?:md|markdown|mdown|mdd)$/.test(name)) return 'markdown';
+    return 'markdown';
+}
+
+function previewPopupRenderedHtmlToHtml(root, previousHtml) {
+    if (!root) return '';
+    const clone = root.cloneNode(true);
+    Array.prototype.forEach.call(clone.querySelectorAll('.pv-render-locked'), function (node) {
+        node.classList.remove('pv-render-locked');
+        if (!node.className) node.removeAttribute('class');
+        node.removeAttribute('contenteditable');
+    });
+    Array.prototype.forEach.call(clone.querySelectorAll(
+        '.trt-pv-mermaid-controls,.trt-pv-mermaid-resize-handle,.md-image-resize-overlay,.no-print'
+    ), function (node) {
+        node.remove();
+    });
+
+    const body = String(clone.innerHTML || '').trim();
+    const previous = String(previousHtml || '').replace(/^\uFEFF/, '');
+    if (/^(?:\s*<!doctype\s+html\b|\s*<html\b)/i.test(previous)) {
+        const bodyMatch = previous.match(/^(.*?<body\b[^>]*>)[\s\S]*?(<\/body>[\s\S]*)$/i);
+        if (bodyMatch && !clone.querySelector('iframe.html-document-frame')) {
+            return bodyMatch[1] + '\n' + body + '\n' + bodyMatch[2];
+        }
+        return previous;
+    }
+    return body + (body ? '\n' : '');
+}
+
+function previewPopupRenderedDomToSource(root, previousSource) {
+    return getPreviewPopupSourceSyntax(previousSource) === 'html'
+        ? previewPopupRenderedHtmlToHtml(root, previousSource)
+        : previewPopupRenderedHtmlToMarkdown(root, previousSource);
+}
+
 function protectPreviewPopupRenderedWidgets() {
     const editor = getPreviewPopupEditorElement();
     if (!editor) return;
@@ -2179,7 +2221,7 @@ function previewPopupHandleEditorInput(domChanged) {
         return true;
     }
     const previous = previewPopupDraftMarkdown || previewPopupDraftBaseMarkdown || getPreviewPopupSourceMarkdown();
-    previewPopupDraftMarkdown = previewPopupRenderedHtmlToMarkdown(editor, previous);
+    previewPopupDraftMarkdown = previewPopupRenderedDomToSource(editor, previous);
     previewPopupDraftDirty = previewPopupDraftMarkdown !== previewPopupDraftBaseMarkdown;
     rememberPreviewPopupRenderedSelection();
     syncPreviewPopupEditorUi();

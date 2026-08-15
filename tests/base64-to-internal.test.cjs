@@ -40,6 +40,7 @@ function createImageDbHarness() {
 function createSandbox() {
   const sandbox = {
     atob,
+    btoa,
     Blob,
     console,
     encodeURIComponent,
@@ -158,11 +159,110 @@ test('TIDY UI exposes the base64ToUrl action and selection-aware wiring', () => 
   const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
   const tidy = fs.readFileSync(path.join(root, 'js', 'Tidy', 'tidy-actions.js'), 'utf8');
+  const tidyImages = fs.readFileSync(path.join(root, 'js', 'Tidy', 'tidy-base64-image.js'), 'utf8');
 
   assert.match(html, />base64ToUrl<\/button>/);
   assert.match(html, /Markdown\/HTML Base64 이미지/);
   assert.match(html, /onclick="convertBase64ImagesToInternalInEditor\(\)"/);
   assert.match(app, /function convertBase64ImagesToInternalInEditor\(\)/);
-  assert.match(tidy, /var hasSelection = start !== end;/);
-  assert.match(tidy, /hasSelection \? originalText\.substring\(start, end\) : originalText/);
+  assert.match(tidy, /applyBase64ToUrl/);
+  assert.match(tidyImages, /var hasSelection = start !== end;/);
+  assert.match(tidyImages, /hasSelection \? originalText\.substring\(start, end\) : originalText/);
+});
+
+test('TIDY Url2base64 converts internal Markdown and HTML image links while preserving attributes', async () => {
+  const sandbox = createSandbox();
+  loadBrowserModule('imageDB/imageDB.js', sandbox);
+  loadBrowserModule('js/Tidy/tidy-base64-image.js', sandbox);
+  const harness = createImageDbHarness();
+  const blob = new Blob([Uint8Array.from([137, 80, 78, 71])], { type: 'image/png' });
+  harness.records.set('img_selected', { id: 'img_selected', blob, mime: 'image/png' });
+  const source = [
+    '![그림](internal://img_selected)',
+    '<img src="internal://img_selected" alt="그림" width="268" height="480">',
+    '<img src=internal://img_selected alt="따옴표 없음">'
+  ].join('\n');
+
+  const result = await sandbox.TidyImageRecovery.convertInternalUrlsToBase64(
+    harness.db,
+    source,
+    sandbox.ImageDB
+  );
+
+  assert.equal(result.convertedCount, 3);
+  assert.equal(result.resolvedCount, 1);
+  assert.deepEqual(Array.from(result.missingIds), []);
+  assert.doesNotMatch(result.markdown, /internal:\/\//);
+  assert.match(result.markdown, /!\[그림\]\(data:image\/png;base64,iVBORw==\)/);
+  assert.match(result.markdown, /<img src="data:image\/png;base64,iVBORw==" alt="그림" width="268" height="480">/);
+  assert.match(result.markdown, /<img src="data:image\/png;base64,iVBORw==" alt="따옴표 없음">/);
+});
+
+test('TIDY Url2base64 leaves missing internal links unchanged', async () => {
+  const sandbox = createSandbox();
+  loadBrowserModule('imageDB/imageDB.js', sandbox);
+  loadBrowserModule('js/Tidy/tidy-base64-image.js', sandbox);
+  const harness = createImageDbHarness();
+  const source = '<img src="internal://img_missing" alt="missing">';
+
+  const result = await sandbox.TidyImageRecovery.convertInternalUrlsToBase64(
+    harness.db,
+    source,
+    sandbox.ImageDB
+  );
+
+  assert.equal(result.convertedCount, 0);
+  assert.deepEqual(Array.from(result.missingIds), ['img_missing']);
+  assert.equal(result.markdown, source);
+});
+
+test('TIDY Url2base64 converts only the selected range and converts the whole document without a selection', async () => {
+  async function runConversion(selectionStart, selectionEnd) {
+    const sandbox = createSandbox();
+    loadBrowserModule('imageDB/imageDB.js', sandbox);
+    loadBrowserModule('js/Tidy/tidy-base64-image.js', sandbox);
+    const harness = createImageDbHarness();
+    const blob = new Blob([Uint8Array.from([137, 80, 78, 71])], { type: 'image/png' });
+    harness.records.set('img_one', { id: 'img_one', blob, mime: 'image/png' });
+    harness.records.set('img_two', { id: 'img_two', blob, mime: 'image/png' });
+    const textarea = {
+      value: '<img src="internal://img_one">\n<img src="internal://img_two">',
+      selectionStart,
+      selectionEnd
+    };
+    await sandbox.TidyImageRecovery.applyUrl2base64({
+      isEditMode: true,
+      editorTextarea: textarea,
+      db: harness.db,
+      imageDb: sandbox.ImageDB,
+      showToast() {}
+    }, (result) => {
+      textarea.value = result.replaceSelection
+        ? textarea.value.slice(0, result.selectionStart) + result.value + textarea.value.slice(result.selectionEnd)
+        : result.value;
+    });
+    return textarea.value;
+  }
+
+  const firstEnd = '<img src="internal://img_one">'.length;
+  const selected = await runConversion(0, firstEnd);
+  assert.match(selected, /^<img src="data:image\/png;base64,iVBORw==">/);
+  assert.match(selected, /<img src="internal:\/\/img_two">$/);
+
+  const whole = await runConversion(0, 0);
+  assert.doesNotMatch(whole, /internal:\/\//);
+  assert.equal((whole.match(/data:image\/png;base64,iVBORw==/g) || []).length, 2);
+});
+
+test('TIDY UI exposes Url2base64 with selection-aware editor wiring', () => {
+  const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
+  const tidyActions = fs.readFileSync(path.join(root, 'js', 'Tidy', 'tidy-actions.js'), 'utf8');
+  const tidyImages = fs.readFileSync(path.join(root, 'js', 'Tidy', 'tidy-base64-image.js'), 'utf8');
+
+  assert.match(html, />Url2base64<\/button>/);
+  assert.match(html, /onclick="convertInternalImagesToBase64InEditor\(\)"/);
+  assert.match(app, /function convertInternalImagesToBase64InEditor\(\)/);
+  assert.match(tidyActions, /applyUrl2base64/);
+  assert.match(tidyImages, /hasSelection \? originalText\.substring\(start, end\) : originalText/);
 });

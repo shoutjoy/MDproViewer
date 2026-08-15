@@ -4,7 +4,9 @@
     var viewer = null;
     var viewerContainer = null;
     var editorTextarea = null;
+    var inputSink = null;
     var caretPos = 0;
+    var composing = false;
 
     function getCurrentMarkdown() {
         return String(editorTextarea && typeof editorTextarea.value === 'string' ? editorTextarea.value : '');
@@ -15,256 +17,199 @@
         return !!(viewport && viewport.classList.contains('hidden'));
     }
 
-    function isViewModeEditEnabled() {
+    function isEnabled() {
         var check = document.getElementById('view-mode-edit-enabled');
         if (check) return !!check.checked;
         try {
-            if (typeof window.viewModeEditEnabled === 'boolean') return !!window.viewModeEditEnabled;
-        } catch (_) {}
-        try {
             return localStorage.getItem('md_viewer_view_mode_edit_enabled') === '1';
-        } catch (_) {}
-        return false;
+        } catch (_) {
+            return false;
+        }
     }
 
-    function shouldHandleViewInput() {
-        return isViewMode() && isViewModeEditEnabled();
-    }
-
-    function isTypingTarget(target) {
-        if (!target || !target.tagName) return false;
-        var tag = String(target.tagName).toLowerCase();
-        if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
-        return !!target.isContentEditable;
+    function shouldHandleInput() {
+        return isViewMode() && isEnabled();
     }
 
     function clampPos(pos, text) {
         return Math.max(0, Math.min(Number(pos) || 0, text.length));
     }
 
-    function charPosFromRatio(ratio) {
+    function markdownPosFromRenderedRatio(ratio) {
         var text = getCurrentMarkdown();
-        if (!text) return 0;
-        var lines = text.split('\n');
-        if (lines.length <= 1) return 0;
-        var lineIdx = Math.max(0, Math.min(lines.length - 1, Math.round((lines.length - 1) * ratio)));
-        var pos = 0;
-        for (var i = 0; i < lineIdx; i += 1) pos += lines[i].length + 1;
-        return clampPos(pos, text);
+        return clampPos(Math.round(text.length * Math.max(0, Math.min(1, ratio))), text);
     }
 
-    function setCaretFromViewerPoint(clientY) {
-        if (!viewer || !viewerContainer) return;
+    function getCaretRangeFromPoint(clientX, clientY) {
+        if (typeof document.caretPositionFromPoint === 'function') {
+            var position = document.caretPositionFromPoint(clientX, clientY);
+            if (position && position.offsetNode) {
+                var range = document.createRange();
+                range.setStart(position.offsetNode, position.offset);
+                range.collapse(true);
+                return range;
+            }
+        }
+        if (typeof document.caretRangeFromPoint === 'function') {
+            return document.caretRangeFromPoint(clientX, clientY);
+        }
+        return null;
+    }
+
+    function setCaretFromViewerPoint(clientX, clientY) {
+        if (!viewer) return;
+        var range = getCaretRangeFromPoint(clientX, clientY);
+        if (range && viewer.contains(range.startContainer)) {
+            var prefix = document.createRange();
+            prefix.selectNodeContents(viewer);
+            prefix.setEnd(range.startContainer, range.startOffset);
+            var beforeLength = String(prefix.toString() || '').length;
+            var renderedLength = Math.max(1, String(viewer.innerText || viewer.textContent || '').length);
+            caretPos = markdownPosFromRenderedRatio(beforeLength / renderedLength);
+            return;
+        }
+        if (!viewerContainer) return;
         var rect = viewer.getBoundingClientRect();
         var y = (clientY - rect.top) + viewerContainer.scrollTop;
-        var ratio = y / Math.max(1, viewer.scrollHeight);
-        if (ratio < 0) ratio = 0;
-        if (ratio > 1) ratio = 1;
-        caretPos = charPosFromRatio(ratio);
+        caretPos = markdownPosFromRenderedRatio(y / Math.max(1, viewer.scrollHeight));
     }
 
     function applyMarkdown(nextText, nextCaretPos) {
+        var safe = clampPos(nextCaretPos, nextText);
         if (typeof window.updateContent === 'function') {
             window.updateContent(nextText);
         } else if (editorTextarea) {
             editorTextarea.value = nextText;
         }
-        if (editorTextarea) {
-            var safe = clampPos(nextCaretPos, nextText);
-            editorTextarea.setSelectionRange(safe, safe);
-        }
-        caretPos = clampPos(nextCaretPos, nextText);
+        if (editorTextarea) editorTextarea.setSelectionRange(safe, safe);
+        caretPos = safe;
         if (typeof window.performAutoSave === 'function') window.performAutoSave();
-    }
-
-    function replaceBySelectionWrap(prefix, suffix) {
-        var selection = (typeof window.getSelection === 'function') ? window.getSelection() : null;
-        var selectedText = String(selection && selection.toString ? selection.toString() : '');
-        if (!selectedText || !selectedText.trim()) {
-            if (typeof window.showToast === 'function') window.showToast('보기모드에서 텍스트를 먼저 선택하세요.');
-            return;
-        }
-        var source = getCurrentMarkdown();
-        if (!source) return;
-        var idx = source.indexOf(selectedText);
-        if (idx < 0) {
-            if (typeof window.showToast === 'function') window.showToast('선택 텍스트를 원문에서 찾지 못했습니다.');
-            return;
-        }
-        var replacement = prefix + selectedText + suffix;
-        var next = source.slice(0, idx) + replacement + source.slice(idx + selectedText.length);
-        applyMarkdown(next, idx + replacement.length);
-        if (selection && typeof selection.removeAllRanges === 'function') selection.removeAllRanges();
-    }
-
-    function applyHeading(level) {
-        var text = getCurrentMarkdown();
-        if (!text) return;
-        var cursor = clampPos(caretPos, text);
-        var lineStart = text.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
-        var lineEnd = text.indexOf('\n', cursor);
-        if (lineEnd < 0) lineEnd = text.length;
-        var lineText = text.slice(lineStart, lineEnd).replace(/^#+\s*/, '');
-        var prefix = Array(level + 1).join('#') + ' ';
-        var replacement = prefix + lineText;
-        var next = text.slice(0, lineStart) + replacement + text.slice(lineEnd);
-        applyMarkdown(next, lineStart + replacement.length);
+        window.requestAnimationFrame(function () {
+            if (shouldHandleInput() && inputSink) inputSink.focus({ preventScroll: true });
+        });
     }
 
     function insertTextAtCaret(insertText) {
+        var value = String(insertText == null ? '' : insertText);
+        if (!value) return;
         var text = getCurrentMarkdown();
         var cursor = clampPos(caretPos, text);
-        var next = text.slice(0, cursor) + insertText + text.slice(cursor);
-        applyMarkdown(next, cursor + insertText.length);
+        applyMarkdown(text.slice(0, cursor) + value + text.slice(cursor), cursor + value.length);
     }
 
-    function deleteBackwardAtCaret() {
+    function deleteAtCaret(backward) {
         var text = getCurrentMarkdown();
         var cursor = clampPos(caretPos, text);
-        if (cursor <= 0) return;
-        var next = text.slice(0, cursor - 1) + text.slice(cursor);
-        applyMarkdown(next, cursor - 1);
-    }
-
-    function deleteForwardAtCaret() {
-        var text = getCurrentMarkdown();
-        var cursor = clampPos(caretPos, text);
+        if (backward) {
+            if (cursor <= 0) return;
+            applyMarkdown(text.slice(0, cursor - 1) + text.slice(cursor), cursor - 1);
+            return;
+        }
         if (cursor >= text.length) return;
-        var next = text.slice(0, cursor) + text.slice(cursor + 1);
-        applyMarkdown(next, cursor);
+        applyMarkdown(text.slice(0, cursor) + text.slice(cursor + 1), cursor);
     }
 
-    function handleToolbarClickCapture(e) {
-        if (!shouldHandleViewInput()) return;
-        var button = e.target && e.target.closest ? e.target.closest('button') : null;
-        if (!button) return;
-        var label = String(button.textContent || '').trim().toUpperCase();
-
-        if (label === 'B') {
-            e.preventDefault();
-            e.stopPropagation();
-            replaceBySelectionWrap('**', '**');
-            return;
-        }
-        if (label === 'I') {
-            e.preventDefault();
-            e.stopPropagation();
-            replaceBySelectionWrap('*', '*');
-            return;
-        }
-        if (label === 'H1') {
-            e.preventDefault();
-            e.stopPropagation();
-            applyHeading(1);
-            return;
-        }
-        if (label === 'H2') {
-            e.preventDefault();
-            e.stopPropagation();
-            applyHeading(2);
-            return;
-        }
-        if (label === 'H3') {
-            e.preventDefault();
-            e.stopPropagation();
-            applyHeading(3);
-            return;
-        }
+    function positionInputSink(clientX, clientY) {
+        if (!inputSink) return;
+        inputSink.style.left = Math.max(0, Math.min(window.innerWidth - 4, clientX)) + 'px';
+        inputSink.style.top = Math.max(0, Math.min(window.innerHeight - 24, clientY)) + 'px';
     }
 
-    function handleBeforeInput(e) {
-        if (!shouldHandleViewInput()) return;
-        if (isTypingTarget(e.target)) return;
+    function commitSinkValue() {
+        if (!inputSink || composing) return;
+        var value = inputSink.value;
+        inputSink.value = '';
+        if (value) insertTextAtCaret(value);
+    }
 
-        var it = String(e.inputType || '');
-        if (!it) return;
+    function createInputSink() {
+        inputSink = document.createElement('textarea');
+        inputSink.id = 'view-mode-text-input-sink';
+        inputSink.setAttribute('aria-label', '보기모드 텍스트 입력');
+        inputSink.setAttribute('autocomplete', 'off');
+        inputSink.setAttribute('autocapitalize', 'off');
+        inputSink.setAttribute('spellcheck', 'false');
+        inputSink.style.cssText = 'position:fixed;width:2px;height:22px;padding:0;border:0;outline:0;resize:none;overflow:hidden;background:transparent;color:transparent;caret-color:#4f46e5;z-index:70;opacity:.85;';
+        document.body.appendChild(inputSink);
 
-        if (it === 'insertText') {
-            e.preventDefault();
-            insertTextAtCaret(String(e.data || ''));
-            return;
-        }
-        if (it === 'insertParagraph' || it === 'insertLineBreak') {
-            e.preventDefault();
-            insertTextAtCaret('\n');
-            return;
-        }
-        if (it === 'deleteContentBackward') {
-            e.preventDefault();
-            deleteBackwardAtCaret();
-            return;
-        }
-        if (it === 'deleteContentForward') {
-            e.preventDefault();
-            deleteForwardAtCaret();
-            return;
-        }
-        if (it === 'insertFromPaste') {
-            e.preventDefault();
-            var text = '';
-            if (e.clipboardData && typeof e.clipboardData.getData === 'function') {
-                text = String(e.clipboardData.getData('text/plain') || '');
+        inputSink.addEventListener('compositionstart', function () { composing = true; });
+        inputSink.addEventListener('compositionend', function () {
+            composing = false;
+            window.setTimeout(commitSinkValue, 0);
+        });
+        inputSink.addEventListener('input', function (event) {
+            if (!event.isComposing) commitSinkValue();
+        });
+        inputSink.addEventListener('keydown', function (event) {
+            if (event.isComposing || composing) return;
+            if (event.key === 'Backspace' && !inputSink.value) {
+                event.preventDefault();
+                deleteAtCaret(true);
+            } else if (event.key === 'Delete' && !inputSink.value) {
+                event.preventDefault();
+                deleteAtCaret(false);
+            } else if (event.key === 'Enter') {
+                event.preventDefault();
+                insertTextAtCaret('\n');
+            } else if (event.key === 'Tab') {
+                event.preventDefault();
+                insertTextAtCaret('  ');
+            } else if (event.key === 'Escape') {
+                inputSink.blur();
             }
-            insertTextAtCaret(text);
-        }
+        });
     }
 
-    function handleKeydownFallback(e) {
-        if (!shouldHandleViewInput()) return;
-        if (isTypingTarget(e.target)) return;
-        if (e.ctrlKey || e.altKey || e.metaKey) return;
-        if (e.key === 'Tab') {
-            e.preventDefault();
-            insertTextAtCaret('  ');
-            return;
-        }
-        if (e.key === 'Backspace') {
-            e.preventDefault();
-            deleteBackwardAtCaret();
-            return;
-        }
-        if (e.key === 'Delete') {
-            e.preventDefault();
-            deleteForwardAtCaret();
-            return;
-        }
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            insertTextAtCaret('\n');
-            return;
-        }
-        if (e.key === ' ' || e.code === 'Space') {
-            e.preventDefault();
-            insertTextAtCaret(' ');
-            return;
-        }
-        if (e.key && e.key.length === 1) {
-            e.preventDefault();
-            insertTextAtCaret(e.key);
-            return;
-        }
+    function updateInteractionState() {
+        if (!viewer) return;
+        var active = shouldHandleInput();
+        viewer.classList.toggle('view-mode-text-input-enabled', active);
+        viewer.setAttribute('aria-readonly', active ? 'false' : 'true');
+        if (!active && inputSink) inputSink.blur();
+    }
+
+    function isInteractiveTarget(target) {
+        return !!(target && target.closest && target.closest('a,button,input,textarea,select,[contenteditable],img,video,audio,pre,code,table,svg,.mermaid,.katex,.note-cover,[data-note-cover]'));
     }
 
     function init() {
         viewer = document.getElementById('viewer');
         viewerContainer = document.getElementById('viewer-container');
         editorTextarea = document.getElementById('viewer-edit-ta');
-        if (!viewer || !viewerContainer || !editorTextarea) return;
+        if (!viewer || !viewerContainer || !editorTextarea || !document.body) return;
 
-        viewer.addEventListener('mousedown', function (e) {
-            if (!shouldHandleViewInput()) return;
-            setCaretFromViewerPoint(e.clientY);
-        });
-        viewer.addEventListener('mouseup', function () {
-            if (!shouldHandleViewInput()) return;
-            var text = getCurrentMarkdown();
-            caretPos = clampPos(caretPos, text);
-        });
+        var style = document.createElement('style');
+        style.textContent = '#viewer.view-mode-text-input-enabled{cursor:text;outline:2px solid rgba(99,102,241,.38);outline-offset:4px;}#viewer.view-mode-text-input-enabled:hover{outline-color:rgba(79,70,229,.72);}';
+        document.head.appendChild(style);
+        createInputSink();
+        updateInteractionState();
 
-        document.addEventListener('click', handleToolbarClickCapture, true);
-        document.addEventListener('beforeinput', handleBeforeInput, true);
-        document.addEventListener('keydown', handleKeydownFallback, true);
+        viewer.addEventListener('mousedown', function (event) {
+            updateInteractionState();
+            if (!shouldHandleInput() || isInteractiveTarget(event.target)) return;
+            setCaretFromViewerPoint(event.clientX, event.clientY);
+            positionInputSink(event.clientX, event.clientY);
+            window.setTimeout(function () {
+                if (inputSink) inputSink.focus({ preventScroll: true });
+            }, 0);
+        });
+        document.addEventListener('md-viewer-view-mode-text-input-change', updateInteractionState);
+        document.addEventListener('visibilitychange', updateInteractionState);
+        var modeViewport = document.getElementById('content-viewport');
+        if (modeViewport && typeof MutationObserver === 'function') {
+            new MutationObserver(updateInteractionState).observe(modeViewport, {
+                attributes: true,
+                attributeFilter: ['class']
+            });
+        }
     }
+
+    window.ViewModeTextInput = {
+        isEnabled: isEnabled,
+        insertTextAtCaret: insertTextAtCaret,
+        deleteAtCaret: deleteAtCaret,
+        updateInteractionState: updateInteractionState
+    };
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
