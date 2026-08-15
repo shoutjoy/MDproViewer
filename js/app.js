@@ -3425,6 +3425,12 @@ function openFilePickerFromMenu(event) {
     if (input) input.click();
 }
 
+function openTemplatePanelFromMenu(event) {
+    if (event) event.stopPropagation();
+    setOpenSourceMenuVisible(false);
+    openTemplatePanel();
+}
+
 function openImageFolderPickerFromMenu(event) {
     if (event) event.stopPropagation();
     setOpenSourceMenuVisible(false);
@@ -9828,6 +9834,11 @@ function applyTemplateVisibility(settings) {
     const enabled = getTemplateVisibleFromSettings(settings || {});
     const btn = document.getElementById('btn-template-panel');
     if (btn) btn.classList.toggle('hidden', !enabled);
+    const openMenuItem = document.getElementById('open-template-menu-item');
+    if (openMenuItem) {
+        openMenuItem.classList.toggle('hidden', !enabled);
+        openMenuItem.classList.toggle('flex', enabled);
+    }
     syncHeaderFeatureToolsVisibility();
     if (!enabled) closeTemplatePanel();
 }
