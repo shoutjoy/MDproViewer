@@ -5,15 +5,15 @@ const MINI_PREVIEW_HTML = ''
     + '<div id="mini-preview-panel" class="hidden absolute top-2 right-2 w-[340px] max-w-[42vw] h-[68%] min-h-[220px] bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-md shadow-2xl overflow-hidden no-print z-20">'
     + '<div id="mini-preview-header" class="flex items-center justify-between px-2 py-1 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 cursor-move touch-none select-none">'
     + '<span class="text-xs font-bold text-slate-700 dark:text-slate-200">miniPV</span>'
-    + '<div class="flex items-center gap-1">'
+    + '<div id="mini-preview-actions" class="flex items-center gap-1">'
     + '<button type="button" id="btn-mini-preview-zoom-out" onclick="miniPreviewAdjustZoom(-0.1)" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">-</button>'
     + '<span id="mini-preview-zoom-label" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900">100%</span>'
     + '<button type="button" id="btn-mini-preview-zoom-in" onclick="miniPreviewAdjustZoom(0.1)" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">+</button>'
-    + '<button type="button" id="btn-mini-preview-view-mode" onclick="toggleMiniPreviewViewMode()" aria-pressed="false" title="목차 보기" class="text-[10px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300">목차</button>'
+    + '<button type="button" id="btn-mini-preview-view-mode" onclick="toggleMiniPreviewViewMode()" aria-pressed="false" title="ToC 보기" class="text-[10px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300">ToC</button>'
     + '<button type="button" id="btn-mini-preview-sync-editor" onclick="toggleMiniPreviewEditorSync()" aria-pressed="true" title="ED → PV 연속 동기화: ON" class="text-[11px] px-1.5 py-0.5 rounded border border-indigo-500 bg-indigo-600 text-white dark:bg-indigo-500 dark:text-white hover:bg-indigo-700 dark:hover:bg-indigo-600">ED</button>'
     + '<button type="button" id="btn-mini-preview-sync-pv" onclick="syncEditorScrollToMiniPreview()" title="PV → ED: miniPV 현재 위치로 에디터 이동" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:bg-indigo-100 dark:active:bg-indigo-900">PV</button>'
-    + '<button type="button" id="btn-mini-preview-fullscreen" onclick="toggleMiniPreviewFullscreen()" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">전체</button>'
-    + '<button type="button" id="btn-mini-preview-close" onclick="toggleMiniPreview()" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">닫기</button>'
+    + '<button type="button" id="btn-mini-preview-fullscreen" data-compact-label="⛶" onclick="toggleMiniPreviewFullscreen()" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">전체</button>'
+    + '<button type="button" id="btn-mini-preview-close" data-compact-label="×" onclick="toggleMiniPreview()" class="text-[11px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">닫기</button>'
     + '</div></div>'
     + '<div id="mini-preview-content" class="markdown-body mini-preview-content h-[calc(100%-34px)] overflow-auto p-3 text-[13px] leading-6 bg-white dark:bg-slate-900"></div>'
     + '<div id="mini-preview-resize-handle-left" title="왼쪽에서 너비 조절" class="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-12 cursor-ew-resize bg-indigo-500/70 rounded-r z-10 touch-none"></div>'
@@ -78,7 +78,7 @@ function ensureMiniPreviewHtml() {
 }
 
 function loadMiniPreviewHtml() {
-    return fetch('./js/UI_PV/minipv.html?v=20260812-toc-1', { cache: 'no-cache' })
+    return fetch('./js/UI_PV/minipv.html?v=20260815-responsive-1', { cache: 'no-cache' })
         .then(function (res) {
             if (!res.ok) throw new Error('Failed to load miniPV HTML.');
             return res.text();
@@ -240,8 +240,8 @@ function updateMiniPreviewViewModeUi() {
     const pvSyncButton = document.getElementById('btn-mini-preview-sync-pv');
     const tocMode = miniPreviewViewMode === 'toc';
     if (button) {
-        button.textContent = tocMode ? '본문' : '목차';
-        button.title = tocMode ? '내용 렌더링 미리보기로 전환' : '목차 보기로 전환';
+        button.textContent = tocMode ? '본문' : 'ToC';
+        button.title = tocMode ? '내용 렌더링 미리보기로 전환' : 'ToC 보기로 전환';
         button.setAttribute('aria-pressed', tocMode ? 'true' : 'false');
         button.classList.toggle('is-active', tocMode);
     }
@@ -351,6 +351,29 @@ function toggleMiniPreviewFullscreen(force) {
     updateMiniPreviewFullscreenUi();
 }
 
+function prepareMiniPreviewResponsiveTables(root) {
+    if (!root || typeof root.querySelectorAll !== 'function') return;
+    root.querySelectorAll('table').forEach(function (table) {
+        const headerRow = table.tHead && table.tHead.rows && table.tHead.rows[0];
+        const headers = headerRow
+            ? Array.prototype.map.call(headerRow.cells, function (cell) {
+                return String(cell.textContent || '').trim();
+            })
+            : [];
+        table.classList.toggle('mini-preview-responsive-table', headers.length > 0);
+        Array.prototype.forEach.call(table.tBodies || [], function (body) {
+            Array.prototype.forEach.call(body.rows || [], function (row) {
+                let columnIndex = 0;
+                Array.prototype.forEach.call(row.cells || [], function (cell) {
+                    const label = headers[columnIndex] || ('열 ' + (columnIndex + 1));
+                    cell.setAttribute('data-mini-table-label', label);
+                    columnIndex += Math.max(1, Number(cell.colSpan) || 1);
+                });
+            });
+        });
+    });
+}
+
 function renderMiniPreviewToc(markdownText) {
     if (!miniPreviewContent) return;
     miniPreviewRenderToken += 1;
@@ -441,6 +464,7 @@ function renderMiniPreviewContent() {
         if (!isCurrentMiniRender()) return false;
         if (typeof setHtmlDocumentMode === 'function') setHtmlDocumentMode(miniPreviewContent, false);
         miniPreviewContent.innerHTML = String(html || '');
+        prepareMiniPreviewResponsiveTables(miniPreviewContent);
         try {
             if (typeof applyMarkdownImageSizeHints === 'function') {
                 applyMarkdownImageSizeHints(miniPreviewContent);
