@@ -1179,6 +1179,7 @@ function organizeSettingsDashboard() {
     const mermaidDisplay = document.getElementById('mermaid-display-settings-card');
     const shortcuts = document.getElementById('shortcuts-settings-card');
     const inDbBackupPrefix = document.getElementById('indb-backup-prefix-settings-card');
+    const inDbStorageSettings = document.getElementById('indb-storage-settings-card');
     const aiUser = document.getElementById('ai-user-settings-card');
     if (aiUser) {
         aiUser.className = 'border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50 space-y-2';
@@ -1210,23 +1211,16 @@ function organizeSettingsDashboard() {
     if (typeof window.syncStorageSidebarVisibilitySettingsUI === 'function') {
         window.syncStorageSidebarVisibilitySettingsUI();
     }
-    if (githubSettings) appendToColumn(saveColumn, githubSettings);
-
     const localSaveTools = document.createElement('div');
     localSaveTools.id = 'settings-local-save-tools';
     localSaveTools.className = 'rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3 space-y-3';
-    localSaveTools.innerHTML = '<div class="text-xs font-bold text-slate-600 dark:text-slate-300">로컬 저장소</div>';
+    localSaveTools.innerHTML = '<div class="text-xs font-bold text-slate-600 dark:text-slate-300">Local 저장소</div>';
 
-    const inDbStatusButton = document.getElementById('btn-open-indb-status');
-    if (inDbStatusButton) {
-        inDbStatusButton.className = 'w-full px-4 py-2 border-2 border-slate-700 dark:border-slate-500 rounded-md text-sm font-medium text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700';
-        localSaveTools.appendChild(inDbStatusButton);
-    }
+    if (inDbStorageSettings) appendToColumn(saveColumn, inDbStorageSettings);
 
     const sqliteExplorerButton = document.getElementById('btn-open-sqlite-explorer');
     if (sqliteExplorerButton) {
         sqliteExplorerButton.className = 'w-full px-4 py-2 border-2 border-emerald-700 dark:border-emerald-600 rounded-md text-sm font-medium text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 disabled:opacity-40 disabled:cursor-not-allowed';
-        localSaveTools.appendChild(sqliteExplorerButton);
     }
 
     const featureTools = document.getElementById('feature-tools-settings');
@@ -1234,8 +1228,11 @@ function organizeSettingsDashboard() {
     const localStorageTool = document.getElementById('local-storage-settings-tool');
     if (featureTools) appendToColumn(toolsColumn, featureTools);
     if (localStorageTool) localSaveTools.appendChild(localStorageTool);
+    if (localStorageTool) appendToColumn(saveColumn, localSaveTools);
+    if (githubSettings) appendToColumn(saveColumn, githubSettings);
     if (sqliteTool) localSaveTools.appendChild(sqliteTool);
-    if (inDbStatusButton || sqliteExplorerButton || sqliteTool || localStorageTool) appendToColumn(saveColumn, localSaveTools);
+    if (sqliteExplorerButton) localSaveTools.appendChild(sqliteExplorerButton);
+    if ((sqliteTool || sqliteExplorerButton) && !localStorageTool) appendToColumn(saveColumn, localSaveTools);
 
     const aiMaster = document.getElementById('ai-master-settings-card');
     const aiIntegration = document.getElementById('ai-integration-settings-slot');
@@ -1268,6 +1265,7 @@ function initUserSettingsModule() {
 
 function scheduleNonCriticalStartupTasks() {
     const run = function () {
+        if (typeof window.isInDbStorageEnabled === 'function' && !window.isInDbStorageEnabled()) return;
         syncKnownFeatureDataToInDb().catch(function (error) {
             console.warn('Feature data background sync failed:', error);
         });
@@ -5452,6 +5450,9 @@ async function saveCurrentDocumentToActiveStorageQuietly(snapshot) {
     const candidate = snapshot || null;
     if (candidate && candidate.documentKey !== getCurrentAutoSaveDocumentKey()) return false;
     const activeMode = getActiveStorageMode();
+    if (activeMode === 'indb' && typeof window.isInDbStorageEnabled === 'function' && !window.isInDbStorageEnabled()) {
+        return false;
+    }
     if (!currentDocumentRef) {
         if (activeMode !== 'sqlite') return false;
         const unsavedContent = candidate ? candidate.content : String(currentMarkdown || '');
@@ -7880,7 +7881,7 @@ async function setAiSettings(data) {
             console.warn('SQLite safe settings mirror failed:', error && error.message ? error.message : error);
         }
     }
-    if (!db) {
+    if (!db || (typeof window.isInDbStorageEnabled === 'function' && !window.isInDbStorageEnabled())) {
         await mirrorSafeSettings();
         return;
     }
@@ -10731,6 +10732,7 @@ async function persistAiSettingsFromModal() {
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
     const localStorageEl = document.getElementById('local-storage-enabled');
+    const inDbStorageEl = document.getElementById('indb-storage-enabled');
     const scholarOn = verified && scholarEl && scholarEl.checked;
     const sspimgOn = verified && sspimgEl && sspimgEl.checked;
     const imageUploadEl = document.getElementById('image-upload-enabled');
@@ -10767,6 +10769,7 @@ async function persistAiSettingsFromModal() {
         scholarAI: !!scholarOn,
         sspimgAI: !!sspimgOn,
         githubEnabled: !!(githubEl && githubEl.checked),
+        indbEnabled: !(inDbStorageEl && inDbStorageEl.checked === false),
         localEnabled: !!(localStorageEl && localStorageEl.checked),
         githubToken: githubToken,
         githubRepo: githubRepo,
@@ -10845,6 +10848,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     EDITOR_COMMENT_DARK_COLOR_KEY,
     'mdpro_storage_sidebar_visibility_v1',
     'mdpro_storage_sidebar_auto_revealed_v1',
+    'md_viewer_indb_enabled',
     'md_viewer_code_bg',
     'md_viewer_code_text',
     'ss_imgbb_api_key',
@@ -10939,6 +10943,7 @@ async function applyImportedSettingsPayload(payload) {
 
     if (typeof loadAiSettingsToUI === 'function') await loadAiSettingsToUI();
     if (typeof initAiVisibility === 'function') await initAiVisibility();
+    if (typeof window.syncInDbStorageSettingsUi === 'function') window.syncInDbStorageSettingsUi();
     if (typeof applyCodeColorSettings === 'function') applyCodeColorSettings();
     loadMarkdownCommentColorSettings();
     if (typeof applyTheme === 'function') applyTheme();
@@ -11035,6 +11040,7 @@ async function resetSettingsMset() {
 
         await loadAiSettingsToUI();
         await initAiVisibility();
+        if (typeof window.syncInDbStorageSettingsUi === 'function') window.syncInDbStorageSettingsUi();
         showToast('환경설정을 기본값으로 초기화했습니다.');
     } catch (error) {
         console.error('Failed to reset settings:', error);
@@ -14230,6 +14236,18 @@ function bindSettingsModalDrag() {
     });
 }
 
+async function openLocalStorageSettings() {
+    const localStorageEl = document.getElementById('local-storage-enabled');
+    if (localStorageEl) localStorageEl.checked = true;
+    if (typeof onStorageFeatureCheckboxChange === 'function') onStorageFeatureCheckboxChange();
+    if (typeof switchStorageSourceTab !== 'function') {
+        showToast('Local 저장소 설정을 불러오지 못했습니다.');
+        return false;
+    }
+    await switchStorageSourceTab('local');
+    return currentStorageSourceTab === 'local';
+}
+
 function updateSettingsModalResponsiveLayout() {
     const panel = document.getElementById('settings-modal-panel');
     if (!panel) return;
@@ -14771,6 +14789,7 @@ window.applySettingsContainerFold = applySettingsContainerFold;
 window.toggleSettingsModalCompact = toggleSettingsModalCompact;
 window.toggleSettingsModalFullscreen = toggleSettingsModalFullscreen;
 window.openGithubRepositoryShortcut = openGithubRepositoryShortcut;
+window.openLocalStorageSettings = openLocalStorageSettings;
 window.closeDeleteModal = closeDeleteModal;
 window.confirmDeleteModal = confirmDeleteModal;
 window.openSettingsModal = openSettingsModal;

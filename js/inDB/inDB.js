@@ -3,6 +3,56 @@
 const DB_NAME = "MarkdownProDB";
 const DB_VERSION = 7;
 const FEATURE_DATA_STORE_NAMES = ['fonts', 'ai_chat', 'scholar_ai', 'ssp_image_ai', 'highlights', 'genslides'];
+const INDB_ENABLED_SETTING_KEY = 'md_viewer_indb_enabled';
+
+function isInDbStorageEnabled() {
+    try {
+        const stored = localStorage.getItem(INDB_ENABLED_SETTING_KEY);
+        return stored === null ? true : stored !== 'false';
+    } catch (_) {
+        return true;
+    }
+}
+
+function syncInDbStorageSettingsUi() {
+    const enabled = isInDbStorageEnabled();
+    const checkbox = document.getElementById('indb-storage-enabled');
+    const statusButton = document.getElementById('btn-open-indb-status');
+    const footerButton = document.getElementById('btn-footer-open-indb-status');
+    const help = document.getElementById('indb-storage-setting-help');
+    if (checkbox) checkbox.checked = enabled;
+    if (statusButton) statusButton.disabled = !enabled;
+    if (footerButton) footerButton.disabled = !enabled;
+    if (help) {
+        help.textContent = enabled
+            ? '새로고침 후에도 inDB를 내부 저장소로 사용합니다.'
+            : '새로고침 후 inDB 자동 저장과 내부 동기화를 실행하지 않습니다.';
+    }
+    if (document.body) {
+        document.body.classList.toggle('feature-indb-enabled', enabled);
+        document.body.classList.toggle('feature-indb-disabled', !enabled);
+    }
+    return enabled;
+}
+
+function setInDbStorageEnabled(enabled) {
+    const next = enabled !== false;
+    try { localStorage.setItem(INDB_ENABLED_SETTING_KEY, next ? 'true' : 'false'); } catch (_) {}
+    syncInDbStorageSettingsUi();
+    if (typeof window.onStorageFeatureCheckboxChange === 'function') {
+        window.onStorageFeatureCheckboxChange();
+    }
+    if (typeof showToast === 'function') {
+        showToast(next
+            ? 'inDB 내부 저장소를 사용합니다.'
+            : 'inDB 사용을 껐습니다. 새로고침 후 내부 자동 저장이 중지됩니다.');
+    }
+    return next;
+}
+
+function onInDbStorageSettingChange(checked) {
+    return setInDbStorageEnabled(checked === true);
+}
 
 // Init DB
 function initDB() {
@@ -53,6 +103,10 @@ function initDB() {
 
 
 async function saveCurrentToInDbAuto() {
+    if (!isInDbStorageEnabled()) {
+        showToast('설정에서 inDB 사용을 먼저 켜세요.');
+        return false;
+    }
     if (!db) {
         showToast('Database is not ready yet. Please try again.');
         return false;
@@ -139,7 +193,7 @@ function normalizeFeatureInDbRecord(storeName, record, index) {
 
 function replaceFeatureStoreRecordsInDb(storeName, records) {
     const store = String(storeName || '').trim();
-    if (!db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
+    if (!isInDbStorageEnabled() || !db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
         return Promise.resolve(false);
     }
     const list = Array.isArray(records) ? records : [];
@@ -162,7 +216,7 @@ function replaceFeatureStoreRecordsInDb(storeName, records) {
 
 function saveFeatureRecordToInDb(storeName, record) {
     const store = String(storeName || '').trim();
-    if (!db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
+    if (!isInDbStorageEnabled() || !db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
         return Promise.resolve(false);
     }
     return new Promise(function (resolve, reject) {
@@ -179,7 +233,7 @@ function saveFeatureRecordToInDb(storeName, record) {
 
 function upsertFeatureStoreRecordsInDb(storeName, records) {
     const store = String(storeName || '').trim();
-    if (!db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
+    if (!isInDbStorageEnabled() || !db || !FEATURE_DATA_STORE_NAMES.includes(store) || !db.objectStoreNames.contains(store)) {
         return Promise.resolve(false);
     }
     const list = Array.isArray(records) ? records : [];
@@ -279,7 +333,7 @@ function readFeatureLocalStorageArray(key) {
 }
 
 async function syncKnownFeatureDataToInDb() {
-    if (!db) return false;
+    if (!isInDbStorageEnabled() || !db) return false;
     if (featureDataSyncPromise) return featureDataSyncPromise;
     featureDataSyncPromise = (async function () {
         const existingNames = await getExistingIndexedDbNames();
@@ -1629,7 +1683,17 @@ const INDB_STATUS_MODALS_HTML = `
     </div>
 `;
 
-const INDB_SETTINGS_OPEN_BUTTON_HTML = '<button type="button" id="btn-open-indb-status" onclick="openInDbStatusModal()">inDB보기</button>';
+const INDB_SETTINGS_CONTROL_HTML = `
+<section id="indb-storage-settings-card" class="rounded-lg border border-cyan-200 dark:border-cyan-900 bg-cyan-50/60 dark:bg-cyan-950/20 p-3 space-y-3">
+    <label class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+        <input type="checkbox" id="indb-storage-enabled" onchange="onInDbStorageSettingChange(this.checked)" checked
+            class="rounded border-slate-300 dark:border-slate-600 text-cyan-600 focus:ring-cyan-500">
+        <span>inDB 사용</span>
+    </label>
+    <p id="indb-storage-setting-help" class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">새로고침 후에도 inDB를 내부 저장소로 사용합니다.</p>
+    <button type="button" id="btn-open-indb-status" onclick="openInDbStatusModal()"
+        class="w-full px-4 py-2 border-2 border-cyan-700 dark:border-cyan-600 rounded-md text-sm font-semibold text-cyan-800 dark:text-cyan-300 bg-white dark:bg-slate-800 hover:bg-cyan-50 dark:hover:bg-cyan-950/30 disabled:opacity-40 disabled:cursor-not-allowed">inDB 저장소 보기</button>
+</section>`;
 const INDB_SETTINGS_FOOTER_BUTTON_HTML = `
 <button type="button" id="btn-footer-open-indb-status" onclick="openInDbStatusModal()"
     class="settings-footer-action border border-slate-500 rounded-md text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
@@ -1639,10 +1703,13 @@ const INDB_SETTINGS_FOOTER_BUTTON_HTML = `
 </button>`;
 
 function ensureInDbStatusUi() {
-    if (!document.getElementById('btn-open-indb-status')) {
-        const sqliteOpenButton = document.getElementById('btn-open-sqlite-explorer');
-        if (sqliteOpenButton && typeof sqliteOpenButton.insertAdjacentHTML === 'function') {
-            sqliteOpenButton.insertAdjacentHTML('beforebegin', INDB_SETTINGS_OPEN_BUTTON_HTML);
+    if (!document.getElementById('indb-storage-settings-card')) {
+        const githubSlot = document.getElementById('github-settings-slot');
+        const settingsBody = document.getElementById('settings-modal-body');
+        if (githubSlot && typeof githubSlot.insertAdjacentHTML === 'function') {
+            githubSlot.insertAdjacentHTML('beforebegin', INDB_SETTINGS_CONTROL_HTML);
+        } else if (settingsBody && typeof settingsBody.insertAdjacentHTML === 'function') {
+            settingsBody.insertAdjacentHTML('beforeend', INDB_SETTINGS_CONTROL_HTML);
         }
     }
     if (!document.getElementById('btn-footer-open-indb-status')) {
@@ -1663,6 +1730,7 @@ function ensureInDbStatusUi() {
     if (!document.getElementById('indb-status-modal')) {
         document.body.insertAdjacentHTML('beforeend', INDB_STATUS_MODALS_HTML);
     }
+    syncInDbStorageSettingsUi();
 }
 
 window.openInDbStatusModal = openInDbStatusModal;
@@ -1684,11 +1752,17 @@ window.upsertFeatureStoreRecordsInDb = upsertFeatureStoreRecordsInDb;
 window.replaceFeatureStoreRecordsInDb = replaceFeatureStoreRecordsInDb;
 window.deleteFeatureRecordFromInDb = deleteFeatureRecordFromInDb;
 window.syncKnownFeatureDataToInDb = syncKnownFeatureDataToInDb;
+window.isInDbStorageEnabled = isInDbStorageEnabled;
+window.setInDbStorageEnabled = setInDbStorageEnabled;
+window.onInDbStorageSettingChange = onInDbStorageSettingChange;
+window.syncInDbStorageSettingsUi = syncInDbStorageSettingsUi;
 window.InDbStorage = Object.freeze({
     name: DB_NAME,
     version: DB_VERSION,
     init: initDB,
     getDatabase: function () { return db || null; },
+    isEnabled: isInDbStorageEnabled,
+    setEnabled: setInDbStorageEnabled,
     saveCurrentDocument: saveCurrentToInDbAuto,
     ensureSettingsUi: ensureInDbStatusUi,
     openStatus: openInDbStatusModal,

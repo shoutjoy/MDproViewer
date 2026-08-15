@@ -8,6 +8,7 @@ const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
 const inDb = fs.readFileSync(path.join(root, 'js', 'inDB', 'inDB.js'), 'utf8');
 const mainCss = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
 const inDbCss = fs.readFileSync(path.join(root, 'js', 'inDB', 'inDB.css'), 'utf8');
+const indexedDbAdapter = fs.readFileSync(path.join(root, 'js', 'storage', 'indexeddb-adapter.js'), 'utf8');
 
 const appScriptIndex = html.indexOf('src="./js/app.js');
 const inDbScriptIndex = html.indexOf('src="./js/inDB/inDB.js');
@@ -30,6 +31,15 @@ assert.match(inDb, /const DB_VERSION = 7/);
 assert.match(inDb, /function initDB\(\)/);
 assert.match(inDb, /async function saveCurrentToInDbAuto\(\)/);
 assert.match(inDb, /window\.InDbStorage = Object\.freeze/);
+assert.match(inDb, /id="indb-storage-enabled"[\s\S]*?<span>inDB 사용<\/span>/);
+assert.match(inDb, /stored === null \? true : stored !== 'false'/, 'inDB 사용의 최초 기본값은 true여야 합니다.');
+assert.match(inDb, /async function saveCurrentToInDbAuto\(\) \{\s*if \(!isInDbStorageEnabled\(\)\)/);
+assert.match(inDb, /async function syncKnownFeatureDataToInDb\(\) \{\s*if \(!isInDbStorageEnabled\(\) \|\| !db\) return false;/);
+assert.match(indexedDbAdapter, /_requireWriteEnabled\(\)/);
+assert.match(indexedDbAdapter, /async putDocument\(documentRecord\) \{\s*this\._requireWriteEnabled\(\);/);
+assert.match(indexedDbAdapter, /async uploadWorkFile\(file, options\) \{[\s\S]*?this\._requireWriteEnabled\(\);/);
+assert.match(app, /appendToColumn\(saveColumn, inDbStorageSettings\)[\s\S]*?appendToColumn\(saveColumn, localSaveTools\)[\s\S]*?appendToColumn\(saveColumn, githubSettings\)/);
+assert.match(html, /id="local-storage-settings-button"[\s\S]*?>\s*Local 설정\s*<\/button>/);
 assert.match(inDb, /ensureInDbStatusUi\(\);\s*$/);
 
 assert.doesNotMatch(mainCss, /\.indb-status-panel\s*\{/);

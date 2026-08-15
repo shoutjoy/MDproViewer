@@ -37,6 +37,12 @@
             return database;
         }
 
+        _requireWriteEnabled() {
+            if (typeof root.isInDbStorageEnabled === 'function' && !root.isInDbStorageEnabled()) {
+                throw new Error('설정에서 inDB 사용을 먼저 켜세요.');
+            }
+        }
+
         async listDocuments() {
             const db = this._requireDb();
             return (await asPromise(db.transaction('documents', 'readonly').objectStore('documents').getAll())) || [];
@@ -60,6 +66,7 @@
         }
 
         async putDocument(documentRecord) {
+            this._requireWriteEnabled();
             const db = this._requireDb();
             const tx = db.transaction('documents', 'readwrite');
             tx.objectStore('documents').put(documentRecord);
@@ -76,6 +83,7 @@
         }
 
         async deleteDocument(id) {
+            this._requireWriteEnabled();
             const db = this._requireDb();
             const tx = db.transaction('documents', 'readwrite');
             tx.objectStore('documents').delete(String(id));
@@ -89,6 +97,7 @@
         }
 
         async putFolder(folderRecord) {
+            this._requireWriteEnabled();
             const db = this._requireDb();
             const tx = db.transaction('folders', 'readwrite');
             tx.objectStore('folders').put(folderRecord);
@@ -105,6 +114,7 @@
         }
 
         async deleteFolder(id) {
+            this._requireWriteEnabled();
             const db = this._requireDb();
             const tx = db.transaction('folders', 'readwrite');
             tx.objectStore('folders').delete(String(id));
@@ -124,6 +134,7 @@
 
         async uploadWorkFile(file, options) {
             if (!(file instanceof Blob)) throw new TypeError('uploadWorkFile requires a File or Blob.');
+            this._requireWriteEnabled();
             const db = this._requireDb();
             if (!db.objectStoreNames.contains('work_files')) {
                 throw new Error('inDB 작업파일 저장소가 준비되지 않았습니다. 앱을 새로고침해 주세요.');

@@ -135,7 +135,9 @@
         const sqliteCheckbox = document.getElementById('sqlite-enabled');
         const githubCheckbox = document.getElementById('ai-github-enabled');
         const localCheckbox = document.getElementById('local-storage-enabled');
+        const inDbCheckbox = document.getElementById('indb-storage-enabled');
         return {
+            indb: inDbCheckbox ? inDbCheckbox.checked : !(settings && settings.indbEnabled === false),
             sqlite: sqliteCheckbox ? sqliteCheckbox.checked : !!(settings && settings.sqliteEnabled === true),
             github: githubCheckbox ? githubCheckbox.checked : !!(settings && settings.githubEnabled === true),
             local: localCheckbox ? localCheckbox.checked : !(settings && settings.localEnabled === false)
@@ -252,18 +254,20 @@
         revealEnabledStorageSidebarFeaturesOnce(flags);
         const body = document.body;
         if (body) {
-            ['sqlite', 'github', 'local'].forEach(function (feature) {
+            ['indb', 'sqlite', 'github', 'local'].forEach(function (feature) {
                 body.classList.toggle('feature-' + feature + '-enabled', flags[feature]);
                 body.classList.toggle('feature-' + feature + '-disabled', !flags[feature]);
             });
         }
 
-        const disabledCurrentTab = (currentStorageSourceTab === 'local' && !flags.local)
+        const disabledCurrentTab = (currentStorageSourceTab === 'indb' && !flags.indb)
+            || (currentStorageSourceTab === 'local' && !flags.local)
             || (currentStorageSourceTab === 'sqlite' && !flags.sqlite)
             || (currentStorageSourceTab === 'github' && !flags.github);
         if (disabledCurrentTab) {
-            currentStorageSourceTab = 'indb';
-            setStorageSourceTabToLocal('indb');
+            const fallbackMode = flags.local ? 'local' : (flags.sqlite ? 'sqlite' : (flags.github ? 'github' : 'indb'));
+            currentStorageSourceTab = fallbackMode;
+            setStorageSourceTabToLocal(fallbackMode);
         }
         if (!flags.sqlite && window.SettingUI && typeof window.SettingUI.closeSqliteExplorer === 'function') {
             window.SettingUI.closeSqliteExplorer();
@@ -387,9 +391,12 @@
             renderDBList();
             return;
         }
-        if ((next === 'local' && !featureFlags.local) || (next === 'sqlite' && !featureFlags.sqlite)) {
-            currentStorageSourceTab = 'indb';
-            setStorageSourceTabToLocal('indb');
+        if ((next === 'indb' && !featureFlags.indb)
+            || (next === 'local' && !featureFlags.local)
+            || (next === 'sqlite' && !featureFlags.sqlite)) {
+            const fallbackMode = featureFlags.local ? 'local' : (featureFlags.sqlite ? 'sqlite' : 'indb');
+            currentStorageSourceTab = fallbackMode;
+            setStorageSourceTabToLocal(fallbackMode);
             updateStorageSourceTabsUI();
             renderDBList();
             return;
