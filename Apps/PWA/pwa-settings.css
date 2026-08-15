@@ -1,0 +1,120 @@
+#pwa-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, .56);
+  backdrop-filter: blur(4px);
+}
+
+#pwa-settings-overlay.is-open { display: flex; }
+
+.pwa-settings-panel {
+  width: min(94vw, 720px);
+  max-height: min(90vh, 820px);
+  overflow: auto;
+  border: 1px solid #cbd5e1;
+  border-radius: 18px;
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, .35);
+}
+
+.dark .pwa-settings-panel {
+  border-color: #475569;
+  background: #0f172a;
+  color: #f8fafc;
+}
+
+.pwa-settings-header,
+.pwa-settings-actions,
+.pwa-settings-status-grid { display: flex; }
+
+.pwa-settings-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: rgba(255, 255, 255, .96);
+}
+
+.dark .pwa-settings-header {
+  border-color: #334155;
+  background: rgba(15, 23, 42, .96);
+}
+
+.pwa-settings-icon { width: 42px; height: 42px; border-radius: 12px; }
+.pwa-settings-heading { min-width: 0; flex: 1; }
+.pwa-settings-heading h2 { margin: 0; font-size: 18px; font-weight: 800; }
+.pwa-settings-heading p { margin: 3px 0 0; color: #64748b; font-size: 11px; }
+.dark .pwa-settings-heading p { color: #94a3b8; }
+
+.pwa-settings-close,
+.pwa-action-button {
+  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.dark .pwa-settings-close,
+.dark .pwa-action-button { border-color: #475569; background: #1e293b; color: #e2e8f0; }
+.pwa-settings-close { padding: 7px 11px; font-size: 12px; }
+.pwa-settings-content { padding: 20px; }
+
+.pwa-settings-status-grid { gap: 10px; flex-wrap: wrap; }
+.pwa-status-item {
+  min-width: 145px;
+  flex: 1 1 145px;
+  padding: 13px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+.dark .pwa-status-item { border-color: #334155; background: #111827; }
+.pwa-status-item span { display: block; color: #64748b; font-size: 10px; font-weight: 700; }
+.dark .pwa-status-item span { color: #94a3b8; }
+.pwa-status-item strong { display: block; margin-top: 5px; font-size: 13px; }
+
+.pwa-settings-note {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border-radius: 11px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.dark .pwa-settings-note { background: rgba(49, 46, 129, .35); color: #c7d2fe; }
+
+.pwa-settings-actions { gap: 9px; flex-wrap: wrap; }
+.pwa-action-button { padding: 9px 13px; font-size: 12px; }
+.pwa-action-button.primary { border-color: #4f46e5; background: #4f46e5; color: #fff; }
+.pwa-action-button.danger { border-color: #fca5a5; color: #b91c1c; }
+.dark .pwa-action-button.danger { border-color: #7f1d1d; color: #fca5a5; }
+.pwa-action-button:disabled { cursor: not-allowed; opacity: .45; }
+
+#pwa-settings-message {
+  min-height: 20px;
+  margin: 14px 0 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.dark #pwa-settings-message { color: #cbd5e1; }
+
+@media (max-width: 560px) {
+  #pwa-settings-overlay { align-items: flex-end; padding: 0; }
+  .pwa-settings-panel { width: 100%; max-height: 92vh; border-radius: 18px 18px 0 0; }
+  .pwa-settings-header { padding: 15px; }
+  .pwa-settings-content { padding: 15px; }
+  .pwa-action-button { flex: 1 1 calc(50% - 9px); }
+}

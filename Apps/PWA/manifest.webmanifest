@@ -1,0 +1,30 @@
+{
+  "id": "../../",
+  "name": "MD Viewer",
+  "short_name": "MD Viewer",
+  "description": "Markdown 문서를 편집하고 미리보며 로컬에 저장하는 문서 앱",
+  "lang": "ko-KR",
+  "dir": "ltr",
+  "start_url": "../../index.html?source=pwa",
+  "scope": "../../",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
