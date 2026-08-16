@@ -58,6 +58,10 @@ test('merge modal exposes Local file and folder import controls', () => {
   assert.match(mergeModal, /id="merge-cover-author"/);
   assert.match(mergeModal, /id="merge-cover-institution"/);
   assert.match(mergeModal, /id="merge-toc-enabled"/);
+  assert.match(mergeModal, /id="merge-list-density-controls"/);
+  assert.match(mergeModal, /id="merge-density-smaller"/);
+  assert.match(mergeModal, /id="merge-density-label"/);
+  assert.doesNotMatch(mergeModal, />취소<\/button>/);
   assert.match(mergeModal, /\.docx/);
   assert.match(mergeModal, /\.pdf/);
 });
@@ -67,6 +71,8 @@ test('merge modal switches to a wide two-pane layout and supports fullscreen', (
   assert.match(mergeModal, /id="merge-layout"/);
   assert.ok(mergeModal.indexOf('id="merge-menu-pane"') < mergeModal.indexOf('id="merge-list-pane"'));
   assert.match(mergeSource, /WIDE_LAYOUT_MIN_WIDTH = 720/);
+  assert.match(mergeSource, /DEFAULT_PANEL_WIDTH = 900/);
+  assert.match(mergeSource, /DEFAULT_PANEL_HEIGHT = 640/);
   assert.match(mergeSource, /#merge-modal\{z-index:95!important;\}/);
   assert.match(mergeSource, /grid-template-columns:minmax\(260px,32%\) minmax\(0,1fr\)/);
   assert.match(mergeSource, /function toggleMergeFullscreen/);
@@ -89,6 +95,10 @@ test('local text documents are sorted, selected, and bound into an inDB document
     'merge-move-up-button': createElement(),
     'merge-move-down-button': createElement(),
     'merge-focused-label': createElement(),
+    'merge-density-smaller': createElement(),
+    'merge-density-larger': createElement(),
+    'merge-density-label': createElement(),
+    'merge-list-count': createElement(),
     'merge-local-import-tools': createElement({ className: 'hidden' }),
     'merge-local-import-status': createElement(),
     'merge-bundle-name': createElement({ value: '로컬 문서 묶음' }),
@@ -177,6 +187,13 @@ test('local text documents are sorted, selected, and bound into an inDB document
   assert.ok(elements['merge-list'].innerHTML.indexOf('2.md') < elements['merge-list'].innerHTML.indexOf('10.md'));
   assert.match(elements['merge-local-import-status'].textContent, /2개 문서를 불러왔습니다/);
   assert.match(elements['merge-local-import-status'].textContent, /1개는 제외/);
+  context.setMergeListDensity(70);
+  assert.equal(mergePanel.dataset.listDensity, '70');
+  assert.equal(elements['merge-density-label'].textContent, '70%');
+  assert.equal(elements['merge-density-smaller'].disabled, true);
+  assert.equal(elements['merge-list-count'].textContent, '2개 문서 · 선택 2개');
+  context.adjustMergeListDensity(1);
+  assert.equal(mergePanel.dataset.listDensity, '85');
 
   context.focusMergeItem(1);
   context.moveFocusedMergeItem(-1);

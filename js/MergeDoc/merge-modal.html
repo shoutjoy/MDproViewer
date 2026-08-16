@@ -1,6 +1,6 @@
 <!-- Merge Modal (document merge) -->
 <div id="merge-modal" data-source="merge-doc" class="fixed inset-0 hidden z-[55] no-print pointer-events-none bg-transparent">
-  <div id="merge-panel" class="pointer-events-auto fixed bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-[min(420px,92vw)] h-[min(560px,78vh)] min-w-[300px] min-h-[320px] flex flex-col overflow-hidden">
+  <div id="merge-panel" class="pointer-events-auto fixed bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-[min(900px,92vw)] h-[min(640px,88vh)] min-w-[300px] min-h-[320px] flex flex-col overflow-hidden">
     <div id="merge-panel-header" class="flex items-center justify-between mb-3 gap-2 cursor-move touch-none select-none shrink-0">
       <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
         <i data-lucide="layers" class="w-5 h-5"></i> 문서 묶기
@@ -107,11 +107,19 @@
           </div>
         </div>
         <div id="merge-list" class="flex-1 overflow-y-auto space-y-2 min-h-0 custom-scrollbar" aria-live="polite"></div>
+        <div id="merge-list-density-controls" class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600 flex items-center justify-between gap-2 shrink-0">
+          <span id="merge-list-count" class="text-[10px] text-slate-500 dark:text-slate-400">0개 문서</span>
+          <div class="flex items-center gap-1" aria-label="목록 표시 크기">
+            <span class="text-[10px] text-slate-500 dark:text-slate-400 mr-1">목록 크기</span>
+            <button type="button" id="merge-density-smaller" onclick="adjustMergeListDensity(-1)" title="목록을 더 작게"
+              class="w-7 h-7 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">−</button>
+            <button type="button" id="merge-density-label" onclick="setMergeListDensity(100)" title="기본 크기로 복원"
+              class="min-w-[46px] h-7 px-2 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">100%</button>
+            <button type="button" id="merge-density-larger" onclick="adjustMergeListDensity(1)" title="목록을 더 크게"
+              class="w-7 h-7 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">+</button>
+          </div>
+        </div>
       </div>
-    </div>
-    <div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600 shrink-0">
-      <button type="button" onclick="closeMergeModal()"
-        class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button>
     </div>
     <div id="merge-panel-resizer" title="Resize"
       class="absolute right-0 bottom-0 w-5 h-5 cursor-nwse-resize touch-none opacity-70 hover:opacity-100 select-none"

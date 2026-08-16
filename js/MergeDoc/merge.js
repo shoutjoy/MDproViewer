@@ -10,6 +10,7 @@
   var mergeTargetMode = 'indb';
   var mergeListSearchQuery = '';
   var mergeListSelectedOnly = false;
+  var mergeListDensity = 100;
   var mergeFocusedIndex = -1;
   var mergeLocalDirectoryHandle = null;
   var mergeLocalDirectoryName = '';
@@ -22,16 +23,16 @@
   var mergePanelDragOffsetX = 0;
   var mergePanelDragOffsetY = 0;
 
-  var DEFAULT_PANEL_WIDTH = 420;
-  var DEFAULT_PANEL_HEIGHT = 560;
-  var DEFAULT_PANEL_TOP = 152;
+  var DEFAULT_PANEL_WIDTH = 900;
+  var DEFAULT_PANEL_HEIGHT = 640;
+  var DEFAULT_PANEL_TOP = 72;
   var WIDE_LAYOUT_MIN_WIDTH = 720;
   var mergePanelBeforeFullscreen = null;
   var mergePanelResizeObserver = null;
   var mergeWorkspaceResizeObserver = null;
   var MERGE_MODAL_FALLBACK_HTML = ''
     + '<div id="merge-modal" data-source="merge-doc" class="fixed inset-0 hidden z-[55] no-print pointer-events-none bg-transparent">'
-    + '<div id="merge-panel" class="pointer-events-auto fixed bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-[min(420px,92vw)] h-[min(560px,78vh)] min-w-[300px] min-h-[320px] flex flex-col overflow-hidden">'
+    + '<div id="merge-panel" class="pointer-events-auto fixed bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-[min(900px,92vw)] h-[min(640px,88vh)] min-w-[300px] min-h-[320px] flex flex-col overflow-hidden">'
     + '<div id="merge-panel-header" class="flex items-center justify-between mb-3 gap-2 cursor-move touch-none select-none shrink-0">'
     + '<h3 class="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2"><i data-lucide="layers" class="w-5 h-5"></i> 문서 묶기</h3>'
     + '<div class="flex items-center gap-1"><button type="button" id="merge-fullscreen-button" title="전체화면" class="p-1.5 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"><i data-lucide="maximize-2" class="w-4 h-4"></i><span class="sr-only">전체화면</span></button><button type="button" onclick="closeMergeModal()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">Close</button></div>'
@@ -64,9 +65,8 @@
     + '<button type="button" onclick="deselectAllMergeItems()" class="px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체 해제</button>'
     + '<button type="button" id="merge-selected-only-btn" onclick="toggleSelectedOnlyMergeView()" class="px-3 py-1.5 text-xs font-medium border border-slate-900 dark:border-slate-100 rounded-md text-slate-900 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700">선택 보기</button>'
     + '</div></div>'
-    + '<div id="merge-list" class="flex-1 overflow-y-auto space-y-2 min-h-0 custom-scrollbar" aria-live="polite"></div>'
+    + '<div id="merge-list" class="flex-1 overflow-y-auto space-y-2 min-h-0 custom-scrollbar" aria-live="polite"></div><div id="merge-list-density-controls" class="mt-2 pt-2 border-t border-slate-200 dark:border-slate-600 flex items-center justify-between gap-2 shrink-0"><span id="merge-list-count" class="text-[10px] text-slate-500 dark:text-slate-400">0개 문서</span><div class="flex items-center gap-1" aria-label="목록 표시 크기"><span class="text-[10px] text-slate-500 dark:text-slate-400 mr-1">목록 크기</span><button type="button" id="merge-density-smaller" onclick="adjustMergeListDensity(-1)" title="목록을 더 작게" class="w-7 h-7 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">−</button><button type="button" id="merge-density-label" onclick="setMergeListDensity(100)" title="기본 크기로 복원" class="min-w-[46px] h-7 px-2 rounded border border-slate-300 dark:border-slate-600 text-[10px] font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">100%</button><button type="button" id="merge-density-larger" onclick="adjustMergeListDensity(1)" title="목록을 더 크게" class="w-7 h-7 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">+</button></div></div>'
     + '</div></div>'
-    + '<div class="mt-4 pt-4 border-t border-slate-200 dark:border-slate-600 shrink-0"><button type="button" onclick="closeMergeModal()" class="w-full px-4 py-2 border border-slate-200 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button></div>'
     + '<div id="merge-panel-resizer" title="Resize" class="absolute right-0 bottom-0 w-5 h-5 cursor-nwse-resize touch-none opacity-70 hover:opacity-100 select-none" style="background:linear-gradient(135deg,transparent 45%,#94a3b8 46%,#94a3b8 54%,transparent 55%);"></div>'
     + '</div></div>';
 
@@ -98,6 +98,19 @@
       '#merge-panel[data-layout="wide"] #merge-cover-fields{grid-template-columns:repeat(2,minmax(0,1fr));}',
       '.dark #merge-panel[data-layout="wide"] #merge-menu-pane{border-right-color:#475569;}',
       '#merge-panel[data-layout="wide"] #merge-list-pane{overflow:hidden;}',
+      '#merge-list>.merge-list-item+ .merge-list-item{margin-top:8px;}',
+      '#merge-panel[data-list-density="85"] #merge-list>.merge-list-item{padding:6px;gap:6px;border-radius:7px;}',
+      '#merge-panel[data-list-density="85"] #merge-list>.merge-list-item+ .merge-list-item{margin-top:5px;}',
+      '#merge-panel[data-list-density="85"] .merge-list-title{font-size:12px;line-height:16px;}',
+      '#merge-panel[data-list-density="85"] .merge-list-path{font-size:9px;line-height:12px;}',
+      '#merge-panel[data-list-density="85"] .merge-list-icon{width:14px;height:14px;}',
+      '#merge-panel[data-list-density="70"] #merge-list>.merge-list-item{padding:4px;gap:4px;border-radius:6px;}',
+      '#merge-panel[data-list-density="70"] #merge-list>.merge-list-item+ .merge-list-item{margin-top:3px;}',
+      '#merge-panel[data-list-density="70"] .merge-list-title{font-size:11px;line-height:14px;}',
+      '#merge-panel[data-list-density="70"] .merge-list-path{display:none;}',
+      '#merge-panel[data-list-density="70"] .merge-list-badge{font-size:8px;padding:1px 4px;}',
+      '#merge-panel[data-list-density="70"] .merge-list-icon{width:12px;height:12px;}',
+      '#merge-panel[data-list-density="70"] .merge-list-order button{padding:0;line-height:10px;}',
       '#merge-panel[data-fullscreen="1"]{border-radius:10px;}',
       '#merge-panel[data-fullscreen="1"] #merge-panel-header{cursor:default;}',
       '#merge-panel[data-fullscreen="1"] #merge-panel-resizer{display:none;}',
@@ -564,24 +577,12 @@
   }
 
   function getDefaultPanelRect() {
-    var viewportW = Math.max(320, window.innerWidth || 0);
-    var viewportH = Math.max(360, window.innerHeight || 0);
-    var width = Math.min(DEFAULT_PANEL_WIDTH, Math.max(300, viewportW - 24));
-    var height = Math.min(DEFAULT_PANEL_HEIGHT, Math.max(320, viewportH - 24));
-    var sidebar = document.getElementById('sidebar');
-    var sidebarRect = sidebar && !sidebar.classList.contains('hidden') ? sidebar.getBoundingClientRect() : null;
-    var sidebarRight = sidebarRect ? Math.max(0, sidebarRect.right) : 0;
-    var left;
-
-    if (viewportW <= 640) {
-      left = Math.round((viewportW - width) / 2);
-    } else {
-      left = Math.max(12, Math.min(viewportW - width - 12, sidebarRight + 28));
-    }
-
+    var workspace = getMergeWorkspaceRect();
+    var width = Math.min(DEFAULT_PANEL_WIDTH, Math.max(300, workspace.width));
+    var height = Math.min(DEFAULT_PANEL_HEIGHT, Math.max(320, workspace.height));
     return {
-      left: left,
-      top: Math.max(12, Math.min(DEFAULT_PANEL_TOP, viewportH - height - 12)),
+      left: workspace.left + Math.max(0, (workspace.width - width) / 2),
+      top: workspace.top + Math.max(0, (workspace.height - height) / 2),
       width: width,
       height: height
     };
@@ -629,11 +630,45 @@
     applyMergePanelRect(getDefaultPanelRect());
   }
 
+  function updateMergeListDensityUI() {
+    var panel = getMergePanel();
+    var label = document.getElementById('merge-density-label');
+    var smaller = document.getElementById('merge-density-smaller');
+    var larger = document.getElementById('merge-density-larger');
+    var count = document.getElementById('merge-list-count');
+    if (panel) panel.dataset.listDensity = String(mergeListDensity);
+    if (label) label.textContent = mergeListDensity + '%';
+    if (smaller) smaller.disabled = mergeListDensity <= 70;
+    if (larger) larger.disabled = mergeListDensity >= 100;
+    if (count) {
+      var selectedCount = mergeListState.filter(function (item) { return item.checked; }).length;
+      count.textContent = mergeListState.length + '개 문서 · 선택 ' + selectedCount + '개';
+    }
+  }
+
+  function setMergeListDensity(value) {
+    var allowed = [70, 85, 100];
+    var numeric = Number(value) || 100;
+    mergeListDensity = allowed.reduce(function (best, current) {
+      return Math.abs(current - numeric) < Math.abs(best - numeric) ? current : best;
+    }, 100);
+    try { localStorage.setItem('md_viewer_merge_list_density', String(mergeListDensity)); } catch (_) {}
+    updateMergeListDensityUI();
+  }
+
+  function adjustMergeListDensity(direction) {
+    var allowed = [70, 85, 100];
+    var index = allowed.indexOf(mergeListDensity);
+    if (index < 0) index = allowed.length - 1;
+    setMergeListDensity(allowed[Math.max(0, Math.min(allowed.length - 1, index + (direction < 0 ? -1 : 1)))]);
+  }
+
   function renderMergeList() {
     var listEl = document.getElementById('merge-list');
     var selectedOnlyBtn = document.getElementById('merge-selected-only-btn');
     if (!listEl) return;
     updateMergeMoveControls();
+    updateMergeListDensityUI();
 
     if (selectedOnlyBtn) {
       selectedOnlyBtn.textContent = mergeListSelectedOnly ? '전체 보기' : '선택 보기';
@@ -671,15 +706,15 @@
       var sourceBadge = x.item && x.item.local ? (x.item.extension || 'Local') : 'inDB';
       var focused = x.idx === mergeFocusedIndex;
       return '' +
-        '<div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer" data-idx="' + x.idx + '" tabindex="0" role="option" aria-selected="' + (focused ? 'true' : 'false') + '" onclick="focusMergeItem(' + x.idx + ')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();focusMergeItem(' + x.idx + ')}"' + (focused ? ' style="outline:2px solid #6366f1;outline-offset:-2px"' : '') + '>' +
-          '<i data-lucide="file-text" class="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0"></i>' +
-          '<span class="flex-1 min-w-0" title="' + escapeHtml(displayPath) + '"><span class="block text-sm text-slate-700 dark:text-slate-100 truncate">' + escapeHtml(title) + '</span>' +
-            (displayPath !== title ? '<span class="block text-[10px] text-slate-500 dark:text-slate-300 truncate">' + escapeHtml(displayPath) + '</span>' : '') + '</span>' +
-          '<span class="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">' + escapeHtml(sourceBadge) + '</span>' +
+        '<div class="merge-list-item flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer" data-idx="' + x.idx + '" tabindex="0" role="option" aria-selected="' + (focused ? 'true' : 'false') + '" onclick="focusMergeItem(' + x.idx + ')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();focusMergeItem(' + x.idx + ')}"' + (focused ? ' style="outline:2px solid #6366f1;outline-offset:-2px"' : '') + '>' +
+          '<i data-lucide="file-text" class="merge-list-icon w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0"></i>' +
+          '<span class="flex-1 min-w-0" title="' + escapeHtml(displayPath) + '"><span class="merge-list-title block text-sm text-slate-700 dark:text-slate-100 truncate">' + escapeHtml(title) + '</span>' +
+            (displayPath !== title ? '<span class="merge-list-path block text-[10px] text-slate-500 dark:text-slate-300 truncate">' + escapeHtml(displayPath) + '</span>' : '') + '</span>' +
+          '<span class="merge-list-badge px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[9px] font-bold text-slate-600 dark:text-slate-300 shrink-0">' + escapeHtml(sourceBadge) + '</span>' +
           '<label class="flex items-center shrink-0 cursor-pointer">' +
             '<input type="checkbox" ' + (x.item.checked ? 'checked' : '') + ' onchange="toggleMergeItem(' + x.idx + ', this.checked)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600">' +
           '</label>' +
-          '<div class="flex flex-col shrink-0">' +
+          '<div class="merge-list-order flex flex-col shrink-0">' +
             '<button type="button" onclick="event.stopPropagation();moveMergeItem(' + x.idx + ',-1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="위로 이동"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>' +
             '<button type="button" onclick="event.stopPropagation();moveMergeItem(' + x.idx + ',1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="아래로 이동"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>' +
           '</div>' +
@@ -813,6 +848,11 @@
     mergeListSearchQuery = '';
     mergeListSelectedOnly = false;
     mergeFocusedIndex = -1;
+    try {
+      mergeListDensity = Number(localStorage.getItem('md_viewer_merge_list_density')) || 100;
+    } catch (_) {
+      mergeListDensity = 100;
+    }
 
     var searchInput = document.getElementById('merge-search-input');
     if (searchInput) searchInput.value = '';
@@ -836,11 +876,19 @@
     var modal = document.getElementById('merge-modal');
     if (modal) {
       bindMergePanelInteractions();
+      modal.dataset.listDensity = String(mergeListDensity);
       modal.classList.remove('hidden');
       modal.style.display = 'block';
+      var panel = getMergePanel();
+      if (panel) {
+        panel.dataset.fullscreen = '0';
+        panel.dataset.userLayout = '0';
+      }
+      mergePanelBeforeFullscreen = null;
       applyDefaultMergePanelLayout();
       updateMergeFullscreenButton();
       updateMergeLayoutMode();
+      updateMergeListDensityUI();
     }
   }
 
@@ -1145,6 +1193,8 @@
   window.moveMergeItem = moveMergeItem;
   window.removeMergeLocalItem = removeMergeLocalItem;
   window.toggleSelectedOnlyMergeView = toggleSelectedOnlyMergeView;
+  window.setMergeListDensity = setMergeListDensity;
+  window.adjustMergeListDensity = adjustMergeListDensity;
   window.closeMergeModal = closeMergeModal;
   window.bindMerge = bindMerge;
   window.bindMergeDocuments = bindMerge;
@@ -1162,6 +1212,8 @@
     moveFocusedMergeItem: moveFocusedMergeItem,
     moveMergeItem: moveMergeItem,
     toggleSelectedOnlyMergeView: toggleSelectedOnlyMergeView,
+    setMergeListDensity: setMergeListDensity,
+    adjustMergeListDensity: adjustMergeListDensity,
     closeMergeModal: closeMergeModal,
     bindMerge: bindMerge
   };
