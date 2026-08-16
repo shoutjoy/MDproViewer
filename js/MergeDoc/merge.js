@@ -57,7 +57,7 @@
     + '<div class="flex gap-2 mb-3 shrink-0">'
     + '<input type="text" id="merge-bundle-name" placeholder="새로운 묶음 파일" class="flex-1 min-w-0 px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">'
     + '<button type="button" id="merge-bind-button" class="px-4 py-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-800 rounded-md text-sm font-bold border border-slate-700 dark:border-slate-300 hover:bg-slate-700 dark:hover:bg-slate-300">Bind</button>'
-    + '</div></div><div id="merge-list-pane"><div class="mb-3 shrink-0 space-y-2">'
+    + '</div><div class="mb-3 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 p-2 space-y-2"><div class="flex flex-wrap items-center gap-x-4 gap-y-2"><label class="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer"><input id="merge-cover-enabled" type="checkbox" onchange="toggleMergeCoverOptions(this.checked)" class="rounded border-slate-300 text-indigo-600">표지 넣기</label><label class="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer"><input id="merge-toc-enabled" type="checkbox" class="rounded border-slate-300 text-indigo-600">자동 목차 넣기</label></div><div id="merge-cover-fields" class="hidden grid grid-cols-1 gap-2 pt-2 border-t border-slate-200 dark:border-slate-600"><input id="merge-cover-title" type="text" placeholder="표지 제목" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"><input id="merge-cover-subtitle" type="text" placeholder="부제목" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"><input id="merge-cover-author" type="text" placeholder="작성자" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"><input id="merge-cover-institution" type="text" placeholder="기관" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"><input id="merge-cover-date" type="text" placeholder="작성일" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm"></div><p class="text-[10px] leading-4 text-slate-500 dark:text-slate-400">표지 또는 자동 목차를 사용하면 결과는 DOCX로 생성됩니다.</p></div></div><div id="merge-list-pane"><div class="mb-3 shrink-0 space-y-2">'
     + '<input type="text" id="merge-search-input" placeholder="문서 검색..." oninput="filterMergeList(this.value)" class="w-full px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">'
     + '<div class="grid grid-cols-3 gap-2">'
     + '<button type="button" onclick="selectAllMergeItems()" class="px-3 py-1.5 text-xs font-medium border border-slate-200 dark:border-slate-600 rounded-md text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">전체선택</button>'
@@ -95,6 +95,7 @@
       '#merge-list-pane{display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:0;}',
       '#merge-panel[data-layout="wide"] #merge-layout{display:grid;grid-template-columns:minmax(260px,32%) minmax(0,1fr);gap:16px;}',
       '#merge-panel[data-layout="wide"] #merge-menu-pane{overflow-y:auto;padding-right:16px;border-right:1px solid #e2e8f0;}',
+      '#merge-panel[data-layout="wide"] #merge-cover-fields{grid-template-columns:repeat(2,minmax(0,1fr));}',
       '.dark #merge-panel[data-layout="wide"] #merge-menu-pane{border-right-color:#475569;}',
       '#merge-panel[data-layout="wide"] #merge-list-pane{overflow:hidden;}',
       '#merge-panel[data-fullscreen="1"]{border-radius:10px;}',
@@ -353,6 +354,31 @@
     updateMergeSourceUI();
     renderMergeList();
     if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
+  function toggleMergeCoverOptions(enabled) {
+    var fields = document.getElementById('merge-cover-fields');
+    if (fields) fields.classList.toggle('hidden', !enabled);
+    if (!enabled) return;
+    var nameInput = document.getElementById('merge-bundle-name');
+    var titleInput = document.getElementById('merge-cover-title');
+    if (titleInput && !titleInput.value && nameInput) titleInput.value = String(nameInput.value || '');
+    var panel = getMergePanel();
+    if (!panel || panel.dataset.fullscreen === '1') return;
+    var workspace = getMergeWorkspaceRect();
+    if (workspace.width < WIDE_LAYOUT_MIN_WIDTH) {
+      toggleMergeFullscreen(true);
+      return;
+    }
+    var rect = panel.getBoundingClientRect();
+    var width = Math.min(840, workspace.width);
+    var height = Math.min(Math.max(650, rect.height), workspace.height);
+    applyMergePanelRect({
+      left: workspace.left + Math.max(0, (workspace.width - width) / 2),
+      top: workspace.top + Math.max(0, (workspace.height - height) / 2),
+      width: width,
+      height: height
+    });
   }
 
   function openMergeLocalFiles() {
@@ -792,6 +818,17 @@
     if (searchInput) searchInput.value = '';
     var nameInput = document.getElementById('merge-bundle-name');
     if (nameInput) nameInput.value = '';
+    var coverEnabled = document.getElementById('merge-cover-enabled');
+    var tocEnabled = document.getElementById('merge-toc-enabled');
+    if (coverEnabled) coverEnabled.checked = false;
+    if (tocEnabled) tocEnabled.checked = false;
+    toggleMergeCoverOptions(false);
+    ['merge-cover-title', 'merge-cover-subtitle', 'merge-cover-author', 'merge-cover-institution'].forEach(function (id) {
+      var input = document.getElementById(id);
+      if (input) input.value = '';
+    });
+    var coverDate = document.getElementById('merge-cover-date');
+    if (coverDate) coverDate.value = new Date().toISOString().slice(0, 10);
 
     setLocalImportStatus('md, txt, html, docx, pdf, csv, json 파일을 여러 개 또는 폴더째 불러올 수 있습니다.', false);
     updateMergeSourceUI();
@@ -902,20 +939,27 @@
     modal.style.display = 'none';
   }
 
-  function getMergeOutputFormat(selected) {
-    return selected.length && selected.every(function (item) {
+  function getMergeOutputFormat(selected, forceDocx) {
+    return forceDocx || (selected.length && selected.every(function (item) {
       return String(item.extension || '').toUpperCase() === 'DOCX';
-    }) ? 'docx' : 'md';
+    })) ? 'docx' : 'md';
   }
 
   function getMergedDocxHtml(selected, contents) {
     return contents.map(function (content, index) {
       var label = selected[index] && (selected[index].displayPath || selected[index].title) || '';
-      return '<section data-merge-source="' + escapeHtml(label) + '">' + String(content || '') + '</section>';
+      var extension = String(selected[index] && selected[index].extension || '').toUpperCase();
+      var source = String(content || '');
+      var html = source;
+      if (extension !== 'DOCX' && extension !== 'HTML' && extension !== 'HTM' && !/<(?:h[1-6]|p|div|section|table|ul|ol|pre)\b/i.test(source)) {
+        if (window.marked && typeof window.marked.parse === 'function') html = window.marked.parse(source);
+        else html = '<pre>' + escapeHtml(source) + '</pre>';
+      }
+      return '<section data-merge-source="' + escapeHtml(label) + '">' + html + '</section>';
     }).join('<p></p>');
   }
 
-  async function createMergedDocxBlob(html) {
+  async function createMergedDocxBlob(html, options) {
     if (typeof loadOptionalScript !== 'function') throw new Error('DOCX 내보내기 모듈을 찾을 수 없습니다.');
     await loadOptionalScript('docxExport', function () {
       return !!window.DocxExport && typeof window.DocxExport.createBlob === 'function';
@@ -923,9 +967,31 @@
     return window.DocxExport.createBlob({
       content: '',
       html: html,
+      mergeCover: options && options.cover,
+      includeToc: !!(options && options.includeToc),
       baseUrl: document.baseURI,
       resolveImage: typeof resolveDocxExportImage === 'function' ? resolveDocxExportImage : undefined
     });
+  }
+
+  function readMergeFrontMatter(bundleName) {
+    var coverEnabled = !!(document.getElementById('merge-cover-enabled') || {}).checked;
+    var tocEnabled = !!(document.getElementById('merge-toc-enabled') || {}).checked;
+    function value(id) {
+      var input = document.getElementById(id);
+      return input ? String(input.value || '').trim() : '';
+    }
+    return {
+      coverEnabled: coverEnabled,
+      tocEnabled: tocEnabled,
+      cover: coverEnabled ? {
+        title: value('merge-cover-title') || bundleName,
+        subtitle: value('merge-cover-subtitle'),
+        author: value('merge-cover-author'),
+        institution: value('merge-cover-institution'),
+        date: value('merge-cover-date')
+      } : null
+    };
   }
 
   async function ensureMergeOutputDirectory() {
@@ -1000,14 +1066,17 @@
       }));
     }
 
-    var outputFormat = mergeSourceMode === 'local' ? getMergeOutputFormat(selected) : 'md';
+    var frontMatter = readMergeFrontMatter(bundleName);
+    var outputFormat = mergeSourceMode === 'local'
+      ? getMergeOutputFormat(selected, frontMatter.coverEnabled || frontMatter.tocEnabled)
+      : (frontMatter.coverEnabled || frontMatter.tocEnabled ? 'docx' : 'md');
     var mergedContent = outputFormat === 'docx'
       ? getMergedDocxHtml(selected, contents)
       : contents.join('\n\n---\n\n');
     var safeName = bundleName.replace(/[\\/:*?"<>|]+/g, '_').replace(/\.(md|markdown|docx)$/i, '') || '문서 묶음';
     var outputFileName = safeName + '.' + outputFormat;
     var outputBlob = outputFormat === 'docx'
-      ? await createMergedDocxBlob(mergedContent)
+      ? await createMergedDocxBlob(mergedContent, { cover: frontMatter.cover, includeToc: frontMatter.tocEnabled })
       : new Blob([mergedContent], { type: 'text/markdown;charset=utf-8' });
 
     var newDoc = {
@@ -1019,6 +1088,8 @@
       mergeDocSource: mergeSourceMode,
       mergeDocOutputFormat: outputFormat,
       mergeDocFileName: outputFileName,
+      mergeDocCover: frontMatter.cover,
+      mergeDocIncludeToc: frontMatter.tocEnabled,
       mergeDocItems: selected.map(function (item) { return item.displayPath || item.title || ''; }),
       updatedAt: new Date()
     };
@@ -1061,6 +1132,7 @@
   window.toggleMergeFullscreen = toggleMergeFullscreen;
   window.switchMergeSource = switchMergeSource;
   window.switchMergeTarget = switchMergeTarget;
+  window.toggleMergeCoverOptions = toggleMergeCoverOptions;
   window.openMergeLocalFiles = openMergeLocalFiles;
   window.openMergeLocalFolder = openMergeLocalFolder;
   window.importMergeLocalFiles = importMergeLocalFiles;

@@ -74,6 +74,24 @@
           <button type="button" id="merge-bind-button"
             class="px-4 py-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-800 rounded-md text-sm font-bold border border-slate-700 dark:border-slate-300 hover:bg-slate-700 dark:hover:bg-slate-300">Bind</button>
         </div>
+        <div class="mb-3 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 p-2 space-y-2">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
+              <input id="merge-cover-enabled" type="checkbox" onchange="toggleMergeCoverOptions(this.checked)" class="rounded border-slate-300 text-indigo-600">표지 넣기
+            </label>
+            <label class="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer">
+              <input id="merge-toc-enabled" type="checkbox" class="rounded border-slate-300 text-indigo-600">자동 목차 넣기
+            </label>
+          </div>
+          <div id="merge-cover-fields" class="hidden grid grid-cols-1 gap-2 pt-2 border-t border-slate-200 dark:border-slate-600">
+            <input id="merge-cover-title" type="text" placeholder="표지 제목" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm">
+            <input id="merge-cover-subtitle" type="text" placeholder="부제목" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm">
+            <input id="merge-cover-author" type="text" placeholder="작성자" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm">
+            <input id="merge-cover-institution" type="text" placeholder="기관" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm">
+            <input id="merge-cover-date" type="text" placeholder="작성일" class="w-full min-w-0 px-3 py-2 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-sm">
+          </div>
+          <p class="text-[10px] leading-4 text-slate-500 dark:text-slate-400">표지 또는 자동 목차를 사용하면 결과는 DOCX로 생성됩니다.</p>
+        </div>
       </div>
       <div id="merge-list-pane">
         <div class="mb-3 shrink-0 space-y-2">

@@ -1564,6 +1564,36 @@
     return makeDocxParagraph(item);
   }
 
+  function makeCenteredFrontParagraph(text, size, bold, before, after) {
+    if (!String(text || '').trim()) return '';
+    return '<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="' + (before || 0) + '" w:after="' + (after || 0) + '"/></w:pPr>' +
+      '<w:r><w:rPr>' + (bold ? '<w:b/><w:bCs/>' : '') + '<w:sz w:val="' + size + '"/><w:szCs w:val="' + size + '"/></w:rPr>' +
+      '<w:t xml:space="preserve">' + escapeXml(text) + '</w:t></w:r></w:p>';
+  }
+
+  function makeMergeCoverXml(cover) {
+    if (!cover) return '';
+    var meta = [cover.author, cover.institution, cover.date].filter(function (value) {
+      return String(value || '').trim();
+    }).join('\n');
+    return makeCenteredFrontParagraph(cover.title, 64, true, 3000, 360) +
+      makeCenteredFrontParagraph(cover.subtitle, 36, false, 0, 1800) +
+      makeCenteredFrontParagraph(meta, 24, false, 0, 120) +
+      '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+  }
+
+  function makeAutomaticTocXml(enabled) {
+    if (!enabled) return '';
+    return '<w:p><w:pPr><w:pStyle w:val="TOCHeading"/><w:jc w:val="center"/></w:pPr>' +
+      '<w:r><w:t>목차</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:fldChar w:fldCharType="begin" w:dirty="true"/></w:r>' +
+      '<w:r><w:instrText xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+      '<w:r><w:t>문서를 열면 목차가 자동으로 업데이트됩니다.</w:t></w:r>' +
+      '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>' +
+      '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+  }
+
   async function createBlob(payload) {
     if (typeof global.JSZip !== 'function') {
       throw new Error('DOCX export requires JSZip.');
@@ -1625,6 +1655,7 @@
       });
     });
 
+    var frontMatterXml = makeMergeCoverXml(data.mergeCover) + makeAutomaticTocXml(data.includeToc);
     var documentXml =
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
@@ -1635,6 +1666,7 @@
       'xmlns:v="urn:schemas-microsoft-com:vml" ' +
       'xmlns:o="urn:schemas-microsoft-com:office:office">' +
       '<w:body>' +
+      frontMatterXml +
       items.map(makeDocxBlock).join('') +
       '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>' +
       '</w:body></w:document>';
@@ -1648,6 +1680,7 @@
       '<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>' +
       '<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>' +
+      '<w:style w:type="paragraph" w:styleId="TOCHeading"><w:name w:val="TOC Heading"/><w:basedOn w:val="Heading1"/><w:qFormat/></w:style>' +
       '</w:styles>';
 
     var zip = new global.JSZip();
@@ -1666,6 +1699,7 @@
       }).join('') +
       '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
       '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>' +
+      (data.includeToc ? '<Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>' : '') +
       '</Types>');
     zip.folder('_rels').file('.rels',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -1674,10 +1708,17 @@
       '</Relationships>');
     zip.folder('word').file('document.xml', documentXml);
     zip.folder('word').file('styles.xml', stylesXml);
+    if (data.includeToc) {
+      zip.folder('word').file('settings.xml',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+        '<w:updateFields w:val="true"/></w:settings>');
+    }
     zip.folder('word').folder('_rels').file('document.xml.rels',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+      (data.includeToc ? '<Relationship Id="rIdSettings" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>' : '') +
       media.map(function (asset) {
         return '<Relationship Id="' + escapeXml(asset.relationshipId) + '" ' +
           'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" ' +

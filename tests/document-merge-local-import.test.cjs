@@ -52,6 +52,12 @@ test('merge modal exposes Local file and folder import controls', () => {
   assert.match(mergeModal, />inDB Bind<\/button>/);
   assert.match(mergeModal, /id="merge-move-up-button"/);
   assert.match(mergeModal, /id="merge-move-down-button"/);
+  assert.match(mergeModal, /id="merge-cover-enabled"/);
+  assert.match(mergeModal, /id="merge-cover-title"/);
+  assert.match(mergeModal, /id="merge-cover-subtitle"/);
+  assert.match(mergeModal, /id="merge-cover-author"/);
+  assert.match(mergeModal, /id="merge-cover-institution"/);
+  assert.match(mergeModal, /id="merge-toc-enabled"/);
   assert.match(mergeModal, /\.docx/);
   assert.match(mergeModal, /\.pdf/);
 });
@@ -287,9 +293,17 @@ test('DOCX-only merge bound to inDB preserves DOCX output metadata and Blob', as
     'merge-local-import-tools': createElement({ className: 'hidden' }),
     'merge-local-import-status': createElement(),
     'merge-bundle-name': createElement({ value: 'inDB DOCX 묶음' }),
+    'merge-cover-enabled': createElement({ checked: true }),
+    'merge-toc-enabled': createElement({ checked: true }),
+    'merge-cover-title': createElement({ value: '통합 보고서' }),
+    'merge-cover-subtitle': createElement({ value: '교육정책 자료집' }),
+    'merge-cover-author': createElement({ value: '홍길동' }),
+    'merge-cover-institution': createElement({ value: '한국교육연구원' }),
+    'merge-cover-date': createElement({ value: '2026-08-16' }),
     'merge-modal': createElement()
   };
   let savedDocument;
+  let docxPayload;
   const outputBlob = new Blob(['docx-package'], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
   const context = {
     console,
@@ -313,7 +327,7 @@ test('DOCX-only merge bound to inDB preserves DOCX output metadata and Blob', as
     async loadOptionalScript() {},
     DocxImport: { async convert() { return { value: '<p>DOCX 본문</p>' }; } },
     mammoth: { convertToHtml() {} },
-    DocxExport: { async createBlob() { return outputBlob; } },
+    DocxExport: { async createBlob(payload) { docxPayload = payload; return outputBlob; } },
     showToast() {},
     db: {
       transaction(storeName, mode) {
@@ -345,5 +359,10 @@ test('DOCX-only merge bound to inDB preserves DOCX output metadata and Blob', as
   assert.equal(savedDocument.mergeDocOutputFormat, 'docx');
   assert.equal(savedDocument.mergeDocFileName, 'inDB DOCX 묶음.docx');
   assert.equal(savedDocument.mergeDocBlob, outputBlob);
+  assert.equal(savedDocument.mergeDocIncludeToc, true);
+  assert.equal(savedDocument.mergeDocCover.title, '통합 보고서');
+  assert.equal(savedDocument.mergeDocCover.author, '홍길동');
+  assert.equal(docxPayload.includeToc, true);
+  assert.equal(docxPayload.mergeCover.institution, '한국교육연구원');
   assert.match(savedDocument.content, /<section/);
 });

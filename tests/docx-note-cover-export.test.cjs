@@ -113,8 +113,38 @@ test('extracts note-cover metadata and removes it from the DOCX body markdown', 
 test('loads the editable-cover DOCX exporter with a fresh cache key', () => {
   const app = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
   const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-  assert.match(app, /docx-export\.js\?v=20260811-note-cover-editor-3/);
+  assert.match(app, /docx-export\.js\?v=20260816-merge-cover-toc-2/);
   assert.match(index, /app\.js\?v=20260811-note-cover-insert-1/);
+});
+
+test('writes an editable merge cover and an auto-updating Word TOC field', async () => {
+  const exporter = loadExporter();
+  const blob = await exporter.createBlob({
+    content: '',
+    html: '<h1>첫 번째 장</h1><p>본문</p><h2>세부 절</h2>',
+    mergeCover: {
+      title: '통합 연구 보고서',
+      subtitle: '교육정책 자료집',
+      author: '홍길동',
+      institution: '한국교육연구원',
+      date: '2026-08-16'
+    },
+    includeToc: true
+  });
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const documentXml = await zip.file('word/document.xml').async('string');
+  const settingsXml = await zip.file('word/settings.xml').async('string');
+  const relationshipsXml = await zip.file('word/_rels/document.xml.rels').async('string');
+
+  assert.match(documentXml, /통합 연구 보고서/);
+  assert.match(documentXml, /교육정책 자료집/);
+  assert.match(documentXml, /홍길동/);
+  assert.match(documentXml, /한국교육연구원/);
+  assert.match(documentXml, /w:fldCharType="begin" w:dirty="true"/);
+  assert.match(documentXml, /TOC \\o "1-3" \\h \\z \\u/);
+  assert.match(documentXml, /첫 번째 장/);
+  assert.match(settingsXml, /w:updateFields w:val="true"/);
+  assert.match(relationshipsXml, /Target="settings\.xml"/);
 });
 
 test('writes the rendered cover as the first DOCX page and keeps the body', async () => {
