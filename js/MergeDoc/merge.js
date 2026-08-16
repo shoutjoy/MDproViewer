@@ -10,6 +10,9 @@
   var mergeTargetMode = 'indb';
   var mergeListSearchQuery = '';
   var mergeListSelectedOnly = false;
+  var mergeFocusedIndex = -1;
+  var mergeLocalDirectoryHandle = null;
+  var mergeLocalDirectoryName = '';
   var mergeModalReady = null;
   var mergePanelActive = null;
   var mergePanelInteractionsBound = false;
@@ -25,6 +28,7 @@
   var WIDE_LAYOUT_MIN_WIDTH = 720;
   var mergePanelBeforeFullscreen = null;
   var mergePanelResizeObserver = null;
+  var mergeWorkspaceResizeObserver = null;
   var MERGE_MODAL_FALLBACK_HTML = ''
     + '<div id="merge-modal" data-source="merge-doc" class="fixed inset-0 hidden z-[55] no-print pointer-events-none bg-transparent">'
     + '<div id="merge-panel" class="pointer-events-auto fixed bg-white dark:bg-slate-800 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-700 p-4 w-[min(420px,92vw)] h-[min(560px,78vh)] min-w-[300px] min-h-[320px] flex flex-col overflow-hidden">'
@@ -46,9 +50,10 @@
     + '<input id="merge-local-folder-input" type="file" multiple webkitdirectory directory accept=".md,.markdown,.mdown,.txt,.html,.htm,.docx,.pdf,.csv,.json" class="hidden" onchange="importMergeLocalFiles(this.files, true); this.value=\'\'">'
     + '</div>'
     + '<div class="flex items-center gap-2 mb-2 shrink-0"><span class="text-xs font-bold text-slate-500 dark:text-slate-300 shrink-0">결과 저장</span><div class="grid grid-cols-2 gap-1 flex-1">'
-    + '<button type="button" id="merge-target-local" onclick="switchMergeTarget(\'local\')" class="px-2 py-1 rounded border text-xs font-bold">Local 파일</button>'
-    + '<button type="button" id="merge-target-indb" onclick="switchMergeTarget(\'indb\')" class="px-2 py-1 rounded border text-xs font-bold">inDB</button>'
+    + '<button type="button" id="merge-target-local" onclick="switchMergeTarget(\'local\')" class="px-2 py-1 rounded border text-xs font-bold">가져온 폴더</button>'
+    + '<button type="button" id="merge-target-indb" onclick="switchMergeTarget(\'indb\')" class="px-2 py-1 rounded border text-xs font-bold">inDB Bind</button>'
     + '</div></div>'
+    + '<div class="mb-3 shrink-0 rounded-lg border border-slate-200 dark:border-slate-600 p-2"><div class="flex items-center justify-between gap-2 mb-1.5"><span class="text-xs font-bold text-slate-600 dark:text-slate-300">문서 순서</span><span id="merge-focused-label" class="text-[10px] text-slate-500 dark:text-slate-400 truncate">목록에서 문서를 선택하세요</span></div><div class="grid grid-cols-2 gap-2"><button type="button" id="merge-move-up-button" onclick="moveFocusedMergeItem(-1)" class="px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40" disabled><i data-lucide="arrow-up" class="inline w-4 h-4 mr-1"></i>위로</button><button type="button" id="merge-move-down-button" onclick="moveFocusedMergeItem(1)" class="px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40" disabled><i data-lucide="arrow-down" class="inline w-4 h-4 mr-1"></i>아래로</button></div></div>'
     + '<div class="flex gap-2 mb-3 shrink-0">'
     + '<input type="text" id="merge-bundle-name" placeholder="새로운 묶음 파일" class="flex-1 min-w-0 px-3 py-2 border border-slate-200 dark:border-slate-600 rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">'
     + '<button type="button" id="merge-bind-button" class="px-4 py-2 bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-800 rounded-md text-sm font-bold border border-slate-700 dark:border-slate-300 hover:bg-slate-700 dark:hover:bg-slate-300">Bind</button>'
@@ -84,6 +89,7 @@
     var style = document.createElement('style');
     style.id = 'merge-responsive-layout-style';
     style.textContent = [
+      '#merge-modal{z-index:95!important;}',
       '#merge-layout{display:flex;flex-direction:column;min-height:0;overflow:hidden;}',
       '#merge-menu-pane{flex:0 0 auto;min-width:0;}',
       '#merge-list-pane{display:flex;flex:1 1 auto;flex-direction:column;min-width:0;min-height:0;}',
@@ -118,14 +124,37 @@
     panel.dataset.layout = width >= WIDE_LAYOUT_MIN_WIDTH ? 'wide' : 'stacked';
   }
 
+  function getMergeWorkspaceRect() {
+    var toolbar = document.getElementById('toolbar');
+    var workspace = toolbar && toolbar.parentElement;
+    if (workspace && typeof workspace.getBoundingClientRect === 'function') {
+      var rect = workspace.getBoundingClientRect();
+      if (rect.width > 120 && rect.height > 120) {
+        return {
+          left: rect.left + 8,
+          top: rect.top + 8,
+          width: Math.max(104, rect.width - 16),
+          height: Math.max(104, rect.height - 16)
+        };
+      }
+    }
+    return {
+      left: 8,
+      top: 8,
+      width: Math.max(304, (window.innerWidth || 320) - 16),
+      height: Math.max(344, (window.innerHeight || 360) - 16)
+    };
+  }
+
   function applyMergeFullscreenRect() {
     var panel = getMergePanel();
     if (!panel) return;
+    var rect = getMergeWorkspaceRect();
     panel.style.position = 'fixed';
-    panel.style.left = '8px';
-    panel.style.top = '8px';
-    panel.style.width = 'calc(100vw - 16px)';
-    panel.style.height = 'calc(100vh - 16px)';
+    panel.style.left = Math.round(rect.left) + 'px';
+    panel.style.top = Math.round(rect.top) + 'px';
+    panel.style.width = Math.round(rect.width) + 'px';
+    panel.style.height = Math.round(rect.height) + 'px';
     panel.style.maxWidth = 'none';
     panel.style.maxHeight = 'none';
     panel.style.transform = 'none';
@@ -294,6 +323,10 @@
     var activeClass = 'px-2 py-1 rounded border border-indigo-600 dark:border-indigo-400 bg-indigo-600 dark:bg-indigo-500 text-white dark:text-slate-950 text-xs font-bold';
     var idleClass = 'px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold';
     if (localButton) {
+      localButton.textContent = mergeLocalDirectoryName ? mergeLocalDirectoryName + ' 폴더' : '가져온 폴더';
+      localButton.title = mergeLocalDirectoryName
+        ? '가져온 ' + mergeLocalDirectoryName + ' 폴더에 결과 저장'
+        : '가져온 폴더 또는 선택한 Local 폴더에 결과 저장';
       localButton.className = mergeTargetMode === 'local' ? activeClass : idleClass;
       localButton.setAttribute('aria-pressed', mergeTargetMode === 'local' ? 'true' : 'false');
     }
@@ -314,6 +347,7 @@
     mergeListState = mergeSourceMode === 'local' ? mergeLocalListState : mergeInDbListState;
     mergeListSearchQuery = '';
     mergeListSelectedOnly = false;
+    mergeFocusedIndex = -1;
     var searchInput = document.getElementById('merge-search-input');
     if (searchInput) searchInput.value = '';
     updateMergeSourceUI();
@@ -326,16 +360,65 @@
     if (input) input.click();
   }
 
-  function openMergeLocalFolder() {
+  async function collectMergeDirectoryFiles(directoryHandle, prefix, output) {
+    for await (var entry of directoryHandle.entries()) {
+      var name = entry[0];
+      var handle = entry[1];
+      var relativePath = prefix ? prefix + '/' + name : name;
+      if (handle.kind === 'directory') {
+        await collectMergeDirectoryFiles(handle, relativePath, output);
+      } else if (handle.kind === 'file') {
+        output.push({ file: await handle.getFile(), relativePath: relativePath, fileHandle: handle });
+      }
+    }
+  }
+
+  async function openMergeLocalFolder() {
+    if (typeof window.showDirectoryPicker === 'function') {
+      try {
+        var handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        var descriptors = [];
+        await collectMergeDirectoryFiles(handle, '', descriptors);
+        mergeLocalDirectoryHandle = handle;
+        mergeLocalDirectoryName = String(handle.name || '가져온');
+        updateMergeTargetUI();
+        await importMergeLocalFiles(descriptors, true, {
+          directoryHandle: handle,
+          directoryName: mergeLocalDirectoryName
+        });
+      } catch (error) {
+        if (error && error.name === 'AbortError') return;
+        setLocalImportStatus('폴더를 불러올 수 없습니다: ' + (error && error.message ? error.message : error), true);
+        toast('로컬 폴더를 불러오지 못했습니다.');
+      }
+      return;
+    }
     var input = document.getElementById('merge-local-folder-input');
     if (input) input.click();
   }
 
-  async function importMergeLocalFiles(fileList, fromFolder) {
-    var allFiles = Array.prototype.slice.call(fileList || []);
-    var supported = allFiles.filter(isSupportedLocalMergeFile).sort(function (a, b) {
-      var aPath = String(a.webkitRelativePath || a.name || '');
-      var bPath = String(b.webkitRelativePath || b.name || '');
+  async function importMergeLocalFiles(fileList, fromFolder, directoryContext) {
+    var allFiles = Array.prototype.slice.call(fileList || []).map(function (entry) {
+      return entry && entry.file ? entry : {
+        file: entry,
+        relativePath: String(entry && (entry.webkitRelativePath || entry.name) || ''),
+        fileHandle: null
+      };
+    });
+    if (fromFolder) {
+      if (directoryContext && directoryContext.directoryHandle) {
+        mergeLocalDirectoryHandle = directoryContext.directoryHandle;
+        mergeLocalDirectoryName = String(directoryContext.directoryName || mergeLocalDirectoryHandle.name || '가져온');
+      } else {
+        mergeLocalDirectoryHandle = null;
+        var firstPath = String(allFiles[0] && allFiles[0].relativePath || '');
+        mergeLocalDirectoryName = firstPath.indexOf('/') > 0 ? firstPath.split('/')[0] : '';
+      }
+      updateMergeTargetUI();
+    }
+    var supported = allFiles.filter(function (entry) { return isSupportedLocalMergeFile(entry.file); }).sort(function (a, b) {
+      var aPath = String(a.relativePath || (a.file && a.file.name) || '');
+      var bPath = String(b.relativePath || (b.file && b.file.name) || '');
       return aPath.localeCompare(bPath, undefined, { numeric: true, sensitivity: 'base' });
     });
     var skipped = allFiles.length - supported.length;
@@ -349,8 +432,9 @@
     var imported = [];
     var failures = [];
     for (var i = 0; i < supported.length; i++) {
-      var file = supported[i];
-      var relativePath = String(file.webkitRelativePath || file.name || ('문서 ' + (i + 1)));
+      var descriptor = supported[i];
+      var file = descriptor.file;
+      var relativePath = String(descriptor.relativePath || file.name || ('문서 ' + (i + 1)));
       setLocalImportStatus('변환 중 ' + (i + 1) + '/' + supported.length + ': ' + relativePath, false);
       try {
         var content = await convertLocalMergeFile(file);
@@ -361,7 +445,8 @@
           extension: getFileExtension(file.name).replace(/^\./, '').toUpperCase() || 'FILE',
           content: content,
           checked: true,
-          local: true
+          local: true,
+          fileHandle: descriptor.fileHandle || null
         });
       } catch (error) {
         failures.push(relativePath + ': ' + (error && error.message ? error.message : error));
@@ -377,6 +462,11 @@
     renderMergeList();
 
     var message = imported.length + '개 문서를 불러왔습니다.';
+    if (fromFolder && mergeLocalDirectoryName) {
+      message += mergeLocalDirectoryHandle
+        ? ' 결과를 ' + mergeLocalDirectoryName + ' 폴더에 직접 저장할 수 있습니다.'
+        : ' 결과 저장 시 ' + mergeLocalDirectoryName + ' 폴더를 다시 선택해야 합니다.';
+    }
     if (skipped) message += ' 지원하지 않는 파일 ' + skipped + '개는 제외했습니다.';
     if (failures.length) message += ' 변환 실패 ' + failures.length + '개.';
     setLocalImportStatus(message + (failures[0] ? ' ' + failures[0] : ''), failures.length > 0);
@@ -517,6 +607,7 @@
     var listEl = document.getElementById('merge-list');
     var selectedOnlyBtn = document.getElementById('merge-selected-only-btn');
     if (!listEl) return;
+    updateMergeMoveControls();
 
     if (selectedOnlyBtn) {
       selectedOnlyBtn.textContent = mergeListSelectedOnly ? '전체 보기' : '선택 보기';
@@ -552,8 +643,9 @@
       var title = (x.item && x.item.title) || '';
       var displayPath = (x.item && x.item.displayPath) || title;
       var sourceBadge = x.item && x.item.local ? (x.item.extension || 'Local') : 'inDB';
+      var focused = x.idx === mergeFocusedIndex;
       return '' +
-        '<div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600" data-idx="' + x.idx + '">' +
+        '<div class="flex items-center gap-2 p-2 bg-slate-50 dark:bg-slate-700 rounded-lg border border-slate-200 dark:border-slate-500 transition-colors hover:bg-slate-100 dark:hover:bg-slate-600 cursor-pointer" data-idx="' + x.idx + '" tabindex="0" role="option" aria-selected="' + (focused ? 'true' : 'false') + '" onclick="focusMergeItem(' + x.idx + ')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();focusMergeItem(' + x.idx + ')}"' + (focused ? ' style="outline:2px solid #6366f1;outline-offset:-2px"' : '') + '>' +
           '<i data-lucide="file-text" class="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0"></i>' +
           '<span class="flex-1 min-w-0" title="' + escapeHtml(displayPath) + '"><span class="block text-sm text-slate-700 dark:text-slate-100 truncate">' + escapeHtml(title) + '</span>' +
             (displayPath !== title ? '<span class="block text-[10px] text-slate-500 dark:text-slate-300 truncate">' + escapeHtml(displayPath) + '</span>' : '') + '</span>' +
@@ -562,8 +654,8 @@
             '<input type="checkbox" ' + (x.item.checked ? 'checked' : '') + ' onchange="toggleMergeItem(' + x.idx + ', this.checked)" class="rounded border-slate-300 dark:border-slate-600 text-indigo-600">' +
           '</label>' +
           '<div class="flex flex-col shrink-0">' +
-            '<button type="button" onclick="moveMergeItem(' + x.idx + ',-1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="위로 이동"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>' +
-            '<button type="button" onclick="moveMergeItem(' + x.idx + ',1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="아래로 이동"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>' +
+            '<button type="button" onclick="event.stopPropagation();moveMergeItem(' + x.idx + ',-1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="위로 이동"><i data-lucide="chevron-up" class="w-3.5 h-3.5"></i></button>' +
+            '<button type="button" onclick="event.stopPropagation();moveMergeItem(' + x.idx + ',1)" class="p-0.5 text-slate-500 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300" title="아래로 이동"><i data-lucide="chevron-down" class="w-3.5 h-3.5"></i></button>' +
           '</div>' +
           (x.item && x.item.local ? '<button type="button" onclick="removeMergeLocalItem(' + x.idx + ')" class="p-1 text-slate-400 hover:text-rose-600 dark:hover:text-rose-300 shrink-0" title="목록에서 제거"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>' : '') +
         '</div>';
@@ -651,6 +743,14 @@
       });
       mergePanelResizeObserver.observe(panel);
     }
+    var toolbar = document.getElementById('toolbar');
+    var workspace = toolbar && toolbar.parentElement;
+    if (workspace && typeof ResizeObserver === 'function' && !mergeWorkspaceResizeObserver) {
+      mergeWorkspaceResizeObserver = new ResizeObserver(function () {
+        if (panel.dataset.fullscreen === '1') applyMergeFullscreenRect();
+      });
+      mergeWorkspaceResizeObserver.observe(workspace);
+    }
     window.addEventListener('resize', function () {
       var modal = document.getElementById('merge-modal');
       if (modal && !modal.classList.contains('hidden')) applyDefaultMergePanelLayout();
@@ -675,6 +775,8 @@
     });
     mergeInDbListState = rootDocs.map(function (d) { return { id: d.id, title: d.title, checked: true, local: false }; });
     mergeLocalListState = [];
+    mergeLocalDirectoryHandle = null;
+    mergeLocalDirectoryName = '';
     try {
       mergeSourceMode = currentStorageSourceTab === 'local' ? 'local' : 'indb';
     } catch (_) {
@@ -684,6 +786,7 @@
     mergeListState = mergeSourceMode === 'local' ? mergeLocalListState : mergeInDbListState;
     mergeListSearchQuery = '';
     mergeListSelectedOnly = false;
+    mergeFocusedIndex = -1;
 
     var searchInput = document.getElementById('merge-search-input');
     if (searchInput) searchInput.value = '';
@@ -732,18 +835,54 @@
     if (mergeListSelectedOnly) renderMergeList();
   }
 
+  function updateMergeMoveControls() {
+    var upButton = document.getElementById('merge-move-up-button');
+    var downButton = document.getElementById('merge-move-down-button');
+    var label = document.getElementById('merge-focused-label');
+    var valid = mergeFocusedIndex >= 0 && mergeFocusedIndex < mergeListState.length;
+    if (upButton) upButton.disabled = !valid || mergeFocusedIndex === 0;
+    if (downButton) downButton.disabled = !valid || mergeFocusedIndex === mergeListState.length - 1;
+    if (label) {
+      label.textContent = valid
+        ? (mergeFocusedIndex + 1) + '/' + mergeListState.length + ' ' + String(mergeListState[mergeFocusedIndex].title || '')
+        : '목록에서 문서를 선택하세요';
+      label.title = valid ? String(mergeListState[mergeFocusedIndex].displayPath || mergeListState[mergeFocusedIndex].title || '') : '';
+    }
+  }
+
+  function focusMergeItem(idx) {
+    if (idx < 0 || idx >= mergeListState.length) return;
+    mergeFocusedIndex = idx;
+    renderMergeList();
+  }
+
+  function moveFocusedMergeItem(dir) {
+    if (mergeFocusedIndex < 0 || mergeFocusedIndex >= mergeListState.length) {
+      toast('먼저 목록에서 이동할 문서를 선택하세요.');
+      return;
+    }
+    moveMergeItem(mergeFocusedIndex, dir);
+  }
+
   function moveMergeItem(idx, dir) {
     var next = idx + dir;
-    if (next < 0 || next >= mergeListState.length) return;
+    mergeFocusedIndex = idx;
+    if (next < 0 || next >= mergeListState.length) {
+      updateMergeMoveControls();
+      return;
+    }
     var tmp = mergeListState[idx];
     mergeListState[idx] = mergeListState[next];
     mergeListState[next] = tmp;
+    mergeFocusedIndex = next;
     renderMergeList();
   }
 
   function removeMergeLocalItem(idx) {
     if (mergeSourceMode !== 'local' || idx < 0 || idx >= mergeLocalListState.length) return;
     mergeLocalListState.splice(idx, 1);
+    if (mergeFocusedIndex === idx) mergeFocusedIndex = -1;
+    else if (mergeFocusedIndex > idx) mergeFocusedIndex -= 1;
     mergeListState = mergeLocalListState;
     setLocalImportStatus(mergeLocalListState.length
       ? '현재 로컬 문서 ' + mergeLocalListState.length + '개가 목록에 있습니다.'
@@ -761,6 +900,68 @@
     if (!modal) return;
     modal.classList.add('hidden');
     modal.style.display = 'none';
+  }
+
+  function getMergeOutputFormat(selected) {
+    return selected.length && selected.every(function (item) {
+      return String(item.extension || '').toUpperCase() === 'DOCX';
+    }) ? 'docx' : 'md';
+  }
+
+  function getMergedDocxHtml(selected, contents) {
+    return contents.map(function (content, index) {
+      var label = selected[index] && (selected[index].displayPath || selected[index].title) || '';
+      return '<section data-merge-source="' + escapeHtml(label) + '">' + String(content || '') + '</section>';
+    }).join('<p></p>');
+  }
+
+  async function createMergedDocxBlob(html) {
+    if (typeof loadOptionalScript !== 'function') throw new Error('DOCX 내보내기 모듈을 찾을 수 없습니다.');
+    await loadOptionalScript('docxExport', function () {
+      return !!window.DocxExport && typeof window.DocxExport.createBlob === 'function';
+    });
+    return window.DocxExport.createBlob({
+      content: '',
+      html: html,
+      baseUrl: document.baseURI,
+      resolveImage: typeof resolveDocxExportImage === 'function' ? resolveDocxExportImage : undefined
+    });
+  }
+
+  async function ensureMergeOutputDirectory() {
+    if (mergeLocalDirectoryHandle) return mergeLocalDirectoryHandle;
+    if (typeof window.showDirectoryPicker !== 'function') return null;
+    try {
+      var handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      mergeLocalDirectoryHandle = handle;
+      mergeLocalDirectoryName = String(handle.name || '선택한');
+      updateMergeTargetUI();
+      return handle;
+    } catch (error) {
+      if (error && error.name === 'AbortError') return null;
+      throw error;
+    }
+  }
+
+  async function saveMergeBlobToDirectory(directoryHandle, fileName, blob) {
+    var fileHandle = await directoryHandle.getFileHandle(fileName, { create: true });
+    var writable = await fileHandle.createWritable();
+    try {
+      await writable.write(blob);
+    } finally {
+      await writable.close();
+    }
+  }
+
+  function downloadMergeBlob(fileName, blob) {
+    var url = URL.createObjectURL(blob);
+    var anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
   async function bindMerge() {
@@ -799,29 +1000,42 @@
       }));
     }
 
+    var outputFormat = mergeSourceMode === 'local' ? getMergeOutputFormat(selected) : 'md';
+    var mergedContent = outputFormat === 'docx'
+      ? getMergedDocxHtml(selected, contents)
+      : contents.join('\n\n---\n\n');
+    var safeName = bundleName.replace(/[\\/:*?"<>|]+/g, '_').replace(/\.(md|markdown|docx)$/i, '') || '문서 묶음';
+    var outputFileName = safeName + '.' + outputFormat;
+    var outputBlob = outputFormat === 'docx'
+      ? await createMergedDocxBlob(mergedContent)
+      : new Blob([mergedContent], { type: 'text/markdown;charset=utf-8' });
+
     var newDoc = {
       id: 'doc_' + Date.now(),
       title: bundleName,
-      content: contents.join('\n\n---\n\n'),
+      content: mergedContent,
       folderId: 'root',
       mergeDocGenerated: true,
       mergeDocSource: mergeSourceMode,
+      mergeDocOutputFormat: outputFormat,
+      mergeDocFileName: outputFileName,
       mergeDocItems: selected.map(function (item) { return item.displayPath || item.title || ''; }),
       updatedAt: new Date()
     };
+    if (outputFormat === 'docx') newDoc.mergeDocBlob = outputBlob;
 
     if (mergeTargetMode === 'local') {
-      var safeName = bundleName.replace(/[\\/:*?"<>|]+/g, '_').replace(/\.(md|markdown)$/i, '') || '문서 묶음';
-      var blob = new Blob([newDoc.content], { type: 'text/markdown;charset=utf-8' });
-      var url = URL.createObjectURL(blob);
-      var anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = safeName + '.md';
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      toast('문서 묶음을 Local 파일로 저장했습니다.');
+      var directoryHandle = await ensureMergeOutputDirectory();
+      if (directoryHandle) {
+        await saveMergeBlobToDirectory(directoryHandle, outputFileName, outputBlob);
+        toast('문서 묶음을 ' + mergeLocalDirectoryName + ' 폴더에 ' + outputFileName + '(으)로 저장했습니다.');
+      } else if (typeof window.showDirectoryPicker !== 'function') {
+        downloadMergeBlob(outputFileName, outputBlob);
+        toast('이 브라우저는 폴더 직접 저장을 지원하지 않아 다운로드 폴더에 저장했습니다.');
+      } else {
+        toast('저장할 Local 폴더를 선택하지 않아 취소했습니다.');
+        return;
+      }
       closeMergeModal();
       return;
     }
@@ -854,6 +1068,8 @@
   window.selectAllMergeItems = selectAllMergeItems;
   window.deselectAllMergeItems = deselectAllMergeItems;
   window.toggleMergeItem = toggleMergeItem;
+  window.focusMergeItem = focusMergeItem;
+  window.moveFocusedMergeItem = moveFocusedMergeItem;
   window.moveMergeItem = moveMergeItem;
   window.removeMergeLocalItem = removeMergeLocalItem;
   window.toggleSelectedOnlyMergeView = toggleSelectedOnlyMergeView;
@@ -870,6 +1086,8 @@
     selectAllMergeItems: selectAllMergeItems,
     deselectAllMergeItems: deselectAllMergeItems,
     toggleMergeItem: toggleMergeItem,
+    focusMergeItem: focusMergeItem,
+    moveFocusedMergeItem: moveFocusedMergeItem,
     moveMergeItem: moveMergeItem,
     toggleSelectedOnlyMergeView: toggleSelectedOnlyMergeView,
     closeMergeModal: closeMergeModal,
