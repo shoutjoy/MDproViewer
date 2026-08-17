@@ -99,6 +99,20 @@ async function ensureAiChatLoaded() {
     return true;
 }
 
+async function openAiJenaChat(openAfterLoad) {
+    try {
+        await ensureAiChatLoaded();
+        if (window.AIChat) {
+            if (openAfterLoad !== false && typeof window.AIChat.open === 'function') window.AIChat.open();
+            return true;
+        }
+    } catch (error) {
+        showToast('AI Jena를 불러오지 못했습니다: ' + (error && error.message ? error.message : error));
+    }
+    return false;
+}
+window.openAiJenaChat = openAiJenaChat;
+
 async function ensureMdMathEngineLoaded() {
     if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') return true;
     await loadOptionalScript('mathJax', function () {
@@ -118,11 +132,8 @@ function initializeLazyAiChatEntry() {
     };
     const loadChat = async function (openAfterLoad) {
         removeLauncher();
-        try {
-            await ensureAiChatLoaded();
-            if (openAfterLoad && window.AIChat && typeof window.AIChat.open === 'function') window.AIChat.open();
-        } catch (error) {
-            showToast('AI Jena를 불러오지 못했습니다: ' + (error && error.message ? error.message : error));
+        const loaded = await openAiJenaChat(openAfterLoad);
+        if (!loaded) {
             createLauncher();
         }
     };
@@ -143,6 +154,9 @@ function initializeLazyAiChatEntry() {
         checkbox.checked = localStorage.getItem(enabledKey) === '1';
         checkbox.addEventListener('change', function () {
             localStorage.setItem(enabledKey, checkbox.checked ? '1' : '0');
+            window.dispatchEvent(new CustomEvent('ai-jena-enabled-change', {
+                detail: { enabled: checkbox.checked }
+            }));
             if (checkbox.checked) loadChat(false);
             else removeLauncher();
         });

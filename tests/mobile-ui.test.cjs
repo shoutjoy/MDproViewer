@@ -30,11 +30,14 @@ test('mobile navigation reuses existing mode switching', () => {
     assert.match(css, /mobile-reading-focus/);
 });
 
-test('mobile dock follows the requested seven-item order', () => {
-    assert.match(js, /dock\.append\(menu, edit, view, preview, focus, theme, settings\)/);
-    for (const label of ['문서', '편집', '보기', 'PV', '집중보기', '다크\/라이트', '설정']) {
+test('mobile dock includes AI Jena beside settings and reuses the shared opener', () => {
+    assert.match(js, /dock\.append\(menu, edit, view, preview, focus, theme, settings, aiJena\)/);
+    for (const label of ['문서', '편집', '보기', 'PV', '집중보기', '다크\/라이트', '설정', 'Jena']) {
         assert.match(js, new RegExp("'" + label + "'"));
     }
+    assert.match(js, /button\('mobile-dock-button', 'Jena', 'J'/);
+    assert.match(js, /window\.openAiJenaChat/);
+    assert.match(css, /#ai-chat-lazy-launcher[\s\S]*display:\s*none\s*!important/);
 });
 
 test('header actions and document panel have dedicated mobile toggles', () => {
@@ -59,4 +62,13 @@ test('mobile zoom controls sit directly above the bottom dock', () => {
     assert.match(css, /--mobile-ui-zoom-height/);
     assert.match(css, /#footer-zoom-font/);
     assert.match(css, /bottom:\s*calc\(var\(--mobile-ui-dock-height\) \+ var\(--mobile-ui-safe-bottom\)\)/);
+});
+
+test('mobile zoom controls collapse to the right and persist that state', () => {
+    assert.match(js, /md_viewer_mobile_zoom_controls_collapsed_v1/);
+    assert.match(js, /mobile-zoom-controls-toggle/);
+    assert.match(js, /mobile-zoom-controls-collapsed/);
+    assert.match(css, /mobile-zoom-controls-collapsed #footer-zoom-font/);
+    assert.match(css, /left:\s*auto/);
+    assert.match(css, /width:\s*44px/);
 });

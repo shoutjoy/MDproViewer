@@ -5,10 +5,12 @@
     const EDIT_TOOLS_KEY = 'md_viewer_mobile_edit_tools_open_v1';
     const HEADER_FILE_MENU_KEY = 'md_viewer_mobile_header_file_menu_open_v1';
     const HEADER_FEATURE_MENU_KEY = 'md_viewer_mobile_header_feature_menu_open_v1';
+    const ZOOM_CONTROLS_COLLAPSED_KEY = 'md_viewer_mobile_zoom_controls_collapsed_v1';
     const media = window.matchMedia(MOBILE_QUERY);
     let editToolsOpen = false;
     let headerFileMenuOpen = false;
     let headerFeatureMenuOpen = false;
+    let zoomControlsCollapsed = false;
 
     function readEditToolsPreference() {
         try {
@@ -100,6 +102,46 @@
             const label = focusButton.querySelector('span:last-child');
             if (label) label.textContent = open ? '집중 종료' : '집중보기';
         }
+    }
+
+    function syncAiJenaState(detail) {
+        const aiJena = document.getElementById('mobile-ui-ai-jena-button');
+        if (!aiJena) return;
+        let enabled = false;
+        try {
+            enabled = localStorage.getItem('ss_ai_chat_enabled') === '1';
+        } catch (_) {}
+        if (detail && typeof detail.enabled === 'boolean') enabled = detail.enabled;
+        aiJena.classList.toggle('mobile-dock-ai-disabled', !enabled);
+        const open = !!(window.AIChat && typeof window.AIChat.isOpen === 'function' && window.AIChat.isOpen());
+        aiJena.setAttribute('aria-pressed', open ? 'true' : 'false');
+    }
+
+    function setZoomControlsCollapsed(collapsed, persist) {
+        zoomControlsCollapsed = !!collapsed;
+        document.body.classList.toggle('mobile-zoom-controls-collapsed', zoomControlsCollapsed);
+        const toggle = document.getElementById('mobile-zoom-controls-toggle');
+        if (toggle) {
+            toggle.textContent = zoomControlsCollapsed ? '‹' : '›';
+            toggle.title = zoomControlsCollapsed ? '확대/축소 메뉴 펼치기' : '확대/축소 메뉴 오른쪽으로 접기';
+            toggle.setAttribute('aria-label', toggle.title);
+            toggle.setAttribute('aria-expanded', zoomControlsCollapsed ? 'false' : 'true');
+        }
+        if (persist) writeBooleanPreference(ZOOM_CONTROLS_COLLAPSED_KEY, zoomControlsCollapsed);
+    }
+
+    function installZoomControlsToggle() {
+        const controls = document.getElementById('footer-zoom-font');
+        if (!controls || document.getElementById('mobile-zoom-controls-toggle')) return;
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.id = 'mobile-zoom-controls-toggle';
+        toggle.className = 'mobile-ui-only mobile-zoom-controls-toggle';
+        toggle.addEventListener('click', function () {
+            setZoomControlsCollapsed(!zoomControlsCollapsed, true);
+        });
+        controls.appendChild(toggle);
+        setZoomControlsCollapsed(zoomControlsCollapsed, false);
     }
 
     function syncModeState() {
@@ -253,8 +295,15 @@
         });
         settings.id = 'mobile-ui-settings-button';
 
-        dock.append(menu, edit, view, preview, focus, theme, settings);
+        const aiJena = button('mobile-dock-button', 'Jena', 'J', function () {
+            if (typeof window.openAiJenaChat === 'function') window.openAiJenaChat();
+        });
+        aiJena.id = 'mobile-ui-ai-jena-button';
+        aiJena.title = 'AI Jena 열기';
+
+        dock.append(menu, edit, view, preview, focus, theme, settings, aiJena);
         document.body.appendChild(dock);
+        syncAiJenaState();
     }
 
     function syncThemeState() {
@@ -289,6 +338,8 @@
         createHeaderMenuToggle();
         createToolbarHead();
         createMobileDock();
+        zoomControlsCollapsed = readBooleanPreference(ZOOM_CONTROLS_COLLAPSED_KEY);
+        installZoomControlsToggle();
         installSidebarCloseButton();
         editToolsOpen = readEditToolsPreference();
         headerFileMenuOpen = readBooleanPreference(HEADER_FILE_MENU_KEY);
@@ -299,6 +350,13 @@
         applyViewportMode();
         syncThemeState();
         bindKeyboardAwareness();
+
+        window.addEventListener('ai-jena-enabled-change', function (event) {
+            syncAiJenaState(event && event.detail);
+        });
+        window.addEventListener('ai-jena-layout-change', function (event) {
+            syncAiJenaState(event && event.detail);
+        });
 
         const editor = document.getElementById('content-viewport');
         const viewer = document.getElementById('viewer-container');
@@ -341,6 +399,7 @@
         },
         closeSidebar: function () { setSidebarOpen(false); },
         toggleHeaderFileMenu: function () { setHeaderGroupOpen('file', !headerFileMenuOpen, true); },
-        toggleHeaderFeatureMenu: function () { setHeaderGroupOpen('feature', !headerFeatureMenuOpen, true); }
+        toggleHeaderFeatureMenu: function () { setHeaderGroupOpen('feature', !headerFeatureMenuOpen, true); },
+        toggleZoomControls: function () { setZoomControlsCollapsed(!zoomControlsCollapsed, true); }
     };
 })();

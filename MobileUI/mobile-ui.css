@@ -11,7 +11,12 @@
     body.mobile-ui-active {
         --mobile-ui-dock-height: 64px;
         --mobile-ui-zoom-height: 44px;
+        --mobile-ui-zoom-reserved-height: var(--mobile-ui-zoom-height);
         --mobile-ui-safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    body.mobile-ui-active.mobile-zoom-controls-collapsed {
+        --mobile-ui-zoom-reserved-height: 0px;
     }
 
     body.mobile-ui-active .mobile-ui-only {
@@ -202,8 +207,8 @@
     }
 
     body.mobile-ui-active #viewer-container {
-        padding: 1rem 0.9rem calc(var(--mobile-ui-dock-height) + var(--mobile-ui-zoom-height) + var(--mobile-ui-safe-bottom) + 1rem) !important;
-        scroll-padding-bottom: calc(var(--mobile-ui-dock-height) + var(--mobile-ui-zoom-height) + 1rem);
+        padding: 1rem 0.9rem calc(var(--mobile-ui-dock-height) + var(--mobile-ui-zoom-reserved-height) + var(--mobile-ui-safe-bottom) + 1rem) !important;
+        scroll-padding-bottom: calc(var(--mobile-ui-dock-height) + var(--mobile-ui-zoom-reserved-height) + 1rem);
     }
 
     body.mobile-ui-active #viewer.markdown-body {
@@ -228,7 +233,7 @@
     }
 
     body.mobile-ui-active #content-viewport {
-        padding: 0.75rem 0.7rem calc(var(--mobile-ui-dock-height) + var(--mobile-ui-zoom-height) + var(--mobile-ui-safe-bottom) + 0.75rem) !important;
+        padding: 0.75rem 0.7rem calc(var(--mobile-ui-dock-height) + var(--mobile-ui-zoom-reserved-height) + var(--mobile-ui-safe-bottom) + 0.75rem) !important;
     }
 
     body.mobile-ui-active #editor-doc-wrap,
@@ -349,6 +354,7 @@
         justify-content: center;
         gap: 0.3rem !important;
         padding: 0.3rem 0.45rem !important;
+        padding-right: 2.9rem !important;
         border: 1px solid rgba(148, 163, 184, 0.4) !important;
         border-right: 0 !important;
         border-left: 0 !important;
@@ -358,6 +364,38 @@
         overscroll-behavior-x: contain;
         scrollbar-width: none;
         -webkit-overflow-scrolling: touch;
+        transition: width 160ms ease, left 160ms ease, background-color 160ms ease;
+    }
+
+    body.mobile-ui-active .mobile-zoom-controls-toggle {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 36px;
+        height: 36px;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #cbd5e1;
+        border-radius: 0.65rem;
+        background: #fff;
+        color: #475569;
+        font-size: 1.35rem;
+        font-weight: 900;
+        line-height: 1;
+        touch-action: manipulation;
+    }
+
+    body.mobile-ui-active.mobile-zoom-controls-collapsed #footer-zoom-font {
+        left: auto;
+        width: 44px;
+        padding: 0 !important;
+        border-left: 1px solid rgba(148, 163, 184, 0.4) !important;
+        border-radius: 0.75rem 0 0 0;
+        overflow: hidden;
+    }
+
+    body.mobile-ui-active.mobile-zoom-controls-collapsed #footer-zoom-font > :not(#mobile-zoom-controls-toggle) {
+        display: none !important;
     }
 
     body.mobile-ui-active #footer-zoom-font::-webkit-scrollbar {
@@ -370,13 +408,15 @@
         box-shadow: 0 -5px 16px rgba(2, 6, 23, 0.28);
     }
 
+    .dark body.mobile-ui-active .mobile-zoom-controls-toggle {
+        border-color: #475569;
+        background: #1e293b;
+        color: #e2e8f0;
+    }
+
     body.mobile-ui-active #ai-chat-lazy-launcher,
     body.mobile-ui-active #ai-chat-launcher {
-        right: 0.75rem !important;
-        bottom: calc(var(--mobile-ui-dock-height) + var(--mobile-ui-zoom-height) + var(--mobile-ui-safe-bottom) + 0.75rem) !important;
-        min-width: 44px;
-        min-height: 44px;
-        z-index: 88 !important;
+        display: none !important;
     }
 
     body.mobile-ui-active #ai-chat-lazy-launcher .ai-chat-launcher-label,
@@ -428,6 +468,10 @@
 
     body.mobile-ui-active .mobile-dock-button:disabled {
         opacity: 0.42;
+    }
+
+    body.mobile-ui-active .mobile-dock-button.mobile-dock-ai-disabled {
+        display: none !important;
     }
 
     body.mobile-ui-active.mobile-reading-focus .app-header,
