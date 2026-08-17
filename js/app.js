@@ -13301,12 +13301,17 @@ function ensureSidebarAILoaded() {
                     if (window._abortController === ctrl) window._abortController = null;
                 }
             },
-            callScholarAI: function (prompt, systemInstruction, useSearch, modelOverride) {
+            callScholarAI: function (prompt, systemInstruction, useSearch, modelOverride, requestOptions) {
+                const special = requestOptions && typeof requestOptions === 'object' ? requestOptions : {};
                 return getScholarAIProviderRuntime().complete({
                     prompt: prompt,
                     systemInstruction: systemInstruction,
                     useSearch: useSearch,
-                    model: modelOverride
+                    model: modelOverride,
+                    responseMode: special.mode,
+                    reasoning: special.reasoning,
+                    maxTokens: special.maxOutputTokens,
+                    timeoutMs: special.timeoutMs
                 });
             },
             listScholarAIGeminiModels: function () { return listAIStudioTextModels(); },
@@ -13548,7 +13553,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260812-slider-maker-1';
+    const aiSidebarScriptVersion = '20260817-quick-progress-1';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -13561,9 +13566,23 @@ function ensureSidebarAILoaded() {
         showToast('Failed to load sidebar-ai.js');
     };
     script.onload = () => {
-        injectSidebarAIHtml().then(function (ok) {
-            if (ok !== false && typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
-        });
+        const upgradeScript = document.createElement('script');
+        try {
+            const upgradeUrl = new URL('./sidebarAI/scholar-ai-upgrades.js', base);
+            upgradeUrl.searchParams.set('v', aiSidebarScriptVersion);
+            upgradeScript.src = upgradeUrl.href;
+        } catch (e) {
+            upgradeScript.src = './sidebarAI/scholar-ai-upgrades.js?v=' + aiSidebarScriptVersion;
+        }
+        upgradeScript.charset = 'utf-8';
+        upgradeScript.onerror = function () { showToast('Failed to load ScholarAI upgrades'); };
+        upgradeScript.onload = function () {
+            injectSidebarAIHtml().then(function (ok) {
+                if (ok !== false && typeof window.sidebarAIInit === 'function') window.sidebarAIInit();
+                if (ok !== false && typeof window.scholarAIUpgradeInit === 'function') window.scholarAIUpgradeInit();
+            });
+        };
+        document.body.appendChild(upgradeScript);
     };
     window.viewerSwitchToEdit = function () { toggleMode('edit'); };
     window.viewerBuildNav = function () {};

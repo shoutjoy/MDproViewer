@@ -41,6 +41,17 @@
       <div class="scholar-ai-options-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <button type="button" class="sa-btn ghost" id="sa-pre-prompt-btn" onclick="toggleScholarAIPrePrompt()" style="font-size:11px">Pre-prompt</button>
         <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">Model</button>
+        <div id="scholar-ai-quick-wrap" class="scholar-ai-quick-wrap">
+          <button type="button" id="scholar-ai-quick-toggle" class="sa-btn ghost scholar-ai-quick-toggle" onclick="toggleScholarAIQuickMenu(event)" aria-haspopup="menu" aria-expanded="false">빠른기능 ▾</button>
+          <div id="scholar-ai-quick-menu" class="scholar-ai-quick-menu" role="menu">
+            <button type="button" id="scholar-ai-academic-ida-btn" class="sa-btn ghost scholar-ai-tone-apply-btn" onclick="scholarAIQuickAction('tone')" role="menuitem">~이다 문체변경</button>
+            <div class="scholar-ai-translation-control" title="선택 텍스트를 대학원 수준 이상의 학술 문체로 번역">
+              <button type="button" id="scholar-ai-academic-translate-btn" class="sa-btn ghost scholar-ai-translation-btn" onclick="scholarAIQuickAction('translate')">학술번역</button>
+              <select id="scholar-ai-translation-direction" aria-label="학술번역 방향" onclick="event.stopPropagation()"><option value="en-ko">EN→KO</option><option value="ko-en">KO→EN</option></select>
+            </div>
+            <button type="button" id="scholar-ai-slide-generate-btn" class="sa-btn ghost scholar-ai-slide-generate-btn" onclick="scholarAIQuickAction('slides')" role="menuitem">슬라이드 생성</button>
+          </div>
+        </div>
       </div>
       <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px 0">
@@ -78,6 +89,10 @@
           <option value="academic_eumham">Academic (-eum/-ham)</option>
           <option value="general_polite">General polite</option>
         </select>
+        <label for="scholar-ai-response-mode-select" style="font-size:10px;margin:8px 0 4px">응답 모드</label>
+        <select id="scholar-ai-response-mode-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8"><option value="quick">빠른 응답</option><option value="reasoning">추론 모드</option></select>
+        <label for="scholar-ai-response-mode-select" style="font-size:10px;margin:8px 0 4px">응답 모드</label>
+        <select id="scholar-ai-response-mode-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8"><option value="quick">빠른 응답</option><option value="reasoning">추론 모드</option></select>
       </div>
       <label>Selected text</label>
       <div class="scholar-ai-selected-wrap" id="scholar-ai-selected-wrap">
@@ -107,6 +122,7 @@
           <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
           <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
           <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
+          <button type="button" id="scholar-ai-insert-translation-footnotes" style="display:none" onclick="scholarAIInsertDoc(6); closeScholarAIInsertMenu()">번역 + 주요 용어 각주 삽입</button>
           <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">ToGenslide</button>
           <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
@@ -287,6 +303,17 @@
       <div class="scholar-ai-options-row" style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
         <button type="button" class="sa-btn ghost" id="sa-pre-prompt-btn" onclick="toggleScholarAIPrePrompt()" style="font-size:11px">Pre-prompt</button>
         <button type="button" class="sa-btn ghost" id="sa-model-btn" onclick="toggleScholarAIModelSelect()" style="font-size:11px">Model</button>
+        <div id="scholar-ai-quick-wrap" class="scholar-ai-quick-wrap">
+          <button type="button" id="scholar-ai-quick-toggle" class="sa-btn ghost scholar-ai-quick-toggle" onclick="toggleScholarAIQuickMenu(event)" aria-haspopup="menu" aria-expanded="false">빠른기능 ▾</button>
+          <div id="scholar-ai-quick-menu" class="scholar-ai-quick-menu" role="menu">
+            <button type="button" id="scholar-ai-academic-ida-btn" class="sa-btn ghost scholar-ai-tone-apply-btn" onclick="scholarAIQuickAction('tone')" role="menuitem">~이다 문체변경</button>
+            <div class="scholar-ai-translation-control" title="선택 텍스트를 대학원 수준 이상의 학술 문체로 번역">
+              <button type="button" id="scholar-ai-academic-translate-btn" class="sa-btn ghost scholar-ai-translation-btn" onclick="scholarAIQuickAction('translate')">학술번역</button>
+              <select id="scholar-ai-translation-direction" aria-label="학술번역 방향" onclick="event.stopPropagation()"><option value="en-ko">EN→KO</option><option value="ko-en">KO→EN</option></select>
+            </div>
+            <button type="button" id="scholar-ai-slide-generate-btn" class="sa-btn ghost scholar-ai-slide-generate-btn" onclick="scholarAIQuickAction('slides')" role="menuitem">슬라이드 생성</button>
+          </div>
+        </div>
       </div>
       <div id="scholar-ai-pre-prompt-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px 0">
@@ -353,6 +380,7 @@
           <button type="button" onclick="scholarAIInsertDoc(0); closeScholarAIInsertMenu()">Insert at cursor</button>
           <button type="button" onclick="scholarAIInsertDoc(1); closeScholarAIInsertMenu()">Append to document</button>
           <button type="button" onclick="scholarAIInsertDoc(2); closeScholarAIInsertMenu()">Replace selection</button>
+          <button type="button" id="scholar-ai-insert-translation-footnotes" style="display:none" onclick="scholarAIInsertDoc(6); closeScholarAIInsertMenu()">번역 + 주요 용어 각주 삽입</button>
           <button type="button" onclick="scholarAIInsertDoc(3); closeScholarAIInsertMenu()">ToGenslide</button>
           <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
@@ -659,10 +687,17 @@
   function scholarAIInitUIFontControls() {
     var panel = document.getElementById('scholar-ai-sidebar');
     if (!panel) return;
-    var row = panel.querySelector('.scholar-ai-options-row');
+    var inner = panel.querySelector('.scholar-ai-inner');
+    var dock = panel.querySelector('#scholar-ai-ui-font-dock');
+    if (!dock && inner) {
+      dock = document.createElement('div');
+      dock.id = 'scholar-ai-ui-font-dock';
+      dock.className = 'scholar-ai-ui-font-dock';
+      inner.appendChild(dock);
+    }
     var controls = panel.querySelector('#scholar-ai-ui-font-controls');
     var createdControls = false;
-    if (!controls && row) {
+    if (!controls && dock) {
       createdControls = true;
       controls = document.createElement('div');
       controls.id = 'scholar-ai-ui-font-controls';
@@ -673,13 +708,15 @@
         '<button type="button" class="sa-ui-font-btn" data-font-delta="-1" title="ScholarAI 글자 작게" aria-label="ScholarAI 글자 작게">A−</button>' +
         '<span id="scholar-ai-ui-font-value" class="sa-ui-font-value">' + SA_UI_FONT_DEFAULT + 'px</span>' +
         '<button type="button" class="sa-ui-font-btn" data-font-delta="1" title="ScholarAI 글자 크게" aria-label="ScholarAI 글자 크게">A+</button>';
-      row.appendChild(controls);
+      dock.appendChild(controls);
       var buttons = controls.querySelectorAll('[data-font-delta]');
       for (var i = 0; i < buttons.length; i++) {
         buttons[i].addEventListener('click', function () {
           scholarAIAdjustUIFont(parseInt(this.getAttribute('data-font-delta') || '0', 10));
         });
       }
+    } else if (controls && dock && controls.parentNode !== dock) {
+      dock.appendChild(controls);
     }
     scholarAIApplyUIFontSize(scholarAIReadUIFontSize(), false, createdControls || !__scholarAIUIFontInitialized);
     __scholarAIUIFontInitialized = true;

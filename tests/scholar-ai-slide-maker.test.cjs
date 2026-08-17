@@ -16,8 +16,10 @@ test('Slider Maker preset produces a GenSlide-ready HTML slide instruction', () 
   assert.match(preset, /Professional Slide Architect \/ HTML Presentation Designer/);
   assert.match(preset, /even when the Prompt \/ Question field is empty/);
   assert.match(preset, /one complete self-contained HTML document/);
-  assert.match(preset, /1280 x 720 \(16:9\)/);
-  assert.match(preset, /class="slide"/);
+  assert.match(preset, /1600 x 900 \(16:9\)/);
+  assert.match(preset, /class="slide-container"/);
+  assert.match(preset, /Canvas or SVG charts/);
+  assert.match(preset, /at least 24px for cells and 26px for headers/);
   assert.match(preset, /sent directly to GenSlide/);
 });
 
@@ -44,4 +46,3 @@ test('empty Slider Maker command uses slide generation and multi-slide GenSlide 
   assert.match(genSlide, /d\.type !== "mdv-scholar-genslide-insert"/);
   assert.match(genSlide, /mode === "multi"/);
 });
-

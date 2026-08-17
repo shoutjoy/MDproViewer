@@ -40,6 +40,12 @@
     return '';
   }
 
+  function getTranslationFootnoteText() {
+    var d = deps();
+    if (typeof d.getTranslationFootnoteText === 'function') return String(d.getTranslationFootnoteText() || '');
+    return '';
+  }
+
   function setResultTabInsert() {
     var d = deps();
     if (typeof d.setResultTab === 'function') d.setResultTab('insert');
@@ -221,9 +227,9 @@
   }
 
   function scholarAIInsertDoc(mode) {
-    var resultText = getInsertResultText();
+    var resultText = mode === 6 ? getTranslationFootnoteText() : getInsertResultText();
     if (!resultText) {
-      alert('There is no ScholarAI result to insert.');
+      alert(mode === 6 ? '삽입할 학술번역 주요 용어 풀이가 없습니다.' : 'There is no ScholarAI result to insert.');
       return;
     }
 
