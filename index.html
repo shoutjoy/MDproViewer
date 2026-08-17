@@ -35,7 +35,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;viewTableResize=20260815-2&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260815-supsub-1&amp;sidebarControls=20260812-4&amp;miniToc=20260815-responsive-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;docxTableContrast=20260817-1&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260815-supsub-1&amp;sidebarControls=20260812-4&amp;miniToc=20260815-responsive-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1" charset="utf-8">
     <link rel="stylesheet" href="./MobileUI/mobile-ui.css?v=20260817-4" charset="utf-8">
     <link rel="stylesheet" href="./js/inDB/inDB.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
@@ -924,6 +924,9 @@
                                     class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">HTML정리</button>
                                 <button type="button" onclick="convertSelectionMarkdownToHtml(); closeTidyQuickMenu && closeTidyQuickMenu()"
                                     class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">MD2HTML</button>
+                                <button type="button" onclick="convertHtmlToMarkdownInEditor()"
+                                    class="tidy-action-button px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                    title="선택 영역 또는 문서 전체의 HTML을 Markdown으로 변환하고 제한 항목을 안내">HTML2MD</button>
                                 <button type="button" onclick="convertBase64ImagesToInternalInEditor()"
                                     class="tidy-action-button px-2 py-1 rounded border border-emerald-300 dark:border-emerald-700 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                                     title="선택 영역 또는 문서 전체의 Markdown/HTML Base64 이미지를 IndexedDB internal:// 링크로 변환">base64ToUrl</button>
@@ -2924,7 +2927,12 @@
     defer>
 </script>
 <script
-    src="./js/Tidy/tidy-actions.js?v=20260815-url2base64-1"
+    src="./js/Tidy/tidy-html-to-markdown.js?v=20260817-html2md-1"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/Tidy/tidy-actions.js?v=20260817-html2md-1"
     charset="utf-8"
     defer>
 </script>
@@ -2991,7 +2999,7 @@
 
 <!-- Mammoth는 DOCX 파일을 열 때만 app.js가 지연 로드한다. -->
 <script
-    src="./sidebar_left/local-folder-explorer.js?v=20260815-storage-safety-1"
+    src="./sidebar_left/local-folder-explorer.js?v=20260817-local-file-refresh-1"
     charset="utf-8"
     defer>
 </script>
@@ -3001,12 +3009,12 @@
     defer>
 </script>
 <script
-    src="./js/viewmode/table-resize.js?v=20260815-2"
+    src="./js/viewmode/table-resize.js?v=20260817-row-column-1"
     charset="utf-8"
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-insert-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;docxImport=20260815-table-fidelity-2&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260815-2&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-open-menu-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1"
+    src="./js/app.js?v=20260811-note-cover-insert-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;feature=templates-open-menu-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1"
     charset="utf-8"
     defer>
 </script>

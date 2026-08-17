@@ -117,13 +117,16 @@ Git은 빈 폴더를 저장하지 않으므로 `폴더 생성`은 선택한 경�
 | --- | --- |
 | `integration/scholar-search-app.js` | `ScholarSearchApp`, 메인 앱 연결·화면 진입점·지연 로드·표시 설정 |
 | `ui/scholarsearch-shell.js` | `ScholarSearchShell`, 검색창·Crossref 결과 탐색기·저장·GitHub·참고문헌 브리지 |
-| `scholarsearch-shell.html` | 검색창과 결과 탐색기의 HTML 원본 |
+| `ui/scholarsearch-shell.html` | 검색창과 결과 탐색기의 HTML 원본 |
 | `crossref/search.js` | `ScholarCrossrefSearch`, Crossref API 조회·정규화·Markdown/APA 변환 |
+| `ai/academic-search.js` | AI Jena용 OpenAlex 검색·Crossref 보강·근거/Markdown 변환 |
 | `reference/scholarref.js` | `ScholarRef`, 참고문헌 저장·검색·삽입·내보내기·GitHub 연동 |
 | `styles/scholarref.css` | 학술검색과 참고문헌 화면 스타일 |
 | `tools/sync-fallback-from-html.js` | HTML 원본을 셸의 내장 폴백 템플릿과 동기화 |
 
-루트의 `scholarref.js`, `crossref-search.js`, `scholarsearch-shell.js`, `scholarref.css`, `sync-fallback-from-html.js`는 기존 경로를 사용하는 코드와 문서를 위한 호환 진입점이다. 실제 구현은 위 하위 폴더에 있다.
+루트의 `scholarref.js`, `crossref-search.js`, `scholarsearch-shell.js`, `scholarref.css`, `sync-fallback-from-html.js`는 기존 경로를 사용하는 코드와 문서를 위한 호환 진입점이다. `AI_App/aiChat/academic-search.js`도 이전 경로 호환 로더만 유지한다. 실제 학술검색 구현은 위 하위 폴더에 있다.
+
+`ScholarAI` 사이드바, AI 모델 공급자, SQLite/inDB 저장 서비스와 설정 UI는 학술검색 전용 코드가 아니라 다른 기능도 함께 사용하는 독립·공용 모듈이므로 `Scholarref`로 이동하지 않는다. `Scholarref`는 이 모듈들의 공개 API만 연결해 사용한다.
 
 ## 8. 객체 연결 방식
 
@@ -148,13 +151,14 @@ ScholarSearch.App         // 통합 진입점
 ScholarSearch.Shell       // 로드된 검색/결과 UI 객체
 ScholarSearch.Crossref    // 로드된 Crossref 검색 객체
 ScholarSearch.References  // 로드된 참고문헌 객체
+ScholarSearch.AcademicSearch // AI Jena용 OpenAlex/Crossref 검색 객체
 ```
 
 `ScholarSearchApp.open()`을 처음 호출할 때 무거운 참고문헌, Crossref, 결과 셸 스크립트를 순서대로 불러온다. 기존 `openScholarSearchModal()` 호출은 호환 래퍼를 통해 같은 객체로 연결된다.
 
 ## 9. HTML 폴백 동기화
 
-`scholarsearch-shell.html`을 수정한 뒤에는 반드시 폴백 템플릿을 동기화한다.
+`ui/scholarsearch-shell.html`을 수정한 뒤에는 반드시 폴백 템플릿을 동기화한다.
 
 ```powershell
 node js\Scholarref\sync-fallback-from-html.js

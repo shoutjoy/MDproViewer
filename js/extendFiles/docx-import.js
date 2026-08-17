@@ -106,6 +106,17 @@
     return 'transparent';
   }
 
+  function needsDarkText(backgroundColor) {
+    var hex = String(backgroundColor || '').replace(/^#/, '');
+    if (!/^[0-9a-f]{6}$/i.test(hex)) return false;
+    var channels = [0, 2, 4].map(function (offset) {
+      var value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+    });
+    var luminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+    return luminance > 0.42;
+  }
+
   function borderCss(borderNode) {
     if (!borderNode) return '';
     var kind = String(wordValue(borderNode, 'single')).toLowerCase();
@@ -178,7 +189,12 @@
       var width = widthToCss(localChild(properties, 'tcW'));
       if (width) appendStyle(cell, 'width', width);
       var shading = localChild(properties, 'shd');
-      if (shading) appendStyle(cell, 'background-color', shadingColor(shading, themeColors));
+      if (shading) {
+        var backgroundColor = shadingColor(shading, themeColors);
+        appendStyle(cell, 'background-color', backgroundColor);
+        if (needsDarkText(backgroundColor)) cell.dataset.docxTextContrast = 'dark';
+        else delete cell.dataset.docxTextContrast;
+      }
       var valign = String(wordValue(localChild(properties, 'vAlign'), '')).toLowerCase();
       if (valign) appendStyle(cell, 'vertical-align', valign === 'center' ? 'middle' : valign);
       var direction = String(wordValue(localChild(properties, 'textDirection'), '')).toLowerCase();

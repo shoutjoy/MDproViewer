@@ -22,6 +22,10 @@ assert(explorer.includes('window.LocalFolderExplorer = {'), 'Explorer public API
 assert(app.includes("currentStorageSourceTab === 'local'"), 'Local storage list routing is missing');
 assert(app.includes('window.openFileFromLocalFolderExplorer'), 'Local file opening bridge is missing');
 assert(explorer.includes('window.openFileFromLocalFolderExplorer(file, node.path, node.handle)'), 'Local file handle is not passed to the editor');
+assert(explorer.includes('await window.refreshCurrentLocalFileFromDisk()'), 'Explorer refresh does not reload the active Local file');
+assert(app.includes('window.refreshCurrentLocalFileFromDisk = refreshCurrentLocalFileFromDisk'), 'Local file refresh bridge is missing');
+assert(app.includes("'파일을 새로고침했습니다: '"), 'Local file refresh success message is missing');
+assert.match(app, /openDocxInEditor\(file, \{[\s\S]*?skipSavePrompt: true,[\s\S]*?successMessage: successMessage/, 'DOCX refresh does not reuse the Local file handle');
 assert(app.includes('async function saveCurrentLocalFile()'), 'Local source write-back function is missing');
 assert.match(app, /function getCurrentDocumentStorageOrigin\(\)[\s\S]*?currentLocalFileRef[\s\S]*?source: 'local'/, 'Local source identity is not preserved for safe saving');
 assert.match(app, /async function saveToSelectedStorage\(targetSource\)[\s\S]*?targetSource === 'local'[\s\S]*?saveCurrentLocalFile\(\)/, 'Save routing does not support the Local source');

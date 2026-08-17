@@ -82,17 +82,17 @@
     var base = getDocumentBase();
     var candidates = [];
     try {
-      var u1 = new URL('./js/Scholarref/scholarsearch-shell.html', base);
+      var u1 = new URL('./js/Scholarref/ui/scholarsearch-shell.html', base);
       u1.searchParams.set('v', SHELL_TEMPLATE_VERSION);
       candidates.push(u1.href);
     } catch (_) {}
-    candidates.push('./js/Scholarref/scholarsearch-shell.html?v=' + SHELL_TEMPLATE_VERSION);
+    candidates.push('./js/Scholarref/ui/scholarsearch-shell.html?v=' + SHELL_TEMPLATE_VERSION);
     try {
-      var u2 = new URL('./Scholarref/scholarsearch-shell.html', base);
+      var u2 = new URL('./Scholarref/ui/scholarsearch-shell.html', base);
       u2.searchParams.set('v', SHELL_TEMPLATE_VERSION);
       candidates.push(u2.href);
     } catch (_) {}
-    candidates.push('./Scholarref/scholarsearch-shell.html?v=' + SHELL_TEMPLATE_VERSION);
+    candidates.push('./Scholarref/ui/scholarsearch-shell.html?v=' + SHELL_TEMPLATE_VERSION);
     return candidates;
   }
 

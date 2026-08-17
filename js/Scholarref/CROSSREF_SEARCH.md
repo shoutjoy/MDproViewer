@@ -82,7 +82,7 @@ Crossref가 초록을 제공하지 않는 문헌은 `Crossref 공개 메타데�
   - 초록 우선 검색과 서지정보 보충
   - DOI·제목 기반 중복 제거
   - 결과 Markdown 변환
-- `scholarsearch-shell.html`
+- `ui/scholarsearch-shell.html`
   - Crossref 체크박스와 개수 입력 UI
   - 내부 MD/PV 결과 편집창 구조
 - `ui/scholarsearch-shell.js`

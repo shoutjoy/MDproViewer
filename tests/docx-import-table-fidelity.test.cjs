@@ -10,10 +10,10 @@ const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const browserFixture = fs.readFileSync(path.join(root, 'tests', 'docx-import-browser-fixture.html'), 'utf8');
 
 test('DOCX open uses the OOXML table fidelity layer after Mammoth', () => {
-  assert.match(app, /docxImport:\s*'\.\/js\/extendFiles\/docx-import\.js\?v=20260815-table-fidelity-2'/);
+  assert.match(app, /docxImport:\s*'\.\/js\/extendFiles\/docx-import\.js\?v=20260817-dark-table-contrast-1'/);
   assert.match(app, /await loadOptionalScript\('mammoth',[\s\S]*?await loadOptionalScript\('docxImport'/);
   assert.match(app, /window\.DocxImport\.convert\(arrayBuffer,[\s\S]*?mammothOptions:\s*options/);
-  assert.match(index, /docxImport=20260815-table-fidelity-2/);
+  assert.match(index, /docxImport=20260817-dark-table-contrast-1/);
 });
 
 test('DOCX table importer restores structural and visual OOXML properties', () => {
@@ -34,6 +34,9 @@ test('DOCX table importer restores structural and visual OOXML properties', () =
   assert.match(importer, /tblStylePr/);
   assert.match(importer, /firstRow/);
   assert.match(importer, /themeFill/);
+  assert.match(importer, /needsDarkText/);
+  assert.match(importer, /cell\.dataset\.docxTextContrast = 'dark'/);
+  assert.match(index, /docxTableContrast=20260817-1/);
 });
 
 test('DOCX images remain embedded through the existing Mammoth callback', () => {
@@ -47,4 +50,6 @@ test('browser fixture covers DOCX widths, borders, fill, and alignment', () => {
   assert.match(browserFixture, /w:tblBorders/);
   assert.match(browserFixture, /w:shd w:fill="E8F1FB"/);
   assert.match(browserFixture, /DocxImport\.enhanceHtml\(buffer, input\)/);
+  assert.match(browserFixture, /class="dark"/);
+  assert.match(browserFixture, /class="markdown-body"/);
 });

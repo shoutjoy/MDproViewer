@@ -24,7 +24,7 @@ const VIEW_COPY_FAB_POSITION_KEY = 'md_viewer_view_copy_fab_position_v2';
 const VIEW_COPY_FAB_EDGE_GAP = 8;
 const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
-    docxImport: './js/extendFiles/docx-import.js?v=20260815-table-fidelity-2',
+    docxImport: './js/extendFiles/docx-import.js?v=20260817-dark-table-contrast-1',
     pdfJs: './js/extendFiles/pdfjs-loader.mjs?v=20260815-editable-2',
     pdfOpen: './js/extendFiles/pdf-open.js?v=20260815-editable-1',
     docxExport: './js/extendFiles/docx-export.js?v=20260816-merge-cover-toc-2',
@@ -32,7 +32,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     pdfExport: './js/export/pdf-export.js?v=20260813-merge-tool-1',
     html2canvas: './vendor/html2canvas/html2canvas.min.js?v=1.4.1',
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
-    aiAcademicSearch: './AI_App/aiChat/academic-search.js?v=20260729-crossref-1',
+    aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
     aiChat: './AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
@@ -2785,7 +2785,7 @@ async function renderMarkdown(options) {
                             lastEditCaretPos = Math.max(0, Number(resizeResult.end));
                         }
                         performAutoSave();
-                        showToast('표 크기를 HTML style에 저장했습니다.');
+                        showToast('표·열·행 크기를 HTML style에 저장했습니다.');
                     }
                 });
             }
@@ -3277,10 +3277,12 @@ async function openDocxInEditor(file) {
         showToast('DOCX 가져오기 모듈을 불러오지 못했습니다.');
         return false;
     }
-    const canProceed = await confirmSaveBeforeOpeningAnotherFile();
-    if (!canProceed) {
-        showToast('Open canceled.');
-        return true;
+    if (!sourceOptions.skipSavePrompt) {
+        const canProceed = await confirmSaveBeforeOpeningAnotherFile();
+        if (!canProceed) {
+            showToast('Open canceled.');
+            return true;
+        }
     }
     showToast('DOCX 문서를 변환하는 중입니다...');
     try {
@@ -3306,11 +3308,11 @@ async function openDocxInEditor(file) {
         markPersistedState();
         const warnings = Array.isArray(result && result.messages) ? result.messages.length : 0;
         const enhancementWarning = String(result && result.enhancementWarning || '');
-        showToast(warnings
+        showToast(sourceOptions.successMessage || (warnings
             ? 'DOCX를 열었습니다. 변환 경고 ' + warnings + '건이 있습니다.'
             : enhancementWarning
                 ? 'DOCX를 열었습니다. ' + enhancementWarning
-                : 'DOCX를 표 서식과 함께 문서 내부에서 열었습니다.');
+                : 'DOCX를 표 서식과 함께 문서 내부에서 열었습니다.'));
         return true;
     } catch (error) {
         showToast('DOCX를 열 수 없습니다: ' + (error && error.message ? error.message : error));
@@ -3552,6 +3554,52 @@ async function openFileFromLocalFolderExplorer(file) {
 }
 
 window.openFileFromLocalFolderExplorer = openFileFromLocalFolderExplorer;
+
+async function refreshCurrentLocalFileFromDisk() {
+    const localRef = currentLocalFileRef;
+    const handle = localRef && localRef.handle;
+    if (!localRef || !handle || typeof handle.getFile !== 'function') return false;
+
+    try {
+        if (typeof handle.queryPermission === 'function') {
+            let permission = await handle.queryPermission({ mode: 'read' });
+            if (permission === 'prompt' && typeof handle.requestPermission === 'function') {
+                permission = await handle.requestPermission({ mode: 'read' });
+            }
+            if (permission !== 'granted') {
+                showToast('파일을 새로고침하려면 로컬 폴더 읽기 권한이 필요합니다.');
+                return false;
+            }
+        }
+
+        const file = await handle.getFile();
+        const successMessage = '파일을 새로고침했습니다: ' + (localRef.path || file.name || currentFileName);
+        if (getSelectedFileExtension(file) === '.docx') {
+            return openDocxInEditor(file, {
+                source: 'local-folder',
+                localFileHandle: handle,
+                localFolderPath: localRef.path || file.name || '',
+                skipSavePrompt: true,
+                successMessage: successMessage
+            });
+        }
+
+        await readFile(file, {
+            filePath: String(file.path || '').trim() || null,
+            localFileHandle: handle,
+            localFolderPath: localRef.path || file.name || '',
+            source: 'local-folder',
+            skipSavePrompt: true,
+            successMessage: successMessage
+        });
+        return true;
+    } catch (error) {
+        showToast('파일 새로고침 실패: ' + (error && error.message ? error.message : error));
+        return false;
+    }
+}
+
+window.refreshCurrentLocalFileFromDisk = refreshCurrentLocalFileFromDisk;
 
 function createNewFile() {
     currentMarkdown = "";
@@ -4143,7 +4191,7 @@ async function readFile(file, options) {
         });
         updateContent(parsed && typeof parsed.text === 'string' ? parsed.text : raw);
         markPersistedState();
-        showToast("File loaded successfully.");
+        showToast(opts.successMessage || "File loaded successfully.");
     };
     reader.readAsArrayBuffer(file);
 }
@@ -5947,6 +5995,12 @@ function applyMathTidyInEditor() {
 function applyHtmlTidyInEditor() {
     if (window.TidyActions && typeof window.TidyActions.applyHtml === 'function') {
         window.TidyActions.applyHtml(getTidyActionDeps());
+    }
+}
+
+function convertHtmlToMarkdownInEditor() {
+    if (window.TidyActions && typeof window.TidyActions.applyHtmlToMarkdown === 'function') {
+        return window.TidyActions.applyHtmlToMarkdown(getTidyActionDeps());
     }
 }
 

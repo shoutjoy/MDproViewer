@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SCHOLAR_ROOT = path.resolve(__dirname, '..');
-const htmlPath = path.join(SCHOLAR_ROOT, 'scholarsearch-shell.html');
+const htmlPath = path.join(SCHOLAR_ROOT, 'ui', 'scholarsearch-shell.html');
 const jsPath = path.join(SCHOLAR_ROOT, 'ui', 'scholarsearch-shell.js');
 
 const START = '  // AUTO-GENERATED FALLBACK TEMPLATE START';
@@ -78,7 +78,7 @@ function main() {
   const next = byMarker == null ? replaceFunctionFallback(js, generated) : byMarker;
 
   fs.writeFileSync(jsPath, next, 'utf8');
-  console.log('Updated fallback template in scholarsearch-shell.js from scholarsearch-shell.html');
+  console.log('Updated fallback template in ui/scholarsearch-shell.js from ui/scholarsearch-shell.html');
 }
 
 main();

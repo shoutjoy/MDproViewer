@@ -44,19 +44,45 @@ test('bottom-only resize preserves the existing width style', () => {
   assert.match(result.html, /style="width:72%;max-width:100%;color:red;height:310px"/);
 });
 
+test('stores DOCX column widths and row heights without touching nested tables', () => {
+  const source = '<table class="docx-import-table"><colgroup><col style="width:120pt"><col style="width:180pt"></colgroup><tbody><tr style="height:20pt"><td>A<table><tr><td>nested</td></tr></table></td><td>B</td></tr><tr><td>C</td><td>D</td></tr></tbody></table>';
+  const record = tableResize.scanHtmlTables(source)[0];
+  const result = tableResize.replaceTableLayout(source, record, {
+    columnWidths: { 0: 210, 1: 290 },
+    rowHeights: { 0: 54, 1: 72 }
+  });
+  assert.equal(result.changed, true);
+  assert.match(result.html, /<col style="width:210px"><col style="width:290px">/);
+  assert.match(result.html, /<tr style="height:54px"><td>A<table><tr><td>nested<\/td><\/tr><\/table>/);
+  assert.match(result.html, /<tr style="height:72px"><td>C/);
+  assert.equal((result.html.match(/height:54px/g) || []).length, 1);
+});
+
+test('adds a colgroup when a table without DOCX grid columns is resized', () => {
+  const source = '<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>';
+  const record = tableResize.scanHtmlTables(source)[0];
+  const result = tableResize.replaceTableLayout(source, record, {
+    columnWidths: { 0: 140, 1: 220 },
+    allColumnWidths: [140, 220]
+  });
+  assert.match(result.html, /^<table><colgroup><col style="width:140px"><col style="width:220px"><\/colgroup>/);
+});
+
 test('main view loads and hydrates the table resizer before app.js', () => {
   const root = path.resolve(__dirname, '..');
   const index = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
   const css = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
-  assert.ok(index.indexOf('viewmode/table-resize.js?v=20260815-2') < index.indexOf('./js/app.js?'));
-  assert.match(index, /viewTableResize=20260815-2/);
+  assert.ok(index.indexOf('viewmode/table-resize.js?v=20260817-row-column-1') < index.indexOf('./js/app.js?'));
+  assert.match(index, /viewTableResize=20260817-row-column-1/);
   assert.match(app, /ViewModeTableResize\.hydrate\(viewer/);
-  assert.match(app, /표 크기를 HTML style에 저장했습니다/);
+  assert.match(app, /표·열·행 크기를 HTML style에 저장했습니다/);
   assert.match(css, /\.md-table-resize-handle\.is-w/);
   assert.match(css, /\.md-table-resize-handle\.is-e/);
   assert.match(css, /\.md-table-resize-handle\.is-s/);
   assert.match(css, /\.md-table-resize-handle\.is-sw/);
   assert.match(css, /\.md-table-resize-handle\.is-se/);
   assert.match(css, /\.md-table-resize-handle\.is-corner/);
+  assert.match(css, /\.md-table-column-resize-handle/);
+  assert.match(css, /\.md-table-row-resize-handle/);
 });

@@ -126,7 +126,7 @@ test('TIDY UI, popup input modes, storage policies, and GitHub file bridge are w
   assert.match(index, />\+ 기능 추가<\/button>/);
   assert.match(index, /tidy-script-manager\.js/);
   assert.match(index, /tidyUi=20260811-1/);
-  assert.match(index, /tidy-actions\.js\?v=20260815-url2base64-1/);
+  assert.match(index, /tidy-actions\.js\?v=20260817-html2md-1/);
   assert.match(stylesheet, /#tidy-quick-panel\.tidy-menu-portal/);
   assert.match(stylesheet, /grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(stylesheet, /white-space:\s*nowrap/);

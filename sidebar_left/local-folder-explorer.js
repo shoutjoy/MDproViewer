@@ -259,6 +259,9 @@
         rootNode.children = [];
         await readChildren(rootNode);
         requestRender();
+        if (typeof window.refreshCurrentLocalFileFromDisk === 'function') {
+            await window.refreshCurrentLocalFileFromDisk();
+        }
         return true;
     }
 

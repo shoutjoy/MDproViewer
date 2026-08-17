@@ -9,10 +9,15 @@ const index = read('index.html');
 const app = read('js/app.js');
 const integration = read('js/Scholarref/integration/scholar-search-app.js');
 const shell = read('js/Scholarref/ui/scholarsearch-shell.js');
+const shellHtml = read('js/Scholarref/ui/scholarsearch-shell.html');
+const academicSearch = read('js/Scholarref/ai/academic-search.js');
+const academicCompat = read('AI_App/aiChat/academic-search.js');
 
 for (const file of [
   'js/Scholarref/reference/scholarref.js',
   'js/Scholarref/crossref/search.js',
+  'js/Scholarref/ai/academic-search.js',
+  'js/Scholarref/ui/scholarsearch-shell.html',
   'js/Scholarref/ui/scholarsearch-shell.js',
   'js/Scholarref/styles/scholarref.css',
   'js/Scholarref/tools/sync-fallback-from-html.js',
@@ -40,6 +45,14 @@ assert.doesNotMatch(app, /function ensureScholarSearchLoaded/);
 assert.doesNotMatch(app, /function applyScholarSearchVisibility/);
 assert.doesNotMatch(app, /function toggleScholarSearchSection/);
 assert.match(app, /ScholarSearchApp\.connectHost/);
+assert.match(app, /Scholarref\/ai\/academic-search\.js/);
 assert.match(shell, /Scholarref\/reference\/scholarref\.js/);
+assert.match(shell, /Scholarref\/ui\/scholarsearch-shell\.html/);
+assert.match(academicSearch, /root\.ScholarSearch\.AcademicSearch = api/);
+assert.match(academicCompat, /Scholarref\/ai\/academic-search\.js/);
+const fallbackMatch = shell.match(/var FALLBACK_TEMPLATE_HTML = (".*");\r?\n/);
+assert.ok(fallbackMatch, 'Missing generated Scholar shell fallback');
+assert.equal(JSON.parse(fallbackMatch[1]).trim(), shellHtml.trim(), 'Scholar shell fallback is out of sync');
+assert.equal(fs.existsSync(path.join(root, 'js/Scholarref/scholarsearch-shell.html')), false, 'Legacy HTML source should not remain duplicated');
 
 console.log('Scholar module layout and host wiring checks passed.');

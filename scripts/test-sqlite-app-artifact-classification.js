@@ -19,7 +19,7 @@ const policy = read('LocalSave_sqlite/server/settings_policy.py');
 const workFiles = read('LocalSave_sqlite/server/work_files.py');
 const scholarRef = read('js/Scholarref/reference/scholarref.js');
 const scholarShell = read('js/Scholarref/ui/scholarsearch-shell.js');
-const scholarHtml = read('js/Scholarref/scholarsearch-shell.html');
+const scholarHtml = read('js/Scholarref/ui/scholarsearch-shell.html');
 
 assert.match(activeReadme, /js\/Html2pptx/);
 assert.match(genState, /GenSlideDB/);

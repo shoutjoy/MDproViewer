@@ -248,6 +248,50 @@
         if (typeof deps.showToast === 'function') deps.showToast('HTML 문서의 줄바꿈과 들여쓰기를 정리했습니다.');
     }
 
+    function applyHtmlToMarkdown(deps) {
+        deps = deps || {};
+        var state = getEditorState(deps);
+        if (!state.isEditMode || !state.editorTextarea) {
+            if (typeof deps.showToast === 'function') deps.showToast('편집 모드에서 사용하세요.');
+            return false;
+        }
+        closeMenu();
+
+        var converter = global.TidyHtmlToMarkdown;
+        if (!converter || typeof converter.convert !== 'function') {
+            if (typeof deps.showToast === 'function') deps.showToast('HTML2MD 변환 모듈을 불러오지 못했습니다.');
+            return false;
+        }
+        var ta = state.editorTextarea;
+        var start = ta.selectionStart;
+        var end = ta.selectionEnd;
+        var hasSelection = start !== end;
+        var sourceText = hasSelection ? ta.value.substring(start, end) : ta.value;
+        var result = converter.convert(sourceText);
+        if (!result.foundHtml) {
+            if (typeof deps.showToast === 'function') deps.showToast('변환할 HTML 태그가 없습니다.');
+            return false;
+        }
+        if (result.error) {
+            if (typeof deps.showToast === 'function') deps.showToast(result.issues[0].reason);
+            return false;
+        }
+        if (!result.changed) {
+            if (typeof deps.showToast === 'function') deps.showToast('HTML2MD에서 바꿀 내용이 없습니다.');
+            return false;
+        }
+
+        applyResultToEditor(result, sourceText, deps);
+        var scope = hasSelection ? '선택 영역' : '문서 전체';
+        if (result.issues.length && typeof converter.showReport === 'function') {
+            converter.showReport(result, scope);
+            if (typeof deps.showToast === 'function') deps.showToast(scope + ' HTML2MD 변환 완료 · 제한 항목 ' + result.issues.length + '종');
+        } else if (typeof deps.showToast === 'function') {
+            deps.showToast(scope + ' HTML을 Markdown으로 변환했습니다.');
+        }
+        return result;
+    }
+
     function applyNoteCover(deps) {
         deps = deps || {};
         var state = getEditorState(deps);
@@ -326,6 +370,7 @@
         applyEnter: applyEnter,
         applyMath: applyMath,
         applyHtml: applyHtml,
+        applyHtmlToMarkdown: applyHtmlToMarkdown,
         applyNoteCover: applyNoteCover,
         applyBase64ToUrl: applyBase64ToUrl,
         applyUrl2base64: applyUrl2base64,

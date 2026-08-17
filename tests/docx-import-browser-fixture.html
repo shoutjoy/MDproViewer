@@ -1,17 +1,18 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" class="dark">
 <head>
   <meta charset="utf-8">
   <title>DOCX import table fixture</title>
+  <link rel="stylesheet" href="../css/style.css?docxTableContrast=20260817-1">
   <script src="../vendor/jszip/jszip.min.js"></script>
-  <script src="../js/extendFiles/docx-import.js?v=20260815-table-fidelity-2"></script>
+  <script src="../js/extendFiles/docx-import.js?v=20260817-dark-table-contrast-1"></script>
   <style>
     thead th { background:#e2e8f0; font-weight:700; }
     .docx-import-table strong { font-weight:800; }
   </style>
 </head>
 <body>
-  <main id="result">loading</main>
+  <main id="result" class="markdown-body">loading</main>
   <script>
     (async function () {
       const xml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -29,7 +30,7 @@
               <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>인지공학 및 뇌과학적 함의</w:t></w:r></w:p></w:tc>
             </w:tr>
             <w:tr>
-              <w:tc><w:tcPr><w:tcW w:w="1800" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>1차 스캔</w:t></w:r></w:p></w:tc>
+              <w:tc><w:tcPr><w:tcW w:w="1800" w:type="dxa"/><w:shd w:fill="F5F7FA"/></w:tcPr><w:p><w:r><w:t>1차 스캔</w:t></w:r></w:p></w:tc>
               <w:tc><w:tcPr><w:tcW w:w="2400" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>저글링 경험 없음</w:t></w:r></w:p></w:tc>
               <w:tc><w:tcPr><w:tcW w:w="3000" w:type="dxa"/></w:tcPr><w:p><w:r><w:t>뇌 구조의 기본 상태 유지</w:t></w:r></w:p></w:tc>
             </w:tr>
