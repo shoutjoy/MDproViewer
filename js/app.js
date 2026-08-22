@@ -82,7 +82,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260823-start-width-380-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260823-launcher-position-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -173,9 +173,13 @@ window.ensureMdMathEngineLoaded = ensureMdMathEngineLoaded;
 
 function initializeLazyAiChatEntry() {
     const enabledKey = 'ss_ai_chat_enabled';
+    const launcherPositionKey = 'ss_ai_chat_launcher_position';
     const checkbox = document.getElementById('ai-chat-enabled');
     let launcher = null;
+    let cleanupLauncherLayout = null;
     const removeLauncher = function () {
+        if (cleanupLauncherLayout) cleanupLauncherLayout();
+        cleanupLauncherLayout = null;
         if (launcher && launcher.parentNode) launcher.parentNode.removeChild(launcher);
         launcher = null;
     };
@@ -195,8 +199,92 @@ function initializeLazyAiChatEntry() {
         launcher.title = 'AI Jena 열기';
         launcher.setAttribute('aria-label', 'AI Jena 열기');
         launcher.innerHTML = '<span class="ai-chat-launcher-icon" aria-hidden="true">AI</span><span class="ai-chat-launcher-label">Jena</span>';
-        launcher.addEventListener('click', function () { loadChat(true); }, { once: true });
         document.body.appendChild(launcher);
+
+        let suppressClick = false;
+        const readSavedPosition = function () {
+            try {
+                const value = JSON.parse(localStorage.getItem(launcherPositionKey) || 'null');
+                return value && Number.isFinite(value.left) && Number.isFinite(value.top) ? value : null;
+            } catch (_) {
+                return null;
+            }
+        };
+        const getSafePosition = function (left, top) {
+            const width = launcher.offsetWidth || 68;
+            const height = launcher.offsetHeight || 42;
+            let safeLeft = Math.max(6, Math.min(Number(left) || 6, window.innerWidth - width - 6));
+            const safeTop = Math.max(6, Math.min(Number(top) || 6, window.innerHeight - height - 58));
+            const toolbar = document.getElementById('toolbar');
+            if (document.body.classList.contains('edit-toolbar-vertical')
+                && toolbar && window.getComputedStyle(toolbar).display !== 'none') {
+                const toolbarRect = toolbar.getBoundingClientRect();
+                safeLeft = Math.min(safeLeft, Math.max(6, toolbarRect.left - width - 12));
+            }
+            return { left: safeLeft, top: safeTop };
+        };
+        const applySafePosition = function (preferred) {
+            if (!launcher || !launcher.isConnected) return;
+            const rect = launcher.getBoundingClientRect();
+            const source = preferred || { left: rect.left, top: rect.top };
+            const safe = getSafePosition(source.left, source.top);
+            launcher.style.left = Math.round(safe.left) + 'px';
+            launcher.style.top = Math.round(safe.top) + 'px';
+            launcher.style.right = 'auto';
+            launcher.style.bottom = 'auto';
+            localStorage.setItem(launcherPositionKey, JSON.stringify({
+                left: Math.round(safe.left),
+                top: Math.round(safe.top)
+            }));
+        };
+        const refreshPosition = function () { applySafePosition(readSavedPosition()); };
+        const onPointerDown = function (event) {
+            if (event.button !== 0) return;
+            const rect = launcher.getBoundingClientRect();
+            const startX = event.clientX;
+            const startY = event.clientY;
+            let moved = false;
+            try { launcher.setPointerCapture(event.pointerId); } catch (_) {}
+            const move = function (moveEvent) {
+                const dx = moveEvent.clientX - startX;
+                const dy = moveEvent.clientY - startY;
+                if (!moved && Math.hypot(dx, dy) < 4) return;
+                moved = true;
+                const safe = getSafePosition(rect.left + dx, rect.top + dy);
+                launcher.style.left = Math.round(safe.left) + 'px';
+                launcher.style.top = Math.round(safe.top) + 'px';
+                launcher.style.right = 'auto';
+                launcher.style.bottom = 'auto';
+                launcher.classList.add('dragging');
+            };
+            const finish = function () {
+                document.removeEventListener('pointermove', move);
+                document.removeEventListener('pointerup', finish);
+                document.removeEventListener('pointercancel', finish);
+                launcher.classList.remove('dragging');
+                if (!moved) return;
+                suppressClick = true;
+                applySafePosition();
+                setTimeout(function () { suppressClick = false; }, 120);
+            };
+            document.addEventListener('pointermove', move);
+            document.addEventListener('pointerup', finish);
+            document.addEventListener('pointercancel', finish);
+            event.preventDefault();
+        };
+        const onClick = function () {
+            if (!suppressClick) loadChat(true);
+        };
+        launcher.addEventListener('pointerdown', onPointerDown);
+        launcher.addEventListener('click', onClick);
+        window.addEventListener('resize', refreshPosition);
+        window.addEventListener('md-edit-toolbar-orientation-change', refreshPosition);
+        cleanupLauncherLayout = function () {
+            window.removeEventListener('resize', refreshPosition);
+            window.removeEventListener('md-edit-toolbar-orientation-change', refreshPosition);
+        };
+        requestAnimationFrame(refreshPosition);
+        setTimeout(refreshPosition, 80);
     };
     if (checkbox && !checkbox.dataset.lazyAiChatBound) {
         checkbox.dataset.lazyAiChatBound = '1';

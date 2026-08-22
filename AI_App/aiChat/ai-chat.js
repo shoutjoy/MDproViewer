@@ -806,10 +806,15 @@
   function applyLauncherPosition() {
     var launcher = document.getElementById('ai-chat-launcher');
     if (!launcher) return;
+    var saved = null;
+    try {
+      saved = JSON.parse(storageGet(LAUNCHER_POSITION_KEY, 'null'));
+      if (!saved || !Number.isFinite(saved.left) || !Number.isFinite(saved.top)) saved = null;
+    } catch (_) { saved = null; }
     var menuButton = document.querySelector('.app-header button[onclick="toggleSidebarVisibility()"]');
     var menuRect = menuButton ? menuButton.getBoundingClientRect() : null;
-    launcher.style.left = (menuRect ? Math.round(menuRect.right + 12) : 60) + 'px';
-    launcher.style.top = (menuRect ? Math.round(menuRect.top + (menuRect.height - 42) / 2) : 10) + 'px';
+    launcher.style.left = Math.round(saved ? saved.left : (menuRect ? menuRect.right + 12 : 60)) + 'px';
+    launcher.style.top = Math.round(saved ? saved.top : (menuRect ? menuRect.top + (menuRect.height - 42) / 2 : 10)) + 'px';
     launcher.style.right = 'auto';
     launcher.style.bottom = 'auto';
     clampLauncherToViewport();
