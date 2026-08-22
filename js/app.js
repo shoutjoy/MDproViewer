@@ -1182,6 +1182,109 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     if (card.parentElement !== slot) slot.appendChild(card);
 }
 
+const OPENAI_COMPATIBLE_DEFAULTS = Object.freeze({
+    provider: 'openai-compatible',
+    baseUrl: 'https://api.orcarouter.ai/v1',
+    modelId: 'deepseek/deepseek-v4-flash-free'
+});
+const OPENAI_COMPATIBLE_PROVIDER_URLS = Object.freeze({
+    'openai-compatible': 'https://api.orcarouter.ai/v1',
+    openrouter: 'https://openrouter.ai/api/v1',
+    groq: 'https://api.groq.com/openai/v1',
+    together: 'https://api.together.xyz/v1',
+    mistral: 'https://api.mistral.ai/v1',
+    xai: 'https://api.x.ai/v1',
+    perplexity: 'https://api.perplexity.ai',
+    cerebras: 'https://api.cerebras.ai/v1',
+    fireworks: 'https://api.fireworks.ai/inference/v1'
+});
+
+function normalizeOpenAICompatibleBaseUrl(value) {
+    const raw = String(value || '').trim() || OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
+    let parsed;
+    try { parsed = new URL(raw); } catch (_) { throw new Error('Base URL 형식이 올바르지 않습니다.'); }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') throw new Error('Base URL은 http:// 또는 https:// 주소여야 합니다.');
+    parsed.hash = '';
+    parsed.search = '';
+    return parsed.toString().replace(/\/+$/, '');
+}
+
+function validateOpenAICompatibleBaseUrlUI() {
+    const input = document.getElementById('openai-compatible-base-url');
+    const feedback = document.getElementById('openai-compatible-base-url-feedback');
+    if (!input || !feedback) return false;
+    try {
+        normalizeOpenAICompatibleBaseUrl(input.value);
+        feedback.textContent = 'OpenAI 호환 API 주소를 사용할 수 있습니다.';
+        feedback.className = 'text-[11px] min-h-[1rem] text-green-600 dark:text-green-400';
+        return true;
+    } catch (error) {
+        feedback.textContent = error.message;
+        feedback.className = 'text-[11px] min-h-[1rem] text-red-600 dark:text-red-400';
+        return false;
+    }
+}
+
+function applyOpenAICompatibleProviderPreset() {
+    const provider = document.getElementById('openai-compatible-provider');
+    const baseUrl = document.getElementById('openai-compatible-base-url');
+    if (!provider || !baseUrl) return;
+    baseUrl.value = OPENAI_COMPATIBLE_PROVIDER_URLS[provider.value] || OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
+    validateOpenAICompatibleBaseUrlUI();
+}
+
+function loadOpenAICompatibleSettingsUI(settings) {
+    const source = settings || {};
+    const provider = document.getElementById('openai-compatible-provider');
+    const baseUrl = document.getElementById('openai-compatible-base-url');
+    const apiKey = document.getElementById('openai-compatible-api-key');
+    const modelId = document.getElementById('openai-compatible-model-id');
+    if (provider) provider.value = source.openaiCompatibleProvider || localStorage.getItem('ss_openai_compatible_provider') || OPENAI_COMPATIBLE_DEFAULTS.provider;
+    if (baseUrl) baseUrl.value = source.openaiCompatibleBaseUrl || localStorage.getItem('ss_openai_compatible_base_url') || OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
+    if (apiKey) apiKey.value = source.openaiCompatibleApiKey || localStorage.getItem('ss_openai_compatible_api_key') || '';
+    if (modelId) modelId.value = source.openaiCompatibleModelId || localStorage.getItem('ss_openai_compatible_model_id') || OPENAI_COMPATIBLE_DEFAULTS.modelId;
+    validateOpenAICompatibleBaseUrlUI();
+}
+
+async function saveOpenAICompatibleSettings() {
+    const provider = document.getElementById('openai-compatible-provider');
+    const baseUrl = document.getElementById('openai-compatible-base-url');
+    const apiKey = document.getElementById('openai-compatible-api-key');
+    const modelId = document.getElementById('openai-compatible-model-id');
+    const feedback = document.getElementById('openai-compatible-save-feedback');
+    let normalizedBaseUrl;
+    try { normalizedBaseUrl = normalizeOpenAICompatibleBaseUrl(baseUrl && baseUrl.value); }
+    catch (error) { validateOpenAICompatibleBaseUrlUI(); showToast(error.message); return; }
+    const data = {
+        openaiCompatibleProvider: String(provider && provider.value || OPENAI_COMPATIBLE_DEFAULTS.provider),
+        openaiCompatibleBaseUrl: normalizedBaseUrl,
+        openaiCompatibleApiKey: String(apiKey && apiKey.value || '').trim(),
+        openaiCompatibleModelId: String(modelId && modelId.value || '').trim() || OPENAI_COMPATIBLE_DEFAULTS.modelId
+    };
+    await setAiSettings(data);
+    localStorage.setItem('ss_openai_compatible_provider', data.openaiCompatibleProvider);
+    localStorage.setItem('ss_openai_compatible_base_url', data.openaiCompatibleBaseUrl);
+    localStorage.setItem('ss_openai_compatible_api_key', data.openaiCompatibleApiKey);
+    localStorage.setItem('ss_openai_compatible_model_id', data.openaiCompatibleModelId);
+    if (baseUrl) baseUrl.value = data.openaiCompatibleBaseUrl;
+    if (modelId) modelId.value = data.openaiCompatibleModelId;
+    if (feedback) feedback.textContent = '저장되었습니다. 외부 AI 앱에서 이 구성을 사용할 수 있습니다.';
+    showToast('OpenAI 호환 API 설정을 저장했습니다.');
+}
+
+async function resetOpenAICompatibleSettings() {
+    const provider = document.getElementById('openai-compatible-provider');
+    const baseUrl = document.getElementById('openai-compatible-base-url');
+    const apiKey = document.getElementById('openai-compatible-api-key');
+    const modelId = document.getElementById('openai-compatible-model-id');
+    if (provider) provider.value = OPENAI_COMPATIBLE_DEFAULTS.provider;
+    if (baseUrl) baseUrl.value = OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
+    if (apiKey) apiKey.value = '';
+    if (modelId) modelId.value = OPENAI_COMPATIBLE_DEFAULTS.modelId;
+    await saveOpenAICompatibleSettings();
+    showToast('OrcaRouter 기본 구성으로 초기화했습니다.');
+}
+
 function organizeSettingsDashboard() {
     const body = document.getElementById('settings-modal-body');
     if (!body || document.getElementById('settings-dashboard-general')) return;
@@ -11398,6 +11501,10 @@ const SETTINGS_RESET_EXTRA_LOCAL_KEYS = [
     'ss_deepseek_balance_summary',
     'ss_openai_api_key',
     'ss_openai_api_key_verified',
+    'ss_openai_compatible_provider',
+    'ss_openai_compatible_base_url',
+    'ss_openai_compatible_api_key',
+    'ss_openai_compatible_model_id',
     'ss_imgbb_api_key_verified'
 ];
 
@@ -11448,7 +11555,7 @@ async function resetSettingsMset() {
         applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
         syncFileDownloadPrefixSettingUI();
 
-        ['ai-api-key', 'deepseek-api-key', 'openai-api-key', 'ai-imgbb-api-key', 'ai-password-input'].forEach(function (id) {
+        ['ai-api-key', 'deepseek-api-key', 'openai-api-key', 'openai-compatible-api-key', 'ai-imgbb-api-key', 'ai-password-input'].forEach(function (id) {
             const input = document.getElementById(id);
             if (input) input.value = '';
         });
@@ -14236,6 +14343,7 @@ async function loadAiSettingsToUI() {
         await window.GithubDataSettings.ensureUiReady();
     }
     const settings = await getAiSettings();
+    loadOpenAICompatibleSettingsUI(settings);
     loadOllamaSettingsToUI();
     const googleCalendarEnabled = settings && typeof settings.googleCalendarEnabled === 'boolean'
         ? settings.googleCalendarEnabled
