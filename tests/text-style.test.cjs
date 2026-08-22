@@ -75,7 +75,7 @@ test('Alt+L UI와 app 연결이 문서에 포함되어 있다', () => {
   assert.match(app, /TextStyleTool\.applySelection/);
   assert.match(app, /insertAtCursor\('superscript'\)/);
   assert.match(app, /insertAtCursor\('subscript'\)/);
-  assert.match(inDb, /const DB_VERSION = 7/);
+  assert.match(inDb, /const DB_VERSION = 8/);
   assert.match(inDb, /createObjectStore\('fonts', \{ keyPath: 'id' \}\)/);
   assert.match(inDb, /fonts: '사용자 폰트'/);
   assert.match(app, /TextStyleTool\.setDatabase\(db\)/);

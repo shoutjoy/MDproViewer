@@ -10,6 +10,7 @@ const settings = fs.readFileSync(path.join(root, 'Setting', 'settings-ui.js'), '
 const storage = fs.readFileSync(path.join(root, 'js', 'storage', 'storage-service.js'), 'utf8');
 const indexedDb = fs.readFileSync(path.join(root, 'js', 'storage', 'indexeddb-adapter.js'), 'utf8');
 const app = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
+const inDbModule = fs.readFileSync(path.join(root, 'js', 'inDB', 'inDB.js'), 'utf8');
 const styles = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
 const scholarStyles = fs.readFileSync(path.join(root, 'js', 'Scholarref', 'styles', 'scholarref.css'), 'utf8');
 
@@ -55,9 +56,9 @@ assert.match(storage, /mdpro_sqlite_feature_enabled_v1/);
 assert.match(indexedDb, /async uploadWorkFile/);
 assert.match(indexedDb, /async listWorkFiles/);
 assert.match(indexedDb, /async downloadWorkFile/);
-assert.match(app, /const DB_VERSION = 7/);
-assert.match(app, /createObjectStore\('fonts'/);
-assert.match(app, /createObjectStore\('work_files'/);
+assert.match(inDbModule, /const DB_VERSION = 8/);
+assert.match(inDbModule, /createObjectStore\('fonts'/);
+assert.match(inDbModule, /createObjectStore\('work_files'/);
 assert.match(app, /'STORAGE'/);
 assert.match(styles, /body\.feature-sqlite-disabled button\[id\*="sqlite" i\]/);
 assert.match(styles, /body\.feature-sqlite-disabled #scholar-crossref-storage-save/);

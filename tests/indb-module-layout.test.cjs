@@ -27,7 +27,7 @@ assert.match(app, /await initDB\(\)/, 'app은 inDB 모듈 초기화 함수를 �
 assert.match(app, /if \(action === 'indb'\) return await saveCurrentToInDbAuto\(\)/);
 
 assert.match(inDb, /const DB_NAME = "MarkdownProDB"/);
-assert.match(inDb, /const DB_VERSION = 7/);
+assert.match(inDb, /const DB_VERSION = 8/);
 assert.match(inDb, /function initDB\(\)/);
 assert.match(inDb, /async function saveCurrentToInDbAuto\(\)/);
 assert.match(inDb, /window\.InDbStorage = Object\.freeze/);

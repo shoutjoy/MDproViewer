@@ -331,6 +331,40 @@
         }
     }
 
+    function applyInlineToRef(deps, mode) {
+        deps = deps || {};
+        var state = getEditorState(deps);
+        if (!state.isEditMode || !state.editorTextarea) {
+            if (typeof deps.showToast === 'function') deps.showToast('편집 모드에서 사용하세요.');
+            return false;
+        }
+        closeMenu();
+
+        var converter = global.TidyInlineToRef;
+        if (!converter || typeof converter.convert !== 'function') {
+            if (typeof deps.showToast === 'function') deps.showToast('Inline2Ref 변환 모듈을 불러오지 못했습니다.');
+            return false;
+        }
+        var ta = state.editorTextarea;
+        var sourceText = ta.value;
+        var outputMode = mode === 'footnote' ? 'footnote' : 'reference';
+        var result = converter.convert(sourceText, { mode: outputMode });
+        if (!result.changed) {
+            if (typeof deps.showToast === 'function') deps.showToast('참고문헌으로 옮길 인라인 URL 링크가 없습니다.');
+            return false;
+        }
+
+        result.selectionStart = 0;
+        result.selectionEnd = sourceText.length;
+        result.replaceSelection = true;
+        applyResultToEditor(result, sourceText, deps);
+        if (typeof deps.showToast === 'function') {
+            var modeLabel = outputMode === 'footnote' ? '주석링크' : '인라인링크';
+            deps.showToast('Inline2Ref ' + modeLabel + ' 완료: 전체 번호 재정렬 · 인용 ' + result.convertedCount + '개 · 참고문헌 ' + result.referenceCount + '개');
+        }
+        return result;
+    }
+
     function applyBase64ToUrl(deps) {
         deps = deps || {};
         var state = getEditorState(deps);
@@ -372,6 +406,7 @@
         applyHtml: applyHtml,
         applyHtmlToMarkdown: applyHtmlToMarkdown,
         applyNoteCover: applyNoteCover,
+        applyInlineToRef: applyInlineToRef,
         applyBase64ToUrl: applyBase64ToUrl,
         applyUrl2base64: applyUrl2base64,
         formatHtml: formatHtml,

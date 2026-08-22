@@ -33,8 +33,9 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     html2canvas: './vendor/html2canvas/html2canvas.min.js?v=1.4.1',
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
+    aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260810-copy-fab-ai-jena-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260823-flexible-width-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -94,6 +95,7 @@ function refreshLucideIcons(root) {
 async function ensureAiChatLoaded() {
     if (window.AIChat && typeof window.AIChat.open === 'function') return true;
     await loadOptionalScript('aiAcademicSearch', function () { return !!window.AIChatAcademicSearch; });
+    await loadOptionalScript('aiWebSearch', function () { return !!window.AIJenaLocalAPI; });
     await loadOptionalScript('aiMarkdown', function () { return !!window.AIChatMarkdown; });
     await loadOptionalScript('aiChat', function () { return !!window.AIChat; });
     return true;
@@ -1250,8 +1252,11 @@ function organizeSettingsDashboard() {
 
     const aiMaster = document.getElementById('ai-master-settings-card');
     const aiIntegration = document.getElementById('ai-integration-settings-slot');
+    const aiWritingStylePrompt = document.getElementById('ai-writing-style-prompt-settings');
     if (aiMaster) appendToColumn(aiColumn, aiMaster);
     if (aiIntegration) appendToColumn(aiColumn, aiIntegration);
+    // 문체 프롬프트는 기능 표시 영역이 아니라 AI 관련 설정의 마지막 항목으로 둔다.
+    if (aiWritingStylePrompt) appendToColumn(aiColumn, aiWritingStylePrompt);
 
     const legacyCard = document.getElementById('legacy-ai-settings-card');
     if (legacyCard) legacyCard.classList.add('hidden');
@@ -2000,11 +2005,20 @@ function preprocessFootnotesForView(raw) {
     });
 
     const items = defs.map(function (d) {
-        const content = (d.content || 'Footnote content.')
+        let content = (d.content || 'Footnote content.')
             .replace(/^<span\b[^>]*>/i, '')
             .replace(/<\/span>\s*$/i, '')
             .replace(/\s*<a class="md-footnote-backref"[^>]*>[\s\S]*?<\/a>\s*$/i, '')
             .trim() || 'Footnote content.';
+        const plainUrl = content.match(/^https?:\/\/[^\s<>]+$/i);
+        if (plainUrl) {
+            const safeUrl = plainUrl[0]
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+            content = '<a class="md-footnote-url" href="' + safeUrl + '" target="_blank" rel="noopener noreferrer">' + safeUrl + '</a>';
+        }
         return '<li id="md-footnote-' + d.id + '">' + content + ' <a class="md-footnote-backref" href="#md-footnote-ref-' + d.id + '">[back]</a></li>';
     }).join('\n');
 
@@ -2640,6 +2654,17 @@ function applyDoiLinkTargets(root) {
 
 window.applyDoiLinkTargets = applyDoiLinkTargets;
 
+function applyInline2RefLinkTargets(root) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll('a[title="mdpro-inline2ref-new-window"]').forEach(function (link) {
+        link.setAttribute('target', '_blank');
+        link.setAttribute('rel', 'noopener noreferrer');
+        link.setAttribute('title', '참고 링크를 새 탭에서 열기');
+    });
+}
+
+window.applyInline2RefLinkTargets = applyInline2RefLinkTargets;
+
 function bindFootnoteLinkNavigation() {
     if (!viewer || viewer.__footnoteLinkBound) return;
     viewer.__footnoteLinkBound = true;
@@ -2748,6 +2773,7 @@ async function renderMarkdown(options) {
         if (!isCurrentRender()) return;
         try { applyMarkdownImageSizeHints(viewer); } catch (e) {}
         try { if (snapshot.features.hasDoiLinks) applyDoiLinkTargets(viewer); } catch (e) {}
+        try { applyInline2RefLinkTargets(viewer); } catch (e) {}
         try { if (typeof bindFootnoteLinkNavigation === 'function') bindFootnoteLinkNavigation(); } catch (e) {}
         try {
             if (snapshot.features.hasNoteCover
@@ -4459,6 +4485,48 @@ async function saveFileAs() {
     return true;
 }
 
+function closeSaveDropdown() {
+    const menu = document.getElementById('save-dropdown-menu');
+    const toggle = document.getElementById('save-dropdown-toggle');
+    if (menu) menu.classList.add('hidden');
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+function bindSaveDropdownDismiss() {
+    const wrap = document.getElementById('save-dropdown-wrap');
+    if (!wrap || wrap.__saveDropdownBound) return;
+    wrap.__saveDropdownBound = true;
+    document.addEventListener('click', function (event) {
+        if (!wrap.contains(event.target)) closeSaveDropdown();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeSaveDropdown();
+    });
+}
+
+function toggleSaveDropdown(event) {
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+    const menu = document.getElementById('save-dropdown-menu');
+    const toggle = document.getElementById('save-dropdown-toggle');
+    if (!menu || !toggle) return false;
+    bindSaveDropdownDismiss();
+    const shouldOpen = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !shouldOpen);
+    toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    return shouldOpen;
+}
+
+async function saveCurrentDocumentAsNewFile() {
+    closeSaveDropdown();
+    try {
+        await ensureDatabaseStorageMode('indb');
+        return openDatabaseSaveModal('indb', { saveAs: true });
+    } catch (error) {
+        showToast('inDB Save As failed: ' + (error && error.message ? error.message : error));
+        return false;
+    }
+}
+
 function saveFile() {
     return saveCurrentFile();
 }
@@ -6024,6 +6092,18 @@ function applyNoteCoverTidyInEditor() {
     }
 }
 
+function applyInline2RefFootnoteInEditor() {
+    if (window.TidyActions && typeof window.TidyActions.applyInlineToRef === 'function') {
+        return window.TidyActions.applyInlineToRef(getTidyActionDeps(), 'footnote');
+    }
+}
+
+function applyInline2RefReferenceInEditor() {
+    if (window.TidyActions && typeof window.TidyActions.applyInlineToRef === 'function') {
+        return window.TidyActions.applyInlineToRef(getTidyActionDeps(), 'reference');
+    }
+}
+
 function openTidyScriptManager() {
     if (window.TidyScriptManager && typeof window.TidyScriptManager.openManager === 'function') {
         return window.TidyScriptManager.openManager();
@@ -7536,9 +7616,9 @@ function initSettings() {
 
 function getMermaidDisplayModeFromLocal() {
     try {
-        return localStorage.getItem(MERMAID_DISPLAY_MODE_KEY) === 'fixed' ? 'fixed' : 'interactive';
+        return localStorage.getItem(MERMAID_DISPLAY_MODE_KEY) === 'interactive' ? 'interactive' : 'fixed';
     } catch (_) {
-        return 'interactive';
+        return 'fixed';
     }
 }
 
@@ -8558,6 +8638,7 @@ function enhanceSettingsCardFold(containerId, headerSelector, bodyId, buttonId, 
 }
 
 function initializeSettingsContainerFolds() {
+    enhanceSettingsCardFold('pwa-settings-card', ':scope > div:first-child', '', '', 'PWA 앱');
     enhanceSettingsCardFold('ai-user-settings-card', ':scope > p:first-child', '', '', '사용자 정보');
     enhanceSettingsCardFold('google-calendar-settings-card', ':scope > div:first-child', '', '', 'Google 캘린더');
     enhanceSettingsCardFold('code-color-settings-card', ':scope > h4:first-child', '', '', '코드 색상');
@@ -12347,7 +12428,11 @@ function normalizeAIChatMessages(messages) {
     return (Array.isArray(messages) ? messages : []).filter(function (message) {
         return message && (message.role === 'user' || message.role === 'assistant') && String(message.content || '').trim();
     }).map(function (message) {
-        return { role: message.role, content: String(message.content) };
+        return {
+            role: message.role,
+            content: String(message.content),
+            attachments: Array.isArray(message.attachments) ? message.attachments : []
+        };
     });
 }
 
@@ -12782,7 +12867,15 @@ async function callOpenAIChatText(messages, systemInstruction, modelOverride, si
     const payload = {
         model: model,
         input: normalized.map(function (item) {
-            return { role: item.role === 'assistant' ? 'assistant' : 'user', content: String(item.content) };
+            const images = item.role === 'user' ? item.attachments.filter(function (attachment) {
+                return attachment && attachment.kind === 'image' && /^data:image\//i.test(String(attachment.dataUrl || ''));
+            }) : [];
+            const content = images.length
+                ? [{ type: 'input_text', text: String(item.content) }].concat(images.map(function (attachment) {
+                    return { type: 'input_image', image_url: attachment.dataUrl, detail: 'auto' };
+                }))
+                : String(item.content);
+            return { role: item.role === 'assistant' ? 'assistant' : 'user', content: content };
         }),
         max_output_tokens: maxOutputTokens,
         store: false
@@ -12830,11 +12923,21 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     const contents = [];
     normalized.forEach(function (message) {
         const role = message.role === 'assistant' ? 'model' : 'user';
+        const messageParts = [{ text: message.content }];
+        if (role === 'user') {
+            message.attachments.forEach(function (attachment) {
+                const match = attachment && String(attachment.dataUrl || '').match(/^data:([^;,]+);base64,(.+)$/i);
+                if (attachment && attachment.kind === 'image' && match) {
+                    messageParts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+                }
+            });
+        }
         const previous = contents[contents.length - 1];
         if (previous && previous.role === role) {
             previous.parts[0].text += '\n\n' + message.content;
+            if (messageParts.length > 1) previous.parts = previous.parts.concat(messageParts.slice(1));
         } else {
-            contents.push({ role: role, parts: [{ text: message.content }] });
+            contents.push({ role: role, parts: messageParts });
         }
     });
     if (!contents.length) throw new Error('전송할 대화가 없습니다.');
@@ -13033,6 +13136,87 @@ async function uploadAIChatGeneratedImageToImgbb(image, index) {
     return directUrl;
 }
 
+function aiChatFileToDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+        const reader = new FileReader();
+        reader.onload = function () { resolve(String(reader.result || '')); };
+        reader.onerror = function () { reject(reader.error || new Error('파일을 읽지 못했습니다.')); };
+        reader.readAsDataURL(file);
+    });
+}
+
+function extractOfficeXmlText(xml, tags) {
+    const doc = new DOMParser().parseFromString(String(xml || ''), 'application/xml');
+    const values = [];
+    (tags || []).forEach(function (tag) {
+        Array.from(doc.getElementsByTagName(tag)).forEach(function (node) {
+            const value = String(node.textContent || '').trim();
+            if (value) values.push(value);
+        });
+    });
+    return values.join(' ');
+}
+
+async function extractAIChatOfficeText(file, extension) {
+    if (!window.JSZip || typeof window.JSZip.loadAsync !== 'function') throw new Error('Office 문서 압축 해제 모듈이 없습니다.');
+    const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
+    const paths = Object.keys(zip.files).filter(function (path) {
+        if (extension === '.docx') return /^word\/document\.xml$/i.test(path);
+        if (extension === '.pptx') return /^ppt\/slides\/slide\d+\.xml$/i.test(path);
+        return /^xl\/(?:sharedStrings|worksheets\/sheet\d+)\.xml$/i.test(path);
+    }).sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true }); });
+    const sections = [];
+    for (const path of paths) {
+        const xml = await zip.files[path].async('string');
+        const text = extractOfficeXmlText(xml, extension === '.pptx' ? ['a:t'] : extension === '.docx' ? ['w:t'] : ['t', 'v']);
+        if (text) sections.push((extension === '.pptx' ? '[슬라이드] ' : extension === '.xlsx' ? '[시트 데이터] ' : '') + text);
+    }
+    return sections.join('\n\n');
+}
+
+async function extractAIChatPdfText(file) {
+    await loadOptionalScript('pdfJs', function () {
+        return !!window.pdfjsLib && typeof window.pdfjsLib.getDocument === 'function';
+    }, { module: true });
+    const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const pages = [];
+    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const text = content.items.map(function (item) { return String(item && item.str || ''); }).join(' ').trim();
+        if (text) pages.push('[페이지 ' + pageNumber + ']\n' + text);
+    }
+    return pages.join('\n\n');
+}
+
+async function extractAIChatAttachment(file) {
+    if (!file) throw new Error('첨부 파일이 없습니다.');
+    if (file.size > 25 * 1024 * 1024) throw new Error('첨부 파일은 25MB 이하여야 합니다: ' + file.name);
+    const name = String(file.name || 'clipboard-image.png');
+    const extension = (name.toLowerCase().match(/\.[^.]+$/) || [''])[0];
+    const mimeType = String(file.type || '').toLowerCase();
+    if (mimeType.startsWith('image/') || ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.avif', '.ico'].includes(extension)) {
+        return { kind: 'image', name: name, type: mimeType || 'image/png', size: file.size, dataUrl: await aiChatFileToDataUrl(file) };
+    }
+    let text = '';
+    if (extension === '.pdf') text = await extractAIChatPdfText(file);
+    else if (extension === '.docx' || extension === '.pptx' || extension === '.xlsx') text = await extractAIChatOfficeText(file, extension);
+    else if (['.txt', '.md', '.markdown', '.csv', '.json', '.html', '.htm'].includes(extension) || /^text\//.test(mimeType)) text = await file.text();
+    else throw new Error('지원하지 않는 첨부 형식입니다: ' + name);
+    text = String(text || '').trim();
+    if (!text) throw new Error('추출할 텍스트가 없습니다: ' + name);
+    return { kind: 'document', name: name, type: mimeType, size: file.size, text: text.slice(0, 160000), truncated: text.length > 160000 };
+}
+
+function aiChatDataUrlToFile(dataUrl, name) {
+    const match = String(dataUrl || '').match(/^data:([^;,]+);base64,(.+)$/i);
+    if (!match) throw new Error('이미지 데이터 형식이 올바르지 않습니다.');
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new File([bytes], name || 'ai-image.png', { type: match[1] || 'image/png' });
+}
+
 window.AIChatBridge = Object.freeze({
     getSelectedDocumentText: function () {
         if (!editorTextarea) return '';
@@ -13091,6 +13275,29 @@ window.AIChatBridge = Object.freeze({
     },
     uploadImageToImgbb: function (image, index) {
         return uploadAIChatGeneratedImageToImgbb(image, index);
+    },
+    extractAttachment: function (file) {
+        return extractAIChatAttachment(file);
+    },
+    saveAIDataRecord: function (record) {
+        if (!window.AIDataCenter || typeof window.AIDataCenter.save !== 'function') return Promise.resolve(false);
+        return window.AIDataCenter.save(record);
+    },
+    openAIDataCenter: function () {
+        if (!window.AIDataCenter || typeof window.AIDataCenter.open !== 'function') throw new Error('AI 데이터 센터 앱이 준비되지 않았습니다.');
+        return window.AIDataCenter.open();
+    },
+    readAIDataRecords: async function () {
+        return window.AIDataCenter && typeof window.AIDataCenter.readAll === 'function' ? window.AIDataCenter.readAll() : [];
+    },
+    openAIDataImagesInFma: function (records, selectedName) {
+        if (!window.InternalImageApp || typeof window.InternalImageApp.openFiles !== 'function') throw new Error('FMA Viewer 연결 모듈이 준비되지 않았습니다.');
+        const files = (Array.isArray(records) ? records : []).map(function (record) {
+            return aiChatDataUrlToFile(record.dataUrl, record.name);
+        });
+        if (!files.length) throw new Error('FMA Viewer로 열 이미지가 없습니다.');
+        window.InternalImageApp.openFiles(files, selectedName || files[0].name);
+        return true;
     },
     complete: async function (request) {
         request = request || {};
@@ -14110,6 +14317,7 @@ function openSettingsModal() {
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
     loadAiSettingsToUI();
+    loadAIWritingStylePrompt();
     if (typeof window.ensureShareUiReady === 'function') {
         Promise.resolve(window.ensureShareUiReady()).then(function () {
             return loadAiSettingsToUI();
@@ -14121,6 +14329,61 @@ function openSettingsModal() {
         }).catch(function () {});
     }
 }
+
+const AI_WRITING_STYLE_PROMPT_KEY = 'mdpro_ai_writing_style_prompt_v1';
+const DEFAULT_AI_WRITING_STYLE_PROMPT = [
+    '다음 문체 지침을 모든 한국어 본문 작성과 문장 수정에 적용한다.',
+    '상투적인 “-이다”, “-한다” 종결을 문장마다 반복하지 않는다. 문맥과 논리 기능에 따라 학술적 서술어를 다양하게 선택한다.',
+    '이미 완료된 사건·변화·분석 결과는 과거형으로 기술한다. 예: “야기한다”보다 “야기하였다”, “기제로 작용한다”보다 “기제로 작용하였다”를 사용한다.',
+    '가능성이나 해석은 단정하지 않고 “규명할 수 있다”, “정밀도를 높일 수 있다”, “가능성을 시사한다”와 같이 근거 수준에 맞추어 표현한다.',
+    '강조가 필요한 경우 “명확히 지시한다는 점이다”, “중요한 의미를 갖는다”처럼 논점을 분명히 드러낸다.',
+    '역할·기능은 “역할을 수행한다”, “기능을 수행한다”, 의미·가치는 “의미를 갖는다”, “중요성을 지닌다”, “핵심적 기반이 된다”로 표현할 수 있다.',
+    '영향·효과는 “기여한다”, “영향을 미친다”, “효과를 나타낸다”를 사용하고, 지위·평가는 “자리매김한다”, “위상을 갖는다”, “전략적 자산으로 간주된다”, “핵심적 요소로 평가된다” 등으로 다양화한다.',
+    '동일한 종결 표현을 가까운 문장 안에서 반복하지 않으며, 의미에 가장 정확한 서술어를 선택한다. 표현을 억지로 치환하거나 지나치게 장식하지 않는다.',
+    '객관적이고 논리적인 학술 문체를 유지하고, 주장·근거·해석을 구분한다. 근거보다 강한 단정, 과장, 구어체, 불필요한 존댓말을 피한다.',
+    '수식은 한글(HWP) 수식 입력을 고려하여 별도 요청이 없으면 복사 가능한 텍스트 형태로 제시한다.',
+    '사용자가 특정 언어, 문체, 시제 또는 형식을 명시한 경우에는 해당 요청을 우선한다.'
+].join('\n');
+
+function getAIWritingStylePrompt() {
+    try { return String(localStorage.getItem(AI_WRITING_STYLE_PROMPT_KEY) || '').trim() || DEFAULT_AI_WRITING_STYLE_PROMPT; }
+    catch (_) { return DEFAULT_AI_WRITING_STYLE_PROMPT; }
+}
+
+function loadAIWritingStylePrompt() {
+    const input = document.getElementById('ai-writing-style-prompt');
+    if (input) input.value = getAIWritingStylePrompt();
+}
+
+function setAIWritingStylePromptFeedback(message, isError) {
+    const feedback = document.getElementById('ai-writing-style-prompt-feedback');
+    if (!feedback) return;
+    feedback.textContent = message || '';
+    feedback.className = 'min-h-[1rem] text-[11px] ' + (isError ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400');
+}
+
+function saveAIWritingStylePrompt() {
+    const input = document.getElementById('ai-writing-style-prompt');
+    const value = input ? String(input.value || '').trim() : '';
+    if (!value) { setAIWritingStylePromptFeedback('문체 프롬프트를 입력해 주세요.', true); return false; }
+    try {
+        localStorage.setItem(AI_WRITING_STYLE_PROMPT_KEY, value);
+        setAIWritingStylePromptFeedback('문체 프롬프트를 저장했습니다. 다음 AI 요청부터 적용됩니다.', false);
+        return true;
+    } catch (_) {
+        setAIWritingStylePromptFeedback('브라우저 저장소에 문체 프롬프트를 저장하지 못했습니다.', true);
+        return false;
+    }
+}
+
+function resetAIWritingStylePrompt() {
+    const input = document.getElementById('ai-writing-style-prompt');
+    if (input) input.value = DEFAULT_AI_WRITING_STYLE_PROMPT;
+    try { localStorage.removeItem(AI_WRITING_STYLE_PROMPT_KEY); } catch (_) {}
+    setAIWritingStylePromptFeedback('학술 문체 기본값을 복원했습니다.', false);
+}
+
+window.getAIWritingStylePrompt = getAIWritingStylePrompt;
 
 function focusGoogleCalendarSettings() {
     const settingsBody = document.getElementById('settings-modal-body');
@@ -14570,8 +14833,9 @@ async function saveToDB() {
     return saveToSelectedStorage(targetSource);
 }
 
-async function openDatabaseSaveModal(storageModeInput) {
+async function openDatabaseSaveModal(storageModeInput, options) {
     const storageMode = storageModeInput === 'sqlite' ? 'sqlite' : 'indb';
+    const saveAs = !!(options && options.saveAs);
 
     const modal = document.getElementById('save-modal');
     const titleEl = document.querySelector('#save-modal h3');
@@ -14580,8 +14844,10 @@ async function openDatabaseSaveModal(storageModeInput) {
     if (!modal || !input) return;
 
     const storageLabel = getStorageModeLabel(storageMode);
-    if (titleEl) titleEl.textContent = 'Save to ' + storageLabel;
-    if (labelEl) labelEl.textContent = 'Enter a title for the ' + storageLabel + ' document.';
+    if (titleEl) titleEl.textContent = saveAs ? 'Save As to inDB' : 'Save to ' + storageLabel;
+    if (labelEl) labelEl.textContent = saveAs
+        ? '새 inDB 문서의 이름을 입력하세요. 원본 문서는 변경되지 않습니다.'
+        : 'Enter a title for the ' + storageLabel + ' document.';
 
     let defaultTitle = currentFileName.replace(/\.(md|markdown|mdown|txt|html|htm|json|mdd|mpv|docx)$/i, '');
     const selected = getSelectedTextForSave();
@@ -14600,19 +14866,23 @@ async function openDatabaseSaveModal(storageModeInput) {
             let targetDoc = null;
 
             if (exactMatches.length > 0) {
-                targetDoc = exactMatches
-                    .slice()
-                    .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())[0];
-
-                const overwrite = window.confirm(
-                    'A document with the same title already exists.\n\n' +
-                    'Press OK to overwrite it.\n' +
-                    'Press Cancel to save as a new document with a numbered title.'
-                );
-
-                if (!overwrite) {
+                if (saveAs) {
                     resolvedTitle = getNextIndexedDbTitle(normalizedTitle, docs);
-                    targetDoc = null;
+                } else {
+                    targetDoc = exactMatches
+                        .slice()
+                        .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())[0];
+
+                    const overwrite = window.confirm(
+                        'A document with the same title already exists.\n\n' +
+                        'Press OK to overwrite it.\n' +
+                        'Press Cancel to save as a new document with a numbered title.'
+                    );
+
+                    if (!overwrite) {
+                        resolvedTitle = getNextIndexedDbTitle(normalizedTitle, docs);
+                        targetDoc = null;
+                    }
                 }
             }
 
@@ -14688,6 +14958,9 @@ window.openFmaViewer = openFmaViewer;
 window.readFile = readFile;
 window.saveFile = saveFile;
 window.saveCurrentFile = saveCurrentFile;
+window.toggleSaveDropdown = toggleSaveDropdown;
+window.closeSaveDropdown = closeSaveDropdown;
+window.saveCurrentDocumentAsNewFile = saveCurrentDocumentAsNewFile;
 window.saveFileAs = saveFileAs;
 window.exportCurrentDocumentByChoice = exportCurrentDocumentByChoice;
 window.openPdfMergeWindow = openPdfMergeWindow;
@@ -14853,6 +15126,8 @@ window.applyEnterTidyInEditor = applyEnterTidyInEditor;
 window.applyMathTidyInEditor = applyMathTidyInEditor;
 window.applyHtmlTidyInEditor = applyHtmlTidyInEditor;
 window.applyNoteCoverTidyInEditor = applyNoteCoverTidyInEditor;
+window.applyInline2RefFootnoteInEditor = applyInline2RefFootnoteInEditor;
+window.applyInline2RefReferenceInEditor = applyInline2RefReferenceInEditor;
 window.openTidyScriptManager = openTidyScriptManager;
 window.convertBase64ImagesToInternalInEditor = convertBase64ImagesToInternalInEditor;
 window.convertInternalImagesToBase64InEditor = convertInternalImagesToBase64InEditor;

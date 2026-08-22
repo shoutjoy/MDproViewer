@@ -35,13 +35,14 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;docxTableContrast=20260817-1&amp;tidyUi=20260811-1&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260815-supsub-1&amp;sidebarControls=20260812-4&amp;miniToc=20260815-responsive-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260811-note-cover-editor-12&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;docxTableContrast=20260817-1&amp;tidyUi=20260811-1&amp;inline2refCss=20260822-2&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260815-supsub-1&amp;sidebarControls=20260812-4&amp;miniToc=20260815-responsive-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1" charset="utf-8">
     <link rel="stylesheet" href="./MobileUI/mobile-ui.css?v=20260817-5" charset="utf-8">
-    <link rel="stylesheet" href="./js/inDB/inDB.css?v=20260812-1" charset="utf-8">
+    <link rel="stylesheet" href="./js/inDB/inDB.css?v=20260823-ai-audit-3" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260817-scholar-upgrades-1" charset="utf-8">
-    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260810-ai-jena-button-1" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260823-flexible-width-1" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/dataCenter/ai-data-center.css?v=20260823-dark-chrome-7" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/styles/scholarref.css?v=20260812-scholar-modules-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
@@ -435,12 +436,27 @@
                 <span class="hidden xl:inline text-sm font-medium">내보내기</span>
             </button>
 
-            <button onclick="saveToDB()"
-                class="p-1.5 sm:p-2 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-md transition-colors flex items-center gap-1 border border-indigo-200 dark:border-indigo-800 shrink-0"
-                title="현재 문서를 원래 저장소에 저장">
-                <i data-lucide="save" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
-                <span class="hidden xl:inline text-sm font-bold">저장</span>
-            </button>
+            <div id="save-dropdown-wrap" class="relative flex shrink-0">
+                <button type="button" onclick="saveToDB()"
+                    class="p-1.5 sm:p-2 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-l-md transition-colors flex items-center gap-1 border border-indigo-200 dark:border-indigo-800"
+                    title="현재 문서를 원래 저장소에 저장">
+                    <i data-lucide="save" class="w-[18px] h-[18px] sm:w-5 sm:h-5"></i>
+                    <span class="hidden xl:inline text-sm font-bold">저장</span>
+                </button>
+                <button type="button" id="save-dropdown-toggle" onclick="toggleSaveDropdown(event)"
+                    class="px-1 sm:px-1.5 bg-indigo-50 dark:bg-indigo-900/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 rounded-r-md transition-colors flex items-center border border-l-0 border-indigo-200 dark:border-indigo-800"
+                    title="저장 메뉴" aria-haspopup="menu" aria-expanded="false">
+                    <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
+                </button>
+                <div id="save-dropdown-menu" role="menu"
+                    class="hidden absolute z-[80] right-0 top-[calc(100%+6px)] min-w-44 p-1.5 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                    <button type="button" role="menuitem" onclick="saveCurrentDocumentAsNewFile()"
+                        class="w-full px-3 py-2 rounded flex items-center gap-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <i data-lucide="file-plus-2" class="w-4 h-4"></i>
+                        <span>saveAs</span>
+                    </button>
+                </div>
+            </div>
 
             <div class="hidden sm:block h-6 w-px bg-slate-200 dark:bg-slate-600 mx-1 sm:mx-2 shrink-0"></div>
 
@@ -941,6 +957,12 @@
                                     class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">HTML정리</button>
                                 <button type="button" onclick="convertSelectionMarkdownToHtml(); closeTidyQuickMenu && closeTidyQuickMenu()"
                                     class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">MD2HTML</button>
+                                <button type="button" onclick="applyInline2RefFootnoteInEditor()"
+                                    class="tidy-action-button px-2 py-1 rounded border border-indigo-300 dark:border-indigo-700 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                                    title="본문을 [^번호]로 바꾸고 보기 화면 하단에 클릭 가능한 각주 링크를 표시합니다">Inline2Ref 주석</button>
+                                <button type="button" onclick="applyInline2RefReferenceInEditor()"
+                                    class="tidy-action-button px-2 py-1 rounded border border-indigo-300 dark:border-indigo-700 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                                    title="본문을 [번호]로 바꾸고 문서 끝에 [번호]: URL 참조 정의를 만듭니다">Inline2Ref 인라인</button>
                                 <button type="button" onclick="convertHtmlToMarkdownInEditor()"
                                     class="tidy-action-button px-2 py-1 rounded border border-amber-300 dark:border-amber-700 text-[11px] font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"
                                     title="선택 영역 또는 문서 전체의 HTML을 Markdown으로 변환하고 제한 항목을 안내">HTML2MD</button>
@@ -1592,6 +1614,7 @@
                         <label
                             class="flex cursor-pointer items-start gap-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3">
                             <input type="radio" name="mermaid-display-mode" value="fixed"
+                                checked
                                 onchange="setMermaidDisplayMode(this.value)"
                                 class="mt-0.5 border-slate-300 text-indigo-600 focus:ring-indigo-500">
                             <span>
@@ -2028,6 +2051,9 @@
                                     title="AI Jena 관련 설정 접기/펼치기">접기</button>
                             </div>
                             <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 모든 화면의 우측 하단에 AI Jena 버튼이 표시됩니다. 팝업·우측 Dock·전체화면을 지원하고 대화 기록은 IndexedDB에 저장됩니다. ScholarAI와 별도의 일반 멀티턴 대화이며, 위의 LM Studio 연결 설정과 AI Studio API Key를 공유합니다.</p>
+                            <button type="button" onclick="window.AIDataCenter && window.AIDataCenter.open()"
+                                class="mt-3 w-full px-4 py-2 border-2 border-teal-600 rounded-md text-sm font-semibold text-teal-800 dark:text-teal-300 bg-white dark:bg-slate-800 hover:bg-teal-50 dark:hover:bg-teal-950/30">AI 데이터 센터 열기</button>
+                            <p class="mt-1 text-[10px] text-slate-500 dark:text-slate-400">AIDataCenterDB에 저장된 AI 질문·답변·학술검색·이미지 사용 이력을 별도 앱에서 탐색합니다.</p>
                         </div>
                         <div id="sqlite-settings-tool" class="pt-1">
                             <div id="sqlite-settings-fold-header" class="flex items-center justify-between gap-2">
@@ -2198,6 +2224,29 @@
                                 </div>
                                 <div id="google-docs-settings-slot" class="pl-6"></div>
                                 <div id="ai-integration-settings-slot"></div>
+                                <details id="ai-writing-style-prompt-settings" class="group mt-3 rounded-lg border border-violet-300/70 bg-violet-50/60 dark:border-violet-900/70 dark:bg-violet-950/20">
+                                    <summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-3 select-none">
+                                        <div>
+                                            <p class="text-xs font-semibold text-violet-800 dark:text-violet-300">문체 프롬프트</p>
+                                            <p class="mt-1 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">AI 답변에 적용할 학술 문체 지침을 수정합니다.</p>
+                                        </div>
+                                        <span class="shrink-0 text-xs font-semibold text-violet-700 group-open:hidden dark:text-violet-300">펼치기 ▾</span>
+                                        <span class="hidden shrink-0 text-xs font-semibold text-violet-700 group-open:inline dark:text-violet-300">접기 ▴</span>
+                                    </summary>
+                                    <div class="space-y-2 border-t border-violet-200/80 p-3 dark:border-violet-900/70">
+                                        <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">AI Jena가 답변과 학술 문장을 작성할 때 적용할 문체 지침입니다. 내용을 직접 수정하여 저장할 수 있습니다.</p>
+                                        <textarea id="ai-writing-style-prompt" rows="12" spellcheck="true"
+                                            class="w-full resize-y rounded-md border border-violet-200 bg-white px-3 py-2 text-xs leading-5 text-slate-900 outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 dark:border-violet-800 dark:bg-slate-900 dark:text-slate-100"
+                                            placeholder="AI 답변에 적용할 문체 지침을 입력하세요."></textarea>
+                                        <div class="flex flex-wrap items-center justify-between gap-2">
+                                            <p id="ai-writing-style-prompt-feedback" class="min-h-[1rem] text-[11px] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+                                            <div class="flex gap-2">
+                                                <button type="button" onclick="resetAIWritingStylePrompt()" class="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800">기본값 복원</button>
+                                                <button type="button" onclick="saveAIWritingStylePrompt()" class="rounded bg-violet-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-800">문체 저장</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </details>
                         </div>
                     </div>
                 </div>
@@ -2949,7 +2998,12 @@
     defer>
 </script>
 <script
-    src="./js/Tidy/tidy-actions.js?v=20260817-html2md-1"
+    src="./js/Tidy/tidy-inline-to-ref.js?v=20260822-inline2ref-4"
+    charset="utf-8"
+    defer>
+</script>
+<script
+    src="./js/Tidy/tidy-actions.js?v=20260817-html2md-1&amp;inline2ref=20260822-3"
     charset="utf-8"
     defer>
 </script>
@@ -3031,7 +3085,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260811-note-cover-insert-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-open-menu-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1"
+    src="./js/app.js?v=20260811-note-cover-insert-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-open-menu-1&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1"
     charset="utf-8"
     defer>
 </script>
@@ -3050,7 +3104,7 @@
 </script>
 <!-- inDB 초기화·저장·설정 탐색 UI -->
 <script
-    src="./js/inDB/inDB.js?v=20260816-toggle-1"
+    src="./js/inDB/inDB.js?v=20260823-ai-audit-3"
     charset="utf-8"
     defer>
 </script>
@@ -3078,6 +3132,7 @@
 </script>
 
 <!-- AI Jena 모듈은 기능을 켜거나 패널을 처음 열 때 app.js가 지연 로드한다. -->
+<script src="./AI_App/dataCenter/ai-data-center.js?v=20260823-compact-menu-4" charset="utf-8" defer></script>
 
 <!-- GitHub 실제 기능 -->
 <script

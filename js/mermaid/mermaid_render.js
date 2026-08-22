@@ -162,9 +162,9 @@
 
     function getMermaidDisplayMode() {
         try {
-            return localStorage.getItem(MERMAID_DISPLAY_MODE_KEY) === 'fixed' ? 'fixed' : 'interactive';
+            return localStorage.getItem(MERMAID_DISPLAY_MODE_KEY) === 'interactive' ? 'interactive' : 'fixed';
         } catch (e) {
-            return 'interactive';
+            return 'fixed';
         }
     }
 

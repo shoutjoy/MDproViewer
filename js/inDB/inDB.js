@@ -1,7 +1,7 @@
 // MarkdownProDB(inDB) initialization, saving, feature synchronization, and storage UI.
 // Loaded after app.js so editor globals remain available while this concern stays isolated.
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const FEATURE_DATA_STORE_NAMES = ['fonts', 'ai_chat', 'scholar_ai', 'ssp_image_ai', 'highlights', 'genslides'];
 const INDB_ENABLED_SETTING_KEY = 'md_viewer_indb_enabled';
 
@@ -177,6 +177,7 @@ let featureDataSyncPromise = null;
 let inDbStatusObjectUrls = new Set();
 let inDbStatusSnapshot = null;
 let inDbStatusViewState = { storeName: '', recordId: '' };
+let inDbAiMessageFilter = 'all';
 let inDbUnusedImageObjectUrls = new Set();
 let inDbUnusedImageSnapshot = null;
 
@@ -407,7 +408,7 @@ function escapeInDbStatusHtml(value) {
 
 function getInDbStatusStores() {
     if (!db || !db.objectStoreNames) return [];
-    const existing = Array.from(db.objectStoreNames || []);
+    const existing = Array.from(db.objectStoreNames || []).filter(function (name) { return name !== 'AI_data'; });
     const ordered = [];
     INDB_STATUS_STORE_ORDER.forEach(function (name) {
         if (existing.includes(name)) ordered.push(name);
@@ -429,6 +430,10 @@ function getInDbStatusPrimaryText(storeName, item) {
     if (storeName === 'work_files') return String(rec.name || rec.id || '(work file)');
     if (storeName === 'ai_settings') return String(rec.id || 'ai_settings');
     if (storeName === 'ai_chat') return String(rec.title || rec.id || '(AI chat)');
+    if (storeName === 'AI_data') {
+        if (rec.recordType === 'academic_search') return String(rec.question || rec.query || '(학술검색)');
+        return String(rec.title || rec.name || rec.id || '(AI data)');
+    }
     if (storeName === 'scholar_ai') return String(rec.prompt || rec.title || rec.id || '(ScholarAI)');
     if (storeName === 'ssp_image_ai') return String(rec.prompt || rec.name || rec.id || '(sspimgAI image)');
     if (storeName === 'highlights') {
@@ -459,6 +464,12 @@ function getInDbStatusSecondaryText(storeName, item) {
     }
     if (storeName === 'ai_chat') {
         return 'id=' + String(rec.id || '') + ' | messages=' + (Array.isArray(rec.messages) ? rec.messages.length : 0);
+    }
+    if (storeName === 'AI_data') {
+        const typeLabels = { conversation: 'AI 대화', academic_search: '학술검색', attachment: '첨부 사용', image: 'AI 이미지' };
+        const type = typeLabels[rec.recordType] || String(rec.recordType || 'AI 사용 기록');
+        const count = rec.recordType === 'academic_search' && Array.isArray(rec.results) ? ' | 결과=' + rec.results.length : '';
+        return type + count + ' | 대화=' + String(rec.conversationTitle || rec.conversationId || '-');
     }
     if (storeName === 'scholar_ai') {
         return 'id=' + String(rec.id || '') + ' | result chars=' + String(rec.result || '').length;
@@ -1298,6 +1309,49 @@ function renderInDbStatusDetail(snapshot, storeName, record) {
         imagePreview = '<div class="indb-detail-image"><img src="' + escapeInDbStatusHtml(imageUrl)
             + '" alt="' + title + '" decoding="async"></div>';
     }
+    if (storeName === 'AI_data' && record.recordType === 'image' && /^data:image\//i.test(String(record.dataUrl || ''))) {
+        imagePreview = '<div class="indb-detail-image indb-ai-image-preview"><img src="'
+            + escapeInDbStatusHtml(record.dataUrl) + '" alt="' + title + '" decoding="async"></div>';
+    }
+    let aiContent = '';
+    if (storeName === 'AI_data' && record.recordType === 'conversation') {
+        const messages = (Array.isArray(record.messages) ? record.messages : []).filter(function (message) {
+            return inDbAiMessageFilter !== 'assistant' || message.role === 'assistant';
+        });
+        aiContent = '<div class="indb-ai-filter" role="group" aria-label="대화 메시지 필터">'
+            + '<button type="button" class="' + (inDbAiMessageFilter === 'all' ? 'is-active' : '')
+            + '" onclick="setInDbAiMessageFilter(\'all\')">질문 + 답변</button>'
+            + '<button type="button" class="' + (inDbAiMessageFilter === 'assistant' ? 'is-active' : '')
+            + '" onclick="setInDbAiMessageFilter(\'assistant\')">답변만 보기</button></div>'
+            + '<div class="indb-ai-message-list">' + (messages.length ? messages.map(function (message) {
+                const assistant = message && message.role === 'assistant';
+                const academicResults = !assistant && Array.isArray(message.academicSources) && message.academicSources.length
+                    ? '<details class="indb-ai-academic-inline"><summary>학술검색 결과 ' + message.academicSources.length + '건</summary>'
+                        + message.academicSources.map(function (source) {
+                            return '<div><strong>' + escapeInDbStatusHtml(String(source.title || '(제목 없음)')) + '</strong><span>'
+                                + escapeInDbStatusHtml([source.authorLabel, source.year, source.doi].filter(Boolean).join(' · ')) + '</span></div>';
+                        }).join('') + '</details>' : '';
+                return '<article class="indb-ai-message ' + (assistant ? 'is-assistant' : 'is-user') + '"><strong>'
+                    + (assistant ? 'AI 답변' : '질문') + '</strong><div>'
+                    + escapeInDbStatusHtml(String((message && message.content) || '')) + '</div>' + academicResults + '</article>';
+            }).join('') : '<div class="indb-empty-state">표시할 메시지가 없습니다.</div>') + '</div>';
+    } else if (storeName === 'AI_data' && record.recordType === 'academic_search') {
+        const results = Array.isArray(record.results) ? record.results : [];
+        aiContent = '<div class="indb-ai-academic-search"><section><strong>질문</strong><p>'
+            + escapeInDbStatusHtml(String(record.question || '')) + '</p></section><section><strong>검색어</strong><p>'
+            + escapeInDbStatusHtml(String(record.query || '')) + '</p></section><div class="indb-ai-academic-results">'
+            + (results.length ? results.map(function (source, index) {
+                const url = String(source.url || (source.doi ? 'https://doi.org/' + source.doi : ''));
+                return '<article><span>' + (index + 1) + '</span><div><strong>'
+                    + escapeInDbStatusHtml(String(source.title || '(제목 없음)')) + '</strong><p>'
+                    + escapeInDbStatusHtml([source.authorLabel, source.year, source.journal].filter(Boolean).join(' · ')) + '</p>'
+                    + (source.abstract ? '<details><summary>초록 보기</summary><div>' + escapeInDbStatusHtml(source.abstract) + '</div></details>' : '')
+                    + (url ? '<a href="' + escapeInDbStatusHtml(url) + '" target="_blank" rel="noopener noreferrer">원문/DOI 열기</a>' : '')
+                    + '</div></article>';
+            }).join('') : '<div class="indb-empty-state">저장된 검색 결과가 없습니다.</div>') + '</div></div>';
+    } else if (storeName === 'AI_data' && record.recordType === 'attachment') {
+        aiContent = '<div class="indb-ai-attachment-note"><strong>AI 입력에 사용된 첨부 기록</strong><p>파일 원문은 AI 데이터 센터에 보관하지 않습니다.</p></div>';
+    }
     const keys = Object.keys(record);
     const fields = keys.length ? keys.map(function (key) {
         return '<div class="indb-detail-field"><div class="indb-detail-key">' + escapeInDbStatusHtml(key)
@@ -1311,7 +1365,12 @@ function renderInDbStatusDetail(snapshot, storeName, record) {
     return '<div class="indb-detail-content"><header class="indb-detail-header"><div class="indb-detail-heading">'
         + '<span class="indb-detail-store">' + escapeInDbStatusHtml(storeName) + '</span><h3>' + title + '</h3>'
         + '<p>' + escapeInDbStatusHtml(getInDbStatusSecondaryText(storeName, record)) + '</p></div>' + deleteControl
-        + '</header>' + imagePreview + '<div class="indb-detail-fields">' + fields + '</div></div>';
+        + '</header>' + imagePreview + aiContent + '<div class="indb-detail-fields">' + fields + '</div></div>';
+}
+
+function setInDbAiMessageFilter(filter) {
+    inDbAiMessageFilter = filter === 'assistant' ? 'assistant' : 'all';
+    if (inDbStatusSnapshot) renderInDbStatusBrowser(inDbStatusSnapshot);
 }
 
 function renderInDbStatusBrowser(snapshot) {
@@ -1358,10 +1417,12 @@ function renderInDbStatusBrowser(snapshot) {
         const sub = escapeInDbStatusHtml(getInDbStatusSecondaryText(activeStore, record));
         const lockedRoot = activeStore === 'folders' && id === 'root';
         let thumb = '';
-        if (activeStore === 'images') {
+        if (activeStore === 'images' || (activeStore === 'AI_data' && record.recordType === 'image')) {
             const blob = record.blob instanceof Blob ? record.blob : null;
             const mime = String(record.mime || (blob && blob.type) || '');
-            if (blob && /^image\//i.test(mime)) {
+            if (activeStore === 'AI_data' && /^data:image\//i.test(String(record.dataUrl || ''))) {
+                thumb = '<span class="indb-record-thumb"><img src="' + escapeInDbStatusHtml(record.dataUrl) + '" alt="" loading="lazy" decoding="async"></span>';
+            } else if (blob && /^image\//i.test(mime)) {
                 const url = createInDbStatusObjectUrl(blob);
                 thumb = '<span class="indb-record-thumb"><img src="' + escapeInDbStatusHtml(url) + '" alt="" loading="lazy" decoding="async"></span>';
             } else {
@@ -1374,19 +1435,35 @@ function renderInDbStatusBrowser(snapshot) {
                 + '" data-id="' + escapeInDbStatusHtml(id)
                 + '" onclick="deleteInDbStatusItem(this.dataset.store,this.dataset.id)" aria-label="삭제: '
                 + title + '" title="삭제">×</button>';
-        return '<article class="indb-record-select-row' + (active ? ' is-active' : '') + '"><button type="button"'
+        const searchable = [title, sub, record.question, record.query, record.title, record.name]
+            .concat(Array.isArray(record.messages) ? record.messages.map(function (message) { return message && message.content; }) : [])
+            .concat(Array.isArray(record.results) ? record.results.map(function (source) { return source && source.title; }) : [])
+            .filter(Boolean).join(' ').toLowerCase();
+        return '<article class="indb-record-select-row' + (active ? ' is-active' : '') + '" data-ai-search="'
+            + escapeInDbStatusHtml(searchable) + '"><button type="button"'
             + ' class="indb-record-select" data-store="' + escapeInDbStatusHtml(activeStore) + '" data-id="'
             + escapeInDbStatusHtml(id) + '" onclick="selectInDbStatusRecord(this.dataset.store,this.dataset.id)">'
             + thumb + '<span class="indb-record-copy"><span class="indb-record-title">' + title
             + '</span><span class="indb-record-meta">' + sub + '</span></span></button>' + trailing + '</article>';
     }).join('') : '<div class="indb-empty-state">저장된 항목이 없습니다.</div>';
     const activeLabel = activeEntry ? (INDB_STATUS_STORE_LABELS[activeStore] || activeStore) : '항목';
+    const fmaButton = document.getElementById('btn-open-indb-images-fma');
+    if (fmaButton && activeStore === 'AI_data') {
+        const aiImageCount = activeEntry.items.filter(function (item) { return item && item.recordType === 'image' && item.dataUrl; }).length;
+        fmaButton.disabled = aiImageCount === 0;
+        fmaButton.textContent = aiImageCount ? 'FMA AI 이미지 ' + aiImageCount : 'FMA AI 이미지';
+    } else if (fmaButton) {
+        fmaButton.disabled = snapshot.images.length === 0;
+        fmaButton.textContent = snapshot.images.length ? 'FMA 전체보기 ' + snapshot.images.length : 'FMA 전체보기';
+    }
 
     listEl.innerHTML = overview + '<div class="indb-browser-grid">'
         + '<nav class="indb-store-sidebar" aria-label="inDB 저장소 분류"><div class="indb-pane-title"><strong>저장소</strong><span>분류</span></div>'
         + '<div class="indb-store-nav-list">' + stores + '</div></nav>'
         + '<section class="indb-record-pane"><div class="indb-pane-title"><strong>' + escapeInDbStatusHtml(activeLabel)
-        + '</strong><span>' + (activeEntry ? activeEntry.items.length : 0) + '개 항목</span></div><div class="indb-record-scroll">'
+        + '</strong><span>' + (activeEntry ? activeEntry.items.length : 0) + '개 항목</span></div>'
+        + (activeStore === 'AI_data' ? '<div class="indb-ai-search-box"><input type="search" placeholder="질문·답변·검색어·논문 제목 검색" oninput="filterInDbAiRecords(this.value)" aria-label="AI 사용 기록 검색"></div>' : '')
+        + '<div class="indb-record-scroll">'
         + records + '</div></section>'
         + '<aside class="indb-detail-pane" aria-label="선택한 inDB 항목 세부내용"><div class="indb-pane-title"><strong>세부내용</strong><span>항목 선택</span></div>'
         + '<div class="indb-detail-scroll">' + renderInDbStatusDetail(snapshot, activeStore, activeRecord) + '</div></aside>'
@@ -1403,6 +1480,26 @@ function selectInDbStatusRecord(storeName, recordId) {
     if (!inDbStatusSnapshot || !getInDbStatusRecord(inDbStatusSnapshot, storeName, recordId)) return;
     inDbStatusViewState = { storeName: String(storeName), recordId: String(recordId) };
     renderInDbStatusBrowser(inDbStatusSnapshot);
+}
+
+function filterInDbAiRecords(value) {
+    const query = String(value || '').trim().toLowerCase();
+    document.querySelectorAll('#indb-status-list .indb-record-select-row[data-ai-search]').forEach(function (row) {
+        row.hidden = !!query && !String(row.dataset.aiSearch || '').includes(query);
+    });
+}
+
+function openActiveInDbImagesInFmaViewer() {
+    if (inDbStatusViewState.storeName !== 'AI_data') return openAllInDbImagesInFmaViewer();
+    const entry = inDbStatusSnapshot && getInDbStatusEntry(inDbStatusSnapshot, 'AI_data');
+    const records = entry ? entry.items.filter(function (item) {
+        return item && item.recordType === 'image' && /^data:image\//i.test(String(item.dataUrl || ''));
+    }) : [];
+    if (!records.length) return showToast('AI 데이터 센터에 이미지가 없습니다.');
+    if (!window.AIChatBridge || typeof window.AIChatBridge.openAIDataImagesInFma !== 'function') {
+        return showToast('FMA Viewer 연결 모듈이 준비되지 않았습니다.');
+    }
+    window.AIChatBridge.openAIDataImagesInFma(records, records[0].name);
 }
 
 async function renderInDbStatusModal() {
@@ -1432,10 +1529,19 @@ async function renderInDbStatusModal() {
     }
     const fmaButton = document.getElementById('btn-open-indb-images-fma');
     if (fmaButton) {
-        fmaButton.disabled = snapshot.images.length === 0;
-        fmaButton.textContent = snapshot.images.length
-            ? 'FMA 전체보기 ' + snapshot.images.length
-            : 'FMA 전체보기';
+        if (inDbStatusViewState.storeName === 'AI_data') {
+            const aiEntry = getInDbStatusEntry(snapshot, 'AI_data');
+            const aiImageCount = aiEntry ? aiEntry.items.filter(function (item) {
+                return item && item.recordType === 'image' && item.dataUrl;
+            }).length : 0;
+            fmaButton.disabled = aiImageCount === 0;
+            fmaButton.textContent = aiImageCount ? 'FMA AI 이미지 ' + aiImageCount : 'FMA AI 이미지';
+        } else {
+            fmaButton.disabled = snapshot.images.length === 0;
+            fmaButton.textContent = snapshot.images.length
+                ? 'FMA 전체보기 ' + snapshot.images.length
+                : 'FMA 전체보기';
+        }
     }
     const subtitle = document.getElementById('indb-status-subtitle');
     if (subtitle) {
@@ -1444,7 +1550,7 @@ async function renderInDbStatusModal() {
     }
 }
 
-async function openInDbStatusModal() {
+async function openInDbStatusModal(initialStoreName) {
     ensureInDbStatusUi();
     const modal = document.getElementById('indb-status-modal');
     if (!modal) return;
@@ -1452,7 +1558,7 @@ async function openInDbStatusModal() {
     modal.style.zIndex = '2147483646';
     modal.classList.remove('hidden');
     modal.classList.add('flex');
-    inDbStatusViewState = { storeName: 'documents', recordId: '' };
+    inDbStatusViewState = { storeName: String(initialStoreName || 'documents'), recordId: '' };
     inDbStatusSnapshot = null;
     try {
         const panel = modal.firstElementChild;
@@ -1639,7 +1745,7 @@ const INDB_STATUS_MODALS_HTML = `
             <div id="indb-status-list" class="indb-status-list" aria-live="polite"></div>
             <footer class="indb-status-footer">
                 <div class="indb-footer-group">
-                    <button type="button" id="btn-open-indb-images-fma" class="indb-action-button indb-action-fma" onclick="openAllInDbImagesInFmaViewer()">FMA 전체보기</button>
+                    <button type="button" id="btn-open-indb-images-fma" class="indb-action-button indb-action-fma" onclick="openActiveInDbImagesInFmaViewer()">FMA 전체보기</button>
                     <button type="button" id="btn-clean-unused-indb-images" class="indb-action-button indb-action-clean" onclick="deleteUnusedInDbImages()">미사용 이미지 정리</button>
                 </div>
                 <div class="indb-footer-group indb-footer-group-end">
@@ -1738,6 +1844,8 @@ window.closeInDbStatusModal = closeInDbStatusModal;
 window.renderInDbStatusModal = renderInDbStatusModal;
 window.selectInDbStatusStore = selectInDbStatusStore;
 window.selectInDbStatusRecord = selectInDbStatusRecord;
+window.setInDbAiMessageFilter = setInDbAiMessageFilter;
+window.filterInDbAiRecords = filterInDbAiRecords;
 window.deleteInDbStatusItem = deleteInDbStatusItem;
 window.deleteUnusedInDbImages = deleteUnusedInDbImages;
 window.updateUnusedInDbImageSelection = updateUnusedInDbImageSelection;
@@ -1745,6 +1853,7 @@ window.setAllUnusedInDbImagesSelected = setAllUnusedInDbImagesSelected;
 window.closeUnusedInDbImageCleaner = closeUnusedInDbImageCleaner;
 window.deleteSelectedUnusedInDbImages = deleteSelectedUnusedInDbImages;
 window.openAllInDbImagesInFmaViewer = openAllInDbImagesInFmaViewer;
+window.openActiveInDbImagesInFmaViewer = openActiveInDbImagesInFmaViewer;
 window.deleteAllInDbStatusItems = deleteAllInDbStatusItems;
 window.downloadAllInDbAsZip = downloadAllInDbAsZip;
 window.saveFeatureRecordToInDb = saveFeatureRecordToInDb;

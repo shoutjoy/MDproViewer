@@ -90,9 +90,9 @@ function isPreviewPopupDarkTheme() {
 
 function getPreviewPopupMermaidDisplayMode() {
     try {
-        return localStorage.getItem('md_viewer_mermaid_display_mode') === 'fixed' ? 'fixed' : 'interactive';
+        return localStorage.getItem('md_viewer_mermaid_display_mode') === 'interactive' ? 'interactive' : 'fixed';
     } catch (_) {
-        return 'interactive';
+        return 'fixed';
     }
 }
 
