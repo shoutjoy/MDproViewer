@@ -547,7 +547,7 @@
       + '      <div class="ai-chat-writing-style-row">'
       + '        <label>답변 문체<select id="ai-chat-writing-style"><option value="academic">전문적 학술체 (다양한 서술어)</option><option value="polite">기본 존댓말 (-습니다/-입니다)</option></select></label>'
       + '        <label>답변 표시<select id="ai-chat-answer-appearance"><option value="current">현재 디자인</option><option value="plain-light">흰 바탕 · 검은 글씨</option></select></label>'
-      + '        <label class="ai-chat-insert-expand-toggle" title="켜면 각 AI 답변 아래에 문서 삽입 버튼을 펼쳐 표시합니다."><input type="checkbox" id="ai-chat-insert-expand"><span>문서에넣기펼치기</span></label>'
+      + '        <label class="ai-chat-insert-expand-toggle" title="켜면 각 AI 답변 아래에 문서 삽입 버튼을 펼쳐 표시합니다."><input type="checkbox" id="ai-chat-insert-expand"><span>문서에 넣기 펼치기</span></label>'
       + '      </div>'
       + '    </div>'
       + '    <div id="ai-chat-status" class="ai-chat-status" role="status" aria-live="polite"></div>'

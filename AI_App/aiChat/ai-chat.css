@@ -399,9 +399,10 @@ html.ai-chat-page-pushed .ai-chat-panel.layout-popup {
 .ai-chat-provider-row button { width: 34px; height: 34px; padding: 0; font-size: 18px; }
 .ai-chat-writing-style-row {
   display: grid;
-  grid-template-columns: minmax(190px, 1.35fr) minmax(145px, .85fr) auto;
+  grid-template-columns: minmax(0, 220px) minmax(0, 170px) auto;
   gap: 10px;
   align-items: end;
+  justify-content: start;
   padding: 3px 11px 10px;
   background: var(--chat-surface);
 }
@@ -718,7 +719,15 @@ html.ai-chat-page-pushed .ai-chat-panel.layout-popup {
 .ai-chat-message-content.markdown-rendered blockquote,
 .ai-chat-message-content.markdown-rendered pre { margin: .55em 0; }
 .ai-chat-message-content.markdown-rendered blockquote { padding-left: .85em; border-left: 3px solid currentColor; opacity: .88; }
-.ai-chat-message-content.markdown-rendered pre { overflow-x: auto; padding: 8px; border-radius: 6px; background: rgba(8,16,30,.38); white-space: pre; }
+.ai-chat-message-content.markdown-rendered pre {
+  overflow-x: hidden;
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(8,16,30,.38);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .ai-chat-message-content.markdown-rendered code,
 .ai-chat-message-content.markdown-source { font-family: Consolas, "Courier New", monospace; }
 .ai-chat-message.user .ai-chat-message-content { border-color: #6f73e5; border-radius: 11px 11px 3px 11px; background: #5055b7; color: #fff; }
@@ -1224,7 +1233,7 @@ body.theme-light .ai-chat-panel.image-model-selected .ai-chat-mode-row { backgro
   .ai-chat-panel { right: 6px; bottom: 6px; width: calc(100vw - 12px); height: calc(100vh - 12px); border-radius: 12px; }
   .ai-chat-provider-row { grid-template-columns: minmax(0, 1fr) 34px; }
   .ai-chat-provider-row label:first-child { grid-column: 1 / -1; }
-  .ai-chat-writing-style-row { grid-template-columns: 1fr; }
+  .ai-chat-writing-style-row { grid-template-columns: minmax(0, 1fr); }
   .ai-chat-insert-expand-toggle { margin-bottom: 0; }
   .ai-chat-mode-row { flex-wrap: wrap; }
   .ai-chat-mode-row small { width: 100%; text-align: left; }
