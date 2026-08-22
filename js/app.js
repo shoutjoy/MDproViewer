@@ -1244,6 +1244,10 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     if (!card || !slot) return;
     const deepseek = document.getElementById('deepseek-settings-card');
     if (deepseek && deepseek.parentElement === card) card.appendChild(deepseek);
+    const openaiCompatible = document.getElementById('openai-compatible-settings-card');
+    if (openaiCompatible && deepseek && openaiCompatible.parentElement === card) {
+        card.insertBefore(openaiCompatible, deepseek);
+    }
     const openai = document.getElementById('openai-settings-card');
     if (openai && openai.parentElement === card) card.appendChild(openai);
     const aiChatSettings = document.getElementById('ai-chat-settings');
@@ -1320,6 +1324,40 @@ function applyOpenAICompatibleProviderPreset() {
     baseUrl.value = OPENAI_COMPATIBLE_PROVIDER_URLS[provider.value] || OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
     validateOpenAICompatibleBaseUrlUI();
 }
+
+function closeOpenAICompatibleModelMenu() {
+    const menu = document.getElementById('openai-compatible-model-menu');
+    const button = document.getElementById('openai-compatible-model-menu-button');
+    if (menu) menu.classList.add('hidden');
+    if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function toggleOpenAICompatibleModelMenu() {
+    const menu = document.getElementById('openai-compatible-model-menu');
+    const button = document.getElementById('openai-compatible-model-menu-button');
+    if (!menu) return;
+    const willOpen = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !willOpen);
+    if (button) button.setAttribute('aria-expanded', String(willOpen));
+}
+
+function selectOpenAICompatibleModel(modelId) {
+    const input = document.getElementById('openai-compatible-model-id');
+    if (input) {
+        input.value = String(modelId || '');
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.focus();
+    }
+    closeOpenAICompatibleModelMenu();
+}
+
+document.addEventListener('click', function (event) {
+    const menu = document.getElementById('openai-compatible-model-menu');
+    const button = document.getElementById('openai-compatible-model-menu-button');
+    if (menu && !menu.contains(event.target) && (!button || !button.contains(event.target))) {
+        closeOpenAICompatibleModelMenu();
+    }
+});
 
 function loadOpenAICompatibleSettingsUI(settings) {
     const source = settings || {};
