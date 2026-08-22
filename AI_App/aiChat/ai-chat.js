@@ -769,6 +769,10 @@
       clampLauncherToViewport();
       updateDockHistoryVisibility();
     });
+    root.addEventListener('md-edit-toolbar-orientation-change', function () {
+      requestAnimationFrame(clampLauncherToViewport);
+      setTimeout(clampLauncherToViewport, 80);
+    });
     root.addEventListener('focus', function () {
       if (state.open) scheduleTopLayerPromotion();
     });
@@ -799,35 +803,47 @@
     });
   }
 
-  function readLauncherPosition() {
-    try {
-      var value = JSON.parse(storageGet(LAUNCHER_POSITION_KEY, 'null'));
-      if (!value || !Number.isFinite(Number(value.left)) || !Number.isFinite(Number(value.top))) return null;
-      return { left: Number(value.left), top: Number(value.top) };
-    } catch (e) { return null; }
-  }
-
   function applyLauncherPosition() {
     var launcher = document.getElementById('ai-chat-launcher');
-    var saved = readLauncherPosition();
-    if (!launcher || !saved) return;
-    launcher.style.left = saved.left + 'px';
-    launcher.style.top = saved.top + 'px';
+    if (!launcher) return;
+    var menuButton = document.querySelector('.app-header button[onclick="toggleSidebarVisibility()"]');
+    var menuRect = menuButton ? menuButton.getBoundingClientRect() : null;
+    launcher.style.left = (menuRect ? Math.round(menuRect.right + 12) : 60) + 'px';
+    launcher.style.top = (menuRect ? Math.round(menuRect.top + (menuRect.height - 42) / 2) : 10) + 'px';
     launcher.style.right = 'auto';
     launcher.style.bottom = 'auto';
     clampLauncherToViewport();
   }
 
+  function getSafeLauncherPosition(left, top, width, height) {
+    var safeLeft = Math.max(6, Math.min(Number(left) || 6, root.innerWidth - width - 6));
+    var safeTop = Math.max(6, Math.min(Number(top) || 6, root.innerHeight - height - 58));
+    var toolbar = document.getElementById('toolbar');
+    var toolbarIsVertical = document.body.classList.contains('edit-toolbar-vertical');
+    var toolbarIsVisible = toolbar && !toolbar.classList.contains('toolbar-view-compact') && root.getComputedStyle(toolbar).display !== 'none';
+    if (toolbarIsVertical && toolbarIsVisible) {
+      var toolbarRect = toolbar.getBoundingClientRect();
+      var gap = 12;
+      // The whole strip left of the vertical toolbar is a safe drag area.
+      // Keeping a fixed right boundary avoids intermittent snapping or overlap
+      // when the toolbar is taller than the viewport.
+      safeLeft = Math.min(safeLeft, Math.max(6, toolbarRect.left - width - gap));
+    }
+    return { left: safeLeft, top: safeTop };
+  }
+
   function clampLauncherToViewport() {
     var launcher = document.getElementById('ai-chat-launcher');
-    if (!launcher || !launcher.style.left || !launcher.style.top) return;
+    if (!launcher || root.getComputedStyle(launcher).display === 'none') return;
+    var rect = launcher.getBoundingClientRect();
     var width = launcher.offsetWidth || 68;
     var height = launcher.offsetHeight || 50;
-    var left = Math.max(6, Math.min(parseFloat(launcher.style.left) || 6, root.innerWidth - width - 6));
-    var top = Math.max(6, Math.min(parseFloat(launcher.style.top) || 6, root.innerHeight - height - 58));
-    launcher.style.left = left + 'px';
-    launcher.style.top = top + 'px';
-    storageSet(LAUNCHER_POSITION_KEY, JSON.stringify({ left: Math.round(left), top: Math.round(top) }));
+    var safe = getSafeLauncherPosition(rect.left, rect.top, width, height);
+    launcher.style.left = Math.round(safe.left) + 'px';
+    launcher.style.top = Math.round(safe.top) + 'px';
+    launcher.style.right = 'auto';
+    launcher.style.bottom = 'auto';
+    storageSet(LAUNCHER_POSITION_KEY, JSON.stringify({ left: Math.round(safe.left), top: Math.round(safe.top) }));
   }
 
   function setupLauncherDrag(launcher) {
@@ -847,28 +863,27 @@
         var dy = moveEvent.clientY - startY;
         if (!moved && Math.hypot(dx, dy) < 4) return;
         moved = true;
-        var left = Math.max(6, Math.min(startLeft + dx, root.innerWidth - launcher.offsetWidth - 6));
-        var top = Math.max(6, Math.min(startTop + dy, root.innerHeight - launcher.offsetHeight - 58));
-        launcher.style.left = Math.round(left) + 'px';
-        launcher.style.top = Math.round(top) + 'px';
+        var safe = getSafeLauncherPosition(startLeft + dx, startTop + dy, launcher.offsetWidth, launcher.offsetHeight);
+        launcher.style.left = Math.round(safe.left) + 'px';
+        launcher.style.top = Math.round(safe.top) + 'px';
         launcher.style.right = 'auto';
         launcher.style.bottom = 'auto';
         launcher.classList.add('dragging');
       }
       function finish() {
         launcher.classList.remove('dragging');
-        launcher.removeEventListener('pointermove', move);
-        launcher.removeEventListener('pointerup', finish);
-        launcher.removeEventListener('pointercancel', finish);
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', finish);
+        document.removeEventListener('pointercancel', finish);
         if (moved) {
           suppressLauncherClick = true;
           clampLauncherToViewport();
           setTimeout(function () { suppressLauncherClick = false; }, 120);
         }
       }
-      launcher.addEventListener('pointermove', move);
-      launcher.addEventListener('pointerup', finish);
-      launcher.addEventListener('pointercancel', finish);
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', finish);
+      document.addEventListener('pointercancel', finish);
       event.preventDefault();
     });
   }
@@ -1535,6 +1550,13 @@
     if (checkbox) checkbox.checked = state.enabled;
     var launcher = document.getElementById('ai-chat-launcher');
     if (launcher) launcher.classList.toggle('enabled', state.enabled);
+    // The launcher is display:none until it is enabled, so its width cannot be
+    // measured when the saved position is first restored. Re-clamp after the
+    // browser has laid it out to keep it clear of the vertical edit toolbar.
+    if (state.enabled && launcher) {
+      requestAnimationFrame(clampLauncherToViewport);
+      setTimeout(clampLauncherToViewport, 80);
+    }
     if (!state.enabled) {
       if (state.running) stopMessage();
       setOpen(false);

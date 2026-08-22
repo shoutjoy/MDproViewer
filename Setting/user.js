@@ -37,6 +37,104 @@
         if (prefixSetEl) prefixSetEl.checked = info.prefixSet !== false;
     }
 
+    function hasUserInfo(userInfo) {
+        const info = userInfo || {};
+        return ['name', 'id', 'major', 'contact', 'email'].some(function (key) {
+            return String(info[key] || '').trim();
+        });
+    }
+
+    function readUserInfoPrompt() {
+        function value(id) {
+            const el = document.getElementById(id);
+            return el ? String(el.value || '').trim() : '';
+        }
+        const prefixSetEl = document.getElementById('user-info-prompt-prefix-set');
+        return {
+            name: value('user-info-prompt-name'),
+            id: value('user-info-prompt-id'),
+            major: value('user-info-prompt-major'),
+            contact: value('user-info-prompt-contact'),
+            email: value('user-info-prompt-email'),
+            prefixSet: !(prefixSetEl && prefixSetEl.checked === false)
+        };
+    }
+
+    function applyUserInfoToPrompt(userInfo) {
+        const info = userInfo || {};
+        ['name', 'id', 'major', 'contact', 'email'].forEach(function (key) {
+            const el = document.getElementById('user-info-prompt-' + key);
+            if (el) el.value = info[key] || '';
+        });
+        const prefixSetEl = document.getElementById('user-info-prompt-prefix-set');
+        if (prefixSetEl) prefixSetEl.checked = info.prefixSet !== false;
+    }
+
+    function openUserInfoPrompt(userInfo) {
+        const modal = document.getElementById('user-info-prompt-modal');
+        const feedback = document.getElementById('user-info-prompt-feedback');
+        if (!modal) return;
+        bindUserInfoPromptDrag();
+        applyUserInfoToPrompt(userInfo);
+        if (feedback) feedback.textContent = '';
+        modal.classList.remove('hidden');
+        modal.classList.add('block');
+        const nameEl = document.getElementById('user-info-prompt-name');
+        if (nameEl) setTimeout(function () { nameEl.focus(); }, 0);
+    }
+
+    function closeUserInfoPrompt() {
+        const modal = document.getElementById('user-info-prompt-modal');
+        if (!modal) return;
+        modal.classList.add('hidden');
+        modal.classList.remove('block');
+    }
+
+    function clampUserInfoPromptPanel() {
+        const panel = document.getElementById('user-info-prompt-panel');
+        if (!panel || panel.style.transform !== 'none') return;
+        const rect = panel.getBoundingClientRect();
+        const left = Math.max(6, Math.min(rect.left, window.innerWidth - rect.width - 6));
+        const top = Math.max(6, Math.min(rect.top, window.innerHeight - rect.height - 6));
+        panel.style.left = Math.round(left) + 'px';
+        panel.style.top = Math.round(top) + 'px';
+    }
+
+    function bindUserInfoPromptDrag() {
+        const panel = document.getElementById('user-info-prompt-panel');
+        const header = document.getElementById('user-info-prompt-header');
+        if (!panel || !header || header.dataset.dragBound === '1') return;
+        header.dataset.dragBound = '1';
+        header.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0 || event.target.closest('button, input, label')) return;
+            const rect = panel.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const offsetY = event.clientY - rect.top;
+            panel.style.transform = 'none';
+            panel.style.left = rect.left + 'px';
+            panel.style.top = rect.top + 'px';
+            header.classList.add('dragging');
+            header.setPointerCapture(event.pointerId);
+            function move(moveEvent) {
+                const left = Math.max(6, Math.min(moveEvent.clientX - offsetX, window.innerWidth - panel.offsetWidth - 6));
+                const top = Math.max(6, Math.min(moveEvent.clientY - offsetY, window.innerHeight - panel.offsetHeight - 6));
+                panel.style.left = Math.round(left) + 'px';
+                panel.style.top = Math.round(top) + 'px';
+            }
+            function finish() {
+                header.classList.remove('dragging');
+                header.removeEventListener('pointermove', move);
+                header.removeEventListener('pointerup', finish);
+                header.removeEventListener('pointercancel', finish);
+            }
+            header.addEventListener('pointermove', move);
+            header.addEventListener('pointerup', finish);
+            header.addEventListener('pointercancel', finish);
+            event.preventDefault();
+        });
+        window.addEventListener('resize', clampUserInfoPromptPanel);
+    }
+
     async function saveAiUserInfo() {
         const fb = document.getElementById('ai-user-info-feedback');
         if (fb) fb.textContent = '';
@@ -73,21 +171,7 @@
         state.showToast('Opened Gmail compose window.');
     }
 
-    async function insertUserInfoAtCursor() {
-        if (!state.getIsEditMode()) {
-            state.showToast('Use this in edit mode.');
-            return;
-        }
-        if (!state.getDb()) {
-            state.showToast('Database is not ready yet. Please try again.');
-            return;
-        }
-        const s = await state.getAiSettings();
-        const u = s && s.userInfo;
-        if (!u || (!String(u.name || '').trim() && !String(u.id || '').trim() && !String(u.major || '').trim() && !String(u.contact || '').trim() && !String(u.email || '').trim())) {
-            state.showToast('No user info found. Please save your profile first.');
-            return;
-        }
+    function insertUserInfoValue(u) {
         const lines = [];
         const usePrefix = u.prefixSet !== false;
         if (String(u.name || '').trim()) lines.push(String(u.name).trim());
@@ -113,6 +197,42 @@
         state.showToast('User info inserted.');
     }
 
+    async function saveUserInfoPrompt(insertAfterSave) {
+        const feedback = document.getElementById('user-info-prompt-feedback');
+        const userInfo = readUserInfoPrompt();
+        if (!hasUserInfo(userInfo)) {
+            if (feedback) feedback.textContent = '사용자 정보를 한 항목 이상 입력하세요.';
+            return;
+        }
+        if (!state.getDb()) {
+            if (feedback) feedback.textContent = '저장소가 아직 준비되지 않았습니다.';
+            return;
+        }
+        await state.setAiSettings({ userInfo: userInfo });
+        applyUserInfoToModalFields(userInfo);
+        closeUserInfoPrompt();
+        if (insertAfterSave) insertUserInfoValue(userInfo);
+        else state.showToast('사용자 정보를 저장했습니다.');
+    }
+
+    async function insertUserInfoAtCursor() {
+        if (!state.getIsEditMode()) {
+            state.showToast('Use this in edit mode.');
+            return;
+        }
+        if (!state.getDb()) {
+            state.showToast('Database is not ready yet. Please try again.');
+            return;
+        }
+        const s = await state.getAiSettings();
+        const u = s && s.userInfo;
+        if (!hasUserInfo(u)) {
+            openUserInfoPrompt(u);
+            return;
+        }
+        insertUserInfoValue(u);
+    }
+
     function init(deps) {
         const d = deps || {};
         state.authRequestEmail = String(d.authRequestEmail || '');
@@ -127,6 +247,9 @@
         window.insertUserInfoAtCursor = insertUserInfoAtCursor;
         window.saveAiUserInfo = saveAiUserInfo;
         window.sendAuthRequestMail = sendAuthRequestMail;
+        window.openUserInfoPrompt = openUserInfoPrompt;
+        window.closeUserInfoPrompt = closeUserInfoPrompt;
+        window.saveUserInfoPrompt = saveUserInfoPrompt;
     }
 
     window.UserSettingsModule = {

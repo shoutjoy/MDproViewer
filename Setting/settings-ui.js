@@ -484,6 +484,9 @@
         const visibleSetting = settings.find(function (item) {
             return item && item.key === 'templateVisible';
         }) || null;
+        const newFileVisibleSetting = settings.find(function (item) {
+            return item && item.key === 'templateNewFileVisible';
+        }) || null;
         const listSetting = settings.find(function (item) {
             return item && item.key === 'templateCustomList';
         }) || null;
@@ -511,13 +514,18 @@
         });
         return {
             visibleSetting: visibleSetting,
+            newFileVisibleSetting: newFileVisibleSetting,
             listSetting: listSetting,
             visible: visibleSetting ? visibleSetting.value === true : null,
+            newFileVisible: newFileVisibleSetting
+                ? newFileVisibleSetting.value === true
+                : (visibleSetting ? visibleSetting.value === true : null),
             builtInTemplates: builtInTemplates,
             customTemplates: customTemplates,
             templates: builtInTemplates.concat(customTemplates),
             updatedAt: Math.max(
                 Number(visibleSetting && visibleSetting.updatedAt || 0),
+                Number(newFileVisibleSetting && newFileVisibleSetting.updatedAt || 0),
                 Number(listSetting && listSetting.updatedAt || 0)
             )
         };
@@ -536,17 +544,19 @@
                 + '</li>';
         }).join('');
         const visibleLabel = state.visible === null ? '저장되지 않음' : state.visible ? '보이기' : '숨기기';
+        const newFileVisibleLabel = state.newFileVisible === null ? '저장되지 않음' : state.newFileVisible ? '보이기' : '숨기기';
         detail.innerHTML = [
             '<p class="text-[10px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">SQLite 양식 설정</p>',
             '<h3 class="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">저장된 양식 모아보기</h3>',
-            '<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40 sm:grid-cols-4">',
-            '<span>양식 버튼 표시<br><b>' + escapeMigrationText(visibleLabel) + '</b></span>',
+            '<div class="mt-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] dark:border-slate-700 dark:bg-slate-950/40 sm:grid-cols-5">',
+            '<span>상단 양식보기<br><b>' + escapeMigrationText(visibleLabel) + '</b></span>',
+            '<span>새파일의 양식<br><b>' + escapeMigrationText(newFileVisibleLabel) + '</b></span>',
             '<span>기본 양식<br><b>' + state.builtInTemplates.length + '개</b></span>',
             '<span>사용자 추가<br><b>' + state.customTemplates.length + '개</b></span>',
             '<span>최근 저장<br><b>' + escapeMigrationText(formatExplorerDate(state.updatedAt)) + '</b></span>',
             '</div>',
             '<div class="mt-4 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/20 dark:text-emerald-200">',
-            '<b>SQLite 저장 항목</b><p class="mt-1"><code>templateVisible</code>에는 표시 설정을, <code>templateCustomList</code>에는 추가한 양식의 이름·설명·본문을 저장합니다.</p>',
+            '<b>SQLite 저장 항목</b><p class="mt-1"><code>templateVisible</code>에는 상단 버튼 표시를, <code>templateNewFileVisible</code>에는 새파일 메뉴 표시를, <code>templateCustomList</code>에는 추가한 양식의 이름·설명·본문을 저장합니다.</p>',
             '</div>',
             '<h4 class="mt-5 border-b border-slate-200 pb-1 text-xs font-bold dark:border-slate-700">전체 양식 목록</h4>',
             '<ul class="mt-2 space-y-2">' + (names || '<li class="text-xs text-slate-500">표시할 양식이 없습니다.</li>') + '</ul>',

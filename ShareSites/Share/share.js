@@ -599,8 +599,8 @@
         if (!toolbarSlot || document.getElementById('btn-export-gdocs')) return;
         toolbarSlot.innerHTML = ''
             + '<button type="button" id="btn-export-gdocs" onclick="toggleShareLinksMenu()"'
-            + ' class="hidden px-2 py-1 sm:px-3 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-medium bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 shrink-0 border border-emerald-300 dark:border-emerald-700"'
-            + ' title="Show share destinations">Share</button>';
+            + ' class="header-quick-tool hidden" title="Share" aria-label="Share">'
+            + '<i data-lucide="share-2" aria-hidden="true"></i></button>';
     }
 
     async function injectShareUiFragments() {
@@ -631,6 +631,9 @@
         }
 
         if (injected) {
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
             if (typeof getAiSettings === 'function') {
                 const settings = await getAiSettings();
                 if (settings) loadShareSettingsUI(settings);
@@ -940,7 +943,10 @@
                 toDocsBtn.classList.remove('hidden');
                 toDocsBtn.style.display = '';
             }
-            toDocsBtn.textContent = 'Share';
+            if (!toDocsBtn.querySelector('svg, i')) {
+                toDocsBtn.innerHTML = '<i data-lucide="share-2" aria-hidden="true"></i>';
+                if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+            }
         }
         const shareSettingsBox = document.getElementById('share-destinations-settings');
         if (shareSettingsBox) shareSettingsBox.classList.toggle('hidden', !toDocsVisible);

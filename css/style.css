@@ -1322,15 +1322,19 @@
         }
 
         .scroll-jump-rail {
-            position: absolute;
+            position: fixed;
             top: 50%;
-            right: 14px;
+            right: calc(var(--ai-chat-page-push, 0px) + 14px);
             transform: translateY(-50%);
             display: flex;
             flex-direction: column;
             gap: 10px;
             z-index: 15;
             pointer-events: none;
+        }
+
+        body.edit-toolbar-vertical .scroll-jump-rail {
+            right: calc(var(--ai-chat-page-push, 0px) + 92px);
         }
 
         .scroll-jump-btn {
@@ -1373,9 +1377,7 @@
 
         /* View mode: tighten sub-toolbar footprint when edit tools are hidden */
         #toolbar.toolbar-view-compact {
-            padding-top: 0.2rem !important;
-            padding-bottom: 0.2rem !important;
-            gap: 0 !important;
+            display: none !important;
         }
 
         @media (max-width: 640px) {
@@ -1527,20 +1529,30 @@
             justify-content: center;
         }
 
-        /* Header AI toggle buttons - purple tone */
+        /* Header AI toggle buttons - black base with distinct icon colors. */
         #btn-scholar-ai,
         #btn-sspimg-ai {
-            background: #eef2ff !important;
-            border: 1px solid #a5b4fc !important;
-            color: #4338ca !important;
+            background: #05070b !important;
             font-weight: 700 !important;
+        }
+
+        #btn-scholar-ai {
+            border: 1px solid #2563eb !important;
+            color: #60a5fa !important;
+        }
+
+        #btn-sspimg-ai {
+            border: 1px solid #ea580c !important;
+            color: #fb923c !important;
         }
 
         #btn-scholar-ai:hover,
         #btn-sspimg-ai:hover {
-            background: #e0e7ff !important;
-            border-color: #818cf8 !important;
+            background: #111827 !important;
         }
+
+        #btn-scholar-ai:hover { border-color: #60a5fa !important; }
+        #btn-sspimg-ai:hover { border-color: #fb923c !important; }
 
         /* miniPV compact typography */
         #mini-preview-panel {
@@ -2399,4 +2411,436 @@ body.sidebar-storage-github-hidden #tab-storage-github-link {
     .text-style-footer > span { display: none; }
     .text-style-footer { justify-content: flex-end; }
     .text-style-font-source-link { align-items: flex-start; flex-direction: column; }
+}
+
+/* Light mode workspace chrome: keep documents and inputs bright while
+   separating them from the surrounding application surface. */
+html:not(.dark) body {
+    background: #475569;
+}
+
+html:not(.dark) .app-header {
+    border-color: #718198 !important;
+    background: linear-gradient(135deg, #64748b 0%, #596a80 100%) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, .14), 0 8px 24px rgba(15, 23, 42, .12);
+}
+
+html:not(.dark) .app-header .app-header-actions > button,
+html:not(.dark) .app-header .app-header-actions > div > button,
+html:not(.dark) .app-header > div:first-child > button {
+    color: #fff !important;
+}
+
+html:not(.dark) .app-header .app-header-actions > button:hover,
+html:not(.dark) .app-header .app-header-actions > div > button:hover,
+html:not(.dark) .app-header > div:first-child > button:hover {
+    background: rgba(255, 255, 255, .14) !important;
+}
+
+/* Light header mode switch: keep labels visible and use a purple hover state. */
+html:not(.dark) .app-header #btn-edit,
+html:not(.dark) .app-header #btn-view,
+html:not(.dark) .app-header #btn-preview-popup {
+    color: #334155 !important;
+}
+
+html:not(.dark) .app-header #btn-edit.text-indigo-600,
+html:not(.dark) .app-header #btn-view.text-indigo-600 {
+    color: #4f46e5 !important;
+}
+
+html:not(.dark) .app-header #btn-edit:hover,
+html:not(.dark) .app-header #btn-view:hover,
+html:not(.dark) .app-header #btn-preview-popup:hover {
+    background: #4f46e5 !important;
+    color: #fff !important;
+}
+
+/* Light mode floating windows: separate white panels from the workspace. */
+html:not(.dark) [id$="-modal"] > :first-child,
+html:not(.dark) [id$="-popup"] > :first-child,
+html:not(.dark) #google-calendar-internal-panel {
+    border: 2px solid #94a3b8 !important;
+    box-shadow:
+        0 2px 5px rgba(15, 23, 42, .18),
+        0 18px 42px rgba(15, 23, 42, .24),
+        0 38px 80px rgba(15, 23, 42, .16) !important;
+}
+
+html:not(.dark) #toolbar {
+    border-color: #7b8ca2 !important;
+    background: #607187 !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1);
+}
+
+/* Keep every primary edit-toolbar control on the same visual baseline. */
+#edit-tools > button,
+#edit-tools > div > button {
+    height: 30px;
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+}
+
+/* Optional Photoshop-style right-side editor toolbar. */
+body.edit-toolbar-vertical #toolbar {
+    position: fixed;
+    top: var(--edit-toolbar-vertical-top, 72px);
+    right: calc(var(--ai-chat-page-push, 0px) + 8px);
+    bottom: var(--edit-toolbar-vertical-bottom, 46px);
+    left: auto;
+    z-index: 45;
+    width: 66px;
+    padding: 6px;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0;
+    overflow: visible;
+    border: 1px solid #94a3b8;
+    border-radius: 10px;
+    box-shadow: 0 18px 48px rgb(15 23 42 / .28);
+}
+
+body.edit-toolbar-vertical #edit-tools {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: 2px;
+}
+
+body.edit-toolbar-vertical #edit-tools > button,
+body.edit-toolbar-vertical #edit-tools > div > button {
+    width: 100%;
+    min-height: 30px;
+}
+
+body.edit-toolbar-vertical #edit-tools > div {
+    width: 100%;
+    flex-direction: column;
+}
+
+body.edit-toolbar-vertical #edit-tools > button,
+body.edit-toolbar-vertical #edit-tools > div > button {
+    height: 28px;
+    min-height: 28px;
+    padding-right: 3px;
+    padding-left: 3px;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: 9px;
+}
+
+body.edit-toolbar-vertical #drop-zone {
+    margin-right: 82px;
+}
+
+body.viewer-view-mode .scroll-jump-rail {
+    display: none !important;
+}
+
+.user-info-floating-panel {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: min(448px, calc(100vw - 24px));
+    transform: translate(-50%, -50%);
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+}
+
+.user-info-floating-header {
+    touch-action: none;
+}
+
+.user-info-floating-header.dragging {
+    cursor: grabbing;
+}
+
+body.edit-toolbar-vertical #edit-tools > div.h-4.w-px {
+    grid-column: 1;
+    width: 100%;
+    height: 1px;
+    margin: 2px 0;
+}
+
+body.edit-toolbar-vertical #edit-toolbar-orientation-toggle {
+    grid-column: 1;
+}
+
+body.edit-toolbar-vertical #list-quick-panel,
+body.edit-toolbar-vertical #mermaid-quick-panel,
+body.edit-toolbar-vertical #table-insert-picker,
+body.edit-toolbar-vertical #image-insert-quick-panel,
+body.edit-toolbar-vertical #math-quick-panel,
+body.edit-toolbar-vertical #tidy-quick-panel,
+body.edit-toolbar-vertical #footnote-quick-panel {
+    top: 0;
+    right: calc(100% + 8px);
+    left: auto;
+}
+
+@media (max-height: 720px) {
+    body.edit-toolbar-vertical #toolbar {
+        width: 66px;
+        transform: scale(.78);
+        transform-origin: top right;
+    }
+    body.edit-toolbar-vertical #edit-tools { gap: 2px; }
+    body.edit-toolbar-vertical #edit-tools > button,
+    body.edit-toolbar-vertical #edit-tools > div > button {
+        height: 25px;
+        min-height: 25px;
+    }
+}
+
+html:not(.dark) #toolbar > button,
+html:not(.dark) #toolbar > div:not(#edit-tools) > button {
+    color: #fff;
+}
+
+html:not(.dark) #sidebar {
+    border-color: #74869c !important;
+    background: linear-gradient(180deg, #64748b 0%, #596a80 100%) !important;
+    color: #f8fafc;
+    box-shadow: 8px 0 24px rgba(15, 23, 42, .08);
+}
+
+html:not(.dark) #sidebar > div:first-child,
+html:not(.dark) #sidebar > div:last-child {
+    border-color: rgba(255, 255, 255, .16) !important;
+}
+
+html:not(.dark) #sidebar > div:first-child > .sidebar-text > button,
+html:not(.dark) #sidebar > div:last-child button {
+    border: 1px solid rgba(255, 255, 255, .13);
+    background: rgba(255, 255, 255, .1) !important;
+    color: #fff !important;
+}
+
+html:not(.dark) #sidebar > div:first-child > .sidebar-text > button:hover,
+html:not(.dark) #sidebar > div:last-child button:hover {
+    background: rgba(255, 255, 255, .18) !important;
+}
+
+html:not(.dark) #sidebar .sidebar-header-btns > .flex {
+    background: rgba(15, 23, 42, .16) !important;
+}
+
+html:not(.dark) #sidebar .sidebar-header-btns > .flex:last-child {
+    background: transparent !important;
+}
+
+html:not(.dark) #sidebar .sidebar-header-btns > .flex:last-child button,
+html:not(.dark) #sidebar .sidebar-header-btns > .flex:last-child svg,
+html:not(.dark) #sidebar .search-container > svg {
+    color: #fff !important;
+}
+
+html:not(.dark) #sidebar #tab-toc {
+    color: #e2e8f0 !important;
+}
+
+html:not(.dark) #sidebar .sidebar-folder-header {
+    border: 1px solid rgba(255, 255, 255, .12);
+    background: rgba(255, 255, 255, .1);
+    color: #f8fafc !important;
+}
+
+html:not(.dark) #sidebar .sidebar-folder-header:hover {
+    background: rgba(255, 255, 255, .16) !important;
+}
+
+html:not(.dark) #sidebar .sidebar-folder-header > svg,
+html:not(.dark) #sidebar .sidebar-folder-header > i,
+html:not(.dark) #sidebar .sidebar-folder-name {
+    color: #f8fafc !important;
+}
+
+html:not(.dark) #sidebar .sidebar-folder-action-btn {
+    border-color: rgba(255, 255, 255, .48);
+    background: rgba(255, 255, 255, .08);
+    color: #fff;
+}
+
+html:not(.dark) #sidebar .sidebar-folder-action-btn:hover,
+html:not(.dark) #sidebar .sidebar-folder-action-btn:focus-visible {
+    border-color: rgba(255, 255, 255, .82);
+    background: rgba(255, 255, 255, .2);
+    color: #fff;
+}
+
+html:not(.dark) #sidebar:not(.sidebar-collapsed) .sidebar-folder-body {
+    border-left-color: rgba(255, 255, 255, .32);
+}
+
+html:not(.dark) #sidebar input,
+html:not(.dark) #sidebar textarea,
+html:not(.dark) #sidebar select {
+    border-color: rgba(203, 213, 225, .9) !important;
+    background: #fff !important;
+    color: #1e293b !important;
+}
+
+html:not(.dark) #content-viewport,
+html:not(.dark) #content-viewport.editor-light-mode,
+html:not(.dark) #viewer-container {
+    background: #465569 !important;
+}
+
+html:not(.dark) #editor-doc-wrap,
+html:not(.dark) #viewer-container #viewer {
+    border: 1px solid rgba(226, 232, 240, .92);
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 18px 46px rgba(15, 23, 42, .2), 0 2px 8px rgba(15, 23, 42, .1);
+}
+
+html:not(.dark) #content-viewport #viewer-edit-ta,
+html:not(.dark) #content-viewport.editor-light-mode #viewer-edit-ta,
+html:not(.dark) #content-viewport #viewer-edit-highlight {
+    background-color: transparent;
+    color: #1e293b;
+    caret-color: #0f172a;
+}
+
+html:not(.dark) #content-viewport #viewer-edit-ta::placeholder {
+    color: #94a3b8;
+}
+
+html:not(.dark) #app-status-footer {
+    border-color: #718198 !important;
+    background: #596a80 !important;
+}
+
+html:not(.dark) #app-status-footer,
+html:not(.dark) #app-status-footer span,
+html:not(.dark) #app-status-footer p,
+html:not(.dark) #app-status-footer button {
+    color: #e2e8f0 !important;
+}
+
+/* Main file actions default to compact icon buttons. The settings option can
+   restore their labels without rebuilding the header. */
+.app-header .header-file-action-label {
+    display: none;
+}
+
+html.header-file-actions-text .app-header .header-file-action-label {
+    display: inline;
+}
+
+/* Compact, consistently sized header tools preserve editor space when a right
+   dock is open. Labels remain available to assistive tech and via title. */
+.app-header .header-quick-tool {
+    box-sizing: border-box;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    flex: 0 0 36px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(203 213 225);
+    border-radius: 8px;
+    background: rgb(226 232 240);
+    color: rgb(51 65 85);
+    transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.dark .app-header .header-quick-tool {
+    border-color: rgb(71 85 105);
+    background: rgb(51 65 85);
+    color: rgb(226 232 240);
+}
+
+.app-header .header-quick-tool:hover {
+    border-color: rgb(129 140 248);
+    background: rgb(199 210 254);
+    color: rgb(55 48 163);
+}
+
+.dark .app-header .header-quick-tool:hover {
+    border-color: rgb(99 102 241);
+    background: rgb(49 46 129);
+    color: #fff;
+}
+
+.app-header #btn-scholar-ai.header-quick-tool-active,
+.app-header #btn-sspimg-ai.header-quick-tool-active {
+    box-shadow: 0 0 0 2px currentColor;
+}
+
+.app-header .header-quick-tool:not(.hidden) { display: inline-flex; }
+.app-header .header-quick-tool > svg,
+.app-header .header-quick-tool > i { width: 19px; height: 19px; stroke-width: 2; }
+.app-header .header-quick-tool > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+html.header-feature-keys-text .app-header .header-quick-tool {
+    width: auto;
+    min-width: 36px;
+    padding: 0 10px;
+    flex-basis: auto;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+html.header-feature-keys-text .app-header .header-quick-tool > span {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* AI Jena Dock narrows the viewport. Keep the navigation close to the editor;
+   only the action cluster wraps when there truly is not enough room. */
+html.ai-chat-page-pushed .app-header {
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: .5rem !important;
+    padding-top: .5rem !important;
+    padding-bottom: .5rem !important;
+}
+
+html.ai-chat-page-pushed .app-header > div:first-child {
+    width: auto;
+    flex: 0 0 auto !important;
+}
+
+html.ai-chat-page-pushed .app-header .app-header-actions {
+    width: auto !important;
+    flex: 1 1 auto;
+    flex-wrap: wrap !important;
+    justify-content: flex-end !important;
+}
+
+@media (max-width: 760px) {
+    html.ai-chat-page-pushed .app-header {
+        align-items: flex-start !important;
+    }
+    html.ai-chat-page-pushed .app-header > div:first-child {
+        padding-top: 2px;
+    }
+    .app-header .header-quick-tool {
+        width: 34px;
+        height: 34px;
+        flex-basis: 34px;
+    }
 }

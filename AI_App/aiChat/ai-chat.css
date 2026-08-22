@@ -1222,6 +1222,104 @@ body.theme-light .ai-chat-image-gallery img { background: #eef2f7; }
 body.theme-light .ai-chat-image-gallery button { border-color: #a8bce0; background: #eef2ff; color: #3730a3; }
 body.theme-light .ai-chat-panel.image-model-selected .ai-chat-mode-row { background: #fff8df; }
 
+/* Light app theme: keep Jena's answers light, while the surrounding chrome uses
+   a restrained Apple-inspired graphite palette. */
+body.theme-light .ai-chat-panel {
+  --chat-bg: #1c1c1e;
+  --chat-surface: #242426;
+  --chat-field: #2c2c2e;
+  --chat-border: #3a3a3c;
+  --chat-text: #f5f5f7;
+  --chat-muted: #a1a1a6;
+  color-scheme: dark;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .38), 0 0 0 .5px rgba(255, 255, 255, .08);
+}
+body.theme-light .ai-chat-dock-slot { border-left-color: #3a3a3c; background: #1c1c1e; }
+body.theme-light .ai-chat-dock-resizer { background: linear-gradient(90deg, #1c1c1e 0 5px, transparent 5px); }
+body.theme-light .ai-chat-header { background: rgba(44, 44, 46, .96); backdrop-filter: saturate(180%) blur(18px); }
+body.theme-light .ai-chat-header strong { color: #f5f5f7; letter-spacing: -.01em; }
+body.theme-light #ai-chat-header-model,
+body.theme-light .ai-chat-mode-row small { color: #98989d; }
+body.theme-light .ai-chat-header button,
+body.theme-light .ai-chat-provider-row button,
+body.theme-light .ai-chat-compose-actions button,
+body.theme-light .ai-chat-question-actions button,
+body.theme-light .ai-chat-message-actions > button,
+body.theme-light .ai-chat-insert-wrap > summary {
+  border-color: #48484a;
+  background: #323234;
+  color: #e5e5ea;
+}
+body.theme-light .ai-chat-header button:hover,
+body.theme-light .ai-chat-provider-row button:hover,
+body.theme-light .ai-chat-compose-actions button:hover,
+body.theme-light .ai-chat-question-actions button:hover,
+body.theme-light .ai-chat-message-actions > button:hover,
+body.theme-light .ai-chat-insert-wrap > summary:hover { background: #3a3a3c; }
+body.theme-light .ai-chat-header .ai-chat-icon-action.active,
+body.theme-light .ai-chat-mode-row button.active { border-color: #409cff; background: #0a84ff; color: #fff; }
+body.theme-light .ai-chat-provider-toggle { border-color: #3a3a3c; background: #202022; color: #d1d1d6; }
+body.theme-light .ai-chat-provider-toggle:hover { background: #2c2c2e; }
+body.theme-light .ai-chat-provider-row select,
+body.theme-light .ai-chat-writing-style-row select,
+body.theme-light .ai-chat-composer textarea,
+body.theme-light .ai-chat-academic-count-wrap select,
+body.theme-light .ai-chat-academic-count-wrap input {
+  border-color: #48484a;
+  background: #2c2c2e;
+  color: #f5f5f7;
+}
+body.theme-light .ai-chat-composer textarea:focus { border-color: #0a84ff; box-shadow: 0 0 0 3px rgba(10,132,255,.18); }
+body.theme-light .ai-chat-mode-row button,
+body.theme-light .ai-chat-reasoning-toggle { border-color: #48484a; background: #2c2c2e; color: #d1d1d6; }
+body.theme-light .ai-chat-reasoning-toggle:has(input:checked) { border-color: #409cff; background: rgba(10,132,255,.22); color: #fff; }
+body.theme-light .ai-chat-insert-menu,
+body.theme-light .ai-chat-layout-menu { border-color: #48484a; background: #2c2c2e; box-shadow: 0 16px 40px rgba(0,0,0,.4); }
+body.theme-light .ai-chat-insert-menu button { color: #e5e5ea; }
+body.theme-light .ai-chat-insert-menu button:hover { background: #3a3a3c; }
+body.theme-light .ai-chat-import-selection::after { border-color: #48484a; background: #2c2c2e; color: #f5f5f7; box-shadow: 0 12px 30px rgba(0,0,0,.38); }
+body.theme-light .ai-chat-messages { background: radial-gradient(circle at top right, rgba(10,132,255,.07), transparent 38%), #1c1c1e; }
+body.theme-light .ai-chat-empty strong { color: #f5f5f7; }
+body.theme-light .ai-chat-history-sidebar { background: #202022; }
+body.theme-light .ai-chat-history-head strong,
+body.theme-light .ai-chat-history-item { color: #e5e5ea; }
+body.theme-light .ai-chat-history-item:hover { background: #2c2c2e; }
+body.theme-light .ai-chat-history-item.active { border-color: #0a84ff; background: rgba(10,132,255,.16); }
+body.theme-light .ai-chat-attachment-chip,
+body.theme-light .ai-chat-message-attachments figure,
+body.theme-light .ai-chat-message-file { border-color: #48484a; background: #2c2c2e; color: #e5e5ea; }
+body.theme-light .ai-chat-message-attachments figcaption,
+body.theme-light .ai-chat-insert-expand-toggle { color: #a1a1a6; }
+body.theme-light .ai-chat-message.user .ai-chat-message-content { border-color: #2997ff; background: #0a84ff; color: #fff; }
+
+/* The assistant answer is intentionally unchanged from the original light mode. */
+body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content {
+  border-color: #cbd5e1;
+  background: #fff;
+  color: #1e293b;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+body.theme-light .ai-chat-reasoning,
+body.theme-light .ai-chat-thinking,
+body.theme-light .ai-chat-live-stream,
+body.theme-light .ai-chat-checklist,
+body.theme-light .ai-chat-academic-results { border-color: #48484a; background: #242426; color: #d1d1d6; }
+body.theme-light .ai-chat-reasoning summary,
+body.theme-light .ai-chat-live-stream > strong,
+body.theme-light .ai-chat-checklist > div:first-child,
+body.theme-light .ai-chat-academic-head { border-color: #48484a; background: #2c2c2e; color: #e5e5ea; }
+body.theme-light .ai-chat-thinking-head strong,
+body.theme-light .ai-chat-checklist strong,
+body.theme-light .ai-chat-academic-results,
+body.theme-light .ai-chat-academic-list details p { color: #e5e5ea; }
+body.theme-light .ai-chat-thinking-track { background: #3a3a3c; }
+body.theme-light .ai-chat-live-stream > div { color: #d1d1d6; }
+body.theme-light .ai-chat-response-notice { border-color: #48484a; background: #2c2c2e; color: #a1a1a6; }
+body.theme-light .ai-chat-image-gallery figure { border-color: #48484a; background: #242426; }
+body.theme-light .ai-chat-image-gallery img { background: #1c1c1e; }
+body.theme-light .ai-chat-image-gallery button { border-color: #48484a; background: #2c2c2e; color: #64d2ff; }
+body.theme-light .ai-chat-panel.image-model-selected .ai-chat-mode-row { background: rgba(255,214,10,.08); }
+
 @media (prefers-reduced-motion: reduce) {
   .ai-chat-thinking-orb,
   .ai-chat-thinking-dots i,

@@ -13,6 +13,9 @@ const SETTINGS_CONTAINER_FOLD_STATE_KEY = 'md_viewer_settings_container_fold_sta
 const FILE_DOWNLOAD_PREFIX_KEY = 'mdpro_file_download_prefix_v1';
 const DEFAULT_FILE_DOWNLOAD_PREFIX = 'mdpro';
 const MAIN_HEADER_BACKGROUND_REMOVED_KEY = 'md_viewer_main_header_background_removed_v1';
+const HEADER_FILE_ACTION_STYLE_KEY = 'md_viewer_header_file_action_style_v1';
+const DEFAULT_HEADER_FILE_ACTION_STYLE = 'button';
+const HEADER_FEATURE_KEY_STYLE_KEY = 'md_viewer_header_feature_key_style_v1';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const AI_CHAT_SETTINGS_FOLD_KEY = 'md_viewer_ai_chat_settings_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
@@ -22,6 +25,50 @@ const GOOGLE_CALENDAR_OPEN_MODE_KEY = 'md_viewer_google_calendar_open_mode';
 const GOOGLE_CALENDAR_EMAIL_KEY = 'md_viewer_google_calendar_email';
 const VIEW_COPY_FAB_POSITION_KEY = 'md_viewer_view_copy_fab_position_v2';
 const VIEW_COPY_FAB_EDGE_GAP = 8;
+
+function getHeaderFileActionStyle() {
+    const stored = localStorage.getItem(HEADER_FILE_ACTION_STYLE_KEY);
+    return stored === 'text' ? 'text' : DEFAULT_HEADER_FILE_ACTION_STYLE;
+}
+
+function applyHeaderFileActionStyle(style, persist) {
+    const normalized = style === 'text' ? 'text' : 'button';
+    document.documentElement.classList.toggle('header-file-actions-text', normalized === 'text');
+    document.documentElement.classList.toggle('header-file-actions-button', normalized === 'button');
+    document.querySelectorAll('input[name="header-file-action-style"]').forEach(function (input) {
+        input.checked = input.value === normalized;
+    });
+    if (persist !== false) localStorage.setItem(HEADER_FILE_ACTION_STYLE_KEY, normalized);
+}
+
+function setHeaderFileActionStyle(style) {
+    applyHeaderFileActionStyle(style, true);
+    showToast(style === 'text' ? '파일 작업 메뉴를 글자형으로 표시합니다.' : '파일 작업 메뉴를 버튼형으로 표시합니다.');
+}
+window.setHeaderFileActionStyle = setHeaderFileActionStyle;
+applyHeaderFileActionStyle(getHeaderFileActionStyle(), false);
+
+function getHeaderFeatureKeyStyle() {
+    const stored = localStorage.getItem(HEADER_FEATURE_KEY_STYLE_KEY);
+    return stored === 'text' ? 'text' : 'button';
+}
+
+function applyHeaderFeatureKeyStyle(style, persist) {
+    const normalized = style === 'text' ? 'text' : 'button';
+    document.documentElement.classList.toggle('header-feature-keys-text', normalized === 'text');
+    document.documentElement.classList.toggle('header-feature-keys-button', normalized === 'button');
+    document.querySelectorAll('input[name="header-feature-key-style"]').forEach(function (input) {
+        input.checked = input.value === normalized;
+    });
+    if (persist !== false) localStorage.setItem(HEADER_FEATURE_KEY_STYLE_KEY, normalized);
+}
+
+function setHeaderFeatureKeyStyle(style) {
+    applyHeaderFeatureKeyStyle(style, true);
+    showToast(style === 'text' ? '기능키를 글자형으로 표시합니다.' : '기능키를 버튼형으로 표시합니다.');
+}
+window.setHeaderFeatureKeyStyle = setHeaderFeatureKeyStyle;
+applyHeaderFeatureKeyStyle(getHeaderFeatureKeyStyle(), false);
 const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
     docxImport: './js/extendFiles/docx-import.js?v=20260817-dark-table-contrast-1',
@@ -299,6 +346,7 @@ let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
 let mermaidQuickMenuBound = false;
+let listQuickMenuBound = false;
 let footnoteQuickMenuBound = false;
 let selectionWrapEnabled = true;
 let viewModeEditEnabled = false;
@@ -1170,7 +1218,7 @@ function organizeSettingsDashboard() {
 
     const generalColumn = createColumn(
         'settings-dashboard-general',
-        '캘린더 · 코드 색상 · 단축키',
+        '앱 세팅',
         'layout-dashboard'
     );
     const saveColumn = createColumn(
@@ -1197,6 +1245,32 @@ function organizeSettingsDashboard() {
     const inDbBackupPrefix = document.getElementById('indb-backup-prefix-settings-card');
     const inDbStorageSettings = document.getElementById('indb-storage-settings-card');
     const aiUser = document.getElementById('ai-user-settings-card');
+    const headerFileActionSettings = document.createElement('div');
+    headerFileActionSettings.id = 'header-file-action-style-settings';
+    headerFileActionSettings.className = 'rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3';
+    headerFileActionSettings.innerHTML = [
+        '<div class="text-xs font-bold text-slate-700 dark:text-slate-200">앱 저장·열기 표시</div>',
+        '<div class="mt-2 flex items-center gap-4" role="radiogroup" aria-label="앱 저장 및 열기 메뉴 표시 방식">',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"><input type="radio" name="header-file-action-style" value="button" checked onchange="setHeaderFileActionStyle(this.value)" class="text-indigo-600 focus:ring-indigo-500"><span>버튼형</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"><input type="radio" name="header-file-action-style" value="text" onchange="setHeaderFileActionStyle(this.value)" class="text-indigo-600 focus:ring-indigo-500"><span>글자형</span></label>',
+        '</div>',
+        '<p class="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">버튼형은 새파일·열기·내보내기·저장을 아이콘으로만 표시합니다.</p>'
+    ].join('');
+    appendToColumn(generalColumn, headerFileActionSettings);
+    applyHeaderFileActionStyle(getHeaderFileActionStyle(), false);
+    const headerFeatureKeySettings = document.createElement('div');
+    headerFeatureKeySettings.id = 'header-feature-key-style-settings';
+    headerFeatureKeySettings.className = 'rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3';
+    headerFeatureKeySettings.innerHTML = [
+        '<div class="text-xs font-bold text-slate-700 dark:text-slate-200">기능키 표시</div>',
+        '<div class="mt-2 flex items-center gap-4" role="radiogroup" aria-label="상단 기능키 표시 방식">',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"><input type="radio" name="header-feature-key-style" value="button" onchange="setHeaderFeatureKeyStyle(this.value)" class="text-indigo-600 focus:ring-indigo-500"><span>버튼형</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"><input type="radio" name="header-feature-key-style" value="text" onchange="setHeaderFeatureKeyStyle(this.value)" class="text-indigo-600 focus:ring-indigo-500"><span>글자형</span></label>',
+        '</div>',
+        '<p class="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">학술검색·PDF 병합·Sites·양식·AI 기능키의 표시 방식을 바꿉니다.</p>'
+    ].join('');
+    appendToColumn(generalColumn, headerFeatureKeySettings);
+    applyHeaderFeatureKeyStyle(getHeaderFeatureKeyStyle(), false);
     if (aiUser) {
         aiUser.className = 'border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50 space-y-2';
         appendToColumn(generalColumn, aiUser);
@@ -3143,6 +3217,7 @@ function toggleMode(mode) {
     const btnEdit = document.getElementById('btn-edit');
     const editTools = document.getElementById('edit-tools');
     const btnCopyViewRich = document.getElementById('btn-copy-view-rich');
+    const scrollJumpRail = document.getElementById('scroll-jump-rail');
     const btnExportGdocs = document.getElementById('btn-export-gdocs');
     const btnDocSync = document.getElementById('btn-docsync');
     const activeClasses = ['bg-white', 'dark:bg-slate-700', 'shadow-sm', 'text-indigo-600', 'dark:text-indigo-400'];
@@ -3150,6 +3225,7 @@ function toggleMode(mode) {
         console.warn('toggleMode: viewer-container or content-viewport not found.', { vc: !!vc, ec: !!ec });
         return;
     }
+    document.body.classList.toggle('viewer-view-mode', mode !== 'edit');
 
     if (mode === 'edit') {
         const viewRatio = getScrollRatio(vc);
@@ -3159,6 +3235,7 @@ function toggleMode(mode) {
         ec.classList.remove('hidden');
         ec.classList.add('viewer-edit-active');
         applyEditToolsVisibilityByMode();
+        if (scrollJumpRail) scrollJumpRail.classList.remove('hidden');
         if (btnCopyViewRich) btnCopyViewRich.classList.add('hidden');
         if (btnExportGdocs) btnExportGdocs.classList.add('hidden');
         if (btnDocSync) btnDocSync.classList.add('hidden');
@@ -3189,6 +3266,7 @@ function toggleMode(mode) {
         ec.classList.remove('viewer-edit-active');
         ec.classList.add('hidden');
         applyEditToolsVisibilityByMode();
+        if (scrollJumpRail) scrollJumpRail.classList.add('hidden');
         if (btnCopyViewRich) {
             btnCopyViewRich.classList.remove('hidden');
             requestAnimationFrame(positionViewCopyFab);
@@ -3458,17 +3536,43 @@ function toggleOpenSourceMenu(event) {
     setOpenSourceMenuVisible(menu.classList.contains('hidden'));
 }
 
+function setNewFileMenuVisible(visible) {
+    const menu = document.getElementById('new-file-menu');
+    const toggle = document.getElementById('new-file-menu-toggle');
+    if (!menu || !toggle) return;
+    const shouldShow = !!visible && !toggle.classList.contains('hidden');
+    menu.classList.toggle('hidden', !shouldShow);
+    toggle.setAttribute('aria-expanded', shouldShow ? 'true' : 'false');
+}
+
+function toggleNewFileMenu(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('new-file-menu');
+    if (!menu) return;
+    setNewFileMenuVisible(menu.classList.contains('hidden'));
+}
+
+function createBlankFileFromNewMenu(event) {
+    if (event) event.stopPropagation();
+    setNewFileMenuVisible(false);
+    createNewFile();
+}
+
+function openTemplateForNewFile(event) {
+    if (event) event.stopPropagation();
+    const menu = document.getElementById('new-file-menu');
+    const menuRect = menu && !menu.classList.contains('hidden')
+        ? menu.getBoundingClientRect()
+        : null;
+    setNewFileMenuVisible(false);
+    openTemplatePanel(menuRect ? menuRect.bottom + 8 : null);
+}
+
 function openFilePickerFromMenu(event) {
     if (event) event.stopPropagation();
     setOpenSourceMenuVisible(false);
     const input = document.getElementById('file-input');
     if (input) input.click();
-}
-
-function openTemplatePanelFromMenu(event) {
-    if (event) event.stopPropagation();
-    setOpenSourceMenuVisible(false);
-    openTemplatePanel();
 }
 
 function openImageFolderPickerFromMenu(event) {
@@ -3507,9 +3611,14 @@ function openFmaViewerFromMenu(event) {
 document.addEventListener('click', function (event) {
     const wrap = document.getElementById('open-source-menu-wrap');
     if (wrap && !wrap.contains(event.target)) setOpenSourceMenuVisible(false);
+    const newFileWrap = document.getElementById('new-file-menu-wrap');
+    if (newFileWrap && !newFileWrap.contains(event.target)) setNewFileMenuVisible(false);
 });
 document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape') setOpenSourceMenuVisible(false);
+    if (event.key === 'Escape') {
+        setOpenSourceMenuVisible(false);
+        setNewFileMenuVisible(false);
+    }
 });
 
 async function handleFileSelect(event) {
@@ -6139,6 +6248,36 @@ function toggleTidyQuickMenu(forceOpen) {
 function closeMermaidQuickMenu() {
     const panel = document.getElementById('mermaid-quick-panel');
     if (panel) panel.classList.add('hidden');
+}
+
+function closeListQuickMenu() {
+    const panel = document.getElementById('list-quick-panel');
+    const btn = document.getElementById('btn-list-quick');
+    if (panel) panel.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleListQuickMenu(forceOpen) {
+    const panel = document.getElementById('list-quick-panel');
+    const btn = document.getElementById('btn-list-quick');
+    if (!panel || !btn) return;
+    bindListQuickMenuDismiss();
+    const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
+    btn.setAttribute('aria-expanded', String(shouldOpen));
+}
+
+function bindListQuickMenuDismiss() {
+    if (listQuickMenuBound || !document.body) return;
+    listQuickMenuBound = true;
+    document.body.addEventListener('click', function (event) {
+        const panel = document.getElementById('list-quick-panel');
+        const btn = document.getElementById('btn-list-quick');
+        if (!panel || !btn) return;
+        const target = event.target;
+        if (panel.contains(target) || btn.contains(target)) return;
+        closeListQuickMenu();
+    });
 }
 
 function toggleMermaidQuickMenu(forceOpen) {
@@ -8857,12 +8996,65 @@ function applyEditToolsVisibilityByMode() {
     const editTools = document.getElementById('edit-tools');
     const toolbar = document.getElementById('toolbar');
     if (!editTools) return;
-    const show = !!isEditMode;
+    const show = !!isEditMode || document.body.classList.contains('edit-toolbar-vertical');
     editTools.classList.toggle('hidden', !show);
     editTools.classList.toggle('invisible', false);
     editTools.classList.toggle('pointer-events-none', !show);
     if (toolbar) toolbar.classList.toggle('toolbar-view-compact', !show);
 }
+
+const EDIT_TOOLBAR_ORIENTATION_KEY = 'mdpro-edit-toolbar-orientation';
+
+function updateVerticalEditToolbarTop() {
+    if (!document.body.classList.contains('edit-toolbar-vertical')) return;
+    const header = document.querySelector('header.app-header');
+    const footer = document.getElementById('app-status-footer');
+    const headerBottom = header ? Math.max(8, Math.round(header.getBoundingClientRect().bottom + 8)) : 72;
+    const footerTop = footer ? footer.getBoundingClientRect().top : window.innerHeight;
+    const bottomSpace = Math.max(10, Math.round(window.innerHeight - footerTop + 8));
+    document.documentElement.style.setProperty('--edit-toolbar-vertical-top', headerBottom + 'px');
+    document.documentElement.style.setProperty('--edit-toolbar-vertical-bottom', bottomSpace + 'px');
+}
+
+function applyEditToolbarOrientation(orientation, persist) {
+    const vertical = orientation === 'vertical';
+    const btn = document.getElementById('edit-toolbar-orientation-toggle');
+    document.body.classList.toggle('edit-toolbar-vertical', vertical);
+    applyEditToolsVisibilityByMode();
+    if (btn) {
+        btn.setAttribute('aria-pressed', String(vertical));
+        btn.title = vertical ? '도구막대를 상단 가로형으로 전환' : '도구막대를 오른쪽 세로형으로 전환';
+        const verticalIcon = btn.querySelector('.edit-toolbar-icon-vertical');
+        const horizontalIcon = btn.querySelector('.edit-toolbar-icon-horizontal');
+        if (verticalIcon) verticalIcon.classList.toggle('hidden', vertical);
+        if (horizontalIcon) horizontalIcon.classList.toggle('hidden', !vertical);
+    }
+    if (vertical) updateVerticalEditToolbarTop();
+    else {
+        document.documentElement.style.removeProperty('--edit-toolbar-vertical-top');
+        document.documentElement.style.removeProperty('--edit-toolbar-vertical-bottom');
+    }
+    if (persist !== false) {
+        try { localStorage.setItem(EDIT_TOOLBAR_ORIENTATION_KEY, vertical ? 'vertical' : 'horizontal'); } catch (_) {}
+    }
+    window.dispatchEvent(new CustomEvent('md-edit-toolbar-orientation-change', {
+        detail: { orientation: vertical ? 'vertical' : 'horizontal' }
+    }));
+}
+
+function toggleEditToolbarOrientation() {
+    const next = document.body.classList.contains('edit-toolbar-vertical') ? 'horizontal' : 'vertical';
+    applyEditToolbarOrientation(next, true);
+}
+
+function initEditToolbarOrientation() {
+    let saved = 'horizontal';
+    try { saved = localStorage.getItem(EDIT_TOOLBAR_ORIENTATION_KEY) || 'horizontal'; } catch (_) {}
+    applyEditToolbarOrientation(saved === 'vertical' ? 'vertical' : 'horizontal', false);
+    window.addEventListener('resize', updateVerticalEditToolbarTop);
+}
+
+document.addEventListener('DOMContentLoaded', initEditToolbarOrientation);
 
 function bindMathQuickMenuDismiss() {
     if (document.body && document.body.__mathQuickMenuBound) return;
@@ -8886,7 +9078,9 @@ function toggleMathQuickMenu() {
 
 function closeFootnoteQuickMenu() {
     const panel = document.getElementById('footnote-quick-panel');
+    const btn = document.getElementById('btn-footnote-quick');
     if (panel) panel.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
 function bindFootnoteQuickMenuDismiss() {
@@ -8912,6 +9106,7 @@ function toggleFootnoteQuickMenu(forceOpen) {
     bindFootnoteQuickMenuDismiss();
     const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
     panel.classList.toggle('hidden', !shouldOpen);
+    btn.setAttribute('aria-expanded', String(shouldOpen));
 }
 
 function wrapSelectionWithDelimiters(left, right, placeholder) {
@@ -9255,6 +9450,12 @@ function getHighlightVisibleFromSettings(settings) {
 function getTemplateVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.templateVisible === true;
+}
+
+function getTemplateNewFileVisibleFromSettings(settings) {
+    if (!settings) return false;
+    if (typeof settings.templateNewFileVisible === 'boolean') return settings.templateNewFileVisible;
+    return getTemplateVisibleFromSettings(settings);
 }
 
 function getNoteCoverInsertVisibleFromSettings(settings) {
@@ -9981,24 +10182,42 @@ function bindTemplatePanelResize() {
 }
 
 function applyTemplateVisibility(settings) {
-    const enabled = getTemplateVisibleFromSettings(settings || {});
-    const btn = document.getElementById('btn-template-panel');
-    if (btn) btn.classList.toggle('hidden', !enabled);
-    const openMenuItem = document.getElementById('open-template-menu-item');
-    if (openMenuItem) {
-        openMenuItem.classList.toggle('hidden', !enabled);
-        openMenuItem.classList.toggle('flex', enabled);
+    const headerEnabled = getTemplateVisibleFromSettings(settings || {});
+    const newFileEnabled = getTemplateNewFileVisibleFromSettings(settings || {});
+    const menuItem = document.getElementById('new-template-menu-item');
+    const menuToggle = document.getElementById('new-file-menu-toggle');
+    const newFileButton = document.getElementById('header-new-file-button');
+    const headerButton = document.getElementById('btn-template-panel');
+    if (menuItem) {
+        menuItem.classList.toggle('hidden', !newFileEnabled);
+        menuItem.classList.toggle('flex', newFileEnabled);
     }
+    if (menuToggle) {
+        menuToggle.classList.toggle('hidden', !newFileEnabled);
+        menuToggle.classList.toggle('flex', newFileEnabled);
+    }
+    if (newFileButton) {
+        newFileButton.classList.toggle('rounded-md', !newFileEnabled);
+        newFileButton.classList.toggle('rounded-l-md', newFileEnabled);
+    }
+    if (headerButton) headerButton.classList.toggle('hidden', !headerEnabled);
     syncHeaderFeatureToolsVisibility();
-    if (!enabled) closeTemplatePanel();
+    if (!newFileEnabled) setNewFileMenuVisible(false);
+    if (!headerEnabled && !newFileEnabled) {
+        closeTemplatePanel();
+    }
 }
 
-function openTemplatePanel() {
+function openTemplatePanel(startTop) {
     const panel = document.getElementById('template-panel');
     if (!panel) return;
     bindTemplatePanelDrag();
     bindTemplatePanelResize();
     applyTemplatePanelMode();
+    if (Number.isFinite(startTop) && !templatePanelFullscreen && !templatePanelCompact) {
+        panel.style.top = Math.max(8, Math.round(startTop)) + 'px';
+        panel.style.bottom = 'auto';
+    }
     renderTemplatePanel();
     panel.classList.remove('hidden');
     panel.classList.add('flex');
@@ -10072,8 +10291,19 @@ function insertSelectedTemplateAsNewFile() {
 async function toggleTemplateSection() {
     const check = document.getElementById('template-visible');
     const enabled = !!(check && check.checked);
-    applyTemplateVisibility({ templateVisible: enabled });
+    const newFileCheck = document.getElementById('template-new-file-visible');
+    const newFileEnabled = !!(newFileCheck && newFileCheck.checked);
+    applyTemplateVisibility({ templateVisible: enabled, templateNewFileVisible: newFileEnabled });
     try { await setAiSettings({ templateVisible: enabled }); } catch (e) { console.error(e); }
+}
+
+async function toggleTemplateNewFileSection() {
+    const check = document.getElementById('template-new-file-visible');
+    const enabled = !!(check && check.checked);
+    const headerCheck = document.getElementById('template-visible');
+    const headerEnabled = !!(headerCheck && headerCheck.checked);
+    applyTemplateVisibility({ templateVisible: headerEnabled, templateNewFileVisible: enabled });
+    try { await setAiSettings({ templateNewFileVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 function applyHtml2pptPanelLayout() {
@@ -10660,15 +10890,52 @@ function openHighlightDataWindow() {
 function applyImageUploadFeatureVisibility(settings) {
     const enabled = getImageUploadEnabledFromSettings(settings || {});
     const imgBtn = document.getElementById('btn-image-insert');
-    if (imgBtn) imgBtn.style.display = enabled ? '' : 'none';
-    const imgUpBtn = document.getElementById('btn-image-upload-tool');
-    if (imgUpBtn) imgUpBtn.style.display = enabled ? '' : 'none';
-
+    if (imgBtn) imgBtn.style.display = enabled ? 'inline-flex' : 'none';
+    const imageLinkBtn = document.getElementById('btn-image-link');
+    if (imageLinkBtn) imageLinkBtn.style.display = enabled ? 'none' : 'inline-flex';
+    if (!enabled) closeImageInsertQuickMenu();
     const section = document.getElementById('image-upload-settings');
     const check = document.getElementById('image-upload-enabled');
     if (section && check) section.classList.toggle('hidden', !check.checked);
     setInputModalImagePanelToggleState();
 }
+
+function closeImageInsertQuickMenu() {
+    const panel = document.getElementById('image-insert-quick-panel');
+    const btn = document.getElementById('btn-image-insert');
+    if (panel) panel.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleImageInsertQuickMenu(event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById('image-insert-quick-panel');
+    const btn = document.getElementById('btn-image-insert');
+    if (!panel || !btn) return;
+    const shouldOpen = panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
+    btn.setAttribute('aria-expanded', String(shouldOpen));
+}
+
+function openImageLinkFromQuickMenu(event) {
+    if (event) event.stopPropagation();
+    closeImageInsertQuickMenu();
+    openLinkModal('image');
+}
+
+function openImagePanelFromQuickMenu(event) {
+    if (event) event.stopPropagation();
+    closeImageInsertQuickMenu();
+    openImageInsertModal();
+}
+
+document.addEventListener('click', function (event) {
+    const wrap = document.getElementById('image-insert-menu-wrap');
+    if (wrap && !wrap.contains(event.target)) closeImageInsertQuickMenu();
+});
+document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeImageInsertQuickMenu();
+});
 
 async function toggleImageUploadSection() {
     const check = document.getElementById('image-upload-enabled');
@@ -10897,6 +11164,8 @@ async function persistAiSettingsFromModal() {
     const macroVisible = !!(macroVisibleEl && macroVisibleEl.checked);
     const templateVisibleEl = document.getElementById('template-visible');
     const templateVisible = !!(templateVisibleEl && templateVisibleEl.checked);
+    const templateNewFileVisibleEl = document.getElementById('template-new-file-visible');
+    const templateNewFileVisible = !!(templateNewFileVisibleEl && templateNewFileVisibleEl.checked);
     const noteCoverInsertVisibleEl = document.getElementById('note-cover-insert-visible');
     const noteCoverInsertVisible = !!(noteCoverInsertVisibleEl && noteCoverInsertVisibleEl.checked);
     const pdfMergeVisibleEl = document.getElementById('pdf-merge-visible');
@@ -10929,6 +11198,7 @@ async function persistAiSettingsFromModal() {
         sitesVisible: sitesVisible,
         macroVisible: macroVisible,
         templateVisible: templateVisible,
+        templateNewFileVisible: templateNewFileVisible,
         noteCoverInsertVisible: noteCoverInsertVisible,
         pdfMergeVisible: pdfMergeVisible,
         templateCustomList: normalizeTemplateCustomList(templateCustomList).map(function (item) {
@@ -11392,19 +11662,18 @@ function updateHeaderAiButtonsActive() {
     const bSsp = document.getElementById('btn-sspimg-ai');
     const schOn = sch && sch.classList.contains('open');
     const sspOn = ssp && ssp.classList.contains('open');
-    const base = 'px-3 py-1.5 rounded-md text-xs font-medium transition-shadow';
     function vis(btn) {
         return btn && btn.style.display !== 'none' && !btn.classList.contains('hidden');
     }
     if (vis(bSch)) {
-        bSch.className = base + ' ' + (schOn
-            ? 'bg-indigo-200 dark:bg-indigo-800 text-indigo-900 dark:text-indigo-100 ring-2 ring-indigo-500 dark:ring-indigo-400'
-            : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600');
+        bSch.classList.add('header-quick-tool');
+        bSch.classList.toggle('header-quick-tool-active', !!schOn);
+        bSch.setAttribute('aria-pressed', schOn ? 'true' : 'false');
     }
     if (vis(bSsp)) {
-        bSsp.className = base + ' ' + (sspOn
-            ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 ring-2 ring-amber-500 dark:ring-amber-400'
-            : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600');
+        bSsp.classList.add('header-quick-tool');
+        bSsp.classList.toggle('header-quick-tool-active', !!sspOn);
+        bSsp.setAttribute('aria-pressed', sspOn ? 'true' : 'false');
     }
 }
 
@@ -13988,6 +14257,8 @@ async function loadAiSettingsToUI() {
         if (macroCheckEmpty) macroCheckEmpty.checked = false;
         const templateCheckEmpty = document.getElementById('template-visible');
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
+        const templateNewFileCheckEmpty = document.getElementById('template-new-file-visible');
+        if (templateNewFileCheckEmpty) templateNewFileCheckEmpty.checked = false;
         const noteCoverInsertCheckEmpty = document.getElementById('note-cover-insert-visible');
         if (noteCoverInsertCheckEmpty) noteCoverInsertCheckEmpty.checked = false;
         const pdfMergeCheckEmpty = document.getElementById('pdf-merge-visible');
@@ -14097,6 +14368,8 @@ async function loadAiSettingsToUI() {
     if (macroCheck) macroCheck.checked = settings.macroVisible === true;
     const templateCheck = document.getElementById('template-visible');
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
+    const templateNewFileCheck = document.getElementById('template-new-file-visible');
+    if (templateNewFileCheck) templateNewFileCheck.checked = getTemplateNewFileVisibleFromSettings(settings);
     const noteCoverInsertCheck = document.getElementById('note-cover-insert-visible');
     if (noteCoverInsertCheck) noteCoverInsertCheck.checked = settings.noteCoverInsertVisible === true;
     const pdfMergeCheck = document.getElementById('pdf-merge-visible');
@@ -14300,6 +14573,8 @@ async function initAiVisibility() {
 
 function openSettingsModal() {
     ensureInDbStatusUi();
+    applyHeaderFileActionStyle(getHeaderFileActionStyle(), false);
+    applyHeaderFeatureKeyStyle(getHeaderFeatureKeyStyle(), false);
     document.getElementById('settings-modal').classList.remove('hidden');
     const settingsBody = document.getElementById('settings-modal-body');
     if (settingsBody) settingsBody.scrollTop = 0;
@@ -15652,6 +15927,3 @@ window.findPrev = findPrev;
 window.replaceCurrent = replaceCurrent;
 window.replaceAll = replaceAll;
 window.swapFindReplaceValues = swapFindReplaceValues;
-
-
-

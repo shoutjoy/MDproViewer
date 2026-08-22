@@ -39,10 +39,12 @@
     if (headerSlot && !q('btn-scholar-search')) {
       headerSlot.innerHTML = [
         '<button type="button" id="btn-scholar-search"',
-        ' class="hidden px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-[10px] sm:text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600"',
-        ' title="학술검색 입력창 열기 (Alt+S)">학술검색</button>'
+        ' class="header-quick-tool hidden"',
+        ' title="학술검색 입력창 열기 (Alt+S)" aria-label="학술검색">',
+        '<i data-lucide="search-check" aria-hidden="true"></i><span>학술검색</span></button>'
       ].join('');
       q('btn-scholar-search').addEventListener('click', open);
+      if (global.lucide && typeof global.lucide.createIcons === 'function') global.lucide.createIcons();
     }
 
     var settingsSlot = q('scholar-search-settings-slot');
