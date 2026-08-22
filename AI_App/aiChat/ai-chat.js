@@ -45,7 +45,7 @@
   var CONVERSATION_STORE = 'conversations';
   var MAX_STORED_MESSAGES = 100;
   var MAX_CONTEXT_MESSAGES = 100;
-  var DEFAULT_CHAT_WIDTH = 575;
+  var DEFAULT_CHAT_WIDTH = 380;
   var MIN_CHAT_WIDTH = 340;
   var DEFAULT_POPUP_HEIGHT = 585;
   var DEFAULT_GEMINI_MODELS = [
@@ -921,7 +921,7 @@
     }
     var minWidth = Math.min(MIN_CHAT_WIDTH, root.innerWidth - 12);
     var minHeight = Math.min(360, root.innerHeight - 12);
-    var width = Math.max(minWidth, Math.min(saved.width || DEFAULT_CHAT_WIDTH, root.innerWidth - 12));
+    var width = Math.max(minWidth, Math.min(DEFAULT_CHAT_WIDTH, root.innerWidth - 12));
     var height = Math.max(minHeight, Math.min(saved.height || 650, root.innerHeight - 12));
     var left = Math.max(6, Math.min(saved.left, root.innerWidth - width - 6));
     var top = Math.max(6, Math.min(saved.top, root.innerHeight - height - 6));
@@ -1156,6 +1156,7 @@
     panel.classList.remove('layout-popup', 'layout-dock', 'layout-fullscreen');
     panel.classList.add('layout-' + layout);
     if (layout === 'dock' && slot) {
+      slot.style.width = Math.min(DEFAULT_CHAT_WIDTH, root.innerWidth) + 'px';
       slot.appendChild(panel);
       panel.removeAttribute('style');
     } else {

@@ -48,7 +48,7 @@
   z-index: 2147483647;
   display: none;
   flex-direction: column;
-  width: min(575px, calc(100vw - 24px));
+  width: min(380px, calc(100vw - 24px));
   height: min(650px, calc(100vh - 32px));
   min-width: min(340px, calc(100vw - 12px));
   min-height: min(360px, calc(100vh - 12px));
@@ -83,7 +83,7 @@
   right: 0;
   bottom: 0;
   display: none;
-  width: min(575px, calc(100vw - 24px));
+  width: min(380px, calc(100vw - 24px));
   min-width: min(340px, calc(100vw - 24px));
   height: 100vh;
   overflow: visible;
