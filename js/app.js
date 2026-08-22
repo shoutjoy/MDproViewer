@@ -18,6 +18,8 @@ const DEFAULT_HEADER_FILE_ACTION_STYLE = 'button';
 const HEADER_FEATURE_KEY_STYLE_KEY = 'md_viewer_header_feature_key_style_v1';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const AI_CHAT_SETTINGS_FOLD_KEY = 'md_viewer_ai_chat_settings_folded';
+const SCHOLAR_LM_SETTINGS_FOLD_KEY = 'md_viewer_scholar_lm_settings_folded';
+const SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY = 'md_viewer_scholar_ollama_settings_folded';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
 const GOOGLE_CALENDAR_ENABLED_KEY = 'md_viewer_google_calendar_enabled';
 const GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r';
@@ -1243,34 +1245,67 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     const slot = document.getElementById('ai-integration-settings-slot');
     if (!card || !slot) return;
     const deepseek = document.getElementById('deepseek-settings-card');
-    if (deepseek && deepseek.parentElement === card) card.appendChild(deepseek);
     const openaiCompatible = document.getElementById('openai-compatible-settings-card');
-    if (openaiCompatible && deepseek && openaiCompatible.parentElement === card) {
-        card.insertBefore(openaiCompatible, deepseek);
-    }
+    const aiStudio = document.getElementById('ai-studio-settings-card');
     const openai = document.getElementById('openai-settings-card');
-    if (openai && openai.parentElement === card) card.appendChild(openai);
     const aiChatSettings = document.getElementById('ai-chat-settings');
     const scholarLmSettings = document.getElementById('scholar-ai-provider-settings');
-    if (aiChatSettings && scholarLmSettings) {
+    const ollamaSettings = document.getElementById('ollama-provider-settings');
+    const aiDataCenterSettings = document.getElementById('ai-data-center-settings');
+    if (aiChatSettings) {
         aiChatSettings.className = 'pb-3 border-b border-slate-200 dark:border-slate-700';
-        let providerBody = document.getElementById('ai-chat-provider-settings-body');
+        applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
+    }
+    if (scholarLmSettings) {
+        let providerBody = document.getElementById('scholar-lm-settings-body');
         if (!providerBody) {
             providerBody = document.createElement('div');
-            providerBody.id = 'ai-chat-provider-settings-body';
-            providerBody.className = 'space-y-3';
+            providerBody.id = 'scholar-lm-settings-body';
+            providerBody.className = 'mt-3 space-y-3';
             while (scholarLmSettings.firstChild) {
                 providerBody.appendChild(scholarLmSettings.firstChild);
             }
-            scholarLmSettings.appendChild(aiChatSettings);
+            const header = document.createElement('div');
+            header.className = 'flex items-center justify-between gap-2';
+            header.innerHTML = '<p class="text-xs font-semibold text-slate-700 dark:text-slate-300">LM Studio 설정</p>'
+                + '<button type="button" id="scholar-lm-settings-fold-btn" onclick="toggleScholarLmSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" aria-controls="scholar-lm-settings-body">접기</button>';
+            scholarLmSettings.appendChild(header);
             scholarLmSettings.appendChild(providerBody);
         }
-        const ollamaSettings = document.getElementById('ollama-provider-settings');
-        if (ollamaSettings && ollamaSettings.parentElement !== providerBody) {
-            providerBody.appendChild(ollamaSettings);
-        }
-        applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
+        applyScholarLmSettingsFold(getScholarLmSettingsFoldedFromLocal());
     }
+    if (ollamaSettings) {
+        let ollamaBody = document.getElementById('scholar-ollama-settings-body');
+        if (!ollamaBody) {
+            ollamaBody = document.createElement('div');
+            ollamaBody.id = 'scholar-ollama-settings-body';
+            ollamaBody.className = 'mt-3 space-y-3';
+            while (ollamaSettings.firstChild) {
+                ollamaBody.appendChild(ollamaSettings.firstChild);
+            }
+            const header = document.createElement('div');
+            header.className = 'flex items-center justify-between gap-2';
+            header.innerHTML = '<p class="text-xs font-semibold text-slate-700 dark:text-slate-300">Ollama 설정</p>'
+                + '<button type="button" id="scholar-ollama-settings-fold-btn" onclick="toggleScholarOllamaSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" aria-controls="scholar-ollama-settings-body">접기</button>';
+            ollamaSettings.appendChild(header);
+            ollamaSettings.appendChild(ollamaBody);
+        }
+        applyScholarOllamaSettingsFold(getScholarOllamaSettingsFoldedFromLocal());
+    }
+    // AI 설정은 사용 흐름대로 고정한다: AI Jena와 로컬 모델, 외부 호환 API,
+    // API 키 기반 공급자, 데이터 센터 순서. 문체 프롬프트는 이 슬롯 다음에 배치된다.
+    [
+        aiChatSettings,
+        scholarLmSettings,
+        ollamaSettings,
+        openaiCompatible,
+        aiStudio,
+        deepseek,
+        openai,
+        aiDataCenterSettings
+    ].forEach(function (section) {
+        if (section) card.appendChild(section);
+    });
     if (card.parentElement !== slot) slot.appendChild(card);
 }
 
@@ -1466,6 +1501,7 @@ function organizeSettingsDashboard() {
         'sparkles'
     );
 
+    const pwaSettings = document.getElementById('pwa-settings-card');
     const googleCalendar = document.getElementById('google-calendar-settings-card');
     const codeColors = document.getElementById('code-color-settings-card');
     const pvHeaderSettings = document.getElementById('pv-header-settings-card');
@@ -1485,6 +1521,9 @@ function organizeSettingsDashboard() {
         '</div>',
         '<p class="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">버튼형은 새파일·열기·내보내기·저장을 아이콘으로만 표시합니다.</p>'
     ].join('');
+    // PWA는 독립 대시보드 컬럼이 아니라 앱 자체에 관한 설정이므로
+    // 앱 세팅의 첫 항목으로 배치한다.
+    if (pwaSettings) appendToColumn(generalColumn, pwaSettings);
     appendToColumn(generalColumn, headerFileActionSettings);
     applyHeaderFileActionStyle(getHeaderFileActionStyle(), false);
     const headerFeatureKeySettings = document.createElement('div');
@@ -9184,13 +9223,57 @@ function setAiChatSettingsFoldedToLocal(folded) {
 
 function applyAiChatSettingsFold(folded) {
     const isFolded = !!folded;
-    const body = document.getElementById('ai-chat-provider-settings-body');
+    const body = document.getElementById('ai-chat-settings-body');
     const btn = document.getElementById('ai-chat-settings-fold-btn');
     if (body) body.classList.toggle('hidden', isFolded);
     if (btn) {
         btn.textContent = isFolded ? '\uD3BC\uCE58\uAE30' : '\uC811\uAE30';
         btn.setAttribute('aria-expanded', isFolded ? 'false' : 'true');
     }
+}
+
+function getScholarLmSettingsFoldedFromLocal() {
+    const value = localStorage.getItem(SCHOLAR_LM_SETTINGS_FOLD_KEY);
+    return value == null ? true : value === '1';
+}
+
+function applyScholarLmSettingsFold(folded) {
+    const isFolded = !!folded;
+    const body = document.getElementById('scholar-lm-settings-body');
+    const btn = document.getElementById('scholar-lm-settings-fold-btn');
+    if (body) body.classList.toggle('hidden', isFolded);
+    if (btn) {
+        btn.textContent = isFolded ? '펼치기' : '접기';
+        btn.setAttribute('aria-expanded', isFolded ? 'false' : 'true');
+    }
+}
+
+function toggleScholarLmSettingsFold() {
+    const next = !getScholarLmSettingsFoldedFromLocal();
+    localStorage.setItem(SCHOLAR_LM_SETTINGS_FOLD_KEY, next ? '1' : '0');
+    applyScholarLmSettingsFold(next);
+}
+
+function getScholarOllamaSettingsFoldedFromLocal() {
+    const value = localStorage.getItem(SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY);
+    return value == null ? true : value === '1';
+}
+
+function applyScholarOllamaSettingsFold(folded) {
+    const isFolded = !!folded;
+    const body = document.getElementById('scholar-ollama-settings-body');
+    const btn = document.getElementById('scholar-ollama-settings-fold-btn');
+    if (body) body.classList.toggle('hidden', isFolded);
+    if (btn) {
+        btn.textContent = isFolded ? '펼치기' : '접기';
+        btn.setAttribute('aria-expanded', isFolded ? 'false' : 'true');
+    }
+}
+
+function toggleScholarOllamaSettingsFold() {
+    const next = !getScholarOllamaSettingsFoldedFromLocal();
+    localStorage.setItem(SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY, next ? '1' : '0');
+    applyScholarOllamaSettingsFold(next);
 }
 
 function toggleAiChatSettingsFold() {
@@ -11479,6 +11562,8 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     MAIN_HEADER_BACKGROUND_REMOVED_KEY,
     AI_USE_FOLD_KEY,
     AI_CHAT_SETTINGS_FOLD_KEY,
+    SCHOLAR_LM_SETTINGS_FOLD_KEY,
+    SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY,
     SHARE_SETTINGS_FOLD_KEY,
     GITHUB_SETTINGS_FOLD_KEY,
     EDITOR_HORIZONTAL_SHIFT_KEY,
