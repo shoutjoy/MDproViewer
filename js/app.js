@@ -3369,7 +3369,7 @@ function toggleMode(mode) {
         ec.classList.remove('viewer-edit-active');
         ec.classList.add('hidden');
         applyEditToolsVisibilityByMode();
-        if (scrollJumpRail) scrollJumpRail.classList.add('hidden');
+        if (scrollJumpRail) scrollJumpRail.classList.remove('hidden');
         if (btnCopyViewRich) {
             btnCopyViewRich.classList.remove('hidden');
             requestAnimationFrame(positionViewCopyFab);

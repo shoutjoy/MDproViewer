@@ -2539,10 +2539,6 @@ body.edit-toolbar-vertical #drop-zone {
     margin-right: 82px;
 }
 
-body.viewer-view-mode .scroll-jump-rail {
-    display: none !important;
-}
-
 .user-info-floating-panel {
     position: absolute;
     top: 50%;

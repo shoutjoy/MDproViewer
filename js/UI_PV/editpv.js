@@ -564,6 +564,7 @@ function getPreviewPopupDocumentHtml() {
         + '#pv-table-picker .pv-table-picker-cell:hover,#pv-table-picker .pv-table-picker-cell.pv-table-picker-cell-active,html.dark #pv-table-picker .pv-table-picker-cell.pv-table-picker-cell-active{background:#fcd34d;border-color:#f59e0b;box-shadow:none;}'
         + '#pv-view-controls{position:fixed;right:10px;bottom:10px;z-index:9999;display:flex;align-items:center;gap:4px;padding:4px 5px;border:1px solid #64748b;border-radius:7px;background:rgba(15,23,42,.94);box-shadow:0 6px 18px rgba(15,23,42,.28);color:#e2e8f0;}'
         + '#pv-view-controls .pv-control-group{display:flex;align-items:center;gap:2px;}#pv-view-controls .pv-control-name{font-size:9px;font-weight:800;color:#94a3b8;margin-right:1px;}#pv-view-controls button{width:22px;height:22px;padding:0;border:1px solid #64748b;border-radius:4px;background:#f8fafc;color:#1e293b;font-size:13px;font-weight:800;line-height:1;cursor:pointer;}#pv-view-controls .label{min-width:34px;font-size:9px;text-align:center;font-weight:800;color:#e2e8f0;}#pv-view-controls .pv-control-divider{width:1px;height:18px;background:#475569;margin:0 2px;}#pv-view-controls .pv-header-background-toggle{display:flex;align-items:center;gap:3px;font-size:9px;font-weight:750;color:#e2e8f0;cursor:pointer;white-space:nowrap;}#pv-view-controls .pv-header-background-toggle input{width:13px;height:13px;margin:0;accent-color:#f59e0b;cursor:pointer;}'
+        + '#pv-view-controls{right:auto;bottom:auto;left:10px;top:52px;flex-direction:column;align-items:stretch;touch-action:none;user-select:none;}#pv-view-controls.pv-controls-horizontal{flex-direction:row;align-items:center;}#pv-view-controls .pv-controls-actions{display:flex;align-items:center;gap:3px;}#pv-view-controls .pv-drag-handle{cursor:move;background:#334155;color:#f8fafc;}#pv-view-controls .pv-orientation-toggle{background:#e0e7ff;color:#3730a3;border-color:#818cf8;}#pv-view-controls:not(.pv-controls-horizontal) .pv-control-group{justify-content:space-between;}#pv-view-controls:not(.pv-controls-horizontal) .pv-control-name{width:38px;}#pv-view-controls:not(.pv-controls-horizontal) .pv-control-divider{width:100%;height:1px;margin:1px 0;}'
         + '#pv-content>.note-cover-page{left:50%;max-width:none!important;margin-left:0!important;margin-right:0!important;transform:translateX(-50%);}'
         + '#pv-content>.note-cover-size-a3{width:297mm!important;}'
         + '#pv-content>.note-cover-size-a4{width:210mm!important;}'
@@ -2114,10 +2115,110 @@ function previewPopupSyncEditPageGuideObserver() {
     previewPopupEditPageGuideObserver.observe(content);
 }
 
+const PREVIEW_PV_CONTROLS_LAYOUT_KEY = 'mdpro_pv_view_controls_layout_v1';
+
+function savePreviewPopupViewControlsLayout(panel) {
+    if (!panel) return;
+    try {
+        localStorage.setItem(PREVIEW_PV_CONTROLS_LAYOUT_KEY, JSON.stringify({
+            orientation: panel.classList.contains('pv-controls-horizontal') ? 'horizontal' : 'vertical',
+            left: parseFloat(panel.style.left) || 10,
+            top: parseFloat(panel.style.top) || 52
+        }));
+    } catch (_) {}
+}
+
+function clampPreviewPopupViewControls(panel) {
+    const win = previewPopupWindow;
+    if (!win || !panel) return;
+    const gap = 8;
+    const maxLeft = Math.max(gap, win.innerWidth - panel.offsetWidth - gap);
+    const maxTop = Math.max(46, win.innerHeight - panel.offsetHeight - gap);
+    panel.style.left = Math.max(gap, Math.min(maxLeft, parseFloat(panel.style.left) || 10)) + 'px';
+    panel.style.top = Math.max(46, Math.min(maxTop, parseFloat(panel.style.top) || 52)) + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+}
+
+function previewPopupToggleViewControlsOrientation() {
+    if (!isPreviewPopupAlive()) return;
+    const panel = previewPopupWindow.document.getElementById('pv-view-controls');
+    if (!panel) return;
+    panel.classList.toggle('pv-controls-horizontal');
+    const button = panel.querySelector('.pv-orientation-toggle');
+    if (button) button.textContent = panel.classList.contains('pv-controls-horizontal') ? '↕' : '↔';
+    previewPopupWindow.requestAnimationFrame(function () {
+        clampPreviewPopupViewControls(panel);
+        savePreviewPopupViewControlsLayout(panel);
+    });
+}
+
+function bindPreviewPopupViewControls() {
+    if (!isPreviewPopupAlive()) return;
+    const win = previewPopupWindow;
+    const doc = win.document;
+    const panel = doc.getElementById('pv-view-controls');
+    if (!panel || panel.dataset.floatingBound === '1') return;
+    panel.dataset.floatingBound = '1';
+
+    const actions = doc.createElement('div');
+    actions.className = 'pv-controls-actions';
+    const drag = doc.createElement('button');
+    drag.type = 'button';
+    drag.className = 'pv-drag-handle';
+    drag.textContent = '✥';
+    drag.title = '끌어서 확대·축소 메뉴 이동';
+    drag.setAttribute('aria-label', '확대 축소 메뉴 이동');
+    const orientation = doc.createElement('button');
+    orientation.type = 'button';
+    orientation.className = 'pv-orientation-toggle';
+    orientation.textContent = '↔';
+    orientation.title = '가로/세로 전환';
+    orientation.setAttribute('aria-label', '확대 축소 메뉴 방향 전환');
+    orientation.addEventListener('click', previewPopupToggleViewControlsOrientation);
+    actions.appendChild(drag);
+    actions.appendChild(orientation);
+    panel.insertBefore(actions, panel.firstChild);
+
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(PREVIEW_PV_CONTROLS_LAYOUT_KEY) || 'null'); } catch (_) {}
+    if (saved && saved.orientation === 'horizontal') panel.classList.add('pv-controls-horizontal');
+    panel.style.left = (saved && Number.isFinite(Number(saved.left)) ? Number(saved.left) : 10) + 'px';
+    panel.style.top = (saved && Number.isFinite(Number(saved.top)) ? Number(saved.top) : 52) + 'px';
+    orientation.textContent = panel.classList.contains('pv-controls-horizontal') ? '↕' : '↔';
+    clampPreviewPopupViewControls(panel);
+
+    let offsetX = 0;
+    let offsetY = 0;
+    function move(event) {
+        panel.style.left = event.clientX - offsetX + 'px';
+        panel.style.top = event.clientY - offsetY + 'px';
+        clampPreviewPopupViewControls(panel);
+    }
+    function stop() {
+        doc.removeEventListener('pointermove', move);
+        doc.removeEventListener('pointerup', stop);
+        doc.removeEventListener('pointercancel', stop);
+        savePreviewPopupViewControlsLayout(panel);
+    }
+    drag.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0) return;
+        const rect = panel.getBoundingClientRect();
+        offsetX = event.clientX - rect.left;
+        offsetY = event.clientY - rect.top;
+        event.preventDefault();
+        doc.addEventListener('pointermove', move);
+        doc.addEventListener('pointerup', stop);
+        doc.addEventListener('pointercancel', stop);
+    });
+    win.addEventListener('resize', function () { clampPreviewPopupViewControls(panel); });
+}
+
 function syncPreviewPopupEditorUi() {
     if (!isPreviewPopupAlive()) return;
     const doc = previewPopupWindow.document;
     if (!doc || !doc.body) return;
+    bindPreviewPopupViewControls();
     doc.body.classList.toggle('pv-editor-mode', !!previewPopupEditMode && !previewPopupFileMode);
     doc.body.classList.toggle('pv-file-mode', !!previewPopupFileMode);
     const toggle = doc.getElementById('pv-mode-toggle');

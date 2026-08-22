@@ -143,6 +143,18 @@ test('PV table and margin popovers stay outside the horizontally scrolling toolb
   assert.ok(popupHtml.indexOf('<div id="pv-margin-popover"') > toolbarEnd);
 });
 
+test('PV zoom controls default to a draggable vertical panel at the upper left', () => {
+  assert.match(preview, /#pv-view-controls\{right:auto;bottom:auto;left:10px;top:52px;flex-direction:column/);
+  assert.match(preview, /function bindPreviewPopupViewControls\(\)/);
+  assert.match(preview, /className = 'pv-drag-handle'/);
+  assert.match(preview, /className = 'pv-orientation-toggle'/);
+  assert.match(preview, /function previewPopupToggleViewControlsOrientation\(\)/);
+  assert.match(preview, /pv-controls-horizontal/);
+  assert.match(preview, /PREVIEW_PV_CONTROLS_LAYOUT_KEY/);
+  assert.match(preview, /doc\.addEventListener\('pointermove', move\)/);
+  assert.match(preview, /clampPreviewPopupViewControls\(panel\)/);
+});
+
 test('PV draft stays separate until it is sent to the original note', () => {
   assert.match(preview, /previewPopupDraftBaseMarkdown/);
   assert.match(preview, /previewPopupDraftDirty/);
@@ -238,8 +250,7 @@ test('PV owns an independent image modal and does not route through the main ima
   assert.doesNotMatch(imageInsert, /isPreviewPopupImageInsertTargetActive|insertImageIntoPreviewPopupEditor|cancelPreviewPopupImageInsertTarget/);
 });
 
-test('zoom, width, and font controls are compact and fixed to the bottom-right', () => {
-  assert.match(preview, /#pv-view-controls\{position:fixed;right:10px;bottom:10px/);
+test('zoom, width, and font controls keep their compact control groups', () => {
   assert.match(preview, /pv-control-name\\?">Zoom/);
   assert.match(preview, /pv-control-name\\?">Width/);
   assert.match(preview, /pv-control-name\\?">Font/);
@@ -322,7 +333,7 @@ test('PV render edit mode shows responsive A4 page guides and page numbers', () 
 
 test('PV editor scripts use a fresh cache key', () => {
   assert.match(index, /image_insert\.js\?v=20260812-pv-editor-1/);
-  assert.match(index, /editpv\.js\?v=20260815-pv-header-controls-1-pv-child-img-2-toolbar-order-1-resize-restore-1-a4-edit-guides-1-exit-confirm-1-source-syntax-1/);
+  assert.match(index, /editpv\.js\?v=20260823-floating-controls-1/);
   assert.match(index, /pvHeaderSettings=20260815-1/);
   assert.match(index, /pvExport=20260813-modal-2/);
 });
