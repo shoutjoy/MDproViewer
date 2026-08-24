@@ -111,7 +111,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260823-menu-launcher-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260825-fast-limits-3',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -1341,6 +1341,7 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     const ollamaSettings = document.getElementById('ollama-provider-settings');
     const liteRTLMSettings = document.getElementById('litertlm-provider-settings');
     const aiDataCenterSettings = document.getElementById('ai-data-center-settings');
+    initializeAiSettingsDetailsToggles();
     if (aiChatSettings) {
         aiChatSettings.className = 'pb-3 border-b border-slate-200 dark:border-slate-700';
         applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
@@ -1409,6 +1410,24 @@ function relocateAiIntegrationSettingsIntoAiUse() {
         if (section) card.appendChild(section);
     });
     if (card.parentElement !== slot) slot.appendChild(card);
+}
+
+function initializeAiSettingsDetailsToggles() {
+    document.querySelectorAll('#ai-link-settings-block details').forEach(function (details) {
+        const summary = details.querySelector(':scope > summary');
+        const toggle = summary && summary.querySelector('[data-ai-details-toggle]');
+        if (!summary || !toggle) return;
+        const sync = function () {
+            const expanded = details.open === true;
+            toggle.textContent = expanded ? '접기' : '펼치기';
+            summary.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        };
+        if (!details.__aiSettingsToggleBound) {
+            details.__aiSettingsToggleBound = true;
+            details.addEventListener('toggle', sync);
+        }
+        sync();
+    });
 }
 
 const OPENAI_COMPATIBLE_DEFAULTS = Object.freeze({
@@ -9975,6 +9994,37 @@ function getPdfMergeVisibleFromSettings(settings) {
     return settings.pdfMergeVisible === true;
 }
 
+function getChromeSplitTabVisibleFromSettings(settings) {
+    return !!(settings && settings.chromeSplitTabVisible === true);
+}
+
+function applyChromeSplitTabVisibility(settings) {
+    const enabled = getChromeSplitTabVisibleFromSettings(settings || {});
+    const link = document.getElementById('btn-chrome-split-tab');
+    if (!link) return;
+    link.href = window.location.href;
+    link.classList.toggle('hidden', !enabled);
+    link.classList.toggle('inline-flex', enabled);
+}
+
+async function toggleChromeSplitTabVisibilitySection() {
+    const check = document.getElementById('chrome-split-tab-visible');
+    const enabled = !!(check && check.checked);
+    applyChromeSplitTabVisibility({ chromeSplitTabVisible: enabled });
+    try { await setAiSettings({ chromeSplitTabVisible: enabled }); } catch (e) { console.error(e); }
+}
+
+function handleChromeSplitTabClick(event) {
+    const link = event && event.currentTarget;
+    if (link) link.href = window.location.href;
+    // Chrome handles a trusted Ctrl+Alt+click on a link as "Open in split view".
+    // Keep the plain click on this page so the control never replaces the editor.
+    if (event && event.ctrlKey && event.altKey) return true;
+    if (event) event.preventDefault();
+    showToast('크롬 분할뷰: 이 버튼을 Ctrl+Alt+클릭하거나 우클릭 후 “분할 보기에서 링크 열기”를 선택하세요.');
+    return false;
+}
+
 function applyPdfMergeVisibility(settings) {
     const enabled = getPdfMergeVisibleFromSettings(settings || {});
     const button = document.getElementById('btn-pdf-merge');
@@ -11682,6 +11732,8 @@ async function persistAiSettingsFromModal() {
     const noteCoverInsertVisible = !!(noteCoverInsertVisibleEl && noteCoverInsertVisibleEl.checked);
     const pdfMergeVisibleEl = document.getElementById('pdf-merge-visible');
     const pdfMergeVisible = !!(pdfMergeVisibleEl && pdfMergeVisibleEl.checked);
+    const chromeSplitTabVisibleEl = document.getElementById('chrome-split-tab-visible');
+    const chromeSplitTabVisible = !!(chromeSplitTabVisibleEl && chromeSplitTabVisibleEl.checked);
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
@@ -11713,6 +11765,7 @@ async function persistAiSettingsFromModal() {
         templateNewFileVisible: templateNewFileVisible,
         noteCoverInsertVisible: noteCoverInsertVisible,
         pdfMergeVisible: pdfMergeVisible,
+        chromeSplitTabVisible: chromeSplitTabVisible,
         templateCustomList: normalizeTemplateCustomList(templateCustomList).map(function (item) {
             return { id: item.id, name: item.name, desc: item.desc, content: item.content };
         }),
@@ -12430,13 +12483,48 @@ function readScholarAIProviderSettingsForm() {
         quickMaxTokens: Number(value('settings-aichat-quick-max-tokens') || 4096),
         reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
         fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 3000),
-        fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 60) * 1000,
+        fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 120) * 1000,
         fastSafetyTimeout: !!(document.getElementById('settings-aichat-fast-safety-timeout') && document.getElementById('settings-aichat-fast-safety-timeout').checked),
+        fastCompleteStreaming: !!(document.getElementById('settings-aichat-fast-complete-streaming') && document.getElementById('settings-aichat-fast-complete-streaming').checked),
         reasoningLevel: value('settings-aichat-reasoning-level') || 'auto',
         timeoutMs: Number(value('settings-lmstudio-timeout') || 90) * 1000,
         topP: value('settings-lmstudio-top-p') === '' ? null : Number(value('settings-lmstudio-top-p'))
     };
 }
+
+function syncAiJenaFastLimitsInSettings(config) {
+    const source = config || {};
+    const tokenInput = document.getElementById('settings-ai-jena-fast-token-limit');
+    const timeInput = document.getElementById('settings-ai-jena-fast-time-limit');
+    if (tokenInput) tokenInput.value = Math.max(1, Number(source.fastMaxTokens) || 3000);
+    if (timeInput) timeInput.value = Math.max(1, Math.round((Number(source.fastTimeoutMs) || 120000) / 1000));
+}
+
+function saveAiJenaFastLimitsFromSettings() {
+    if (!window.LocalAI) return;
+    const tokenInput = document.getElementById('settings-ai-jena-fast-token-limit');
+    const timeInput = document.getElementById('settings-ai-jena-fast-time-limit');
+    const fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 3000));
+    const fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 120));
+    try {
+        const current = window.LocalAI.loadConfig(localStorage);
+        const config = getScholarAIProviderRuntime().saveLMStudioConfig(Object.assign({}, current, {
+            fastMaxTokens: fastMaxTokens,
+            fastTimeoutMs: fastTimeoutSeconds * 1000
+        }));
+        syncAiJenaFastLimitsInSettings(config);
+        const lmTokenInput = document.getElementById('settings-aichat-fast-max-tokens');
+        const lmTimeInput = document.getElementById('settings-aichat-fast-timeout');
+        if (lmTokenInput) lmTokenInput.value = fastMaxTokens;
+        if (lmTimeInput) lmTimeInput.value = fastTimeoutSeconds;
+        if (window.AIChat && typeof window.AIChat.syncFastLimits === 'function') window.AIChat.syncFastLimits();
+        notifyAiToolSettingsChanged();
+        setSettingsScholarAIStatus('AI Jena FAST 설정을 저장했습니다.', false);
+    } catch (error) {
+        setSettingsScholarAIStatus('FAST 설정 저장 실패: ' + (error && error.message ? error.message : error), true);
+    }
+}
+window.saveAiJenaFastLimitsFromSettings = saveAiJenaFastLimitsFromSettings;
 
 function normalizeLMStudioLoadedModels(models) {
     return (Array.isArray(models) ? models : []).map(function (item) {
@@ -12542,9 +12630,12 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     setValue('settings-aichat-quick-max-tokens', config.quickMaxTokens || 4096);
     setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
     setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 3000);
-    setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 60000) / 1000)));
+    setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 120000) / 1000)));
+    syncAiJenaFastLimitsInSettings(config);
     const fastSafetyTimeout = document.getElementById('settings-aichat-fast-safety-timeout');
     if (fastSafetyTimeout) fastSafetyTimeout.checked = config.fastSafetyTimeout !== false;
+    const fastCompleteStreaming = document.getElementById('settings-aichat-fast-complete-streaming');
+    if (fastCompleteStreaming) fastCompleteStreaming.checked = config.fastCompleteStreaming !== false;
     setValue('settings-aichat-reasoning-level', config.reasoningLevel || 'auto');
     setValue('settings-lmstudio-timeout', Math.max(1, Math.round((config.timeoutMs || 90000) / 1000)));
     setValue('settings-lmstudio-top-p', config.topP == null ? '' : config.topP);
@@ -14349,7 +14440,7 @@ window.AIChatBridge = Object.freeze({
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
             const fastMode = request.fastMode === true;
             const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 3000);
-            const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 60000);
+            const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 120000);
             const fastSafetyTimeoutMs = config.fastSafetyTimeout === false
                 ? configuredFastTimeoutMs
                 : Math.max(configuredFastTimeoutMs, 120000);
@@ -14407,6 +14498,7 @@ window.AIChatBridge = Object.freeze({
                 contextLength: contextLength || undefined,
                 maxTokens: requestMaxTokens,
                 timeoutMs: requestTimeoutMs,
+                completeStreaming: fastMode && config.fastCompleteStreaming !== false,
                 store: fastMode || splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),
                 previousResponseId: request.previousResponseId || undefined,
                 signal: controller.signal,
@@ -14957,6 +15049,8 @@ async function loadAiSettingsToUI() {
         if (noteCoverInsertCheckEmpty) noteCoverInsertCheckEmpty.checked = false;
         const pdfMergeCheckEmpty = document.getElementById('pdf-merge-visible');
         if (pdfMergeCheckEmpty) pdfMergeCheckEmpty.checked = false;
+        const chromeSplitTabCheckEmpty = document.getElementById('chrome-split-tab-visible');
+        if (chromeSplitTabCheckEmpty) chromeSplitTabCheckEmpty.checked = false;
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
         if (html2pptCheckEmpty) html2pptCheckEmpty.checked = false;
         const html2pptNameCheckEmpty = document.getElementById('html2ppt-name-visible');
@@ -15021,6 +15115,7 @@ async function loadAiSettingsToUI() {
         applyTemplateVisibility({ templateVisible: false });
         applyNoteCoverInsertVisibility({ noteCoverInsertVisible: false });
         applyPdfMergeVisibility({ pdfMergeVisible: false });
+        applyChromeSplitTabVisibility({ chromeSplitTabVisible: false });
     applyHtml2pptVisibility({ html2pptVisible: false, html2pptNameVisible: false });
     applyFmaViewerVisibility({ fmaViewerVisible: false, fmaViewerNameVisible: false });
         applyAiUseFold(getAiUseFoldedFromLocal());
@@ -15068,6 +15163,8 @@ async function loadAiSettingsToUI() {
     if (noteCoverInsertCheck) noteCoverInsertCheck.checked = settings.noteCoverInsertVisible === true;
     const pdfMergeCheck = document.getElementById('pdf-merge-visible');
     if (pdfMergeCheck) pdfMergeCheck.checked = settings.pdfMergeVisible === true;
+    const chromeSplitTabCheck = document.getElementById('chrome-split-tab-visible');
+    if (chromeSplitTabCheck) chromeSplitTabCheck.checked = getChromeSplitTabVisibleFromSettings(settings);
     const html2pptCheck = document.getElementById('html2ppt-visible');
     if (html2pptCheck) html2pptCheck.checked = getHtml2pptVisibleFromSettings(settings);
     const html2pptNameCheck = document.getElementById('html2ppt-name-visible');
@@ -15255,6 +15352,7 @@ async function initAiVisibility() {
     applyTemplateVisibility(settings || { templateVisible: false });
     applyNoteCoverInsertVisibility(settings || { noteCoverInsertVisible: false });
     applyPdfMergeVisibility(settings || { pdfMergeVisible: false });
+    applyChromeSplitTabVisibility(settings || { chromeSplitTabVisible: false });
     applyHtml2pptVisibility(settings || { html2pptVisible: false, html2pptNameVisible: false });
     applyFmaViewerVisibility(settings || { fmaViewerVisible: false, fmaViewerNameVisible: false });
     applyEditToolsVisibilityByMode();

@@ -41,7 +41,7 @@
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260817-scholar-upgrades-1" charset="utf-8">
-    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260825-raw-dark-1" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260825-fast-limits-3" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/dataCenter/ai-data-center.css?v=20260823-dark-chrome-7" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/styles/scholarref.css?v=20260812-scholar-modules-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
@@ -521,6 +521,11 @@
                     class="px-2.5 py-1 sm:px-4 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all text-slate-600 dark:text-slate-400 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white">보기</button>
                 <button type="button" onclick="openPreviewPopupWindow()" id="btn-preview-popup" title="편집 프리뷰 새 창 열기"
                     class="px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-md text-xs sm:text-sm font-bold transition-all text-slate-600 dark:text-slate-400 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white">[PV]</button>
+                <a id="btn-chrome-split-tab" href="./index.html" onclick="handleChromeSplitTabClick(event)"
+                    class="hidden px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-md text-slate-600 dark:text-slate-400 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white transition-all items-center justify-center"
+                    title="크롬 분할뷰로 열기 (Ctrl+Alt+클릭)" aria-label="크롬 분할뷰로 열기">
+                    <i data-lucide="panel-left" class="w-4 h-4 sm:w-[18px] sm:h-[18px]" aria-hidden="true"></i>
+                </a>
             </div>
             <button onclick="toggleTheme()"
                 class="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors text-slate-600 dark:text-slate-300 shrink-0"
@@ -1966,8 +1971,7 @@
                         <details id="openai-compatible-settings-card" class="group rounded-lg bg-sky-50/60 dark:bg-sky-950/20">
                             <summary class="flex cursor-pointer list-none items-center justify-between gap-2 select-none px-3 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300">
                                 <span>외부 AI 앱 · OpenAI 호환 API 설정</span>
-                                <span class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:hidden dark:border-slate-600 dark:text-slate-300">펼치기</span>
-                                <span class="hidden rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:inline dark:border-slate-600 dark:text-slate-300">접기</span>
+                                <span data-ai-details-toggle class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 dark:border-slate-600 dark:text-slate-300">펼치기</span>
                             </summary>
                             <div class="px-3 pb-3 space-y-2">
                                 <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">OpenAI 호환 형식의 외부 API를 연결합니다. 프리셋을 고른 뒤 Base URL과 Model ID를 필요에 맞게 수정하여 저장할 수 있습니다.</p>
@@ -2033,8 +2037,7 @@
                         <details id="ai-studio-settings-card" class="group rounded-lg border border-indigo-300/70 dark:border-indigo-900/70 bg-indigo-50/60 dark:bg-indigo-950/20">
                             <summary class="flex cursor-pointer list-none items-center justify-between gap-2 select-none px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-400">
                                 <span>AI Studio API 설정 (선택)</span>
-                                <span class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:hidden dark:border-slate-600 dark:text-slate-300">펼치기</span>
-                                <span class="hidden rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:inline dark:border-slate-600 dark:text-slate-300">접기</span>
+                                <span data-ai-details-toggle class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 dark:border-slate-600 dark:text-slate-300">펼치기</span>
                             </summary>
                             <div class="px-3 pb-3">
                             <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">AI Studio API Key</label>
@@ -2064,8 +2067,7 @@
                         <details id="deepseek-settings-card" class="group rounded-lg border border-slate-300/70 dark:border-slate-700 bg-slate-100/60 dark:bg-slate-900/30">
                             <summary class="flex cursor-pointer list-none items-center justify-between gap-2 select-none px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                                 <span>DeepSeek 유료 API 설정 (선택)</span>
-                                <span class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:hidden dark:border-slate-600 dark:text-slate-300">펼치기</span>
-                                <span class="hidden rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:inline dark:border-slate-600 dark:text-slate-300">접기</span>
+                                <span data-ai-details-toggle class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 dark:border-slate-600 dark:text-slate-300">펼치기</span>
                             </summary>
                             <div class="px-3 pb-3">
                             <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">DeepSeek API Key</label>
@@ -2104,8 +2106,7 @@
                         <details id="openai-settings-card" class="group rounded-lg border border-emerald-300/70 dark:border-emerald-900/70 bg-emerald-50/60 dark:bg-emerald-950/20">
                             <summary class="flex cursor-pointer list-none items-center justify-between gap-2 select-none px-3 py-2 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
                                 <span>OpenAI 유료 API · ChatGPT 모델 설정 (선택)</span>
-                                <span class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:hidden dark:border-slate-600 dark:text-slate-300">펼치기</span>
-                                <span class="hidden rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 group-open:inline dark:border-slate-600 dark:text-slate-300">접기</span>
+                                <span data-ai-details-toggle class="rounded border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 dark:border-slate-600 dark:text-slate-300">펼치기</span>
                             </summary>
                             <div class="px-3 pb-3">
                                 <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase mb-1">OpenAI API Key</label>
@@ -2185,12 +2186,16 @@
                                         <input id="settings-aichat-fast-max-tokens" type="number" min="1" step="1" value="3000" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
                                     </label>
                                     <label class="text-xs text-slate-600 dark:text-slate-400">LIMIT TIME (초)
-                                        <input id="settings-aichat-fast-timeout" type="number" min="1" step="1" value="60" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                        <input id="settings-aichat-fast-timeout" type="number" min="1" step="1" value="120" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
                                     </label>
                                 </div>
                                 <label class="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
                                     <input id="settings-aichat-fast-safety-timeout" type="checkbox" checked class="rounded border-slate-300 dark:border-slate-600">
                                     <span>안전 옵션 · 접속이 오래 걸리면 제한 시간을 자동으로 120초까지 확보</span>
+                                </label>
+                                <label class="mt-2 flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                                    <input id="settings-aichat-fast-complete-streaming" type="checkbox" checked class="rounded border-slate-300 dark:border-slate-600">
+                                    <span>답변 완료 보장 · 답변이 시작되면 제한 시간이 지나도 완료될 때까지 유지</span>
                                 </label>
                                 <label class="mt-2 block text-xs text-slate-600 dark:text-slate-400">추론 강도
                                     <select id="settings-aichat-reasoning-level" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
@@ -2322,6 +2327,15 @@
                                     <input type="checkbox" id="ai-chat-menu-enabled" class="rounded border-slate-300 dark:border-slate-600 text-violet-600 focus:ring-violet-500">
                                     <span>AI Jena 사용 (메뉴)</span>
                                 </label>
+                                <div class="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-violet-200 dark:border-violet-900/70 bg-violet-50/70 dark:bg-violet-950/20 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                    <label class="inline-flex items-center gap-1.5">FAST TOK
+                                        <input id="settings-ai-jena-fast-token-limit" type="number" min="1" step="1" value="3000" onchange="saveAiJenaFastLimitsFromSettings()" class="w-20 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-right">
+                                    </label>
+                                    <label class="inline-flex items-center gap-1.5">LIMIT TIME
+                                        <input id="settings-ai-jena-fast-time-limit" type="number" min="1" step="1" value="120" onchange="saveAiJenaFastLimitsFromSettings()" class="w-16 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-right">
+                                        <span>초</span>
+                                    </label>
+                                </div>
                                 <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 상단 sspimgAI 오른쪽에 보라색 Jena 메뉴 버튼이 표시됩니다.</p>
                             </div>
                             <div id="ai-data-center-settings">
@@ -2418,6 +2432,11 @@
                                 </div>
                             </div>
                             <div id="feature-tools-settings" class="pt-2 border-t border-slate-200 dark:border-slate-700 space-y-2">
+                                <label class="flex items-center gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="chrome-split-tab-visible" onclick="setTimeout(toggleChromeSplitTabVisibilitySection,0)"
+                                        class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-sm font-medium text-slate-700 dark:text-slate-300">분할탭 보이기</span>
+                                </label>
                                 <div id="scholar-search-settings-slot"></div>
                                 <label class="flex items-center gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="highlight-visible" onclick="setTimeout(toggleHighlightSection,0)"
@@ -3122,7 +3141,7 @@
 
 <!-- 로컬 AI 연결 -->
 <script
-    src="./AI_App/ai_local/local-ai.js?v=20260825-fast-safety-timeout-1"
+    src="./AI_App/ai_local/local-ai.js?v=20260825-fast-timeout-120-3"
     charset="utf-8"
     defer>
 </script>
@@ -3365,7 +3384,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260823-ai-jena-menu-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260825-link-1&amp;verticalEditToolbar=20260823-2&amp;headerHeadingDisplay=20260825-1&amp;documentTheme=20260825-1&amp;fastSafetyTimeout=20260825-1"
+    src="./js/app.js?v=20260823-ai-jena-menu-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260825-link-1&amp;verticalEditToolbar=20260823-2&amp;headerHeadingDisplay=20260825-1&amp;documentTheme=20260825-1&amp;fastSafetyTimeout=20260825-1&amp;fastCompleteStreaming=20260825-1&amp;fastLimitsUi=20260825-2&amp;aiDetailsToggle=20260825-1&amp;splitTab=20260825-1"
     charset="utf-8"
     defer>
 </script>

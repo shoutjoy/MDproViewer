@@ -26,8 +26,9 @@
     quickMaxTokens: 4096,
     reasoningMaxTokens: 8192,
     fastMaxTokens: 3000,
-    fastTimeoutMs: 60000,
+    fastTimeoutMs: 120000,
     fastSafetyTimeout: true,
+    fastCompleteStreaming: true,
     reasoningLevel: 'auto',
     timeoutMs: 90000,
     topP: null,
@@ -47,6 +48,7 @@
     fastMaxTokens: { type: 'integer', min: 1, default: defaults.fastMaxTokens },
     fastTimeoutMs: { type: 'integer', min: 1000, default: defaults.fastTimeoutMs },
     fastSafetyTimeout: { type: 'boolean', default: defaults.fastSafetyTimeout },
+    fastCompleteStreaming: { type: 'boolean', default: defaults.fastCompleteStreaming },
     reasoningLevel: { type: 'string', default: defaults.reasoningLevel },
     timeoutMs: { type: 'integer', min: 1000, default: defaults.timeoutMs },
     topP: { type: 'number', min: 0, max: 1, nullable: true },
@@ -297,6 +299,7 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       fastMaxTokens: Math.max(1, Math.round(finiteOr(source.fastMaxTokens, defaults.fastMaxTokens))),
       fastTimeoutMs: Math.max(1000, Math.round(finiteOr(source.fastTimeoutMs, defaults.fastTimeoutMs))),
       fastSafetyTimeout: source.fastSafetyTimeout !== false,
+      fastCompleteStreaming: source.fastCompleteStreaming !== false,
       reasoningLevel: normalizeReasoningLevel(source.reasoningLevel),
       timeoutMs: Math.max(1000, Math.round(finiteOr(source.timeoutMs, defaults.timeoutMs))),
       topP: source.topP == null ? null : finiteOr(source.topP, null),
@@ -335,15 +338,20 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       if (externalSignal.aborted) abortFromExternal();
       else externalSignal.addEventListener('abort', abortFromExternal, { once: true });
     }
-    const timer = setTimeout(function () {
+    let timer = setTimeout(function () {
       timedOut = true;
       controller.abort(new Error('LM Studio request timed out'));
     }, Math.max(1000, timeoutMs));
     return {
       signal: controller.signal,
       didTimeout: function () { return timedOut; },
+      disarmTimeout: function () {
+        if (timer) clearTimeout(timer);
+        timer = null;
+      },
       cleanup: function () {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
+        timer = null;
         if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
       }
     };
@@ -630,6 +638,10 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
               let settled = false;
               const emit = function (event) {
                 if (!event || typeof event !== 'object') return;
+                if (options.completeStreaming === true && ((event.type === 'reasoning.delta' || event.type === 'message.delta') && event.content)) {
+                  xhr.timeout = 0;
+                  requestSignal.disarmTimeout();
+                }
                 if (event.type === 'reasoning.delta' && event.content) {
                   reasoning += String(event.content);
                   if (typeof options.onReasoningToken === 'function') options.onReasoningToken(String(event.content), reasoning, event);
@@ -866,6 +878,9 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
         let streamError = null;
         const emit = function (event) {
           if (!event || typeof event !== 'object') return;
+          if (options.completeStreaming === true && ((event.type === 'reasoning.delta' || event.type === 'message.delta') && event.content)) {
+            requestSignal.disarmTimeout();
+          }
           if (event.type === 'reasoning.delta' && event.content) {
             reasoning += String(event.content);
             if (typeof options.onReasoningToken === 'function') options.onReasoningToken(String(event.content), reasoning, event);

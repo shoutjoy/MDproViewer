@@ -562,7 +562,8 @@
       + '        <button type="button" data-ai-chat-layout="popup" role="menuitem"><span class="ai-chat-layout-label">팝업 <kbd>Alt+1</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="popup">OFF</span></button>'
       + '        <button type="button" data-ai-chat-layout="dock" role="menuitem"><span class="ai-chat-layout-label">Dock · 우측 사이드바 <kbd>Alt+2</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="dock">OFF</span></button>'
       + '        <button type="button" data-ai-chat-layout="fullscreen" role="menuitem"><span class="ai-chat-layout-label">전체화면 · 기록 보기 <kbd>Alt+3</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="fullscreen">OFF</span></button>'
-      + '        <div class="ai-chat-answer-font-size"><span>답변 폰트 크기</span><button type="button" id="ai-chat-answer-font-size-down" class="ai-chat-font-size-step" aria-label="답변 폰트 크기 줄이기">−</button><input id="ai-chat-answer-font-size" type="range" min="5" max="25" step="1" value="14" aria-label="답변 폰트 크기"><button type="button" id="ai-chat-answer-font-size-up" class="ai-chat-font-size-step" aria-label="답변 폰트 크기 늘리기">+</button><output id="ai-chat-answer-font-size-value" for="ai-chat-answer-font-size">14px</output></div>'
+      + '        <div class="ai-chat-answer-font-size"><div class="ai-chat-answer-font-head"><span>답변 폰트</span><output id="ai-chat-answer-font-size-value" for="ai-chat-answer-font-size">14px</output></div><div class="ai-chat-answer-font-controls"><button type="button" id="ai-chat-answer-font-size-down" class="ai-chat-font-size-step" aria-label="답변 폰트 줄이기">−</button><input id="ai-chat-answer-font-size" type="range" min="5" max="25" step="1" value="14" aria-label="답변 폰트"><button type="button" id="ai-chat-answer-font-size-up" class="ai-chat-font-size-step" aria-label="답변 폰트 키우기">+</button></div></div>'
+      + '        <div class="ai-chat-fast-limits ai-chat-layout-fast-limits"><label>FAST TOK <input id="ai-chat-layout-fast-token-limit" type="number" min="1" step="1" value="3000" inputmode="numeric"></label><label>LIMIT TIME <input id="ai-chat-layout-fast-time-limit" type="number" min="1" step="1" value="120" inputmode="numeric"><span>초</span></label></div>'
       + '        <button type="button" id="ai-chat-set-start-layout" class="ai-chat-set-start-layout" role="menuitem">현재 배치를 시작 위치로 지정</button>'
       + '      </div>'
       + '    </div>'
@@ -577,12 +578,20 @@
       + '      <button type="button" id="ai-chat-history-close" class="ai-chat-history-close" title="대화 기록 닫기" aria-label="대화 기록 닫기">×</button>'
       + '    </div></div>'
       + '    <div id="ai-chat-history-list" class="ai-chat-history-list"></div>'
+      + '    <div class="ai-chat-history-footer">'
+      + '      <button type="button" id="ai-chat-history-load">대화 기록 불러오기</button>'
+      + '      <button type="button" id="ai-chat-history-clear" class="danger">대화 기록 지우기</button>'
+      + '    </div>'
       + '    <div id="ai-chat-history-resizer" class="ai-chat-history-resizer" role="separator" aria-label="대화 기록 너비 조절" aria-orientation="vertical" tabindex="0"></div>'
       + '  </aside>'
       + '  <div class="ai-chat-main">'
       + '    <button type="button" id="ai-chat-provider-toggle" class="ai-chat-provider-toggle" aria-expanded="false">'
       + '      <span id="ai-chat-provider-chevron" aria-hidden="true">▸</span><span id="ai-chat-provider-summary">AI 공급자 · 연결 확인 전</span><small id="ai-chat-provider-toggle-label">설정</small>'
       + '    </button>'
+      + '    <div class="ai-chat-fast-limits" aria-label="FAST 응답 설정">'
+      + '      <label>FAST TOK <input id="ai-chat-fast-token-limit" type="number" min="1" step="1" value="3000" inputmode="numeric" aria-label="FAST 최대 토큰"></label>'
+      + '      <label>LIMIT TIME <input id="ai-chat-fast-time-limit" type="number" min="1" step="1" value="120" inputmode="numeric" aria-label="FAST 제한 시간(초)"><span>초</span></label>'
+      + '    </div>'
       + '    <div id="ai-chat-provider-controls" class="ai-chat-provider-controls collapsed">'
       + '      <div class="ai-chat-provider-row">'
       + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select></label>'
@@ -642,6 +651,8 @@
     document.getElementById('ai-chat-new').addEventListener('click', startNewChat);
     document.getElementById('ai-chat-history-new').addEventListener('click', startNewChat);
     document.getElementById('ai-chat-history-close').addEventListener('click', closeHistorySidebar);
+    document.getElementById('ai-chat-history-load').addEventListener('click', loadSelectedConversation);
+    document.getElementById('ai-chat-history-clear').addEventListener('click', clearConversationHistory);
     setupHistoryResize();
     applyHistoryWidth(storageGet(HISTORY_WIDTH_KEY, '270'), false);
     document.getElementById('ai-chat-history-sort').addEventListener('change', function (event) {
@@ -669,7 +680,19 @@
     });
     document.getElementById('ai-chat-refresh-model').addEventListener('click', function () { refreshModels(false); });
     document.getElementById('ai-chat-provider-toggle').addEventListener('click', function () {
+      syncFastLimitControls();
       setProviderControlsOpen(!state.providerControlsOpen);
+    });
+    syncFastLimitControls();
+    document.getElementById('ai-chat-fast-token-limit').addEventListener('change', saveFastLimitControls);
+    document.getElementById('ai-chat-fast-time-limit').addEventListener('change', saveFastLimitControls);
+    document.getElementById('ai-chat-layout-fast-token-limit').addEventListener('change', function () {
+      document.getElementById('ai-chat-fast-token-limit').value = this.value;
+      saveFastLimitControls();
+    });
+    document.getElementById('ai-chat-layout-fast-time-limit').addEventListener('change', function () {
+      document.getElementById('ai-chat-fast-time-limit').value = this.value;
+      saveFastLimitControls();
     });
     document.getElementById('ai-chat-layout-menu-button').addEventListener('click', function (event) {
       event.stopPropagation();
@@ -1231,7 +1254,7 @@
   }
 
   function normalizeHistoryWidth(value) {
-    return Math.max(220, Math.min(520, Math.round(Number(value) || 270)));
+    return Math.max(140, Math.min(520, Math.round(Number(value) || 270)));
   }
 
   function applyHistoryWidth(value, persist) {
@@ -1260,8 +1283,8 @@
       if (!handle.hasPointerCapture(event.pointerId)) return;
       var panel = document.getElementById('ai-chat-panel');
       var panelWidth = panel ? panel.getBoundingClientRect().width : root.innerWidth;
-      var maximum = Math.max(220, Math.min(520, panelWidth - 180));
-      applyHistoryWidth(Math.max(220, Math.min(maximum, startWidth + event.clientX - startX)), false);
+      var maximum = Math.max(140, Math.min(520, panelWidth - 180));
+      applyHistoryWidth(Math.max(140, Math.min(maximum, startWidth + event.clientX - startX)), false);
     });
     function finishResize(event) {
       if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
@@ -1702,6 +1725,48 @@
     if (toggle) toggle.setAttribute('aria-expanded', state.providerControlsOpen ? 'true' : 'false');
     if (chevron) chevron.textContent = state.providerControlsOpen ? '▾' : '▸';
     if (label) label.textContent = state.providerControlsOpen ? '접기' : '설정';
+  }
+
+  function readLocalFastConfig() {
+    if (!root.LocalAI || typeof root.LocalAI.loadConfig !== 'function') return null;
+    try { return root.LocalAI.loadConfig(root.localStorage); } catch (_) { return null; }
+  }
+
+  function syncFastLimitControls() {
+    var config = readLocalFastConfig() || {};
+    var tokenInput = document.getElementById('ai-chat-fast-token-limit');
+    var timeInput = document.getElementById('ai-chat-fast-time-limit');
+    if (tokenInput) tokenInput.value = String(Math.max(1, Number(config.fastMaxTokens) || 3000));
+    if (timeInput) timeInput.value = String(Math.max(1, Math.round((Number(config.fastTimeoutMs) || 120000) / 1000)));
+    var layoutTokenInput = document.getElementById('ai-chat-layout-fast-token-limit');
+    var layoutTimeInput = document.getElementById('ai-chat-layout-fast-time-limit');
+    if (layoutTokenInput) layoutTokenInput.value = tokenInput ? tokenInput.value : '3000';
+    if (layoutTimeInput) layoutTimeInput.value = timeInput ? timeInput.value : '120';
+  }
+
+  function saveFastLimitControls() {
+    if (!root.LocalAI || typeof root.LocalAI.saveConfig !== 'function') return;
+    var tokenInput = document.getElementById('ai-chat-fast-token-limit');
+    var timeInput = document.getElementById('ai-chat-fast-time-limit');
+    var fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 3000));
+    var fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 120));
+    try {
+      var current = readLocalFastConfig() || {};
+      root.LocalAI.saveConfig(Object.assign({}, current, {
+        fastMaxTokens: fastMaxTokens,
+        fastTimeoutMs: fastTimeoutSeconds * 1000
+      }), root.localStorage);
+      if (tokenInput) tokenInput.value = String(fastMaxTokens);
+      if (timeInput) timeInput.value = String(fastTimeoutSeconds);
+      if (typeof root.loadScholarAIProviderSettingsUI === 'function') root.loadScholarAIProviderSettingsUI();
+      if (root.MDPCredentialVault && typeof root.MDPCredentialVault.notifySettingsChanged === 'function') {
+        root.MDPCredentialVault.notifySettingsChanged();
+      }
+      setStatus('FAST 설정 저장 · ' + fastMaxTokens + ' tokens · ' + fastTimeoutSeconds + '초', 'ok');
+    } catch (error) {
+      setStatus('FAST 설정을 저장하지 못했습니다: ' + (error && error.message ? error.message : error), 'error');
+      syncFastLimitControls();
+    }
   }
 
   function updateProviderSummary() {
@@ -2448,19 +2513,36 @@
     if (state.running) return setStatus('응답이 끝난 뒤 대화 이름을 바꿔 주세요.', 'error');
     var target = state.conversations.find(function (item) { return item.id === id; });
     if (!target) return;
-    var nextTitle = root.prompt('새 대화 이름을 입력하세요.', target.title || '새 대화');
-    if (nextTitle == null) return;
-    nextTitle = String(nextTitle).replace(/\s+/g, ' ').trim().slice(0, 120);
-    if (!nextTitle) return setStatus('대화 이름은 비워 둘 수 없습니다.', 'error');
-    try {
-      await updateConversationMetadata(id, {
-        title: nextTitle,
-        titleCustomized: true
-      });
-      setStatus('대화 이름을 변경했습니다.', 'ok');
-    } catch (error) {
-      setStatus('대화 이름을 저장하지 못했습니다.', 'error');
+    var item = document.querySelector('.ai-chat-history-item[data-conversation-id="' + id + '"]');
+    if (!item) return;
+    var existing = item.querySelector('.ai-chat-history-rename-form');
+    if (existing) {
+      existing.querySelector('input').focus();
+      return;
     }
+    var form = document.createElement('form');
+    form.className = 'ai-chat-history-rename-form';
+    form.innerHTML = '<input type="text" maxlength="120" aria-label="새 대화 이름"><div><button type="submit">변경</button><button type="button" class="cancel">취소</button></div>';
+    var input = form.querySelector('input');
+    input.value = target.title || '새 대화';
+    form.querySelector('.cancel').addEventListener('click', function () { form.remove(); });
+    form.addEventListener('click', function (event) { event.stopPropagation(); });
+    form.addEventListener('submit', async function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      var nextTitle = String(input.value).replace(/\s+/g, ' ').trim().slice(0, 120);
+      if (!nextTitle) return setStatus('대화 이름은 비워 둘 수 없습니다.', 'error');
+      try {
+        await updateConversationMetadata(id, { title: nextTitle, titleCustomized: true });
+        setStatus('대화 이름을 변경했습니다.', 'ok');
+      } catch (error) {
+        setStatus('대화 이름을 저장하지 못했습니다.', 'error');
+      }
+    });
+    item.appendChild(form);
+    input.focus();
+    input.select();
+    return;
   }
 
   function renderConversationHistory() {
@@ -2479,6 +2561,7 @@
     sortConversationRecords(state.conversations).forEach(function (conversation) {
       var item = document.createElement('div');
       item.setAttribute('role', 'button');
+      item.dataset.conversationId = conversation.id;
       item.tabIndex = 0;
       item.className = 'ai-chat-history-item'
         + (conversation.id === state.conversationId ? ' active' : '')
@@ -2523,8 +2606,8 @@
     });
   }
 
-  async function selectConversation(id) {
-    if (!state.dbReady || state.running || id === state.conversationId) return;
+  async function selectConversation(id, forceReload) {
+    if (!state.dbReady || state.running || (!forceReload && id === state.conversationId)) return;
     try {
       await saveConversationNow();
       var record = await requestPromise(conversationStore('readonly').get(id));
@@ -2534,6 +2617,33 @@
       }
     } catch (error) {
       setStatus('대화를 불러오지 못했습니다.', 'error');
+    }
+  }
+
+  async function loadSelectedConversation() {
+    if (!state.conversations.length) return setStatus('불러올 대화 기록이 없습니다.', 'error');
+    var selected = document.querySelector('.ai-chat-history-item:focus, .ai-chat-history-item.active');
+    var id = selected && selected.dataset.conversationId
+      ? selected.dataset.conversationId
+      : sortConversationRecords(state.conversations)[0].id;
+    await selectConversation(id, true);
+  }
+
+  async function clearConversationHistory() {
+    if (!state.dbReady || state.running || !state.conversations.length) return;
+    if (!root.confirm('저장된 대화 기록을 모두 지울까요? 이 작업은 되돌릴 수 없습니다.')) return;
+    try {
+      var ids = state.conversations.map(function (item) { return item.id; });
+      await requestPromise(conversationStore('readwrite').clear());
+      if (typeof root.deleteFeatureRecordFromInDb === 'function') {
+        ids.forEach(function (id) { root.deleteFeatureRecordFromInDb('ai_chat', id).catch(function () {}); });
+      }
+      state.conversations = [];
+      await createNewConversation(false);
+      renderConversationHistory();
+      setStatus('대화 기록을 모두 지웠습니다.', 'ok');
+    } catch (error) {
+      setStatus('대화 기록을 지우지 못했습니다.', 'error');
     }
   }
 
@@ -5006,6 +5116,7 @@
       setLayout(state.layout);
       setEnabled(state.enabled);
     },
+    syncFastLimits: syncFastLimitControls,
     open: function () { openAtStartLayout(); },
     openDock: function () {
       setEnabled(true);
