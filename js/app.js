@@ -84,7 +84,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260823-launcher-position-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260823-menu-launcher-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -164,6 +164,20 @@ async function openAiJenaChat(openAfterLoad) {
 }
 window.openAiJenaChat = openAiJenaChat;
 
+async function openAiJenaFromMenu() {
+    try {
+        await ensureAiChatLoaded();
+        if (window.AIChat && typeof window.AIChat.openFromMenu === 'function') {
+            window.AIChat.openFromMenu();
+            return true;
+        }
+    } catch (error) {
+        showToast('AI Jena를 불러오지 못했습니다: ' + (error && error.message ? error.message : error));
+    }
+    return false;
+}
+window.openAiJenaFromMenu = openAiJenaFromMenu;
+
 async function ensureMdMathEngineLoaded() {
     if (window.MathJax && typeof window.MathJax.typesetPromise === 'function') return true;
     await loadOptionalScript('mathJax', function () {
@@ -175,8 +189,25 @@ window.ensureMdMathEngineLoaded = ensureMdMathEngineLoaded;
 
 function initializeLazyAiChatEntry() {
     const enabledKey = 'ss_ai_chat_enabled';
+    const menuEnabledKey = 'ss_ai_chat_menu_enabled';
     const launcherPositionKey = 'ss_ai_chat_launcher_position';
     const checkbox = document.getElementById('ai-chat-enabled');
+    const menuCheckbox = document.getElementById('ai-chat-menu-enabled');
+    const menuButton = document.getElementById('btn-ai-jena-menu');
+    const syncMenuButton = function () {
+        const enabled = localStorage.getItem(menuEnabledKey) === '1';
+        if (menuCheckbox) menuCheckbox.checked = enabled;
+        if (menuButton) {
+            menuButton.classList.toggle('hidden', !enabled);
+            menuButton.style.display = enabled ? 'inline-flex' : 'none';
+        }
+        const headerBtns = document.getElementById('header-ai-btns');
+        if (headerBtns && enabled) {
+            headerBtns.classList.remove('hidden');
+            headerBtns.classList.add('flex');
+            headerBtns.style.display = 'flex';
+        }
+    };
     let launcher = null;
     let cleanupLauncherLayout = null;
     const removeLauncher = function () {
@@ -300,6 +331,15 @@ function initializeLazyAiChatEntry() {
             else removeLauncher();
         });
     }
+    if (menuCheckbox && !menuCheckbox.dataset.aiChatMenuBound) {
+        menuCheckbox.dataset.aiChatMenuBound = '1';
+        menuCheckbox.addEventListener('change', function () {
+            localStorage.setItem(menuEnabledKey, menuCheckbox.checked ? '1' : '0');
+            syncMenuButton();
+            if (!menuCheckbox.checked && typeof applyAiFeatureVisibility === 'function') applyAiFeatureVisibility();
+        });
+    }
+    syncMenuButton();
     createLauncher();
 }
 
@@ -1251,6 +1291,7 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     const aiChatSettings = document.getElementById('ai-chat-settings');
     const scholarLmSettings = document.getElementById('scholar-ai-provider-settings');
     const ollamaSettings = document.getElementById('ollama-provider-settings');
+    const liteRTLMSettings = document.getElementById('litertlm-provider-settings');
     const aiDataCenterSettings = document.getElementById('ai-data-center-settings');
     if (aiChatSettings) {
         aiChatSettings.className = 'pb-3 border-b border-slate-200 dark:border-slate-700';
@@ -1292,12 +1333,25 @@ function relocateAiIntegrationSettingsIntoAiUse() {
         }
         applyScholarOllamaSettingsFold(getScholarOllamaSettingsFoldedFromLocal());
     }
+    [
+        [scholarLmSettings, 'ai-settings-rack--lmstudio'],
+        [ollamaSettings, 'ai-settings-rack--ollama'],
+        [liteRTLMSettings, 'ai-settings-rack--litertlm'],
+        [openaiCompatible, 'ai-settings-rack--compatible'],
+        [aiStudio, 'ai-settings-rack--aistudio'],
+        [deepseek, 'ai-settings-rack--deepseek'],
+        [openai, 'ai-settings-rack--openai']
+    ].forEach(function (entry) {
+        if (!entry[0]) return;
+        entry[0].classList.add('ai-settings-rack', entry[1]);
+    });
     // AI 설정은 사용 흐름대로 고정한다: AI Jena와 로컬 모델, 외부 호환 API,
     // API 키 기반 공급자, 데이터 센터 순서. 문체 프롬프트는 이 슬롯 다음에 배치된다.
     [
         aiChatSettings,
         scholarLmSettings,
         ollamaSettings,
+        liteRTLMSettings,
         openaiCompatible,
         aiStudio,
         deepseek,
@@ -11594,8 +11648,11 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     'ss_scholar_ai_model',
     'ss_scholar_ai_gemini_models_v1',
     'ss_scholar_ai_lmstudio_models_v1',
+    'ss_litertlm_settings_v1',
+    'ss_litertlm_settings_folded',
     'ss_viewer_scholar_ai_ui_font_size',
     'ss_ai_chat_enabled',
+    'ss_ai_chat_menu_enabled',
     'ss_ai_chat_provider',
     'ss_ai_chat_gemini_model',
     'ss_ai_chat_writing_style',
@@ -11811,24 +11868,32 @@ async function applyAiFeatureVisibility() {
     const wrap = document.getElementById('ai-right-sidebar-wrap');
     const btnScholar = document.getElementById('btn-scholar-ai');
     const btnSsp = document.getElementById('btn-sspimg-ai');
+    const btnJenaMenu = document.getElementById('btn-ai-jena-menu');
+    const jenaMenuOn = localStorage.getItem('ss_ai_chat_menu_enabled') === '1';
+    const showAiOrJenaMenu = showAi || jenaMenuOn;
     if (headerBtns) {
-        if (showAi) {
+        if (showAiOrJenaMenu) {
             headerBtns.classList.remove('hidden');
             headerBtns.classList.add('flex');
             headerBtns.style.display = 'flex';
             if (btnScholar) {
-                btnScholar.classList.toggle('hidden', !scholarOn);
-                btnScholar.style.display = scholarOn ? '' : 'none';
+                btnScholar.classList.toggle('hidden', !(showAi && scholarOn));
+                btnScholar.style.display = showAi && scholarOn ? '' : 'none';
             }
             if (btnSsp) {
-                btnSsp.classList.toggle('hidden', !sspimgOn);
-                btnSsp.style.display = sspimgOn ? '' : 'none';
+                btnSsp.classList.toggle('hidden', !(showAi && sspimgOn));
+                btnSsp.style.display = showAi && sspimgOn ? '' : 'none';
+            }
+            if (btnJenaMenu) {
+                btnJenaMenu.classList.toggle('hidden', !jenaMenuOn);
+                btnJenaMenu.style.display = jenaMenuOn ? 'inline-flex' : 'none';
             }
         } else {
             headerBtns.classList.add('hidden');
             headerBtns.style.display = 'none';
             if (btnScholar) btnScholar.style.display = '';
             if (btnSsp) btnSsp.style.display = '';
+            if (btnJenaMenu) btnJenaMenu.style.display = 'none';
         }
     }
     if (wrap) {
@@ -12218,6 +12283,8 @@ function readScholarAIProviderSettingsForm() {
         maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
         quickMaxTokens: Number(value('settings-aichat-quick-max-tokens') || 4096),
         reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
+        fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 3000),
+        fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 60) * 1000,
         reasoningLevel: value('settings-aichat-reasoning-level') || 'auto',
         timeoutMs: Number(value('settings-lmstudio-timeout') || 90) * 1000,
         topP: value('settings-lmstudio-top-p') === '' ? null : Number(value('settings-lmstudio-top-p'))
@@ -12327,6 +12394,8 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
     setValue('settings-aichat-quick-max-tokens', config.quickMaxTokens || 4096);
     setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
+    setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 3000);
+    setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 60000) / 1000)));
     setValue('settings-aichat-reasoning-level', config.reasoningLevel || 'auto');
     setValue('settings-lmstudio-timeout', Math.max(1, Math.round((config.timeoutMs || 90000) / 1000)));
     setValue('settings-lmstudio-top-p', config.topP == null ? '' : config.topP);
@@ -12512,6 +12581,7 @@ const AI_CHAT_OPENAI_MODELS_KEY = 'ss_ai_chat_openai_models_v1';
 const OLLAMA_MODELS_KEY = 'ss_ollama_models_v1';
 const aiChatOllamaContextLengths = Object.create(null);
 const OLLAMA_BASE_URL_KEY = 'ss_ollama_base_url';
+const LITERTLM_SETTINGS_KEY = 'ss_litertlm_settings_v1';
 const AI_CHAT_GEMINI_DEFAULT_MODELS = [
     'gemini-3.5-flash',
     'gemini-3.1-pro-preview',
@@ -12605,6 +12675,149 @@ function normalizeOllamaBaseUrl(value) {
         .replace(/\/+$/, '')
         .replace(/\/api\/(?:tags|chat)$/i, '')
         .replace(/\/api$/i, '');
+}
+
+function getLiteRTLMSettings() {
+    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: '', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true };
+    try {
+        return Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
+    } catch (_) {
+        return defaults;
+    }
+}
+
+function normalizeLiteRTLMBaseUrl(value) {
+    let parsed;
+    try { parsed = new URL(String(value || '').trim()); } catch (_) { throw new Error('LiteRT-LM URL 형식이 올바르지 않습니다.'); }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') throw new Error('LiteRT-LM URL은 http:// 또는 https:// 주소여야 합니다.');
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString().replace(/\/+$/, '').replace(/\/models$/i, '').replace(/\/chat\/completions$/i, '').replace(/\/+$/, '');
+}
+
+function updateLiteRTLMSettingsModeUI() {
+    const cloud = document.getElementById('settings-litertlm-cloud-mode');
+    const cloudUrl = document.getElementById('settings-litertlm-cloud-url');
+    const localUrl = document.getElementById('settings-litertlm-local-url');
+    if (cloudUrl) cloudUrl.disabled = !(cloud && cloud.checked);
+    if (localUrl) localUrl.disabled = !!(cloud && cloud.checked);
+}
+
+function setLiteRTLMSettingsFolded(folded) {
+    const body = document.getElementById('litertlm-settings-body');
+    const button = document.getElementById('litertlm-settings-fold-btn');
+    if (body) body.classList.toggle('hidden', !!folded);
+    if (button) {
+        button.textContent = folded ? '펼치기' : '접기';
+        button.setAttribute('aria-expanded', folded ? 'false' : 'true');
+    }
+    localStorage.setItem('ss_litertlm_settings_folded', folded ? '1' : '0');
+}
+
+function toggleLiteRTLMSettingsFold() {
+    const body = document.getElementById('litertlm-settings-body');
+    setLiteRTLMSettingsFolded(!(body && body.classList.contains('hidden')));
+}
+
+function loadLiteRTLMSettingsToUI() {
+    const settings = getLiteRTLMSettings();
+    const values = {
+        'settings-litertlm-cloud-name': settings.cloudName,
+        'settings-litertlm-cloud-url': settings.cloudUrl,
+        'settings-litertlm-local-name': settings.localName,
+        'settings-litertlm-local-url': settings.localUrl,
+        'settings-litertlm-context-length': settings.contextLength,
+        'settings-litertlm-max-gen': settings.maxGen,
+        'settings-litertlm-sampler': settings.sampler,
+        'settings-litertlm-temperature': settings.temperature,
+        'settings-litertlm-top-p': settings.topP,
+        'settings-litertlm-top-k': settings.topK
+    };
+    Object.keys(values).forEach(function (id) { const el = document.getElementById(id); if (el) el.value = values[id]; });
+    const cloud = document.getElementById('settings-litertlm-cloud-mode');
+    const local = document.getElementById('settings-litertlm-local-mode');
+    if (cloud) cloud.checked = settings.mode === 'cloud';
+    if (local) local.checked = settings.mode !== 'cloud';
+    const thinking = document.getElementById('settings-litertlm-thinking');
+    if (thinking) thinking.checked = settings.thinking !== false;
+    const model = document.getElementById('settings-litertlm-model');
+    if (model && settings.model && !Array.from(model.options).some(function (option) { return option.value === settings.model; })) model.add(new Option(settings.model, settings.model));
+    if (model) model.value = settings.model;
+    updateLiteRTLMSettingsModeUI();
+    setLiteRTLMSettingsFolded(localStorage.getItem('ss_litertlm_settings_folded') === '1');
+}
+
+function saveLiteRTLMSettings(showStatus) {
+    const read = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+    const cloud = document.getElementById('settings-litertlm-cloud-mode');
+    const thinking = document.getElementById('settings-litertlm-thinking');
+    const mode = cloud && cloud.checked ? 'cloud' : 'local';
+    const settings = {
+        mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: read('settings-litertlm-cloud-url'),
+        localName: read('settings-litertlm-local-name') || 'Local S', localUrl: read('settings-litertlm-local-url') || 'http://localhost:9379/v1',
+        model: read('settings-litertlm-model') || 'gemma-4-E2B-it.litertlm', contextLength: Math.max(1, Number(read('settings-litertlm-context-length')) || 4096),
+        maxGen: Math.max(1, Number(read('settings-litertlm-max-gen')) || 2048), sampler: read('settings-litertlm-sampler') || 'greedy',
+        temperature: Math.max(0, Number(read('settings-litertlm-temperature')) || 0), topP: Math.min(1, Math.max(0, Number(read('settings-litertlm-top-p')) || 0)),
+        topK: Math.max(1, Number(read('settings-litertlm-top-k')) || 40), thinking: !thinking || thinking.checked
+    };
+    const activeUrl = mode === 'cloud' ? settings.cloudUrl : settings.localUrl;
+    if (!activeUrl) throw new Error(mode === 'cloud' ? 'Cloud Base URL을 입력하세요.' : 'Local URL을 입력하세요.');
+    normalizeLiteRTLMBaseUrl(activeUrl);
+    localStorage.setItem(LITERTLM_SETTINGS_KEY, JSON.stringify(settings));
+    if (showStatus) {
+        const status = document.getElementById('settings-litertlm-status');
+        if (status) status.textContent = 'LiteRT-LM 설정을 저장했습니다.';
+        showToast('LiteRT-LM 설정을 저장했습니다.');
+    }
+    return settings;
+}
+
+async function requestLiteRTLM(path, options) {
+    const settings = saveLiteRTLMSettings(false);
+    const baseUrl = normalizeLiteRTLMBaseUrl(settings.mode === 'cloud' ? settings.cloudUrl : settings.localUrl);
+    const response = await fetch(baseUrl + path, options);
+    if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text() || response.statusText));
+    return { data: await response.json(), settings: settings };
+}
+
+async function loadSettingsLiteRTLMModels() {
+    const status = document.getElementById('settings-litertlm-status');
+    try {
+        if (status) status.textContent = 'LiteRT-LM 서버와 모델을 확인하는 중...';
+        const result = await requestLiteRTLM('/models', { method: 'GET', headers: { Accept: 'application/json' } });
+        const rows = Array.isArray(result.data && result.data.data) ? result.data.data : (Array.isArray(result.data && result.data.models) ? result.data.models : []);
+        const models = rows.map(function (item) { return String(item && (item.id || item.model || item.name) || item || '').trim(); }).filter(Boolean);
+        if (!models.length) throw new Error('서버에서 모델을 찾지 못했습니다.');
+        const select = document.getElementById('settings-litertlm-model');
+        if (select) {
+            select.innerHTML = '';
+            models.forEach(function (name) { select.add(new Option(name, name)); });
+            select.value = models.indexOf(result.settings.model) >= 0 ? result.settings.model : models[0];
+        }
+        saveLiteRTLMSettings(false);
+        if (status) status.textContent = '연결 완료 · 모델 ' + models.length + '개: ' + models.join(' · ');
+        return models;
+    } catch (error) {
+        if (status) status.textContent = '연결 실패: ' + (error && error.message ? error.message : error);
+        throw error;
+    }
+}
+
+async function testSettingsLiteRTLMResponse() {
+    const status = document.getElementById('settings-litertlm-status');
+    try {
+        if (status) status.textContent = 'LiteRT-LM 실제 응답을 기다리는 중...';
+        const settings = saveLiteRTLMSettings(false);
+        const body = { model: settings.model, messages: [{ role: 'user', content: '한 문장으로 연결 테스트 성공이라고 답하세요.' }], stream: false, max_tokens: Math.min(settings.maxGen, 64), temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, thinking: settings.thinking };
+        const result = await requestLiteRTLM('/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+        const text = String(result.data && result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content || '').trim();
+        if (!text) throw new Error('응답 내용이 비어 있습니다.');
+        if (status) status.textContent = '실제 응답 성공: ' + text.slice(0, 180);
+        return text;
+    } catch (error) {
+        if (status) status.textContent = '응답 테스트 실패: ' + (error && error.message ? error.message : error);
+        throw error;
+    }
 }
 
 async function requestLocalAIJson(url, options) {
@@ -13985,7 +14198,10 @@ window.AIChatBridge = Object.freeze({
                     : '핵심부터 바로 답하되 사용자가 요청한 코드, 설명, 형식과 분량을 완전하게 충족하세요. 인위적인 문장 수 제한을 두지 마세요.');
             const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 8192);
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
-            const requestedOutputTokens = contextLength || configuredMaxTokens;
+            const fastMode = request.fastMode === true;
+            const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 3000);
+            const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 60000);
+            const requestedOutputTokens = fastMode ? Math.min(configuredFastMaxTokens, configuredMaxTokens) : (contextLength || configuredMaxTokens);
             const baseSystemPrompt = [request.systemInstruction || '', modeInstruction].filter(Boolean).join('\n\n');
             const fixedInputTokens = estimateAIChatTokens(baseSystemPrompt) + estimateAIChatTokens(messages[lastUserIndex].content);
             const historyOutputReserve = getAIChatHistoryOutputReserve(contextLength, requestedOutputTokens, reasoningMode);
@@ -14003,15 +14219,17 @@ window.AIChatBridge = Object.freeze({
             const contextOutputBudget = contextLength
                 ? Math.max(1, contextLength - estimatedInputTokens - 256)
                 : configuredMaxTokens;
-            const requestMaxTokens = Math.max(1, contextOutputBudget);
+            const requestMaxTokens = Math.max(1, Math.min(contextOutputBudget, fastMode ? configuredFastMaxTokens : contextOutputBudget));
             const minimumTimeout = continuationMode
                 ? 600000
-                : (reasoningMode ? 300000 : (request.academicSearch ? 240000 : 60000));
-            const requestTimeoutMs = Math.max(
-                minimumTimeout,
-                Number(config.timeoutMs) || 0,
-                Math.ceil((requestMaxTokens / 8) * 1000 + 120000)
-            );
+                : (fastMode ? configuredFastTimeoutMs : (reasoningMode ? 300000 : (request.academicSearch ? 240000 : 60000)));
+            const requestTimeoutMs = fastMode
+                ? configuredFastTimeoutMs
+                : Math.max(
+                    minimumTimeout,
+                    Number(config.timeoutMs) || 0,
+                    Math.ceil((requestMaxTokens / 8) * 1000 + 120000)
+                );
             const streamEventHandler = typeof request.onStreamEvent === 'function'
                 ? request.onStreamEvent
                 : null;
@@ -14037,7 +14255,7 @@ window.AIChatBridge = Object.freeze({
                 contextLength: contextLength || undefined,
                 maxTokens: requestMaxTokens,
                 timeoutMs: requestTimeoutMs,
-                store: splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),
+                store: fastMode || splitAcademicMode ? false : (request.retainForContinuation === true || request.academicSearch === true || continuationMode),
                 previousResponseId: request.previousResponseId || undefined,
                 signal: controller.signal,
                 onEvent: streamEventHandler || undefined
@@ -14118,10 +14336,14 @@ function ensureSidebarAILoaded() {
             getCachedScholarAIOpenAIModels: function () { return mergeAIChatOpenAIModels(readStoredModelList(AI_CHAT_OPENAI_MODELS_KEY)); },
             getCachedScholarAILMStudioModels: function () { return readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY); },
             refreshScholarAILMStudioModels: async function () {
-                const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
-                const ids = result.models.map(function (item) { return item.id; }).filter(Boolean);
+                const ids = await getScholarAIProviderRuntime().listLMStudioModels();
                 saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
                 return ids;
+            },
+            loadScholarAILMStudioModel: async function (model) {
+                const result = await getScholarAIProviderRuntime().loadLMStudioModel(model);
+                notifyAiToolSettingsChanged();
+                return result;
             },
             refreshOllamaModels: async function () {
                 const models = await listOllamaModels();
@@ -14347,7 +14569,7 @@ function ensureSidebarAILoaded() {
     };
     const script = document.createElement('script');
     const base = getDocumentBaseUrl();
-    const aiSidebarScriptVersion = '20260817-quick-progress-1';
+    const aiSidebarScriptVersion = '20260824-lm-load-1';
     try {
         const u = new URL('./sidebarAI/sidebar-ai.js', base);
         u.searchParams.set('v', aiSidebarScriptVersion);
@@ -14556,6 +14778,7 @@ async function loadAiSettingsToUI() {
     const settings = await getAiSettings();
     loadOpenAICompatibleSettingsUI(settings);
     loadOllamaSettingsToUI();
+    loadLiteRTLMSettingsToUI();
     const googleCalendarEnabled = settings && typeof settings.googleCalendarEnabled === 'boolean'
         ? settings.googleCalendarEnabled
         : getGoogleCalendarEnabledFromLocal();

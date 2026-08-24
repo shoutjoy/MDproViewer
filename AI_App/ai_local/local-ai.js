@@ -25,6 +25,8 @@
     maxTokens: 8192,
     quickMaxTokens: 4096,
     reasoningMaxTokens: 8192,
+    fastMaxTokens: 3000,
+    fastTimeoutMs: 60000,
     reasoningLevel: 'auto',
     timeoutMs: 90000,
     topP: null,
@@ -41,6 +43,8 @@
     maxTokens: { type: 'integer', min: 1, default: defaults.maxTokens },
     quickMaxTokens: { type: 'integer', min: 1, default: defaults.quickMaxTokens },
     reasoningMaxTokens: { type: 'integer', min: 1, default: defaults.reasoningMaxTokens },
+    fastMaxTokens: { type: 'integer', min: 1, default: defaults.fastMaxTokens },
+    fastTimeoutMs: { type: 'integer', min: 1000, default: defaults.fastTimeoutMs },
     reasoningLevel: { type: 'string', default: defaults.reasoningLevel },
     timeoutMs: { type: 'integer', min: 1000, default: defaults.timeoutMs },
     topP: { type: 'number', min: 0, max: 1, nullable: true },
@@ -52,6 +56,7 @@
   const endpoints = Object.freeze({
     models: '/models',
     loadedModels: '/api/v1/models',
+    loadModel: '/api/v1/models/load',
     nativeChat: '/api/v1/chat',
     chatCompletions: '/chat/completions'
   });
@@ -287,6 +292,8 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       maxTokens: Math.max(1, Math.round(finiteOr(raw.maxTokens == null ? raw.maxOutputTokens : raw.maxTokens, defaults.maxTokens))),
       quickMaxTokens: Math.max(1, Math.round(finiteOr(source.quickMaxTokens, defaults.quickMaxTokens))),
       reasoningMaxTokens: Math.max(1, Math.round(finiteOr(source.reasoningMaxTokens, defaults.reasoningMaxTokens))),
+      fastMaxTokens: Math.max(1, Math.round(finiteOr(source.fastMaxTokens, defaults.fastMaxTokens))),
+      fastTimeoutMs: Math.max(1000, Math.round(finiteOr(source.fastTimeoutMs, defaults.fastTimeoutMs))),
       reasoningLevel: normalizeReasoningLevel(source.reasoningLevel),
       timeoutMs: Math.max(1000, Math.round(finiteOr(source.timeoutMs, defaults.timeoutMs))),
       topP: source.topP == null ? null : finiteOr(source.topP, null),
@@ -478,13 +485,37 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       try {
         const headers = Object.assign({ Accept: 'application/json' }, options.headers || {});
         if (active.apiKey && !headers.Authorization) headers.Authorization = 'Bearer ' + active.apiKey;
-        const response = await resolveFetch(options.fetch || fetchImpl)(active.baseUrl + endpoints.models, {
+        const response = await resolveFetch(options.fetch || fetchImpl)(getServerRoot(active.baseUrl) + endpoints.loadedModels, {
           method: 'GET',
           headers: headers,
           signal: requestSignal.signal
         });
         const data = await parseResponse(response, 'LM Studio models');
-        return (Array.isArray(data.data) ? data.data : []).map(function (item) { return item && item.id; }).filter(Boolean);
+        const models = Array.isArray(data.models) ? data.models : (Array.isArray(data.data) ? data.data : []);
+        return models.filter(function (item) {
+          return item && item.type !== 'embedding' && item.type !== 'embeddings';
+        }).map(function (item) { return trim(item && (item.key || item.id)); }).filter(Boolean);
+      } finally {
+        requestSignal.cleanup();
+      }
+    }
+
+    async function loadModel(model, options) {
+      options = options || {};
+      const active = assertConnectionConfig(normalizeConfig(Object.assign({}, config, options.config || {})));
+      const modelId = trim(model);
+      if (!modelId) throw new Error('불러올 LM Studio 모델을 선택하세요.');
+      const requestSignal = createRequestSignal(options.signal, options.timeoutMs || active.timeoutMs);
+      try {
+        const headers = Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json' }, options.headers || {});
+        if (active.apiKey && !headers.Authorization) headers.Authorization = 'Bearer ' + active.apiKey;
+        const response = await resolveFetch(options.fetch || fetchImpl)(getServerRoot(active.baseUrl) + endpoints.loadModel, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify({ model: modelId }),
+          signal: requestSignal.signal
+        });
+        return await parseResponse(response, 'LM Studio model load');
       } finally {
         requestSignal.cleanup();
       }
@@ -992,6 +1023,7 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
       configure: configure,
       listModels: listModels,
       listLoadedModels: listLoadedModels,
+      loadModel: loadModel,
       chat: chat,
       chatStream: chatStream,
       complete: complete,

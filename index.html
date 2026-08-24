@@ -41,7 +41,7 @@
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260817-scholar-upgrades-1" charset="utf-8">
-    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260823-start-width-380-1" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260824-jena-phone-teal-1" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/dataCenter/ai-data-center.css?v=20260823-dark-chrome-7" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/styles/scholarref.css?v=20260812-scholar-modules-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
@@ -497,6 +497,7 @@
             <div id="header-ai-btns" class="hidden items-center gap-1 ml-0 sm:ml-2 shrink-0 flex-wrap justify-end">
                 <button type="button" id="btn-scholar-ai" onclick="typeof openScholarAIFromHeader==='function'&&openScholarAIFromHeader()" class="header-quick-tool" title="ScholarAI" aria-label="ScholarAI"><i data-lucide="sparkles" aria-hidden="true"></i><span>ScholarAI</span></button>
                 <button type="button" id="btn-sspimg-ai" onclick="typeof openSspimgAIFromHeader==='function'&&openSspimgAIFromHeader()" class="header-quick-tool" title="sspimgAI" aria-label="sspimgAI"><i data-lucide="wand-sparkles" aria-hidden="true"></i><span>sspimgAI</span></button>
+                <button type="button" id="btn-ai-jena-menu" onclick="typeof openAiJenaFromMenu==='function'&&openAiJenaFromMenu()" class="header-quick-tool hidden" title="AI Jena" aria-label="AI Jena"><span aria-hidden="true">Jena</span></button>
             </div>
 
             <div id="google-share-toolbar-slot" class="contents"></div>
@@ -2144,6 +2145,12 @@
                                     <label class="text-xs text-slate-600 dark:text-slate-400">추론 Max tokens
                                         <input id="settings-aichat-reasoning-max-tokens" type="number" min="1" step="1" value="8192" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
                                     </label>
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">FAST MAX TOKEN
+                                        <input id="settings-aichat-fast-max-tokens" type="number" min="1" step="1" value="3000" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                    </label>
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">LIMIT TIME (초)
+                                        <input id="settings-aichat-fast-timeout" type="number" min="1" step="1" value="60" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                    </label>
                                 </div>
                                 <label class="mt-2 block text-xs text-slate-600 dark:text-slate-400">추론 강도
                                     <select id="settings-aichat-reasoning-level" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
@@ -2191,13 +2198,78 @@
                             <p id="settings-ollama-status" class="text-xs min-h-[1.25rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                             <p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">기본 주소는 <code>http://127.0.0.1:11434</code>입니다. 웹브라우저에서 차단되면 Ollama의 <code>OLLAMA_ORIGINS</code>에 현재 웹 주소를 허용해야 하며, 데스크톱 빌드는 로컬 IPC를 사용합니다.</p>
                         </div>
+                        <div id="litertlm-provider-settings" class="pt-3 mt-3 border-t border-blue-300 dark:border-blue-900/70 space-y-3">
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">LiteRT-LM 설정</p>
+                                <div class="flex items-center gap-2">
+                                    <span class="px-2 py-1 rounded border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 text-[11px] font-semibold text-blue-700 dark:text-blue-300">Cloud / 로컬</span>
+                                    <button type="button" id="litertlm-settings-fold-btn" onclick="toggleLiteRTLMSettingsFold()"
+                                        class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
+                                        aria-expanded="true" aria-controls="litertlm-settings-body" title="LiteRT-LM 설정 접기/펼치기">접기</button>
+                                </div>
+                            </div>
+                            <div id="litertlm-settings-body" class="space-y-3">
+                            <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">Google LiteRT-LM의 OpenAI 호환 서버를 사용합니다. Cloud(Base URL) 또는 Local URL 중 활성화할 서버를 선택하세요.</p>
+                            <div class="rounded-md border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 p-3 space-y-2">
+                                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                                    <input type="radio" name="settings-litertlm-mode" id="settings-litertlm-cloud-mode" value="cloud" onchange="updateLiteRTLMSettingsModeUI()" class="text-blue-600 focus:ring-blue-500">
+                                    <span>Base URL (Cloud) 사용 (기본)</span>
+                                </label>
+                                <div class="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2">
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">연결 이름
+                                        <input id="settings-litertlm-cloud-name" type="text" value="cloud" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
+                                    </label>
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">Cloud Base URL
+                                        <input id="settings-litertlm-cloud-url" type="url" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="rounded-md border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 p-3 space-y-2">
+                                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
+                                    <input type="radio" name="settings-litertlm-mode" id="settings-litertlm-local-mode" value="local" checked onchange="updateLiteRTLMSettingsModeUI()" class="text-blue-600 focus:ring-blue-500">
+                                    <span>Local URL 사용</span>
+                                </label>
+                                <div class="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2">
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">연결 이름
+                                        <input id="settings-litertlm-local-name" type="text" value="Local S" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
+                                    </label>
+                                    <label class="text-xs text-slate-600 dark:text-slate-400">Local URL
+                                        <input id="settings-litertlm-local-url" type="url" value="http://localhost:9379/v1" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
+                                    </label>
+                                </div>
+                            </div>
+                            <label class="block text-xs text-slate-600 dark:text-slate-400">모델
+                                <select id="settings-litertlm-model" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                    <option value="gemma-4-E2B-it.litertlm">gemma-4-E2B-it.litertlm</option>
+                                </select>
+                            </label>
+                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                <label class="text-xs text-slate-600 dark:text-slate-400">Context length<input id="settings-litertlm-context-length" type="number" min="1" step="1" value="4096" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                <label class="text-xs text-slate-600 dark:text-slate-400">Max gen<input id="settings-litertlm-max-gen" type="number" min="1" step="1" value="2048" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                <label class="text-xs text-slate-600 dark:text-slate-400">Sampler<select id="settings-litertlm-sampler" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"><option value="greedy">Greedy</option><option value="top_k">Top-K</option><option value="top_p">Top-P</option></select></label>
+                                <label class="text-xs text-slate-600 dark:text-slate-400">Temp<input id="settings-litertlm-temperature" type="number" min="0" max="2" step="0.1" value="0.3" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                <label class="text-xs text-slate-600 dark:text-slate-400">Top-P<input id="settings-litertlm-top-p" type="number" min="0" max="1" step="0.05" value="0.9" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                <label class="text-xs text-slate-600 dark:text-slate-400">Top-K<input id="settings-litertlm-top-k" type="number" min="1" step="1" value="40" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                            </div>
+                            <label class="flex items-center justify-center gap-2 rounded-md border border-blue-400 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs font-semibold text-blue-800 dark:text-blue-200 cursor-pointer">
+                                <input id="settings-litertlm-thinking" type="checkbox" checked class="rounded border-blue-400 text-blue-600 focus:ring-blue-500"> Thinking
+                            </label>
+                            <p class="text-[11px] text-slate-500 dark:text-slate-400">선택된 서버(Cloud 또는 Local)로 모델 목록을 조회하고 요청을 전송합니다.</p>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button type="button" onclick="saveLiteRTLMSettings(true)" class="px-2 py-1.5 rounded bg-blue-600 text-white text-xs hover:bg-blue-700">LiteRT-LM 설정 저장</button>
+                                <button type="button" onclick="loadSettingsLiteRTLMModels()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">연결·모델 확인</button>
+                                <button type="button" onclick="testSettingsLiteRTLMResponse()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">실제 응답 테스트</button>
+                            </div>
+                            <p id="settings-litertlm-status" class="text-xs min-h-[1.25rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
+                            </div>
+                        </div>
                         </div>
                         <div id="ai-chat-settings" class="pt-3 mt-3 border-t border-slate-200 dark:border-slate-700">
                             <div class="flex items-center justify-between gap-2">
                                 <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
                                     <input type="checkbox" id="ai-chat-enabled"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
-                                    <span>AI Jena 사용</span>
+                                    <span>AI Jena 사용 (플로팅)</span>
                                 </label>
                                 <button type="button" id="ai-chat-settings-fold-btn" onclick="toggleAiChatSettingsFold()"
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
@@ -2206,6 +2278,11 @@
                             </div>
                             <div id="ai-chat-settings-body">
                                 <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 모든 화면의 우측 하단에 AI Jena 버튼이 표시됩니다. 팝업·우측 Dock·전체화면을 지원하고 대화 기록은 IndexedDB에 저장됩니다. ScholarAI와 별도의 일반 멀티턴 대화이며, 아래의 LM Studio 연결 설정과 AI Studio API Key를 공유합니다.</p>
+                                <label class="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                                    <input type="checkbox" id="ai-chat-menu-enabled" class="rounded border-slate-300 dark:border-slate-600 text-violet-600 focus:ring-violet-500">
+                                    <span>AI Jena 사용 (메뉴)</span>
+                                </label>
+                                <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 상단 sspimgAI 오른쪽에 보라색 Jena 메뉴 버튼이 표시됩니다.</p>
                             </div>
                             <div id="ai-data-center-settings">
                                 <button type="button" onclick="window.AIDataCenter && window.AIDataCenter.open()"
@@ -3005,14 +3082,14 @@
 
 <!-- 로컬 AI 연결 -->
 <script
-    src="./AI_App/ai_local/local-ai.js?v=20260723-2"
+    src="./AI_App/ai_local/local-ai.js?v=20260824-lm-load-1"
     charset="utf-8"
     defer>
 </script>
 
 <!-- 학술 AI 제공자 -->
 <script
-    src="./AI_App/ai_local/scholar-ai-provider.js?v=20260806-openai-1"
+    src="./AI_App/ai_local/scholar-ai-provider.js?v=20260824-lm-load-1"
     charset="utf-8"
     defer>
 </script>
@@ -3248,7 +3325,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260823-ai-jena-launcher-position-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260823-2&amp;verticalEditToolbar=20260823-2"
+    src="./js/app.js?v=20260823-ai-jena-menu-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260823-2&amp;verticalEditToolbar=20260823-2"
     charset="utf-8"
     defer>
 </script>

@@ -317,6 +317,8 @@
             outputLimit: Math.max(1, Number(config.maxTokens) || 8192),
             quickOutputLimit: Math.max(1, Number(config.quickMaxTokens) || 4096),
             reasoningOutputLimit: Math.max(1, Number(config.reasoningMaxTokens) || 8192),
+            fastOutputLimit: Math.max(1, Number(config.fastMaxTokens) || 3000),
+            fastTimeoutMs: Math.max(1000, Number(config.fastTimeoutMs) || 60000),
             reasoningLevel: String(config.reasoningLevel || 'auto'),
             timeoutMs: Math.max(1000, Number(config.timeoutMs) || 90000),
             topP: config.topP == null || config.topP === '' ? null : Number(config.topP)
@@ -456,6 +458,8 @@
             maxTokens: Number(safe.outputLimit == null ? safe.maxTokens : safe.outputLimit),
             quickMaxTokens: Number(safe.quickOutputLimit == null ? safe.quickMaxTokens : safe.quickOutputLimit),
             reasoningMaxTokens: Number(safe.reasoningOutputLimit == null ? safe.reasoningMaxTokens : safe.reasoningOutputLimit),
+            fastMaxTokens: Number(safe.fastOutputLimit == null ? safe.fastMaxTokens : safe.fastOutputLimit),
+            fastTimeoutMs: Number(safe.fastTimeoutMs),
             reasoningLevel: String(safe.reasoningLevel || 'auto'),
             timeoutMs: Number(safe.timeoutMs),
             topP: safe.topP == null ? null : Number(safe.topP)

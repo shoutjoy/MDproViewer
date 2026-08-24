@@ -1531,7 +1531,8 @@
 
         /* Header AI toggle buttons - black base with distinct icon colors. */
         #btn-scholar-ai,
-        #btn-sspimg-ai {
+        #btn-sspimg-ai,
+        #btn-ai-jena-menu {
             background: #05070b !important;
             font-weight: 700 !important;
         }
@@ -1546,13 +1547,52 @@
             color: #fb923c !important;
         }
 
+        #btn-ai-jena-menu {
+            width: 42px;
+            height: 42px;
+            padding: 4px !important;
+            border: 1px solid #22a7b8 !important;
+            border-radius: 8px !important;
+            background: #05070b !important;
+            color: #ffffff !important;
+            font-size: 11px;
+            font-weight: 800 !important;
+        }
+
+        #btn-ai-jena-menu > span {
+            position: static;
+            display: inline-flex;
+            width: 100%;
+            height: 100%;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            margin: 0;
+            overflow: visible;
+            clip: auto;
+            white-space: nowrap;
+            border-radius: 5px;
+            background: linear-gradient(135deg, #083b59 0%, #0f766e 100%);
+            transition: background-color .15s ease, box-shadow .15s ease;
+        }
+
         #btn-scholar-ai:hover,
-        #btn-sspimg-ai:hover {
+        #btn-sspimg-ai:hover,
+        #btn-ai-jena-menu:hover {
             background: #111827 !important;
         }
 
         #btn-scholar-ai:hover { border-color: #60a5fa !important; }
         #btn-sspimg-ai:hover { border-color: #fb923c !important; }
+        #btn-ai-jena-menu:hover {
+            border-color: #5eead4 !important;
+            background: #05070b !important;
+        }
+
+        #btn-ai-jena-menu:hover > span {
+            background: linear-gradient(135deg, #0b4e70 0%, #119487 100%);
+            box-shadow: 0 0 12px rgb(45 212 191 / 40%);
+        }
 
         /* miniPV compact typography */
         #mini-preview-panel {
@@ -2860,5 +2900,74 @@ html.ai-chat-page-pushed .app-header .app-header-actions {
         width: 34px;
         height: 34px;
         flex-basis: 34px;
+    }
+}
+
+/* AI provider settings share one rack shape while retaining provider identity. */
+#ai-link-settings-block .ai-settings-rack {
+    --ai-rack-rgb: 100 116 139;
+    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 1px solid rgb(var(--ai-rack-rgb) / .58) !important;
+    border-radius: 12px !important;
+    background: linear-gradient(105deg, rgb(var(--ai-rack-rgb) / .10), rgb(var(--ai-rack-rgb) / .035)) !important;
+    box-shadow: inset 3px 0 0 rgb(var(--ai-rack-rgb) / .72);
+    overflow: hidden;
+}
+
+#ai-link-settings-block .ai-settings-rack > summary,
+#ai-link-settings-block .ai-settings-rack > div:first-child {
+    box-sizing: border-box;
+    min-height: 72px;
+    margin: 0 !important;
+    padding: 12px 18px !important;
+    align-items: center;
+}
+
+#ai-link-settings-block .ai-settings-rack > summary > span:first-child,
+#ai-link-settings-block .ai-settings-rack > div:first-child > p:first-child {
+    color: rgb(var(--ai-rack-rgb));
+    font-size: 14px !important;
+    font-weight: 750 !important;
+}
+
+#ai-link-settings-block .ai-settings-rack > summary > span:first-child {
+    flex: 1 1 auto;
+}
+
+#ai-link-settings-block .ai-settings-rack > summary > span:not(:first-child),
+#ai-link-settings-block .ai-settings-rack > div:first-child button {
+    min-width: 70px;
+    min-height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#ai-link-settings-block .ai-settings-rack--lmstudio { --ai-rack-rgb: 8 145 178; }
+#ai-link-settings-block .ai-settings-rack--ollama { --ai-rack-rgb: 217 119 6; }
+#ai-link-settings-block .ai-settings-rack--litertlm { --ai-rack-rgb: 37 99 235; }
+#ai-link-settings-block .ai-settings-rack--compatible { --ai-rack-rgb: 2 132 199; }
+#ai-link-settings-block .ai-settings-rack--aistudio { --ai-rack-rgb: 124 58 237; }
+#ai-link-settings-block .ai-settings-rack--deepseek { --ai-rack-rgb: 225 29 72; }
+#ai-link-settings-block .ai-settings-rack--openai { --ai-rack-rgb: 5 150 105; }
+
+.dark #ai-link-settings-block .ai-settings-rack {
+    border-color: rgb(var(--ai-rack-rgb) / .5) !important;
+    background: linear-gradient(105deg, rgb(var(--ai-rack-rgb) / .16), rgb(15 23 42 / .58)) !important;
+}
+
+.dark #ai-link-settings-block .ai-settings-rack > summary > span:first-child,
+.dark #ai-link-settings-block .ai-settings-rack > div:first-child > p:first-child {
+    color: rgb(var(--ai-rack-rgb) / .98);
+    filter: brightness(1.35);
+}
+
+@media (max-width: 520px) {
+    #ai-link-settings-block .ai-settings-rack > summary,
+    #ai-link-settings-block .ai-settings-rack > div:first-child {
+        min-height: 64px;
+        padding: 10px 12px !important;
     }
 }

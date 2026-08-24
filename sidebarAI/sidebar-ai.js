@@ -1667,7 +1667,9 @@
       + '<label for="scholar-ai-provider-select" style="font-size:10px;margin-bottom:4px;display:block">AI 공급자</label>'
       + '<select id="scholar-ai-provider-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8;margin-bottom:8px">'
       + '<option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select>'
-      + '<button type="button" id="scholar-ai-lm-model-refresh" class="sa-btn ghost" style="display:none;width:100%;margin:0 0 8px">LM Studio 현재 모델 다시 확인</button>'
+      + '<div id="scholar-ai-lm-model-actions" style="display:none;gap:6px;margin:0 0 8px">'
+      + '<button type="button" id="scholar-ai-lm-model-refresh" class="sa-btn ghost" style="flex:1">새로고침</button>'
+      + '<button type="button" id="scholar-ai-lm-model-load" class="sa-btn" style="flex:1">호출</button></div>'
       + '<div id="scholar-ai-provider-status" role="status" style="font-size:10px;color:#94a3b8;margin:-2px 0 8px;line-height:1.4">상세 연결 설정은 앱 설정 → AI 연동 설정에서 관리합니다.</div>';
     panel.insertBefore(wrap, panel.firstChild);
 
@@ -1679,6 +1681,8 @@
     };
     var refreshBtn = document.getElementById('scholar-ai-lm-model-refresh');
     if (refreshBtn) refreshBtn.onclick = function () { scholarAIRefreshLMStudioModel(false); };
+    var loadBtn = document.getElementById('scholar-ai-lm-model-load');
+    if (loadBtn) loadBtn.onclick = function () { scholarAILoadLMStudioModel(); };
   }
 
   function scholarAIApplyLoadedLMStudioModels(models) {
@@ -1697,13 +1701,34 @@
     values.forEach(function (model, index) {
       var option = document.createElement('option');
       option.value = model;
-      option.textContent = index === 0 ? model + ' (자동 사용)' : model + ' (추가 로드됨)';
+      option.textContent = model;
       sel.appendChild(option);
     });
     sel.value = values[0];
-    scholarAISetProviderStatus(values.length === 1
-      ? 'LM Studio에 현재 로드된 모델입니다. 앱에서 별도로 선택하지 않습니다.'
-      : '로드된 LLM ' + values.length + '개: ' + values.join(', ') + ' · 첫 번째 모델을 자동 사용합니다.', false);
+    scholarAISetProviderStatus('LM Studio에 설치된 모델 ' + values.length + '개를 확인했습니다. 선택 후 호출하세요.', false);
+  }
+
+  function scholarAILoadLMStudioModel() {
+    var sel = document.getElementById('scholar-ai-model-select');
+    var load = getCallback('loadScholarAILMStudioModel');
+    var button = document.getElementById('scholar-ai-lm-model-load');
+    var model = sel && sel.value;
+    if (!model || typeof load !== 'function') {
+      scholarAISetProviderStatus(!model ? '호출할 LM Studio 모델을 선택하세요.' : 'LM Studio 모델 호출 기능이 준비되지 않았습니다.', true);
+      return Promise.resolve(null);
+    }
+    if (button) button.disabled = true;
+    scholarAISetProviderStatus(model + ' 모델을 불러오는 중...', false);
+    return Promise.resolve(load(model)).then(function (result) {
+      var loadedModel = result && result.model ? result.model : model;
+      scholarAISetProviderStatus(loadedModel + ' 모델을 불러와 연결했습니다.', false);
+      return result;
+    }).catch(function (error) {
+      scholarAISetProviderStatus(error && error.message ? error.message : String(error), true);
+      return null;
+    }).finally(function () {
+      if (button) button.disabled = false;
+    });
   }
 
   function scholarAIApplyLoadedDeepseekModels(models) {
@@ -1746,7 +1771,7 @@
     var refresh = getCallback('refreshScholarAILMStudioModels');
     if (typeof refresh !== 'function') return Promise.resolve([]);
     if (__scholarAILMRefreshPromise) return __scholarAILMRefreshPromise;
-    if (!silent) scholarAISetProviderStatus('LM Studio의 현재 로드 모델을 확인하는 중...', false);
+    if (!silent) scholarAISetProviderStatus('LM Studio에 설치된 모델을 확인하는 중...', false);
     __scholarAILMRefreshPromise = Promise.resolve().then(function () {
       return refresh();
     }).then(function (models) {
@@ -1814,22 +1839,24 @@
     var provider = scholarAIGetProvider();
     var providerSel = document.getElementById('scholar-ai-provider-select');
     if (providerSel) providerSel.value = provider;
-    var refreshBtn = document.getElementById('scholar-ai-lm-model-refresh');
-    if (refreshBtn) refreshBtn.style.display = provider === 'lmstudio' ? 'block' : 'none';
+    var lmActions = document.getElementById('scholar-ai-lm-model-actions');
+    if (lmActions) lmActions.style.display = provider === 'lmstudio' ? 'flex' : 'none';
     if (sel.previousElementSibling && sel.previousElementSibling.tagName === 'LABEL') {
       sel.previousElementSibling.style.display = 'block';
-      sel.previousElementSibling.textContent = provider === 'aistudio' ? 'Gemini 모델 선택' : 'LM Studio 현재 로드 모델 (읽기 전용)';
+      sel.previousElementSibling.textContent = provider === 'aistudio' ? 'Gemini 모델 선택' : (provider === 'lmstudio' ? 'LM Studio 설치 모델 선택' : '모델 선택');
     }
     if (provider === 'lmstudio') {
-      sel.disabled = true;
-      sel.style.cursor = 'default';
-      sel.title = '모델 변경은 LM Studio에서 수행하세요.';
+      sel.disabled = false;
+      sel.style.cursor = 'pointer';
+      sel.title = '설치된 모델을 선택하고 호출 버튼을 누르세요.';
       var loadedGetter = getCallback('getCachedScholarAILMStudioModels');
       var loadedModels = [];
       try { loadedModels = typeof loadedGetter === 'function' ? (loadedGetter() || []) : []; } catch (loadedError) {}
       scholarAIApplyLoadedLMStudioModels(loadedModels);
       scholarAIRefreshLMStudioModel(true);
-      sel.onchange = null;
+      sel.onchange = function () {
+        scholarAISetProviderStatus(sel.value ? sel.value + ' 모델을 호출할 수 있습니다.' : '호출할 모델을 선택하세요.', !sel.value);
+      };
       return;
     }
     if (provider === 'deepseek') {

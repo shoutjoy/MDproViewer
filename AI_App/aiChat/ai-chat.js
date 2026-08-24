@@ -10,6 +10,7 @@
   var OLLAMA_MODEL_KEY = 'ss_ai_chat_ollama_model';
   var WRITING_STYLE_KEY = 'ss_ai_chat_writing_style';
   var ANSWER_APPEARANCE_KEY = 'ss_ai_chat_answer_appearance';
+  var ANSWER_FONT_SIZE_KEY = 'ss_ai_chat_answer_font_size';
   var ANSWER_APPEARANCE_DEFAULT_REVISION_KEY = 'ss_ai_chat_answer_appearance_default_revision';
   var WRITING_STYLE_DEFAULT_REVISION_KEY = 'ss_ai_chat_writing_style_default_revision';
   var INSERT_EXPAND_KEY = 'ss_ai_chat_insert_actions_expanded';
@@ -20,6 +21,8 @@
     { mode: 'document-end', label: '문서 맨 아래에 삽입', shortLabel: '맨 아래', title: 'Markdown 원문을 문서 맨 아래에 삽입합니다.' }
   ];
   var RESPONSE_MODE_KEY = 'ss_ai_chat_response_mode';
+  var FAST_MODE_KEY = 'ss_ai_chat_fast_mode';
+  var BUILTIN_PROMPT_RULE_REVISION_KEY = 'ss_ai_chat_builtin_prompt_rules_revision';
   var SHOW_REASONING_KEY = 'ss_ai_chat_show_reasoning';
   var ACADEMIC_SEARCH_KEY = 'ss_ai_chat_academic_search_enabled';
   var ACADEMIC_COUNT_KEY = 'ss_ai_chat_academic_search_count';
@@ -37,7 +40,7 @@
   var MIGRATION_KEY = 'ss_ai_chat_idb_migrated_v1';
   var SQLITE_SYNC_KEYS = new Set([
     ENABLED_KEY, PROVIDER_KEY, GEMINI_MODEL_KEY, DEEPSEEK_MODEL_KEY, OPENAI_MODEL_KEY,
-    OLLAMA_MODEL_KEY, WRITING_STYLE_KEY, ANSWER_APPEARANCE_KEY, RESPONSE_MODE_KEY, SHOW_REASONING_KEY,
+    OLLAMA_MODEL_KEY, WRITING_STYLE_KEY, ANSWER_APPEARANCE_KEY, ANSWER_FONT_SIZE_KEY, RESPONSE_MODE_KEY, FAST_MODE_KEY, SHOW_REASONING_KEY,
     ACADEMIC_SEARCH_KEY, ACADEMIC_COUNT_KEY, INTERNET_SEARCH_KEY, LAYOUT_KEY, START_LAYOUT_KEY
   ]);
   var CHAT_DB_NAME = 'md_viewer_ai_chat';
@@ -79,6 +82,15 @@
     'gpt-5.6-terra',
     'gpt-5.6-luna'
   ];
+  var MERMAID_DARK_MODE_PROMPT_RULE = [
+    'Mermaid 다이어그램은 현재 앱의 다크 모드에서 읽기 쉬워야 한다.',
+    '다크 모드에서 노드·클러스터·결정 노드의 배경을 흰색 또는 매우 밝은 색으로 강제하지 않는다.',
+    '배경색과 글자색은 충분한 명도 대비를 유지하며, 강조 노드도 글자가 흐려지지 않게 짙은 배경과 밝은 글자 또는 밝은 배경과 매우 짙은 글자를 함께 지정한다.',
+    'themeVariables와 classDef를 사용할 때 page background, primaryColor, secondaryColor, tertiaryColor, primaryTextColor, lineColor의 조합을 다크 테마 기준으로 검토한다.',
+    'Mermaid 노드 라벨이나 엣지 라벨에 괄호, 대괄호, 중괄호, 콜론, 세미콜론, 슬래시, 역슬래시, 파이프, 앰퍼샌드, 등호, 비교 기호 또는 Mermaid 문법으로 해석될 수 있는 특수문자가 들어가면 라벨 전체를 큰따옴표로 감싼다. 예: A["처리 (1단계): 입력/검증"], A -->|"성공: 100%"| B.',
+    '라벨 내부의 큰따옴표는 그대로 중첩하지 말고 작은따옴표로 바꾸거나 HTML 엔티티로 이스케이프하여 Mermaid 구문 오류를 방지한다.',
+    '사용자가 Mermaid 코드만 요청하거나 FAST 모드에서 Mermaid를 요청하면 설명, 머리말, 사용법 없이 mermaid 코드 블록 하나만 반환한다.'
+  ].join(' ');
 // https://aistudio.google.com/rate-limit?timeRange=last-28-days
 
 
@@ -90,8 +102,10 @@
     providerControlsOpen: false,
     writingStyle: 'academic',
     answerAppearance: 'plain-light',
+    answerFontSize: 14,
     insertActionsExpanded: false,
     responseMode: 'quick',
+    fastMode: false,
     showReasoning: false,
     academicSearchEnabled: false,
     internetSearchEnabled: false,
@@ -167,20 +181,46 @@
       var customPrompt = typeof root.getAIWritingStylePrompt === 'function'
         ? String(root.getAIWritingStylePrompt() || '').trim()
         : '';
-      if (customPrompt) return customPrompt;
       return [
-        '선택된 답변 문체는 객관적이고 전문적인 한국어 학술 문체이다.',
-        '상투적인 -이다/-한다 종결을 반복하지 말고 문맥에 맞는 학술적 서술어와 시제를 다양하게 사용한다.',
+        '[필수 답변 문체 규칙]',
+        '선택된 답변 문체는 객관적이고 전문적인 한국어 학술 문체이다. 이 규칙은 선택 사항이나 참고 사항이 아니라 최종 답변 전체에 반드시 적용해야 하는 출력 제약이다.',
+        customPrompt || '상투적인 -이다/-한다 종결을 반복하지 말고 문맥에 맞는 학술적 서술어와 시제를 다양하게 사용한다.',
         academicContext ? '전문용어를 정확하게 사용하고 주장, 근거, 해석을 명확하게 구분한다.' : '과장된 표현을 피하고 논리적이며 객관적으로 서술한다.',
-        '단, 사용자가 이번 요청에서 특정 언어 또는 다른 문체를 명시하면 그 요청을 우선한다.'
+        '제목, 목록, 표, 인용문, 코드처럼 종결어미가 없는 요소를 제외한 모든 한국어 서술문에 이 문체를 일관되게 적용한다.',
+        '최종 답변을 내기 직전에 문장 종결과 어휘가 이 문체를 위반하지 않는지 스스로 점검하고, 위반한 문장은 고쳐서 답변한다.',
+        '단, 사용자가 이번 요청에서 특정 언어 또는 다른 문체를 명시적으로 요구한 경우에만 그 요청을 우선한다.',
+        '[/필수 답변 문체 규칙]'
       ].join(' ');
     }
     return [
-      '선택된 답변 문체: 자연스럽고 정중한 한국어 존댓말이다.',
+      '[필수 답변 문체 규칙]',
+      '선택된 답변 문체는 자연스럽고 정중한 한국어 존댓말이다. 이 규칙은 선택 사항이나 참고 사항이 아니라 최종 답변 전체에 반드시 적용해야 하는 출력 제약이다.',
       '문장 종결은 문맥에 맞게 -습니다, -입니다, -하세요 등을 사용하고 반말이나 -이다/-한다 식의 건조한 종결은 사용하지 않는다.',
       academicContext ? '학술적 정확성과 전문성은 유지하되 독자에게 설명하는 정중한 문장으로 작성한다.' : '친절하고 명확하게 설명하되 불필요하게 장황하거나 과장하지 않는다.',
-      '단, 사용자가 이번 요청에서 특정 언어 또는 다른 문체를 명시하면 그 요청을 우선한다.'
+      '제목, 목록, 표, 인용문, 코드처럼 종결어미가 없는 요소를 제외한 모든 한국어 서술문에 이 문체를 일관되게 적용한다.',
+      '최종 답변을 내기 직전에 문장 종결이 존댓말인지 스스로 점검하고, 위반한 문장은 고쳐서 답변한다.',
+      '단, 사용자가 이번 요청에서 특정 언어 또는 다른 문체를 명시적으로 요구한 경우에만 그 요청을 우선한다.',
+      '[/필수 답변 문체 규칙]'
     ].join(' ');
+  }
+
+  function saveBuiltInPromptRules() {
+    var revision = 'mermaid-dark-v2';
+    return getBridge().saveAIDataRecord({
+      id: 'prompt-rule:' + revision,
+      recordType: 'prompt_rule',
+      category: 'fine_tuning_rule',
+      name: 'Mermaid 다크모드 가독성 및 FAST 코드 출력 규칙',
+      prompt: MERMAID_DARK_MODE_PROMPT_RULE,
+      enabled: true,
+      builtIn: true,
+      revision: revision,
+      source: 'AI_App/PROPT/MERMAID_DARK_MODE_RULE.md',
+      updatedAt: Date.now(),
+      createdAt: Date.now()
+    }).then(function () {
+      storageSet(BUILTIN_PROMPT_RULE_REVISION_KEY, revision);
+    }).catch(function () {});
   }
 
   function getBridge() {
@@ -520,6 +560,7 @@
       + '        <button type="button" data-ai-chat-layout="popup" role="menuitem"><span class="ai-chat-layout-label">팝업 <kbd>Alt+1</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="popup">OFF</span></button>'
       + '        <button type="button" data-ai-chat-layout="dock" role="menuitem"><span class="ai-chat-layout-label">Dock · 우측 사이드바 <kbd>Alt+2</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="dock">OFF</span></button>'
       + '        <button type="button" data-ai-chat-layout="fullscreen" role="menuitem"><span class="ai-chat-layout-label">전체화면 · 기록 보기 <kbd>Alt+3</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="fullscreen">OFF</span></button>'
+      + '        <label class="ai-chat-answer-font-size"><span>답변 폰트 크기</span><input id="ai-chat-answer-font-size" type="range" min="5" max="25" step="1" value="14" aria-label="답변 폰트 크기"><output id="ai-chat-answer-font-size-value" for="ai-chat-answer-font-size">14px</output></label>'
       + '        <button type="button" id="ai-chat-set-start-layout" class="ai-chat-set-start-layout" role="menuitem">현재 배치를 시작 위치로 지정</button>'
       + '      </div>'
       + '    </div>'
@@ -559,6 +600,7 @@
       + '      <div class="ai-chat-storage-note">대화 내용은 IndexedDB에 저장됩니다.</div>'
       + '      <div class="ai-chat-mode-row" role="group" aria-label="응답 모드">'
       + '        <button type="button" data-ai-chat-mode="quick">⚡ 즉시</button>'
+      + '        <label class="ai-chat-fast-toggle" title="설명 없이 답만 빠르게 생성합니다. Mermaid 요청은 코드만 반환합니다."><input type="checkbox" id="ai-chat-fast-mode"><span>FAST</span></label>'
       + '        <button type="button" data-ai-chat-mode="reasoning">🧠 추론</button>'
       + '        <label class="ai-chat-reasoning-toggle" title="추론내용 표시"><input type="checkbox" id="ai-chat-show-reasoning" aria-label="추론내용 표시"></label>'
       + '        <button type="button" id="ai-chat-academic-toggle" class="ai-chat-academic-toggle" aria-pressed="false">🔎 학술검색</button>'
@@ -644,6 +686,9 @@
         setStatus('시작 위치를 ' + startLayoutLabel(state.startLayout) + '(으)로 지정했습니다.', 'ok');
       });
     }
+    document.getElementById('ai-chat-answer-font-size').addEventListener('input', function (event) {
+      setAnswerFontSize(event.target.value);
+    });
     var modeButtons = panel.querySelectorAll('[data-ai-chat-mode]');
     for (var modeIndex = 0; modeIndex < modeButtons.length; modeIndex++) {
       modeButtons[modeIndex].addEventListener('click', function () {
@@ -652,6 +697,9 @@
     }
     document.getElementById('ai-chat-show-reasoning').addEventListener('change', function (event) {
       setShowReasoning(event.target.checked);
+    });
+    document.getElementById('ai-chat-fast-mode').addEventListener('change', function (event) {
+      setFastMode(event.target.checked);
     });
     document.getElementById('ai-chat-academic-toggle').addEventListener('click', function () {
       setAcademicSearchEnabled(!state.academicSearchEnabled);
@@ -1569,6 +1617,13 @@
     syncLayoutVisibility();
   }
 
+  function openFromMenu() {
+    state.enabled = true;
+    var launcher = document.getElementById('ai-chat-launcher');
+    if (launcher) launcher.classList.toggle('enabled', storageGet(ENABLED_KEY, '0') === '1');
+    openAtStartLayout();
+  }
+
   function setProviderControlsOpen(open) {
     state.providerControlsOpen = !!open;
     storageSet(PROVIDER_CONTROLS_KEY, state.providerControlsOpen ? '1' : '0');
@@ -1668,6 +1723,10 @@
     if (!help) return;
     if (isGeminiImageModel(state.geminiModel) && state.provider === 'aistudio') {
       help.textContent = '이미지 생성 모델 · 설명을 입력하면 채팅에 이미지 표시';
+      return;
+    }
+    if (state.fastMode) {
+      help.textContent = 'FAST · 최소 컨텍스트 · 설명 없이 답만 출력';
       return;
     }
     if (state.internetSearchEnabled) {
@@ -1789,6 +1848,7 @@
 
   function setResponseMode(mode) {
     state.responseMode = mode === 'reasoning' ? 'reasoning' : 'quick';
+    if (state.responseMode === 'reasoning' && state.fastMode) setFastMode(false, false);
     storageSet(RESPONSE_MODE_KEY, state.responseMode);
     if (state.responseMode === 'reasoning' && !state.showReasoning) {
       state.showReasoning = true;
@@ -1805,6 +1865,26 @@
     updateModeHelp();
     updateHeaderModel();
     renderMessages();
+    saveHistory();
+  }
+
+  function setFastMode(enabled, persist) {
+    state.fastMode = !!enabled;
+    if (state.fastMode && state.responseMode !== 'quick') {
+      state.responseMode = 'quick';
+      storageSet(RESPONSE_MODE_KEY, state.responseMode);
+    }
+    if (persist !== false) storageSet(FAST_MODE_KEY, state.fastMode ? '1' : '0');
+    var checkbox = document.getElementById('ai-chat-fast-mode');
+    if (checkbox) checkbox.checked = state.fastMode;
+    var buttons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-mode]');
+    for (var i = 0; i < buttons.length; i++) {
+      var active = buttons[i].getAttribute('data-ai-chat-mode') === state.responseMode;
+      buttons[i].classList.toggle('active', active);
+      buttons[i].setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
+    updateModeHelp();
+    updateHeaderModel();
     saveHistory();
   }
 
@@ -1907,6 +1987,21 @@
     }
   }
 
+  function normalizeAnswerFontSize(value) {
+    return Math.max(5, Math.min(25, Math.round(Number(value) || 14)));
+  }
+
+  function setAnswerFontSize(value) {
+    state.answerFontSize = normalizeAnswerFontSize(value);
+    storageSet(ANSWER_FONT_SIZE_KEY, String(state.answerFontSize));
+    var input = document.getElementById('ai-chat-answer-font-size');
+    var output = document.getElementById('ai-chat-answer-font-size-value');
+    var panel = document.getElementById('ai-chat-panel');
+    if (input) input.value = String(state.answerFontSize);
+    if (output) output.textContent = state.answerFontSize + 'px';
+    if (panel) panel.style.setProperty('--ai-chat-answer-font-size', state.answerFontSize + 'px');
+  }
+
   function setShowReasoning(show) {
     state.showReasoning = !!show;
     storageSet(SHOW_REASONING_KEY, state.showReasoning ? '1' : '0');
@@ -1959,6 +2054,7 @@
     var academicCount = document.getElementById('ai-chat-academic-count');
     var academicCountInput = document.getElementById('ai-chat-academic-count-input');
     var showReasoning = document.getElementById('ai-chat-show-reasoning');
+    var fastMode = document.getElementById('ai-chat-fast-mode');
     var modeButtons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-mode]');
     if (send) send.disabled = state.running || state.storageInitializing;
     if (stop) stop.disabled = !state.running;
@@ -1972,6 +2068,7 @@
     var imageModel = state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel);
     for (var i = 0; i < modeButtons.length; i++) modeButtons[i].disabled = state.running || imageModel;
     if (showReasoning) showReasoning.disabled = state.running || imageModel;
+    if (fastMode) fastMode.disabled = state.running || imageModel;
     if (academicToggle) academicToggle.disabled = state.running || imageModel;
     if (internetToggle) internetToggle.disabled = state.running || imageModel;
     if (academicCount) academicCount.disabled = state.running || imageModel;
@@ -1996,7 +2093,7 @@
     }
     header.textContent += state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel)
       ? ' · 이미지 생성'
-      : (state.responseMode === 'reasoning' ? ' · 추론' : ' · 즉시응답');
+      : (state.fastMode ? ' · FAST' : (state.responseMode === 'reasoning' ? ' · 추론' : ' · 즉시응답'));
     if (state.responseMode === 'reasoning' && !state.showReasoning && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel))) {
       header.textContent += ' · 내용 숨김';
     }
@@ -2396,16 +2493,28 @@
   function parseAssistantSections(rawText) {
     var raw = String(rawText || '').trim();
     var checklist = '';
+    var explanation = '';
     var answer = raw;
     var remaining = raw;
     var checklistTag = raw.match(/\[CHECKLIST\]([\s\S]*?)\[\/CHECKLIST\]/i);
+    var explanationTag = raw.match(/\[EXPLANATION\]([\s\S]*?)\[\/EXPLANATION\]/i);
     var answerTag = raw.match(/\[ANSWER\]([\s\S]*?)\[\/ANSWER\]/i);
+    if (explanationTag) {
+      explanation = explanationTag[1].trim();
+      remaining = remaining.replace(explanationTag[0], '').trim();
+    }
     if (checklistTag) {
       checklist = checklistTag[1].trim();
       remaining = remaining.replace(checklistTag[0], '').trim();
     }
     if (answerTag) answer = answerTag[1].trim();
-    else if (checklistTag) answer = raw.replace(checklistTag[0], '').replace(/\[\/?ANSWER\]/gi, '').trim();
+    else if (checklistTag || explanationTag) {
+      answer = raw
+        .replace(checklistTag ? checklistTag[0] : '', '')
+        .replace(explanationTag ? explanationTag[0] : '', '')
+        .replace(/\[\/?(?:ANSWER|EXPLANATION)\]/gi, '')
+        .trim();
+    }
     // Recover responses that reached the output limit before closing the tags.
     // This also repairs already-saved academic answers on the next load.
     if (!checklistTag || !answerTag) {
@@ -2453,7 +2562,7 @@
         }
       }
     }
-    return { answer: answer || raw, checklist: checklist, remaining: remaining };
+    return { answer: answer || raw, explanation: explanation, checklist: checklist, remaining: remaining };
   }
 
   var ACADEMIC_CHECKLIST = [
@@ -2688,7 +2797,7 @@
   function sanitizeAssistantMessage(message) {
     if (!message || message.role !== 'assistant') return message;
     var detectedStatus = false;
-    ['content', 'reasoning', 'checklist'].forEach(function (field) {
+    ['content', 'explanation', 'reasoning', 'checklist'].forEach(function (field) {
       if (!message[field]) return;
       var status = extractModelStatus(message[field]);
       message[field] = status.answer;
@@ -3694,6 +3803,22 @@
         }
         item.appendChild(meta);
         if (message.role === 'user') appendUserAttachmentGallery(item, message);
+        if (message.role === 'assistant' && message.explanation) {
+          var explanation = document.createElement('section');
+          explanation.className = 'ai-chat-explanation';
+          var explanationHead = document.createElement('div');
+          explanationHead.innerHTML = '<strong>응답 설명</strong>';
+          var explanationCopy = document.createElement('button');
+          explanationCopy.type = 'button';
+          explanationCopy.textContent = '설명 복사';
+          explanationCopy.addEventListener('click', function () { copyText(message.explanation); });
+          explanationHead.appendChild(explanationCopy);
+          var explanationBody = document.createElement('div');
+          explanationBody.textContent = message.explanation;
+          explanation.appendChild(explanationHead);
+          explanation.appendChild(explanationBody);
+          item.appendChild(explanation);
+        }
         if (message.role === 'assistant' && message.checklist) {
           var checklist = document.createElement('section');
           checklist.className = 'ai-chat-checklist';
@@ -3912,9 +4037,10 @@
     if (!state.messages.length) return setStatus('복사할 대화가 없습니다.', 'error');
     copyText(state.messages.map(function (message) {
       var reasoning = state.showReasoning && message.reasoning ? '\n\n[모델의 생각/추론]\n' + message.reasoning : '';
+      var explanation = message.explanation ? '\n\n[응답 설명]\n' + message.explanation : '';
       var checklist = message.checklist ? '\n\n[답변 체크리스트]\n' + message.checklist : '';
       var images = Array.isArray(message.images) && message.images.length ? '\n\n[생성 이미지 ' + message.images.length + '개]' : '';
-      return (message.role === 'user' ? '나' : 'AI') + ':\n' + message.content + checklist + reasoning + images;
+      return (message.role === 'user' ? '나' : 'AI') + ':\n' + message.content + explanation + checklist + reasoning + images;
     }).join('\n\n'));
   }
 
@@ -3965,6 +4091,7 @@
       }
       answerNumber += 1;
       lines.push('## 답변 ' + answerNumber, '');
+      if (message.explanation) lines.push('### 응답 설명', '', String(message.explanation).trim(), '');
       if (message.checklist) lines.push('### 답변 체크리스트', '', String(message.checklist).trim(), '');
       if (state.showReasoning && message.reasoning) lines.push('### 모델의 생각/추론', '', String(message.reasoning).trim(), '');
       lines.push('### 최종 답변', '', String(message.content || '').trim(), '');
@@ -4225,8 +4352,26 @@
     item.appendChild(gallery);
   }
 
+  function needsConversationContext(value) {
+    var text = String(value || '').trim();
+    if (!text) return true;
+    return /(?:^|\s)(?:위|앞서|이전|방금|그것|그거|그중|그때|해당|이어서|계속|다시|더\s*(?:자세히|짧게|길게)|첫\s*번째|두\s*번째|세\s*번째|전술한|앞의)(?:\s|$|[을를이가은는의])/i.test(text)
+      || /\b(?:it|that|those|above|previous|earlier|continue|again|elaborate|shorter|longer)\b/i.test(text);
+  }
+
+  function adaptiveContextLimit(latestMessage) {
+    var text = String(latestMessage && latestMessage.content || '').trim();
+    var attachments = Array.isArray(latestMessage && latestMessage.attachments) ? latestMessage.attachments : [];
+    if (needsConversationContext(text)) return MAX_CONTEXT_MESSAGES;
+    if (attachments.length || text.length > 1200) return 8;
+    if (text.length > 320) return 6;
+    return 3;
+  }
+
   function contextMessages() {
-    var messages = state.messages.filter(function (message) { return !message.error && !message.failed; }).slice(-MAX_CONTEXT_MESSAGES);
+    var valid = state.messages.filter(function (message) { return !message.error && !message.failed; });
+    var latestMessage = valid.length ? valid[valid.length - 1] : null;
+    var messages = valid.slice(state.fastMode ? -1 : -adaptiveContextLimit(latestMessage));
     while (messages.length && messages[0].role !== 'user') messages.shift();
     return messages.map(function (message) {
       return { role: message.role, content: messageContentWithDocuments(message), attachments: message.attachments || [] };
@@ -4427,8 +4572,8 @@
     renderMessages();
     renderMessages();
     try {
-      var academicSearchActive = state.academicSearchEnabled && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel));
-      var internetSearchActive = state.internetSearchEnabled && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel));
+      var academicSearchActive = !state.fastMode && state.academicSearchEnabled && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel));
+      var internetSearchActive = !state.fastMode && state.internetSearchEnabled && !(state.provider === 'aistudio' && isGeminiImageModel(state.geminiModel));
       var splitAcademicResponse = false;
       var academicEvidence = '';
       var academicProfile = null;
@@ -4536,6 +4681,7 @@
         academicSearch: academicSearchActive,
         internetSearch: false,
         splitAcademicResponse: splitAcademicResponse,
+        fastMode: state.fastMode,
         academicEvidenceCount: academicProfile ? academicProfile.count : 0,
         academicEvidenceTokens: academicProfile ? academicProfile.fullEvidenceTokens : 0,
         retainForContinuation: true,
@@ -4547,14 +4693,24 @@
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0, academicProfile)
           : internetSearchActive
             ? internetSystemInstruction(internetEvidence)
+          : state.fastMode
+            ? [
+              'FAST mode. Use only the latest user message and answer directly with no explanation, rationale, preface, checklist, or meta-commentary.',
+              'Keep the response concise and do not restate the request.',
+              writingStyleInstruction({ academic: false }),
+              MERMAID_DARK_MODE_PROMPT_RULE,
+              'For a Mermaid request, return exactly one fenced mermaid code block and nothing else.'
+            ].join(' ')
           : [
               'You are a capable conversational assistant. Answer in Korean unless the user requests another language.',
               writingStyleInstruction({ academic: false }),
+              MERMAID_DARK_MODE_PROMPT_RULE,
               'This is a continuous multi-turn conversation. Use the previous conversation as context for every new message.',
               'Resolve follow-up references such as "위 질문", "그것", "그중", "두 번째", "더 자세히", and "계속" from the previous user and assistant messages instead of asking the user to repeat them.',
               'When the latest request changes or corrects an earlier request, follow the latest request while preserving still-relevant context.',
               'Follow the requested format, tone, and length precisely. Give a complete, accurate, polished final answer with all requested code or details.',
-              'Return only the answer intended for the user; never expose internal reasoning, planning, checklists, or meta-commentary.'
+              'Always return two clearly tagged sections: [EXPLANATION]a short user-facing summary of the basis or approach[/EXPLANATION] followed by [ANSWER]the final answer[/ANSWER].',
+              'The explanation is not hidden chain-of-thought: keep it concise and never expose private internal reasoning, step-by-step deliberation, planning, checklists, or meta-commentary.'
             ].join(' ')
       });
       var answer = result && result.text != null ? String(result.text) : '';
@@ -4568,7 +4724,7 @@
       if (!responseStatus.answer && !responseStatus.notice && !reasoningText) throw new Error('AI 응답이 비어 있습니다.');
       var sections = responseStatus.answer
         ? parseAssistantSections(responseStatus.answer)
-        : { answer: '', checklist: '', remaining: '' };
+        : { answer: '', explanation: '', checklist: '', remaining: '' };
       if (academicSearchActive) {
         var visibleAcademicAnswer = extractVisibleAnswerBody(sections.answer, true);
         sections.answer = normalizeAcademicAnswer(visibleAcademicAnswer.body, pendingUser.academicSources);
@@ -4591,6 +4747,7 @@
       var assistantMessage = {
         role: 'assistant',
         content: sections.answer,
+        explanation: sections.explanation,
         checklist: sections.checklist,
         reasoning: state.showReasoning ? reasoningText : '',
         notice: responseStatus.notice,
@@ -4699,9 +4856,12 @@
     } else {
       state.answerAppearance = normalizeAnswerAppearance(storageGet(ANSWER_APPEARANCE_KEY, 'plain-light'));
     }
+    state.answerFontSize = normalizeAnswerFontSize(storageGet(ANSWER_FONT_SIZE_KEY, '14'));
     state.insertActionsExpanded = storageGet(INSERT_EXPAND_KEY, '0') === '1';
     setInsertActionsExpanded(state.insertActionsExpanded, false);
     state.responseMode = storageGet(RESPONSE_MODE_KEY, 'quick') === 'reasoning' ? 'reasoning' : 'quick';
+    state.fastMode = storageGet(FAST_MODE_KEY, '0') === '1';
+    if (state.fastMode) state.responseMode = 'quick';
     state.showReasoning = storageGet(SHOW_REASONING_KEY, '0') === '1';
     state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, '0') === '1';
     state.internetSearchEnabled = storageGet(INTERNET_SEARCH_KEY, '0') === '1';
@@ -4720,7 +4880,9 @@
     setProviderControlsOpen(state.providerControlsOpen);
     setWritingStyle(state.writingStyle, false);
     setAnswerAppearance(state.answerAppearance, false);
+    setAnswerFontSize(state.answerFontSize);
     setResponseMode(state.responseMode);
+    setFastMode(state.fastMode, false);
     setShowReasoning(state.showReasoning);
     updateAcademicSearchUI();
     renderMessages();
@@ -4729,6 +4891,7 @@
     setEnabled(state.enabled);
     setRunning(false);
     initializeConversationStore();
+    saveBuiltInPromptRules();
     var checkbox = document.getElementById('ai-chat-enabled');
     if (checkbox && !checkbox._aiChatBound) {
       checkbox._aiChatBound = true;
@@ -4739,6 +4902,7 @@
   root.AIChat = Object.freeze({
     init: init,
     setEnabled: setEnabled,
+    openFromMenu: openFromMenu,
     isEnabled: function () { return state.enabled; },
     isOpen: function () { return state.open; },
     bringToFront: function () {
@@ -4754,7 +4918,10 @@
       state.openaiModel = storageGet(OPENAI_MODEL_KEY, state.openaiModel);
       state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, state.writingStyle));
       state.answerAppearance = normalizeAnswerAppearance(storageGet(ANSWER_APPEARANCE_KEY, state.answerAppearance));
+      state.answerFontSize = normalizeAnswerFontSize(storageGet(ANSWER_FONT_SIZE_KEY, String(state.answerFontSize)));
       state.responseMode = storageGet(RESPONSE_MODE_KEY, state.responseMode) === 'reasoning' ? 'reasoning' : 'quick';
+      state.fastMode = storageGet(FAST_MODE_KEY, state.fastMode ? '1' : '0') === '1';
+      if (state.fastMode) state.responseMode = 'quick';
       state.showReasoning = storageGet(SHOW_REASONING_KEY, state.showReasoning ? '1' : '0') === '1';
       state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, state.academicSearchEnabled ? '1' : '0') === '1';
       state.academicSearchCount = normalizeAcademicCount(storageGet(ACADEMIC_COUNT_KEY, String(state.academicSearchCount)));
@@ -4764,7 +4931,9 @@
       updateProviderUI();
       setWritingStyle(state.writingStyle, false);
       setAnswerAppearance(state.answerAppearance, false);
+      setAnswerFontSize(state.answerFontSize);
       setResponseMode(state.responseMode);
+      setFastMode(state.fastMode, false);
       setShowReasoning(state.showReasoning);
       updateAcademicSearchUI();
       setLayout(state.layout);

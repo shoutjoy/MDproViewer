@@ -194,12 +194,31 @@
       }
     }
 
+    async function loadLMStudioModel(model, configPatch) {
+      try {
+        var result = await makeLMStudioClient(configPatch).loadModel(model, { timeoutMs: 120000 });
+        var loaded = await listLMStudioLoadedModels(configPatch);
+        var selected = loaded.find(function (item) {
+          return item && (item.key === model || item.id === model || item.id === result.instance_id);
+        });
+        var modelId = String(selected && selected.id || result.instance_id || model || '').trim();
+        saveLMStudioConfig({ model: modelId });
+        return { model: modelId, models: loaded, loadResult: result };
+      } catch (error) {
+        throw friendlyError(error, 'lmstudio');
+      }
+    }
+
     async function syncLMStudioLoadedModel(configPatch) {
       var loaded = await listLMStudioLoadedModels(configPatch);
       if (!loaded.length) {
         throw new Error('LM Studio에 현재 로드된 LLM이 없습니다. LM Studio의 Local Server에서 모델을 먼저 Load 하세요.');
       }
-      var model = String(loaded[0].id || '').trim();
+      var configured = String(getLMStudioConfig().model || '').trim();
+      var preferred = loaded.find(function (item) {
+        return item && (item.id === configured || item.key === configured);
+      }) || loaded[0];
+      var model = String(preferred.id || '').trim();
       if (!model) throw new Error('LM Studio에서 로드된 모델 ID를 확인할 수 없습니다.');
       saveLMStudioConfig({ model: model });
       return { model: model, models: loaded };
@@ -395,6 +414,7 @@
       saveLMStudioConfig: saveLMStudioConfig,
       listLMStudioModels: listLMStudioModels,
       listLMStudioLoadedModels: listLMStudioLoadedModels,
+      loadLMStudioModel: loadLMStudioModel,
       listDeepSeekModels: listDeepSeekModels,
       syncLMStudioLoadedModel: syncLMStudioLoadedModel,
       testLMStudio: testLMStudio,
