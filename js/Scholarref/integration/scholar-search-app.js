@@ -41,7 +41,7 @@
         '<button type="button" id="btn-scholar-search"',
         ' class="header-quick-tool hidden"',
         ' title="학술검색 입력창 열기 (Alt+S)" aria-label="학술검색">',
-        '<i data-lucide="search-check" aria-hidden="true"></i><span>학술검색</span></button>'
+        '<i data-lucide="graduation-cap" aria-hidden="true"></i><span>학술검색</span></button>'
       ].join('');
       q('btn-scholar-search').addEventListener('click', open);
       if (global.lucide && typeof global.lucide.createIcons === 'function') global.lucide.createIcons();

@@ -84,3 +84,8 @@
 .aic-app.light .aic-answer-body,.aic-app.light .aic-answer-preview{background:#ffffff}
 .aic-app.light .aic-query,.aic-app.light .aic-results article{background:#ffffff;border-color:#cbd5e1;box-shadow:0 5px 16px rgba(15,23,42,.18)}
 .aic-app.light .aic-detail-empty{margin-top:0;padding:28px;border-radius:14px;background:#ffffff;color:#64748b;box-shadow:0 5px 16px rgba(15,23,42,.18)}
+
+/* Keep every AI answer header visually distinct in the light theme. */
+.aic-app.light .aic-messages article.assistant>header{background:linear-gradient(180deg,#475569,#334155);border-color:#334155;box-shadow:inset 0 1px rgba(255,255,255,.12)}
+.aic-app.light .aic-messages article.assistant>header>b{color:#5eead4;font-weight:900;text-shadow:0 1px 1px rgba(15,23,42,.35)}
+.aic-app.light .aic-messages article.assistant>header .aic-answer-actions span{color:#e2e8f0;font-weight:700}

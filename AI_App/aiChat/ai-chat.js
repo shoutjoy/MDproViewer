@@ -30,6 +30,7 @@
   var PROVIDER_CONTROLS_KEY = 'ss_ai_chat_provider_controls_open';
   var HISTORY_KEY = 'ss_ai_chat_history_v1';
   var HISTORY_SORT_KEY = 'ss_ai_chat_history_sort';
+  var HISTORY_WIDTH_KEY = 'ss_ai_chat_history_width';
   var LAYOUT_KEY = 'ss_ai_chat_layout';
   var START_LAYOUT_KEY = 'ss_ai_chat_start_layout';
   var POPUP_RECT_KEY = 'ss_ai_chat_popup_rect';
@@ -126,6 +127,7 @@
     conversationCreatedAt: 0,
     conversations: [],
     historySort: 'newest',
+    historyWidth: 270,
     historyVisibilityOverride: null,
     conversationDirty: false,
     db: null,
@@ -560,7 +562,7 @@
       + '        <button type="button" data-ai-chat-layout="popup" role="menuitem"><span class="ai-chat-layout-label">팝업 <kbd>Alt+1</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="popup">OFF</span></button>'
       + '        <button type="button" data-ai-chat-layout="dock" role="menuitem"><span class="ai-chat-layout-label">Dock · 우측 사이드바 <kbd>Alt+2</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="dock">OFF</span></button>'
       + '        <button type="button" data-ai-chat-layout="fullscreen" role="menuitem"><span class="ai-chat-layout-label">전체화면 · 기록 보기 <kbd>Alt+3</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="fullscreen">OFF</span></button>'
-      + '        <label class="ai-chat-answer-font-size"><span>답변 폰트 크기</span><input id="ai-chat-answer-font-size" type="range" min="5" max="25" step="1" value="14" aria-label="답변 폰트 크기"><output id="ai-chat-answer-font-size-value" for="ai-chat-answer-font-size">14px</output></label>'
+      + '        <div class="ai-chat-answer-font-size"><span>답변 폰트 크기</span><button type="button" id="ai-chat-answer-font-size-down" class="ai-chat-font-size-step" aria-label="답변 폰트 크기 줄이기">−</button><input id="ai-chat-answer-font-size" type="range" min="5" max="25" step="1" value="14" aria-label="답변 폰트 크기"><button type="button" id="ai-chat-answer-font-size-up" class="ai-chat-font-size-step" aria-label="답변 폰트 크기 늘리기">+</button><output id="ai-chat-answer-font-size-value" for="ai-chat-answer-font-size">14px</output></div>'
       + '        <button type="button" id="ai-chat-set-start-layout" class="ai-chat-set-start-layout" role="menuitem">현재 배치를 시작 위치로 지정</button>'
       + '      </div>'
       + '    </div>'
@@ -572,8 +574,10 @@
       + '    <div class="ai-chat-history-head"><strong>대화 기록</strong><div class="ai-chat-history-head-tools">'
       + '      <select id="ai-chat-history-sort" aria-label="대화 기록 정렬" title="대화 기록 정렬"><option value="newest">최신순</option><option value="oldest">오래된순</option></select>'
       + '      <button type="button" id="ai-chat-history-new" title="새 대화" aria-label="새 대화">＋</button>'
+      + '      <button type="button" id="ai-chat-history-close" class="ai-chat-history-close" title="대화 기록 닫기" aria-label="대화 기록 닫기">×</button>'
       + '    </div></div>'
       + '    <div id="ai-chat-history-list" class="ai-chat-history-list"></div>'
+      + '    <div id="ai-chat-history-resizer" class="ai-chat-history-resizer" role="separator" aria-label="대화 기록 너비 조절" aria-orientation="vertical" tabindex="0"></div>'
       + '  </aside>'
       + '  <div class="ai-chat-main">'
       + '    <button type="button" id="ai-chat-provider-toggle" class="ai-chat-provider-toggle" aria-expanded="false">'
@@ -637,6 +641,9 @@
     document.getElementById('ai-chat-history-toggle').addEventListener('click', toggleHistorySidebar);
     document.getElementById('ai-chat-new').addEventListener('click', startNewChat);
     document.getElementById('ai-chat-history-new').addEventListener('click', startNewChat);
+    document.getElementById('ai-chat-history-close').addEventListener('click', closeHistorySidebar);
+    setupHistoryResize();
+    applyHistoryWidth(storageGet(HISTORY_WIDTH_KEY, '270'), false);
     document.getElementById('ai-chat-history-sort').addEventListener('change', function (event) {
       state.historySort = normalizeHistorySort(event.target.value);
       storageSet(HISTORY_SORT_KEY, state.historySort);
@@ -688,6 +695,12 @@
     }
     document.getElementById('ai-chat-answer-font-size').addEventListener('input', function (event) {
       setAnswerFontSize(event.target.value);
+    });
+    document.getElementById('ai-chat-answer-font-size-down').addEventListener('click', function () {
+      setAnswerFontSize(state.answerFontSize - 1);
+    });
+    document.getElementById('ai-chat-answer-font-size-up').addEventListener('click', function () {
+      setAnswerFontSize(state.answerFontSize + 1);
     });
     var modeButtons = panel.querySelectorAll('[data-ai-chat-mode]');
     for (var modeIndex = 0; modeIndex < modeButtons.length; modeIndex++) {
@@ -1212,6 +1225,59 @@
     if (state.historyVisibilityOverride) renderConversationHistory();
   }
 
+  function closeHistorySidebar() {
+    state.historyVisibilityOverride = false;
+    applyHistoryVisibilityOverride();
+  }
+
+  function normalizeHistoryWidth(value) {
+    return Math.max(220, Math.min(520, Math.round(Number(value) || 270)));
+  }
+
+  function applyHistoryWidth(value, persist) {
+    state.historyWidth = normalizeHistoryWidth(value);
+    var panel = document.getElementById('ai-chat-panel');
+    if (panel) panel.style.setProperty('--ai-chat-history-width', state.historyWidth + 'px');
+    if (persist !== false) storageSet(HISTORY_WIDTH_KEY, String(state.historyWidth));
+  }
+
+  function setupHistoryResize() {
+    var handle = document.getElementById('ai-chat-history-resizer');
+    var sidebar = document.querySelector('#ai-chat-panel .ai-chat-history-sidebar');
+    if (!handle || !sidebar) return;
+    var startX = 0;
+    var startWidth = 0;
+    handle.addEventListener('pointerdown', function (event) {
+      if (event.button !== 0) return;
+      startX = event.clientX;
+      startWidth = sidebar.getBoundingClientRect().width;
+      handle.setPointerCapture(event.pointerId);
+      handle.classList.add('dragging');
+      document.body.classList.add('ai-chat-history-resizing');
+      event.preventDefault();
+    });
+    handle.addEventListener('pointermove', function (event) {
+      if (!handle.hasPointerCapture(event.pointerId)) return;
+      var panel = document.getElementById('ai-chat-panel');
+      var panelWidth = panel ? panel.getBoundingClientRect().width : root.innerWidth;
+      var maximum = Math.max(220, Math.min(520, panelWidth - 180));
+      applyHistoryWidth(Math.max(220, Math.min(maximum, startWidth + event.clientX - startX)), false);
+    });
+    function finishResize(event) {
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      handle.classList.remove('dragging');
+      document.body.classList.remove('ai-chat-history-resizing');
+      applyHistoryWidth(state.historyWidth, true);
+    }
+    handle.addEventListener('pointerup', finishResize);
+    handle.addEventListener('pointercancel', finishResize);
+    handle.addEventListener('keydown', function (event) {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+      applyHistoryWidth(state.historyWidth + (event.key === 'ArrowRight' ? 10 : -10), true);
+      event.preventDefault();
+    });
+  }
+
   function setLayout(layout) {
     layout = normalizeLayout(layout);
     var panel = document.getElementById('ai-chat-panel');
@@ -1232,6 +1298,7 @@
       panel.removeAttribute('style');
       if (layout === 'popup') applyPopupRect();
     }
+    applyHistoryWidth(state.historyWidth, false);
     closeLayoutMenu();
     updateLayoutButtons();
     syncLayoutVisibility();

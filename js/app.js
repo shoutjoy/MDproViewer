@@ -16,6 +16,7 @@ const MAIN_HEADER_BACKGROUND_REMOVED_KEY = 'md_viewer_main_header_background_rem
 const HEADER_FILE_ACTION_STYLE_KEY = 'md_viewer_header_file_action_style_v1';
 const DEFAULT_HEADER_FILE_ACTION_STYLE = 'button';
 const HEADER_FEATURE_KEY_STYLE_KEY = 'md_viewer_header_feature_key_style_v1';
+const HEADER_HEADING_DISPLAY_KEY = 'md_viewer_header_heading_display_v1';
 const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const AI_CHAT_SETTINGS_FOLD_KEY = 'md_viewer_ai_chat_settings_folded';
 const SCHOLAR_LM_SETTINGS_FOLD_KEY = 'md_viewer_scholar_lm_settings_folded';
@@ -71,6 +72,32 @@ function setHeaderFeatureKeyStyle(style) {
 }
 window.setHeaderFeatureKeyStyle = setHeaderFeatureKeyStyle;
 applyHeaderFeatureKeyStyle(getHeaderFeatureKeyStyle(), false);
+
+function getHeaderHeadingDisplay() {
+    return localStorage.getItem(HEADER_HEADING_DISPLAY_KEY) === 'expanded' ? 'expanded' : 'collapsed';
+}
+
+function applyHeaderHeadingDisplay(display, persist) {
+    const normalized = display === 'expanded' ? 'expanded' : 'collapsed';
+    const expanded = document.getElementById('heading-tools-expanded');
+    const collapsed = document.getElementById('heading-tools-collapsed');
+    if (expanded) expanded.classList.toggle('hidden', normalized !== 'expanded');
+    if (collapsed) collapsed.classList.toggle('hidden', normalized === 'expanded');
+    document.querySelectorAll('input[name="header-heading-display"]').forEach(function (input) {
+        input.checked = input.value === normalized;
+    });
+    if (normalized === 'expanded') closeHeadingQuickMenu();
+    if (persist !== false) localStorage.setItem(HEADER_HEADING_DISPLAY_KEY, normalized);
+}
+
+function setHeaderHeadingDisplay(display) {
+    applyHeaderHeadingDisplay(display, true);
+    showToast(display === 'expanded' ? 'Header 제목 버튼을 펼쳤습니다.' : 'Header 제목 버튼을 접었습니다.');
+}
+window.setHeaderHeadingDisplay = setHeaderHeadingDisplay;
+document.addEventListener('DOMContentLoaded', function () {
+    applyHeaderHeadingDisplay(getHeaderHeadingDisplay(), false);
+});
 const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     mammoth: './vendor/mammoth/mammoth.browser.min.js?v=1.12.0',
     docxImport: './js/extendFiles/docx-import.js?v=20260817-dark-table-contrast-1',
@@ -477,6 +504,8 @@ let highlightPopupMsgBound = false;
 let enterButtonInsertBr = false;
 let mermaidQuickMenuBound = false;
 let listQuickMenuBound = false;
+let codeQuoteQuickMenuBound = false;
+let textEmphasisQuickMenuBound = false;
 let footnoteQuickMenuBound = false;
 let selectionWrapEnabled = true;
 let viewModeEditEnabled = false;
@@ -1243,21 +1272,35 @@ function initTheme() {
     applyEditorLightPreference();
 }
 
-function toggleEditorLightMode() {
-    const vp = document.getElementById('content-viewport');
-    if (!vp) return;
-    const isLight = vp.classList.toggle('editor-light-mode');
+function toggleDocumentLightMode() {
+    const dropZone = document.getElementById('drop-zone');
+    if (!dropZone) return;
+    const isLight = !dropZone.classList.contains('document-light-mode');
     localStorage.setItem(EDITOR_LIGHT_KEY, isLight ? '1' : '');
+    applyEditorLightPreference();
+}
+
+function toggleEditorLightMode() {
+    toggleDocumentLightMode();
+}
+window.toggleDocumentLightMode = toggleDocumentLightMode;
+
+function applyDocumentThemeClasses(isLight) {
+    const dropZone = document.getElementById('drop-zone');
+    const vp = document.getElementById('content-viewport');
+    const viewerContainer = document.getElementById('viewer-container');
+    if (dropZone) {
+        dropZone.classList.toggle('document-light-mode', isLight);
+        dropZone.classList.toggle('document-dark-mode', !isLight);
+    }
+    if (vp) vp.classList.toggle('editor-light-mode', isLight);
+    if (viewerContainer) viewerContainer.classList.toggle('document-light-mode', isLight);
     updateEditorLightButton();
 }
 
 function applyEditorLightPreference() {
-    const vp = document.getElementById('content-viewport');
-    if (!vp) return;
     const want = localStorage.getItem(EDITOR_LIGHT_KEY) === '1';
-    if (want) vp.classList.add('editor-light-mode');
-    else vp.classList.remove('editor-light-mode');
-    updateEditorLightButton();
+    applyDocumentThemeClasses(want);
 }
 
 function updateEditorLightButton() {
@@ -1267,7 +1310,8 @@ function updateEditorLightButton() {
     const moon = document.getElementById('editor-light-icon-moon');
     const label = document.getElementById('editor-light-label');
     if (!vp || !btn) return;
-    const isLight = vp.classList.contains('editor-light-mode');
+    const dropZone = document.getElementById('drop-zone');
+    const isLight = dropZone ? dropZone.classList.contains('document-light-mode') : vp.classList.contains('editor-light-mode');
     if (sun) {
         sun.classList.toggle('hidden', !isLight);
         sun.style.display = isLight ? '' : 'none';
@@ -1276,8 +1320,12 @@ function updateEditorLightButton() {
         moon.classList.toggle('hidden', isLight);
         moon.style.display = isLight ? 'none' : '';
     }
-    if (label) label.textContent = isLight ? 'Editor Dark' : 'Editor Light';
-    if (btn) btn.title = isLight ? 'Switch editor to dark mode' : 'Switch editor to light mode';
+    if (label) label.textContent = isLight ? '문서 Dark' : '문서 Light';
+    if (btn) {
+        btn.title = isLight ? '문서를 다크 모드로 전환 (편집·보기 공통)' : '문서를 라이트 모드로 전환 (편집·보기 공통)';
+        btn.setAttribute('aria-label', btn.title);
+        btn.setAttribute('aria-pressed', String(isLight));
+    }
 }
 
 function relocateAiIntegrationSettingsIntoAiUse() {
@@ -1593,6 +1641,19 @@ function organizeSettingsDashboard() {
     ].join('');
     appendToColumn(generalColumn, headerFeatureKeySettings);
     applyHeaderFeatureKeyStyle(getHeaderFeatureKeyStyle(), false);
+    const headerHeadingSettings = document.createElement('div');
+    headerHeadingSettings.id = 'header-heading-display-settings';
+    headerHeadingSettings.className = 'rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 p-3';
+    headerHeadingSettings.innerHTML = [
+        '<div class="text-xs font-bold text-slate-700 dark:text-slate-200">Header 제목 버튼</div>',
+        '<div class="mt-2 flex items-center gap-4" role="radiogroup" aria-label="Header 제목 버튼 접기 또는 펼치기">',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"><input type="radio" name="header-heading-display" value="collapsed" onchange="setHeaderHeadingDisplay(this.value)" class="text-indigo-600 focus:ring-indigo-500"><span>접기</span></label>',
+        '  <label class="inline-flex items-center gap-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer"><input type="radio" name="header-heading-display" value="expanded" onchange="setHeaderHeadingDisplay(this.value)" class="text-indigo-600 focus:ring-indigo-500"><span>펼치기</span></label>',
+        '</div>',
+        '<p class="mt-2 text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">접으면 H1~H3이 하나의 드롭다운 버튼으로 표시됩니다. 기본값은 접기입니다.</p>'
+    ].join('');
+    appendToColumn(generalColumn, headerHeadingSettings);
+    applyHeaderHeadingDisplay(getHeaderHeadingDisplay(), false);
     if (aiUser) {
         aiUser.className = 'border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50 dark:bg-slate-900/50 space-y-2';
         appendToColumn(generalColumn, aiUser);
@@ -6579,6 +6640,81 @@ function closeListQuickMenu() {
     if (btn) btn.setAttribute('aria-expanded', 'false');
 }
 
+function closeCodeQuoteQuickMenu() {
+    const panel = document.getElementById('code-quote-quick-panel');
+    const btn = document.getElementById('btn-code-quote-quick');
+    if (panel) panel.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function closeTextEmphasisQuickMenu() {
+    const panel = document.getElementById('text-emphasis-quick-panel');
+    const btn = document.getElementById('btn-text-emphasis-quick');
+    if (panel) panel.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleTextEmphasisQuickMenu(forceOpen) {
+    const panel = document.getElementById('text-emphasis-quick-panel');
+    const btn = document.getElementById('btn-text-emphasis-quick');
+    if (!panel || !btn) return;
+    if (!textEmphasisQuickMenuBound && document.body) {
+        textEmphasisQuickMenuBound = true;
+        document.body.addEventListener('click', function (event) {
+            const currentPanel = document.getElementById('text-emphasis-quick-panel');
+            const currentButton = document.getElementById('btn-text-emphasis-quick');
+            if (!currentPanel || !currentButton || currentPanel.contains(event.target) || currentButton.contains(event.target)) return;
+            closeTextEmphasisQuickMenu();
+        });
+    }
+    const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
+    btn.setAttribute('aria-expanded', String(shouldOpen));
+}
+
+function toggleCodeQuoteQuickMenu(forceOpen) {
+    const panel = document.getElementById('code-quote-quick-panel');
+    const btn = document.getElementById('btn-code-quote-quick');
+    if (!panel || !btn) return;
+    if (!codeQuoteQuickMenuBound && document.body) {
+        codeQuoteQuickMenuBound = true;
+        document.body.addEventListener('click', function (event) {
+            const currentPanel = document.getElementById('code-quote-quick-panel');
+            const currentButton = document.getElementById('btn-code-quote-quick');
+            if (!currentPanel || !currentButton || currentPanel.contains(event.target) || currentButton.contains(event.target)) return;
+            closeCodeQuoteQuickMenu();
+        });
+    }
+    const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
+    btn.setAttribute('aria-expanded', String(shouldOpen));
+}
+
+function closeHeadingQuickMenu() {
+    const panel = document.getElementById('heading-quick-panel');
+    const btn = document.getElementById('btn-heading-quick');
+    if (panel) panel.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleHeadingQuickMenu(forceOpen) {
+    const panel = document.getElementById('heading-quick-panel');
+    const btn = document.getElementById('btn-heading-quick');
+    if (!panel || !btn) return;
+    const shouldOpen = forceOpen === true ? true : panel.classList.contains('hidden');
+    panel.classList.toggle('hidden', !shouldOpen);
+    btn.setAttribute('aria-expanded', String(shouldOpen));
+    if (!document.body.__headingQuickMenuBound) {
+        document.body.__headingQuickMenuBound = true;
+        document.body.addEventListener('click', function (event) {
+            const currentPanel = document.getElementById('heading-quick-panel');
+            const currentButton = document.getElementById('btn-heading-quick');
+            if (!currentPanel || !currentButton || currentPanel.contains(event.target) || currentButton.contains(event.target)) return;
+            closeHeadingQuickMenu();
+        });
+    }
+}
+
 function toggleListQuickMenu(forceOpen) {
     const panel = document.getElementById('list-quick-panel');
     const btn = document.getElementById('btn-list-quick');
@@ -6655,6 +6791,11 @@ function insertAtCursor(type) {
             before = '*';
             after = '*';
             placeholder = 'italic text';
+            break;
+        case 'inline-code':
+            before = '`';
+            after = '`';
+            placeholder = 'code';
             break;
         case 'superscript':
             before = '<sup>';
@@ -11256,10 +11397,9 @@ function openHighlightDataWindow() {
 function applyImageUploadFeatureVisibility(settings) {
     const enabled = getImageUploadEnabledFromSettings(settings || {});
     const imgBtn = document.getElementById('btn-image-insert');
-    if (imgBtn) imgBtn.style.display = enabled ? 'inline-flex' : 'none';
-    const imageLinkBtn = document.getElementById('btn-image-link');
-    if (imageLinkBtn) imageLinkBtn.style.display = enabled ? 'none' : 'inline-flex';
-    if (!enabled) closeImageInsertQuickMenu();
+    if (imgBtn) imgBtn.style.display = 'inline-flex';
+    const imageUploadBtn = document.getElementById('btn-image-upload-quick');
+    if (imageUploadBtn) imageUploadBtn.classList.toggle('hidden', !enabled);
     const section = document.getElementById('image-upload-settings');
     const check = document.getElementById('image-upload-enabled');
     if (section && check) section.classList.toggle('hidden', !check.checked);
@@ -11287,6 +11427,12 @@ function openImageLinkFromQuickMenu(event) {
     if (event) event.stopPropagation();
     closeImageInsertQuickMenu();
     openLinkModal('image');
+}
+
+function openLinkFromQuickMenu(event) {
+    if (event) event.stopPropagation();
+    closeImageInsertQuickMenu();
+    openLinkModal('link');
 }
 
 function openImagePanelFromQuickMenu(event) {
@@ -12285,6 +12431,7 @@ function readScholarAIProviderSettingsForm() {
         reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
         fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 3000),
         fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 60) * 1000,
+        fastSafetyTimeout: !!(document.getElementById('settings-aichat-fast-safety-timeout') && document.getElementById('settings-aichat-fast-safety-timeout').checked),
         reasoningLevel: value('settings-aichat-reasoning-level') || 'auto',
         timeoutMs: Number(value('settings-lmstudio-timeout') || 90) * 1000,
         topP: value('settings-lmstudio-top-p') === '' ? null : Number(value('settings-lmstudio-top-p'))
@@ -12396,6 +12543,8 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
     setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 3000);
     setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 60000) / 1000)));
+    const fastSafetyTimeout = document.getElementById('settings-aichat-fast-safety-timeout');
+    if (fastSafetyTimeout) fastSafetyTimeout.checked = config.fastSafetyTimeout !== false;
     setValue('settings-aichat-reasoning-level', config.reasoningLevel || 'auto');
     setValue('settings-lmstudio-timeout', Math.max(1, Math.round((config.timeoutMs || 90000) / 1000)));
     setValue('settings-lmstudio-top-p', config.topP == null ? '' : config.topP);
@@ -14201,6 +14350,9 @@ window.AIChatBridge = Object.freeze({
             const fastMode = request.fastMode === true;
             const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 3000);
             const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 60000);
+            const fastSafetyTimeoutMs = config.fastSafetyTimeout === false
+                ? configuredFastTimeoutMs
+                : Math.max(configuredFastTimeoutMs, 120000);
             const requestedOutputTokens = fastMode ? Math.min(configuredFastMaxTokens, configuredMaxTokens) : (contextLength || configuredMaxTokens);
             const baseSystemPrompt = [request.systemInstruction || '', modeInstruction].filter(Boolean).join('\n\n');
             const fixedInputTokens = estimateAIChatTokens(baseSystemPrompt) + estimateAIChatTokens(messages[lastUserIndex].content);
@@ -14222,9 +14374,9 @@ window.AIChatBridge = Object.freeze({
             const requestMaxTokens = Math.max(1, Math.min(contextOutputBudget, fastMode ? configuredFastMaxTokens : contextOutputBudget));
             const minimumTimeout = continuationMode
                 ? 600000
-                : (fastMode ? configuredFastTimeoutMs : (reasoningMode ? 300000 : (request.academicSearch ? 240000 : 60000)));
+                : (fastMode ? fastSafetyTimeoutMs : (reasoningMode ? 300000 : (request.academicSearch ? 240000 : 60000)));
             const requestTimeoutMs = fastMode
-                ? configuredFastTimeoutMs
+                ? minimumTimeout
                 : Math.max(
                     minimumTimeout,
                     Number(config.timeoutMs) || 0,
@@ -15825,6 +15977,10 @@ window.dismissRecovery = dismissRecovery;
 window.loadFromExternalContent = loadFromExternalContent;
 window.pasteFromClipboardAndDismiss = pasteFromClipboardAndDismiss;
 window.insertAtCursor = insertAtCursor;
+window.toggleTextEmphasisQuickMenu = toggleTextEmphasisQuickMenu;
+window.closeTextEmphasisQuickMenu = closeTextEmphasisQuickMenu;
+window.toggleCodeQuoteQuickMenu = toggleCodeQuoteQuickMenu;
+window.closeCodeQuoteQuickMenu = closeCodeQuoteQuickMenu;
 window.toggleMermaidQuickMenu = toggleMermaidQuickMenu;
 window.closeMermaidQuickMenu = closeMermaidQuickMenu;
 window.toggleEnterButtonInsertBrSetting = toggleEnterButtonInsertBrSetting;

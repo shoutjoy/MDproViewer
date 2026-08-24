@@ -101,3 +101,9 @@ test('center has a compact round theme control and an always-visible top categor
   assert.match(css, /border-radius:50%/);
   assert.match(css, /grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
 });
+
+test('light theme keeps each AI answer header dark and high contrast', () => {
+  const css = read('AI_App/dataCenter/ai-data-center.css');
+  assert.match(css, /\.aic-app\.light \.aic-messages article\.assistant>header\{background:linear-gradient\(180deg,#475569,#334155\)/);
+  assert.match(css, /article\.assistant>header>b\{color:#5eead4;font-weight:900/);
+});

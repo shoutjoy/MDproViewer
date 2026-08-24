@@ -81,7 +81,7 @@
             { id: 'connect-share', label: 'Share 열기', detail: '문서를 복사하고 공유 대상 메뉴 열기', category: '연결', icon: 'share-2', keywords: 'share 공유 docs gemini colab story sheets slides gist', immediate: true, run: openShareMenu },
             { id: 'connect-scholar-ai', label: 'ScholarAI 열기', detail: '학술 AI 사이드바 열기', category: 'AI', icon: 'sparkles', keywords: 'scholar ai 논문 연구', run: function () { return callGlobal('openScholarAIFromHeader'); } },
             { id: 'connect-image-ai', label: 'sspimgAI 열기', detail: '이미지 AI 사이드바 열기', category: 'AI', icon: 'image-plus', keywords: 'sspimg sspai image ai 이미지', run: function () { return callGlobal('openSspimgAIFromHeader'); } },
-            { id: 'tool-scholar-search', label: '학술검색', detail: '논문 검색 창 열기', category: '도구', icon: 'search-check', keywords: 'scholar 논문 research 학술 검색', run: function () { return callGlobal('openScholarSearchModal'); } },
+            { id: 'tool-scholar-search', label: '학술검색', detail: '논문 검색 창 열기', category: '도구', icon: 'graduation-cap', keywords: 'scholar 논문 research 학술 검색', run: function () { return callGlobal('openScholarSearchModal'); } },
             { id: 'tool-genslide', label: 'GenSlide', detail: '프레젠테이션 도구 열기', category: '도구', icon: 'presentation', keywords: 'slide ppt 프레젠테이션', run: function () { return callGlobal('toggleHtml2pptPanel'); } },
 
             { id: 'template-library', label: '모든 양식 보기', detail: '양식 라이브러리 열기', category: '양식', icon: 'notebook-tabs', keywords: '템플릿 template 양식 불러오기', run: function () { return callGlobal('openTemplatePanel'); } },

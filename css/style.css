@@ -2782,6 +2782,89 @@ html:not(.dark) #app-status-footer button {
     color: #e2e8f0 !important;
 }
 
+/* Footer document-theme toggle: edit and rendered view share one theme,
+   independently from the surrounding application chrome. */
+#drop-zone.document-light-mode #content-viewport,
+#drop-zone.document-light-mode #viewer-container {
+    background: #f8fafc !important;
+}
+
+#drop-zone.document-light-mode #editor-doc-wrap,
+#drop-zone.document-light-mode #viewer-container #viewer {
+    background: #fff !important;
+    color: #1e293b !important;
+}
+
+#drop-zone.document-light-mode #viewer-edit-ta,
+#drop-zone.document-light-mode #viewer-edit-highlight {
+    color: #1e293b !important;
+    -webkit-text-fill-color: #1e293b;
+    caret-color: #0f172a !important;
+    background-color: transparent !important;
+}
+
+#drop-zone.document-light-mode #viewer-edit-highlight {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
+    background-color: #fff !important;
+}
+
+#drop-zone.document-light-mode .markdown-body h1 { color: #1e3a8a; border-bottom-color: #bfdbfe; background: linear-gradient(90deg, rgba(219, 234, 254, .85), rgba(255, 255, 255, 0)); }
+#drop-zone.document-light-mode .markdown-body h2 { color: #1d4ed8; border-bottom-color: #93c5fd; background: linear-gradient(90deg, rgba(219, 234, 254, .7), rgba(255, 255, 255, 0)); }
+#drop-zone.document-light-mode .markdown-body h3 { color: #0284c7; border-left-color: #38bdf8; }
+#drop-zone.document-light-mode .markdown-body h4 { color: #0369a1; border-left-color: #7dd3fc; }
+#drop-zone.document-light-mode .markdown-body h5,
+#drop-zone.document-light-mode .markdown-body h6 { color: #2563eb; }
+#drop-zone.document-light-mode .markdown-body code { background-color: #e2e8f0; color: #1e293b; }
+#drop-zone.document-light-mode .markdown-body blockquote { border-left-color: #cbd5e1; color: #64748b; }
+#drop-zone.document-light-mode .markdown-body a { color: #3b82f6; }
+#drop-zone.document-light-mode .markdown-body table,
+#drop-zone.document-light-mode .markdown-body th,
+#drop-zone.document-light-mode .markdown-body td { border-color: #cbd5e1; }
+#drop-zone.document-light-mode .markdown-body thead th { background-color: #f1f5f9; }
+
+#drop-zone.document-dark-mode #content-viewport,
+#drop-zone.document-dark-mode #viewer-container {
+    background: #020617 !important;
+}
+
+#drop-zone.document-dark-mode #editor-doc-wrap,
+#drop-zone.document-dark-mode #viewer-container #viewer {
+    background: #020617 !important;
+    color: #e2e8f0 !important;
+    border-color: #1e293b !important;
+}
+
+#drop-zone.document-dark-mode #viewer-edit-ta {
+    color: #e2e8f0 !important;
+    -webkit-text-fill-color: #e2e8f0;
+    caret-color: #e2e8f0 !important;
+    background-color: transparent !important;
+}
+
+#drop-zone.document-dark-mode #viewer-edit-highlight {
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
+    background-color: #020617 !important;
+}
+
+#drop-zone.document-dark-mode .markdown-body h1 { color: #bfdbfe; border-bottom-color: #2563eb; background: linear-gradient(90deg, rgba(30, 64, 175, .28), rgba(15, 23, 42, 0)); }
+#drop-zone.document-dark-mode .markdown-body h2 { color: #93c5fd; border-bottom-color: #3b82f6; background: linear-gradient(90deg, rgba(59, 130, 246, .18), rgba(15, 23, 42, 0)); }
+#drop-zone.document-dark-mode .markdown-body h3 { color: #38bdf8; border-left-color: #0ea5e9; }
+#drop-zone.document-dark-mode .markdown-body h4 { color: #7dd3fc; border-left-color: #38bdf8; }
+#drop-zone.document-dark-mode .markdown-body h5,
+#drop-zone.document-dark-mode .markdown-body h6 { color: #93c5fd; }
+#drop-zone.document-dark-mode .markdown-body b,
+#drop-zone.document-dark-mode .markdown-body strong { color: #c084fc; background: none; }
+#drop-zone.document-dark-mode .markdown-body code { background-color: #334155; color: #e2e8f0; }
+#drop-zone.document-dark-mode .markdown-body pre { background-color: var(--code-bg-color); color: var(--code-text-color); }
+#drop-zone.document-dark-mode .markdown-body blockquote { border-left-color: #475569; color: #94a3b8; }
+#drop-zone.document-dark-mode .markdown-body a { color: #60a5fa; }
+#drop-zone.document-dark-mode .markdown-body table,
+#drop-zone.document-dark-mode .markdown-body th,
+#drop-zone.document-dark-mode .markdown-body td { border-color: #64748b; }
+#drop-zone.document-dark-mode .markdown-body thead th { background-color: #1e293b; }
+
 /* Main file actions default to compact icon buttons. The settings option can
    restore their labels without rebuilding the header. */
 .app-header .header-file-action-label {

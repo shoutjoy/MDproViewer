@@ -14,12 +14,19 @@ test('FAST mode is a persisted quick-mode option with minimal context', () => {
   assert.match(chat, /explanation, rationale, preface, checklist/);
 });
 
+test('FAST mode skips searches and safety option extends slow connections to 120 seconds', () => {
+  assert.match(chat, /!state\.fastMode && state\.academicSearchEnabled/);
+  assert.match(chat, /!state\.fastMode && state\.internetSearchEnabled/);
+  assert.match(app, /config\.fastSafetyTimeout === false[\s\S]*Math\.max\(configuredFastTimeoutMs, 120000\)/);
+  assert.match(app, /fastMode \? fastSafetyTimeoutMs/);
+});
+
 test('FAST Mermaid requests return code only and use a bounded local-model budget', () => {
   assert.match(chat, /return exactly one fenced mermaid code block and nothing else/);
   assert.match(chat, /MERMAID_DARK_MODE_PROMPT_RULE/);
   assert.match(app, /Number\(config\.fastMaxTokens\) \|\| 3000/);
   assert.match(app, /Number\(config\.fastTimeoutMs\) \|\| 60000/);
-  assert.match(app, /fastMode\s*\? configuredFastTimeoutMs/);
+  assert.match(app, /fastMode\s*\? fastSafetyTimeoutMs/);
 });
 
 test('built-in Mermaid rule is saved to the AI data center', () => {
