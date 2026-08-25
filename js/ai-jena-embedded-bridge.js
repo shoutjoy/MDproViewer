@@ -14,7 +14,6 @@
 
   function insertMarkdown(payload) {
     payload = payload || {};
-    if (typeof root.viewerSwitchToEdit === 'function') root.viewerSwitchToEdit();
     var editor = document.getElementById('viewer-edit-ta');
     if (!editor) throw new Error('MD Pro Viewer 편집기를 찾지 못했습니다.');
     var cmView = editor.__mdCm6View;
@@ -26,6 +25,10 @@
       : null;
     var start = selection ? Number(selection.from) : Number(editor.selectionStart);
     var end = selection ? Number(selection.to) : Number(editor.selectionEnd);
+    // Switching from the rendered view to edit mode can reposition the editor
+    // caret from the preview scroll ratio. Capture the user's real caret or
+    // selection first, then restore/use it for the requested insertion mode.
+    if (typeof root.viewerSwitchToEdit === 'function') root.viewerSwitchToEdit();
     if (!Number.isFinite(start)) start = value.length;
     if (!Number.isFinite(end)) end = start;
     start = Math.max(0, Math.min(value.length, start));
