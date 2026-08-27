@@ -110,7 +110,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
-    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
+    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
     aiChat: './AI_App/aiChat/ai-chat.js?v=20260825-fast-limits-3',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
@@ -12822,6 +12822,7 @@ const OLLAMA_MODELS_KEY = 'ss_ollama_models_v1';
 const aiChatOllamaContextLengths = Object.create(null);
 const OLLAMA_BASE_URL_KEY = 'ss_ollama_base_url';
 const LITERTLM_SETTINGS_KEY = 'ss_litertlm_settings_v1';
+const LITERTLM_MODELS_KEY = 'ss_litertlm_models_v1';
 const AI_CHAT_GEMINI_DEFAULT_MODELS = [
     'gemini-3.5-flash',
     'gemini-3.1-pro-preview',
@@ -12918,12 +12919,21 @@ function normalizeOllamaBaseUrl(value) {
 }
 
 function getLiteRTLMSettings() {
-    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: '', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true };
+    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: 'https://', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true };
     try {
-        return Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
+        const settings = Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
+        if (!String(settings.cloudUrl || '').trim()) settings.cloudUrl = 'https://';
+        return settings;
     } catch (_) {
         return defaults;
     }
+}
+
+function ensureLiteRTLMUrlPrefix(input) {
+    if (!input) return;
+    const value = String(input.value || '').trim();
+    if (!value) input.value = 'https://';
+    else if (!/^https?:\/\//i.test(value)) input.value = 'https://' + value.replace(/^\/+/, '');
 }
 
 function normalizeLiteRTLMBaseUrl(value) {
@@ -12987,13 +12997,13 @@ function loadLiteRTLMSettingsToUI() {
     setLiteRTLMSettingsFolded(localStorage.getItem('ss_litertlm_settings_folded') === '1');
 }
 
-function saveLiteRTLMSettings(showStatus) {
+async function saveLiteRTLMSettings(showStatus) {
     const read = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
     const cloud = document.getElementById('settings-litertlm-cloud-mode');
     const thinking = document.getElementById('settings-litertlm-thinking');
     const mode = cloud && cloud.checked ? 'cloud' : 'local';
     const settings = {
-        mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: read('settings-litertlm-cloud-url'),
+        mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: read('settings-litertlm-cloud-url') || 'https://',
         localName: read('settings-litertlm-local-name') || 'Local S', localUrl: read('settings-litertlm-local-url') || 'http://localhost:9379/v1',
         model: read('settings-litertlm-model') || 'gemma-4-E2B-it.litertlm', contextLength: Math.max(1, Number(read('settings-litertlm-context-length')) || 4096),
         maxGen: Math.max(1, Number(read('settings-litertlm-max-gen')) || 2048), sampler: read('settings-litertlm-sampler') || 'greedy',
@@ -13006,14 +13016,20 @@ function saveLiteRTLMSettings(showStatus) {
     localStorage.setItem(LITERTLM_SETTINGS_KEY, JSON.stringify(settings));
     if (showStatus) {
         const status = document.getElementById('settings-litertlm-status');
-        if (status) status.textContent = 'LiteRT-LM 설정을 저장했습니다.';
-        showToast('LiteRT-LM 설정을 저장했습니다.');
+        if (status) status.textContent = '설정을 저장했습니다. LiteRT-LM에 연결하는 중...';
+        try {
+            const models = await loadSettingsLiteRTLMModels();
+            if (window.AIChat && typeof window.AIChat.syncSettings === 'function') window.AIChat.syncSettings();
+            showToast('LiteRT-LM 연결 완료 · 모델 ' + models.length + '개');
+        } catch (_) {
+            showToast('설정은 저장했지만 LiteRT-LM 연결에 실패했습니다.', 'error');
+        }
     }
     return settings;
 }
 
 async function requestLiteRTLM(path, options) {
-    const settings = saveLiteRTLMSettings(false);
+    const settings = await saveLiteRTLMSettings(false);
     const baseUrl = normalizeLiteRTLMBaseUrl(settings.mode === 'cloud' ? settings.cloudUrl : settings.localUrl);
     const response = await fetch(baseUrl + path, options);
     if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text() || response.statusText));
@@ -13034,7 +13050,8 @@ async function loadSettingsLiteRTLMModels() {
             models.forEach(function (name) { select.add(new Option(name, name)); });
             select.value = models.indexOf(result.settings.model) >= 0 ? result.settings.model : models[0];
         }
-        saveLiteRTLMSettings(false);
+        localStorage.setItem(LITERTLM_MODELS_KEY, JSON.stringify(models));
+        await saveLiteRTLMSettings(false);
         if (status) status.textContent = '연결 완료 · 모델 ' + models.length + '개: ' + models.join(' · ');
         return models;
     } catch (error) {
@@ -13047,7 +13064,7 @@ async function testSettingsLiteRTLMResponse() {
     const status = document.getElementById('settings-litertlm-status');
     try {
         if (status) status.textContent = 'LiteRT-LM 실제 응답을 기다리는 중...';
-        const settings = saveLiteRTLMSettings(false);
+        const settings = await saveLiteRTLMSettings(false);
         const body = { model: settings.model, messages: [{ role: 'user', content: '한 문장으로 연결 테스트 성공이라고 답하세요.' }], stream: false, max_tokens: Math.min(settings.maxGen, 64), temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, thinking: settings.thinking };
         const result = await requestLiteRTLM('/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
         const text = String(result.data && result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content || '').trim();
@@ -14345,6 +14362,15 @@ window.AIChatBridge = Object.freeze({
         const controller = new AbortController();
         aiChatAbortController = controller;
         try {
+            if (request.provider === 'litertlm') {
+                const settings = getLiteRTLMSettings();
+                const messages = normalizeAIChatMessages(request.messages);
+                if (request.systemInstruction) messages.unshift({ role: 'system', content: String(request.systemInstruction) });
+                const body = { model: request.model || settings.model, messages: messages, stream: false, max_tokens: settings.maxGen, temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, thinking: settings.thinking };
+                const result = await requestLiteRTLM('/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+                const choice = result.data && result.data.choices && result.data.choices[0] || {};
+                return { provider: 'litertlm', model: result.data.model || body.model, text: String(choice.message && choice.message.content || choice.text || ''), reasoning: String(choice.message && choice.message.reasoning_content || ''), finishReason: choice.finish_reason || '', usage: result.data.usage || null, contextLength: settings.contextLength, maxOutputTokens: settings.maxGen, responseId: result.data.id || null };
+            }
             if (request.provider === 'aistudio') {
                 return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch, request.academicEvidenceCount);
             }
@@ -14579,6 +14605,8 @@ function ensureSidebarAILoaded() {
             getCachedScholarAIDeepseekModels: function () { return readStoredModelList(AI_CHAT_DEEPSEEK_MODELS_KEY); },
             getCachedScholarAIOpenAIModels: function () { return mergeAIChatOpenAIModels(readStoredModelList(AI_CHAT_OPENAI_MODELS_KEY)); },
             getCachedScholarAILMStudioModels: function () { return readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY); },
+            getCachedLiteRTLMModels: function () { return readStoredModelList(LITERTLM_MODELS_KEY); },
+            refreshLiteRTLMModels: function () { return loadSettingsLiteRTLMModels(); },
             refreshScholarAILMStudioModels: async function () {
                 const ids = await getScholarAIProviderRuntime().listLMStudioModels();
                 saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);

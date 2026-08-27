@@ -20,3 +20,6 @@ restore/temp/index.html
 
 # Large local FMA Viewer segmentation model
 /Apps/fmaviewer/image_model/u2net_human_seg.onnx
+node_modules/
+dist/
+src-tauri/target/
