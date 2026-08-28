@@ -5404,6 +5404,7 @@ async function copyViewFormattedToClipboard() {
 function toggleSidebarVisibility() {
     isSidebarHidden = !isSidebarHidden;
     sidebar.style.display = isSidebarHidden ? 'none' : 'flex';
+    requestAnimationFrame(syncEditorShiftFloatPosition);
 }
 
 function toggleSidebarCollapse() {
@@ -5425,6 +5426,7 @@ function toggleSidebarCollapse() {
     refreshLucideIcons(collapseIcon && collapseIcon.parentElement ? collapseIcon.parentElement : sidebar);
     renderDBList();
     if (activeSidebarTab === 'toc') renderTOC();
+    requestAnimationFrame(syncEditorShiftFloatPosition);
 }
 
 // --- TOC & Sidebar Tabs ---
@@ -8074,6 +8076,34 @@ function applyEditorHorizontalShift() {
     editorDocWrap.style.transform = `translateX(${editorHorizontalShiftPx}px)`;
     editorDocWrap.style.transition = 'transform 120ms ease';
     if (display) display.textContent = `${editorHorizontalShiftPx}px`;
+    syncEditorShiftFloatPosition();
+}
+
+let editorShiftFloatPositionTrackingInstalled = false;
+
+function syncEditorShiftFloatPosition() {
+    const control = document.getElementById('editor-shift-float');
+    const viewport = document.getElementById('content-viewport');
+    if (!control || !viewport) return;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const sidebarEl = document.getElementById('sidebar');
+    const sidebarVisible = !!(sidebarEl && getComputedStyle(sidebarEl).display !== 'none');
+    const sidebarRect = sidebarVisible ? sidebarEl.getBoundingClientRect() : null;
+    const outsideSidebarLeft = sidebarRect && sidebarRect.width > 0 ? sidebarRect.right + 8 : viewportRect.left + 8;
+
+    control.style.left = `${Math.max(viewportRect.left + 8, outsideSidebarLeft)}px`;
+    control.style.bottom = `${Math.max(8, window.innerHeight - viewportRect.bottom + 8)}px`;
+
+    if (editorShiftFloatPositionTrackingInstalled) return;
+    editorShiftFloatPositionTrackingInstalled = true;
+    window.addEventListener('resize', syncEditorShiftFloatPosition, { passive: true });
+    window.addEventListener('md-viewer:sidebar-resized', syncEditorShiftFloatPosition);
+    if (typeof ResizeObserver === 'function') {
+        const observer = new ResizeObserver(syncEditorShiftFloatPosition);
+        observer.observe(viewport);
+        if (sidebarEl) observer.observe(sidebarEl);
+    }
 }
 
 function adjustEditorHorizontalShift(delta) {
