@@ -23,6 +23,7 @@ const AI_USE_FOLD_KEY = 'md_viewer_ai_use_folded';
 const AI_CHAT_SETTINGS_FOLD_KEY = 'md_viewer_ai_chat_settings_folded';
 const SCHOLAR_LM_SETTINGS_FOLD_KEY = 'md_viewer_scholar_lm_settings_folded';
 const SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY = 'md_viewer_scholar_ollama_settings_folded';
+const AI_PROVIDER_FOLDS_DEFAULT_VERSION_KEY = 'md_viewer_ai_provider_folds_default_v1';
 const SHARE_SETTINGS_FOLD_KEY = 'md_viewer_share_settings_folded';
 const GOOGLE_CALENDAR_ENABLED_KEY = 'md_viewer_google_calendar_enabled';
 const GOOGLE_CALENDAR_URL = 'https://calendar.google.com/calendar/u/0/r';
@@ -113,7 +114,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260828-litertlm-models-2',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260828-settings-import-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -1260,6 +1261,12 @@ function toggleTheme() {
     const html = document.documentElement;
     const isDark = html.classList.toggle('dark');
     localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+    // The header theme control is the global reset point: it always aligns the
+    // document/editor with the newly selected application theme. The footer
+    // control may still override the document independently until this button
+    // is used again.
+    localStorage.setItem(EDITOR_LIGHT_KEY, isDark ? '' : '1');
+    applyEditorLightPreference();
     syncSidebarAiTheme();
     refreshMermaidDisplay();
 }
@@ -1343,6 +1350,7 @@ function relocateAiIntegrationSettingsIntoAiUse() {
     const ollamaSettings = document.getElementById('ollama-provider-settings');
     const liteRTLMSettings = document.getElementById('litertlm-provider-settings');
     const aiDataCenterSettings = document.getElementById('ai-data-center-settings');
+    ensureAiProviderFoldsDefault();
     initializeAiSettingsDetailsToggles();
     if (aiChatSettings) {
         aiChatSettings.className = 'pb-3 border-b border-slate-200 dark:border-slate-700';
@@ -1353,14 +1361,14 @@ function relocateAiIntegrationSettingsIntoAiUse() {
         if (!providerBody) {
             providerBody = document.createElement('div');
             providerBody.id = 'scholar-lm-settings-body';
-            providerBody.className = 'mt-3 space-y-3';
+            providerBody.className = 'hidden mt-3 space-y-3';
             while (scholarLmSettings.firstChild) {
                 providerBody.appendChild(scholarLmSettings.firstChild);
             }
             const header = document.createElement('div');
             header.className = 'flex items-center justify-between gap-2';
             header.innerHTML = '<p class="text-xs font-semibold text-slate-700 dark:text-slate-300">LM Studio 설정</p>'
-                + '<button type="button" id="scholar-lm-settings-fold-btn" onclick="toggleScholarLmSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" aria-controls="scholar-lm-settings-body">접기</button>';
+                + '<button type="button" id="scholar-lm-settings-fold-btn" onclick="toggleScholarLmSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" aria-expanded="false" aria-controls="scholar-lm-settings-body">펼치기</button>';
             scholarLmSettings.appendChild(header);
             scholarLmSettings.appendChild(providerBody);
         }
@@ -1371,14 +1379,14 @@ function relocateAiIntegrationSettingsIntoAiUse() {
         if (!ollamaBody) {
             ollamaBody = document.createElement('div');
             ollamaBody.id = 'scholar-ollama-settings-body';
-            ollamaBody.className = 'mt-3 space-y-3';
+            ollamaBody.className = 'hidden mt-3 space-y-3';
             while (ollamaSettings.firstChild) {
                 ollamaBody.appendChild(ollamaSettings.firstChild);
             }
             const header = document.createElement('div');
             header.className = 'flex items-center justify-between gap-2';
             header.innerHTML = '<p class="text-xs font-semibold text-slate-700 dark:text-slate-300">Ollama 설정</p>'
-                + '<button type="button" id="scholar-ollama-settings-fold-btn" onclick="toggleScholarOllamaSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" aria-controls="scholar-ollama-settings-body">접기</button>';
+                + '<button type="button" id="scholar-ollama-settings-fold-btn" onclick="toggleScholarOllamaSettingsFold()" class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" aria-expanded="false" aria-controls="scholar-ollama-settings-body">펼치기</button>';
             ollamaSettings.appendChild(header);
             ollamaSettings.appendChild(ollamaBody);
         }
@@ -9466,6 +9474,20 @@ function getAiChatSettingsFoldedFromLocal() {
     return v == null ? true : v === '1';
 }
 
+function ensureAiProviderFoldsDefault() {
+    if (localStorage.getItem(AI_PROVIDER_FOLDS_DEFAULT_VERSION_KEY) === '1') return;
+    [
+        AI_CHAT_SETTINGS_FOLD_KEY,
+        SCHOLAR_LM_SETTINGS_FOLD_KEY,
+        SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY,
+        'ss_litertlm_settings_folded'
+    ].forEach(function (key) { localStorage.setItem(key, '1'); });
+    document.querySelectorAll('#ai-link-settings-block details').forEach(function (details) {
+        details.open = false;
+    });
+    localStorage.setItem(AI_PROVIDER_FOLDS_DEFAULT_VERSION_KEY, '1');
+}
+
 function setAiChatSettingsFoldedToLocal(folded) {
     localStorage.setItem(AI_CHAT_SETTINGS_FOLD_KEY, folded ? '1' : '0');
 }
@@ -11903,15 +11925,57 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     'ss_ai_chat_layout'
 ];
 
+// AI options are added in several independently loaded modules. Keep the
+// settings backup forward-compatible without turning it into a chat/history
+// backup (those records can be large and have their own persistence path).
+const SETTINGS_EXPORT_AI_LOCAL_KEY_PREFIXES = [
+    'ss_ai_',
+    'ss_scholar_ai_',
+    'ss_viewer_scholar_ai_',
+    'ss_openai_',
+    'ss_deepseek_',
+    'ss_gemini_',
+    'ss_image_',
+    'ss_litertlm_',
+    'ss_ollama_',
+    'local_ai_',
+    'mdpro_ai_'
+];
+
+const SETTINGS_EXPORT_AI_LOCAL_KEY_EXCLUDES = [
+    /(?:^|_)history(?:_|$)/,
+    /(?:^|_)current_conversation_id$/,
+    /(?:^|_)idb_migrated(?:_|$)/,
+    /(?:^|_)payload(?:_|$)/
+];
+
+function isSettingsExportLocalKey(key) {
+    const safeKey = String(key || '');
+    if (SETTINGS_EXPORT_LOCAL_KEYS.indexOf(safeKey) >= 0) return true;
+    if (!SETTINGS_EXPORT_AI_LOCAL_KEY_PREFIXES.some(function (prefix) { return safeKey.indexOf(prefix) === 0; })) {
+        return false;
+    }
+    return !SETTINGS_EXPORT_AI_LOCAL_KEY_EXCLUDES.some(function (pattern) { return pattern.test(safeKey); });
+}
+
+function getSettingsExportLocalKeys() {
+    const keys = SETTINGS_EXPORT_LOCAL_KEYS.slice();
+    for (let i = 0; i < localStorage.length; i += 1) {
+        const key = localStorage.key(i);
+        if (isSettingsExportLocalKey(key) && keys.indexOf(key) < 0) keys.push(key);
+    }
+    return keys;
+}
+
 function buildSettingsExportPayload(aiSettings) {
     const local = {};
-    SETTINGS_EXPORT_LOCAL_KEYS.forEach(function (k) {
+    getSettingsExportLocalKeys().forEach(function (k) {
         const v = localStorage.getItem(k);
         if (v != null) local[k] = v;
     });
     return {
         format: 'md_viewer_settings',
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         aiSettings: aiSettings || {},
         localStorage: local
@@ -11961,8 +12025,8 @@ async function applyImportedSettingsPayload(payload) {
 
     await setAiSettings(aiSettings);
 
-    SETTINGS_EXPORT_LOCAL_KEYS.forEach(function (k) {
-        if (Object.prototype.hasOwnProperty.call(local, k)) {
+    Object.keys(local).forEach(function (k) {
+        if (isSettingsExportLocalKey(k)) {
             const v = local[k];
             if (v == null) localStorage.removeItem(k);
             else localStorage.setItem(k, String(v));
@@ -11970,6 +12034,7 @@ async function applyImportedSettingsPayload(payload) {
     });
 
     if (typeof loadAiSettingsToUI === 'function') await loadAiSettingsToUI();
+    if (window.AIChat && typeof window.AIChat.syncSettings === 'function') window.AIChat.syncSettings();
     if (typeof initAiVisibility === 'function') await initAiVisibility();
     if (typeof window.syncInDbStorageSettingsUi === 'function') window.syncInDbStorageSettingsUi();
     if (typeof applyCodeColorSettings === 'function') applyCodeColorSettings();
@@ -12862,6 +12927,9 @@ const aiChatOllamaContextLengths = Object.create(null);
 const OLLAMA_BASE_URL_KEY = 'ss_ollama_base_url';
 const LITERTLM_SETTINGS_KEY = 'ss_litertlm_settings_v1';
 const LITERTLM_MODELS_KEY = 'ss_litertlm_models_v1';
+const LITERTLM_CLOUD_BASE_URL = 'https://llm1.abci.co.kr/v1';
+const LITERTLM_LEGACY_MODEL = 'gemma-4-E2B-it.litertlm';
+const LITERTLM_MIGRATED_MODEL = 'gemma-4-E4B';
 const AI_CHAT_GEMINI_DEFAULT_MODELS = [
     'gemini-3.5-flash',
     'gemini-3.1-pro-preview',
@@ -12958,10 +13026,15 @@ function normalizeOllamaBaseUrl(value) {
 }
 
 function getLiteRTLMSettings() {
-    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: 'https://', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true, streaming: true, renderIntervalMs: 100 };
+    const defaults = { mode: 'cloud', cloudName: 'cloud', cloudUrl: LITERTLM_CLOUD_BASE_URL, model: '', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true, streaming: true, renderIntervalMs: 100 };
     try {
         const settings = Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
-        if (!String(settings.cloudUrl || '').trim()) settings.cloudUrl = 'https://';
+        settings.mode = 'cloud';
+        settings.cloudUrl = LITERTLM_CLOUD_BASE_URL;
+        if (String(settings.model || '').trim() === LITERTLM_LEGACY_MODEL) {
+            settings.model = LITERTLM_MIGRATED_MODEL;
+            localStorage.setItem(LITERTLM_SETTINGS_KEY, JSON.stringify(settings));
+        }
         return settings;
     } catch (_) {
         return defaults;
@@ -12985,11 +13058,8 @@ function normalizeLiteRTLMBaseUrl(value) {
 }
 
 function updateLiteRTLMSettingsModeUI() {
-    const cloud = document.getElementById('settings-litertlm-cloud-mode');
     const cloudUrl = document.getElementById('settings-litertlm-cloud-url');
-    const localUrl = document.getElementById('settings-litertlm-local-url');
-    if (cloudUrl) cloudUrl.disabled = !(cloud && cloud.checked);
-    if (localUrl) localUrl.disabled = !!(cloud && cloud.checked);
+    if (cloudUrl) cloudUrl.value = LITERTLM_CLOUD_BASE_URL;
 }
 
 function setLiteRTLMSettingsFolded(folded) {
@@ -13013,8 +13083,6 @@ function loadLiteRTLMSettingsToUI() {
     const values = {
         'settings-litertlm-cloud-name': settings.cloudName,
         'settings-litertlm-cloud-url': settings.cloudUrl,
-        'settings-litertlm-local-name': settings.localName,
-        'settings-litertlm-local-url': settings.localUrl,
         'settings-litertlm-context-length': settings.contextLength,
         'settings-litertlm-max-gen': settings.maxGen,
         'settings-litertlm-sampler': settings.sampler,
@@ -13024,10 +13092,6 @@ function loadLiteRTLMSettingsToUI() {
         'settings-litertlm-render-interval': settings.renderIntervalMs
     };
     Object.keys(values).forEach(function (id) { const el = document.getElementById(id); if (el) el.value = values[id]; });
-    const cloud = document.getElementById('settings-litertlm-cloud-mode');
-    const local = document.getElementById('settings-litertlm-local-mode');
-    if (cloud) cloud.checked = settings.mode === 'cloud';
-    if (local) local.checked = settings.mode !== 'cloud';
     const thinking = document.getElementById('settings-litertlm-thinking');
     if (thinking) thinking.checked = settings.thinking !== false;
     const streaming = document.getElementById('settings-litertlm-streaming');
@@ -13036,27 +13100,27 @@ function loadLiteRTLMSettingsToUI() {
     if (model && settings.model && !Array.from(model.options).some(function (option) { return option.value === settings.model; })) model.add(new Option(settings.model, settings.model));
     if (model) model.value = settings.model;
     updateLiteRTLMSettingsModeUI();
-    setLiteRTLMSettingsFolded(localStorage.getItem('ss_litertlm_settings_folded') === '1');
+    // No saved preference means collapsed. Users who explicitly expand it keep
+    // that choice through the stored "0" value.
+    setLiteRTLMSettingsFolded(localStorage.getItem('ss_litertlm_settings_folded') !== '0');
 }
 
 async function saveLiteRTLMSettings(showStatus) {
     const read = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
-    const cloud = document.getElementById('settings-litertlm-cloud-mode');
     const thinking = document.getElementById('settings-litertlm-thinking');
     const streaming = document.getElementById('settings-litertlm-streaming');
-    const mode = cloud && cloud.checked ? 'cloud' : 'local';
+    const mode = 'cloud';
     const settings = {
-        mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: read('settings-litertlm-cloud-url') || 'https://',
-        localName: read('settings-litertlm-local-name') || 'Local S', localUrl: read('settings-litertlm-local-url') || 'http://localhost:9379/v1',
-        model: read('settings-litertlm-model') || 'gemma-4-E2B-it.litertlm', contextLength: Math.max(1, Number(read('settings-litertlm-context-length')) || 4096),
+        mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: LITERTLM_CLOUD_BASE_URL,
+        model: read('settings-litertlm-model'), contextLength: Math.max(1, Number(read('settings-litertlm-context-length')) || 4096),
         maxGen: Math.max(1, Number(read('settings-litertlm-max-gen')) || 2048), sampler: read('settings-litertlm-sampler') || 'greedy',
         temperature: Math.max(0, Number(read('settings-litertlm-temperature')) || 0), topP: Math.min(1, Math.max(0, Number(read('settings-litertlm-top-p')) || 0)),
         topK: Math.max(1, Number(read('settings-litertlm-top-k')) || 40), thinking: !thinking || thinking.checked,
         streaming: !streaming || streaming.checked,
         renderIntervalMs: Math.max(50, Math.min(500, Number(read('settings-litertlm-render-interval')) || 100))
     };
-    const activeUrl = mode === 'cloud' ? settings.cloudUrl : settings.localUrl;
-    if (!activeUrl) throw new Error(mode === 'cloud' ? 'Cloud Base URL을 입력하세요.' : 'Local URL을 입력하세요.');
+    const activeUrl = settings.cloudUrl;
+    if (!activeUrl) throw new Error('Cloud Base URL이 설정되지 않았습니다.');
     normalizeLiteRTLMBaseUrl(activeUrl);
     localStorage.setItem(LITERTLM_SETTINGS_KEY, JSON.stringify(settings));
     if (showStatus) {
@@ -13180,7 +13244,12 @@ async function testSettingsLiteRTLMResponse() {
     const status = document.getElementById('settings-litertlm-status');
     try {
         if (status) status.textContent = 'LiteRT-LM 실제 응답을 기다리는 중...';
-        const settings = await saveLiteRTLMSettings(false);
+        let settings = await saveLiteRTLMSettings(false);
+        if (!settings.model) {
+            await loadSettingsLiteRTLMModels();
+            settings = await saveLiteRTLMSettings(false);
+        }
+        if (!settings.model) throw new Error('사용할 LiteRT-LM 모델이 없습니다. 먼저 모델 가져오기를 실행하세요.');
         const body = { model: settings.model, messages: [{ role: 'user', content: '한 문장으로 연결 테스트 성공이라고 답하세요.' }], stream: false, max_tokens: Math.min(settings.maxGen, 64), temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, thinking: settings.thinking };
         const result = await requestLiteRTLM('/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
         const text = String(result.data && result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content || '').trim();

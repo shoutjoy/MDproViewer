@@ -249,6 +249,8 @@ html.ai-chat-page-pushed .ai-chat-panel.layout-popup {
 .ai-chat-history-rename-form button.cancel { background: #334155; }
 
 .ai-chat-header {
+  position: relative;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: space-between;
