@@ -22,4 +22,8 @@ restore/temp/index.html
 /Apps/fmaviewer/image_model/u2net_human_seg.onnx
 node_modules/
 dist/
-src-tauri/target/
+
+# Tauri source and finished packages are versioned; only reproducible caches are excluded.
+/Tauri/node_modules/
+/Tauri/dist/
+/Tauri/src-tauri/target/

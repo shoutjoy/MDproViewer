@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MDpro Viewer",
+  "version": "1.0.0",
+  "identifier": "com.mdpro.viewer",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../../../TauriBuildManager/mdpro-viewer/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "MDpro Viewer",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 640,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": []
+  }
+}

@@ -114,7 +114,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260828-settings-import-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260828-aistudio-live-tokens-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -137,6 +137,11 @@ function loadOptionalScript(key, isReady, options) {
         };
         const fail = function () {
             optionalScriptLoads.delete(key);
+            // A failed lazy script must not remain discoverable. Otherwise a
+            // later recovery attempt finds the dead element, attaches another
+            // load listener to it, and waits forever for an event that already
+            // fired.
+            if (script.parentNode) script.parentNode.removeChild(script);
             reject(new Error('Optional script failed to load: ' + source));
         };
         script.addEventListener('load', finish, { once: true });
@@ -173,9 +178,15 @@ function refreshLucideIcons(root) {
 
 async function ensureAiChatLoaded() {
     if (window.AIChat && typeof window.AIChat.open === 'function') return true;
-    await loadOptionalScript('aiAcademicSearch', function () { return !!window.AIChatAcademicSearch; });
-    await loadOptionalScript('aiWebSearch', function () { return !!window.AIJenaLocalAPI; });
-    await loadOptionalScript('aiMarkdown', function () { return !!window.AIChatMarkdown; });
+    // Search and Markdown helpers enhance AI JENA, but none of them is part of
+    // the provider/model transport. Keep a removed or temporarily unavailable
+    // helper from preventing the chat core (and every model provider) from
+    // opening. Individual features already report their own unavailable state.
+    await Promise.allSettled([
+        loadOptionalScript('aiAcademicSearch', function () { return !!window.AIChatAcademicSearch; }),
+        loadOptionalScript('aiWebSearch', function () { return !!window.AIJenaLocalAPI; }),
+        loadOptionalScript('aiMarkdown', function () { return !!window.AIChatMarkdown; })
+    ]);
     await loadOptionalScript('aiChat', function () { return !!window.AIChat; });
     return true;
 }
@@ -1456,6 +1467,9 @@ const OPENAI_COMPATIBLE_PROVIDER_URLS = Object.freeze({
     cerebras: 'https://api.cerebras.ai/v1',
     fireworks: 'https://api.fireworks.ai/inference/v1'
 });
+const OPENAI_COMPATIBLE_MODELS_KEY = 'ss_openai_compatible_models_v1';
+const OPENAI_COMPATIBLE_FREE_ONLY_KEY = 'ss_openai_compatible_free_only';
+let openAICompatibleModels = [];
 
 function normalizeOpenAICompatibleBaseUrl(value) {
     const raw = String(value || '').trim() || OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
@@ -1517,6 +1531,173 @@ function selectOpenAICompatibleModel(modelId) {
     closeOpenAICompatibleModelMenu();
 }
 
+function isOpenAICompatibleFreeModel(model) {
+    const item = model && typeof model === 'object' ? model : { id: model };
+    const id = String(item.id || item.model || item.name || '').trim().toLowerCase();
+    if (!id) return false;
+    if (id === 'orcarouter/free' || /(?:^|[\/-])free(?:$|[\/-])/.test(id)) return true;
+    const pricing = item.pricing || item.price || {};
+    const inputPrice = Number(pricing.prompt == null ? pricing.input : pricing.prompt);
+    const outputPrice = Number(pricing.completion == null ? pricing.output : pricing.completion);
+    return Number.isFinite(inputPrice) && Number.isFinite(outputPrice) && inputPrice === 0 && outputPrice === 0;
+}
+
+function normalizeOpenAICompatibleModels(payload) {
+    const rows = Array.isArray(payload && payload.data) ? payload.data
+        : (Array.isArray(payload && payload.models) ? payload.models : (Array.isArray(payload) ? payload : []));
+    const byId = new Map();
+    rows.forEach(function (item) {
+        const source = item && typeof item === 'object' ? item : { id: item };
+        const id = String(source.id || source.model || source.name || '').trim();
+        if (id && !byId.has(id)) byId.set(id, Object.assign({}, source, { id: id }));
+    });
+    return Array.from(byId.values());
+}
+
+function readOpenAICompatibleModelsCache() {
+    try { return normalizeOpenAICompatibleModels(JSON.parse(localStorage.getItem(OPENAI_COMPATIBLE_MODELS_KEY) || '[]')); }
+    catch (_) { return []; }
+}
+
+function setOpenAICompatibleStatus(message, state) {
+    const status = document.getElementById('openai-compatible-connection-status');
+    if (!status) return;
+    status.textContent = String(message || '');
+    status.className = 'text-[11px] min-h-[1rem] ' + (state === 'error'
+        ? 'text-red-600 dark:text-red-400'
+        : state === 'ok' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400');
+}
+
+function renderOpenAICompatibleModelMenu(models) {
+    const menu = document.getElementById('openai-compatible-model-menu');
+    const freeOnly = document.getElementById('openai-compatible-free-models-only');
+    if (!menu) return [];
+    const source = normalizeOpenAICompatibleModels(models);
+    const visible = freeOnly && freeOnly.checked ? source.filter(isOpenAICompatibleFreeModel) : source;
+    menu.innerHTML = '';
+    if (!visible.length) {
+        const empty = document.createElement('div');
+        empty.className = 'px-3 py-2 text-xs text-slate-500 dark:text-slate-400';
+        empty.textContent = source.length ? '조건에 맞는 무료 모델이 없습니다.' : '모델 확인을 실행하세요.';
+        menu.appendChild(empty);
+        return visible;
+    }
+    visible.forEach(function (item) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.setAttribute('role', 'option');
+        button.className = 'block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-sky-950/40';
+        button.textContent = item.id;
+        button.addEventListener('click', function () { selectOpenAICompatibleModel(item.id); });
+        menu.appendChild(button);
+    });
+    return visible;
+}
+
+function applyOpenAICompatibleModelFilter() {
+    const checkbox = document.getElementById('openai-compatible-free-models-only');
+    localStorage.setItem(OPENAI_COMPATIBLE_FREE_ONLY_KEY, !checkbox || checkbox.checked ? '1' : '0');
+    const visible = renderOpenAICompatibleModelMenu(openAICompatibleModels);
+    setOpenAICompatibleStatus((checkbox && checkbox.checked ? '무료 모델 ' : '전체 모델 ') + visible.length + '개 표시', visible.length ? 'ok' : '');
+}
+
+function getOpenAICompatibleFormConnection() {
+    const baseUrl = document.getElementById('openai-compatible-base-url');
+    const apiKey = document.getElementById('openai-compatible-api-key');
+    const modelId = document.getElementById('openai-compatible-model-id');
+    const key = String(apiKey && apiKey.value || '').trim();
+    if (!key) throw new Error('OrcaRouter API Key를 먼저 입력하세요.');
+    return {
+        baseUrl: normalizeOpenAICompatibleBaseUrl(baseUrl && baseUrl.value),
+        apiKey: key,
+        modelId: String(modelId && modelId.value || '').trim()
+    };
+}
+
+function getStoredOpenAICompatibleConnection() {
+    const key = String(localStorage.getItem('ss_openai_compatible_api_key') || '').trim();
+    if (!key) throw new Error('OrcaRouter / OpenAI 호환 API Key가 없습니다. 설정에서 API Key를 저장하세요.');
+    return {
+        baseUrl: normalizeOpenAICompatibleBaseUrl(localStorage.getItem('ss_openai_compatible_base_url') || OPENAI_COMPATIBLE_DEFAULTS.baseUrl),
+        apiKey: key,
+        modelId: String(localStorage.getItem('ss_ai_chat_openai_compatible_model') || localStorage.getItem('ss_openai_compatible_model_id') || OPENAI_COMPATIBLE_DEFAULTS.modelId).trim()
+    };
+}
+
+async function fetchOpenAICompatibleModels(connection) {
+    const active = connection || getStoredOpenAICompatibleConnection();
+    const response = await fetch(active.baseUrl + '/models', {
+        method: 'GET',
+        headers: { Accept: 'application/json', Authorization: 'Bearer ' + active.apiKey }
+    });
+    if (!response.ok) throw new Error(await readOpenAICompatibleError(response));
+    const models = normalizeOpenAICompatibleModels(await response.json());
+    openAICompatibleModels = models;
+    localStorage.setItem(OPENAI_COMPATIBLE_MODELS_KEY, JSON.stringify(models));
+    return models.map(function (item) { return item.id; });
+}
+
+async function readOpenAICompatibleError(response) {
+    let message = 'HTTP ' + response.status;
+    try {
+        const data = await response.json();
+        message = String(data && data.error && (data.error.message || data.error) || data && data.message || message);
+    } catch (_) {
+        try { message = String(await response.text() || message); } catch (_) {}
+    }
+    return message;
+}
+
+async function checkOpenAICompatibleModels() {
+    const button = document.getElementById('openai-compatible-check-models-button');
+    try {
+        if (button) button.disabled = true;
+        setOpenAICompatibleStatus('서버에서 모델 목록을 확인하는 중...', '');
+        const connection = getOpenAICompatibleFormConnection();
+        await fetchOpenAICompatibleModels(connection);
+        const visible = renderOpenAICompatibleModelMenu(openAICompatibleModels);
+        const checkbox = document.getElementById('openai-compatible-free-models-only');
+        if (visible.length) {
+            const current = document.getElementById('openai-compatible-model-id');
+            if (current && !visible.some(function (item) { return item.id === current.value; })) current.value = visible[0].id;
+        }
+        setOpenAICompatibleStatus('연결됨 · 전체 ' + openAICompatibleModels.length + '개 · ' + (checkbox && checkbox.checked ? '무료 ' + visible.length + '개' : '현재 ' + visible.length + '개') + ' 확인', 'ok');
+        const menu = document.getElementById('openai-compatible-model-menu');
+        if (menu) menu.classList.remove('hidden');
+        return visible;
+    } catch (error) {
+        setOpenAICompatibleStatus('모델 확인 실패: ' + (error && error.message ? error.message : error), 'error');
+        return [];
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+async function testOpenAICompatibleConnection() {
+    const button = document.getElementById('openai-compatible-test-button');
+    try {
+        if (button) button.disabled = true;
+        setOpenAICompatibleStatus('선택 모델에 실제 응답을 요청하는 중...', '');
+        const connection = getOpenAICompatibleFormConnection();
+        if (!connection.modelId) throw new Error('연결 테스트에 사용할 모델을 선택하세요.');
+        const response = await fetch(connection.baseUrl + '/chat/completions', {
+            method: 'POST',
+            headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: 'Bearer ' + connection.apiKey },
+            body: JSON.stringify({ model: connection.modelId, messages: [{ role: 'user', content: 'Reply with OK only.' }], max_tokens: 8, stream: false })
+        });
+        if (!response.ok) throw new Error(await readOpenAICompatibleError(response));
+        const data = await response.json();
+        const text = String(data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '').trim();
+        setOpenAICompatibleStatus('연결 테스트 성공 · ' + connection.modelId + (text ? ' · 응답: ' + text.slice(0, 80) : ''), 'ok');
+        return true;
+    } catch (error) {
+        setOpenAICompatibleStatus('연결 테스트 실패: ' + (error && error.message ? error.message : error), 'error');
+        return false;
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 document.addEventListener('click', function (event) {
     const menu = document.getElementById('openai-compatible-model-menu');
     const button = document.getElementById('openai-compatible-model-menu-button');
@@ -1535,6 +1716,10 @@ function loadOpenAICompatibleSettingsUI(settings) {
     if (baseUrl) baseUrl.value = source.openaiCompatibleBaseUrl || localStorage.getItem('ss_openai_compatible_base_url') || OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
     if (apiKey) apiKey.value = source.openaiCompatibleApiKey || localStorage.getItem('ss_openai_compatible_api_key') || '';
     if (modelId) modelId.value = source.openaiCompatibleModelId || localStorage.getItem('ss_openai_compatible_model_id') || OPENAI_COMPATIBLE_DEFAULTS.modelId;
+    const freeOnly = document.getElementById('openai-compatible-free-models-only');
+    if (freeOnly) freeOnly.checked = localStorage.getItem(OPENAI_COMPATIBLE_FREE_ONLY_KEY) !== '0';
+    openAICompatibleModels = readOpenAICompatibleModelsCache();
+    renderOpenAICompatibleModelMenu(openAICompatibleModels);
     validateOpenAICompatibleBaseUrlUI();
 }
 
@@ -1558,9 +1743,11 @@ async function saveOpenAICompatibleSettings() {
     localStorage.setItem('ss_openai_compatible_base_url', data.openaiCompatibleBaseUrl);
     localStorage.setItem('ss_openai_compatible_api_key', data.openaiCompatibleApiKey);
     localStorage.setItem('ss_openai_compatible_model_id', data.openaiCompatibleModelId);
+    localStorage.setItem('ss_ai_chat_openai_compatible_model', data.openaiCompatibleModelId);
     if (baseUrl) baseUrl.value = data.openaiCompatibleBaseUrl;
     if (modelId) modelId.value = data.openaiCompatibleModelId;
     if (feedback) feedback.textContent = '저장되었습니다. 외부 AI 앱에서 이 구성을 사용할 수 있습니다.';
+    if (window.AIChat && typeof window.AIChat.syncSettings === 'function') window.AIChat.syncSettings();
     showToast('OpenAI 호환 API 설정을 저장했습니다.');
 }
 
@@ -1573,6 +1760,10 @@ async function resetOpenAICompatibleSettings() {
     if (baseUrl) baseUrl.value = OPENAI_COMPATIBLE_DEFAULTS.baseUrl;
     if (apiKey) apiKey.value = '';
     if (modelId) modelId.value = OPENAI_COMPATIBLE_DEFAULTS.modelId;
+    const freeOnly = document.getElementById('openai-compatible-free-models-only');
+    if (freeOnly) freeOnly.checked = true;
+    localStorage.setItem(OPENAI_COMPATIBLE_FREE_ONLY_KEY, '1');
+    renderOpenAICompatibleModelMenu(openAICompatibleModels);
     await saveOpenAICompatibleSettings();
     showToast('OrcaRouter 기본 구성으로 초기화했습니다.');
 }
@@ -5404,6 +5595,7 @@ async function copyViewFormattedToClipboard() {
 function toggleSidebarVisibility() {
     isSidebarHidden = !isSidebarHidden;
     sidebar.style.display = isSidebarHidden ? 'none' : 'flex';
+    requestAnimationFrame(syncEditorShiftFloatPosition);
 }
 
 function toggleSidebarCollapse() {
@@ -5425,6 +5617,7 @@ function toggleSidebarCollapse() {
     refreshLucideIcons(collapseIcon && collapseIcon.parentElement ? collapseIcon.parentElement : sidebar);
     renderDBList();
     if (activeSidebarTab === 'toc') renderTOC();
+    requestAnimationFrame(syncEditorShiftFloatPosition);
 }
 
 // --- TOC & Sidebar Tabs ---
@@ -8074,6 +8267,34 @@ function applyEditorHorizontalShift() {
     editorDocWrap.style.transform = `translateX(${editorHorizontalShiftPx}px)`;
     editorDocWrap.style.transition = 'transform 120ms ease';
     if (display) display.textContent = `${editorHorizontalShiftPx}px`;
+    syncEditorShiftFloatPosition();
+}
+
+let editorShiftFloatPositionTrackingInstalled = false;
+
+function syncEditorShiftFloatPosition() {
+    const control = document.getElementById('editor-shift-float');
+    const viewport = document.getElementById('content-viewport');
+    if (!control || !viewport) return;
+
+    const viewportRect = viewport.getBoundingClientRect();
+    const sidebarEl = document.getElementById('sidebar');
+    const sidebarVisible = !!(sidebarEl && getComputedStyle(sidebarEl).display !== 'none');
+    const sidebarRect = sidebarVisible ? sidebarEl.getBoundingClientRect() : null;
+    const outsideSidebarLeft = sidebarRect && sidebarRect.width > 0 ? sidebarRect.right + 8 : viewportRect.left + 8;
+
+    control.style.left = `${Math.max(viewportRect.left + 8, outsideSidebarLeft)}px`;
+    control.style.bottom = `${Math.max(8, window.innerHeight - viewportRect.bottom + 8)}px`;
+
+    if (editorShiftFloatPositionTrackingInstalled) return;
+    editorShiftFloatPositionTrackingInstalled = true;
+    window.addEventListener('resize', syncEditorShiftFloatPosition, { passive: true });
+    window.addEventListener('md-viewer:sidebar-resized', syncEditorShiftFloatPosition);
+    if (typeof ResizeObserver === 'function') {
+        const observer = new ResizeObserver(syncEditorShiftFloatPosition);
+        observer.observe(viewport);
+        if (sidebarEl) observer.observe(sidebarEl);
+    }
 }
 
 function adjustEditorHorizontalShift(delta) {
@@ -9010,6 +9231,13 @@ async function saveDeepseekApiKey() {
     const input = document.getElementById('deepseek-api-key');
     const baseInput = document.getElementById('deepseek-base-url');
     const key = (input && input.value) ? input.value.trim() : '';
+    const maxTokens = Math.max(256, Math.min(384000, Number(document.getElementById('deepseek-max-tokens')?.value) || 8192));
+    const timeoutSeconds = Math.max(30, Math.min(3600, Number(document.getElementById('deepseek-timeout')?.value) || 300));
+    const effortValue = String(document.getElementById('deepseek-reasoning-effort')?.value || 'high').toLowerCase();
+    const reasoningEffort = ['low', 'high', 'max'].includes(effortValue) ? effortValue : 'high';
+    localStorage.setItem('ss_deepseek_max_tokens', String(maxTokens));
+    localStorage.setItem('ss_deepseek_timeout_seconds', String(timeoutSeconds));
+    localStorage.setItem('ss_deepseek_reasoning_effort', reasoningEffort);
     let baseUrl = 'https://api.deepseek.com';
     try {
         baseUrl = normalizeDeepseekBaseUrl(baseInput && baseInput.value);
@@ -10160,6 +10388,10 @@ function getDeepseekApiState() {
     return {
         key: getProtectedAiCredential('deepseek', 'ss_deepseek_api_key'),
         baseUrl: baseUrl,
+        maxTokens: Math.max(256, Math.min(384000, Number(localStorage.getItem('ss_deepseek_max_tokens')) || 8192)),
+        timeoutSeconds: Math.max(30, Math.min(3600, Number(localStorage.getItem('ss_deepseek_timeout_seconds')) || 300)),
+        reasoningEffort: ['low', 'high', 'max'].includes(String(localStorage.getItem('ss_deepseek_reasoning_effort') || '').toLowerCase())
+            ? String(localStorage.getItem('ss_deepseek_reasoning_effort')).toLowerCase() : 'high',
         verifiedFingerprint: String(localStorage.getItem('ss_deepseek_api_key_verified') || '')
     };
 }
@@ -12926,6 +13158,7 @@ const OLLAMA_MODELS_KEY = 'ss_ollama_models_v1';
 const aiChatOllamaContextLengths = Object.create(null);
 const OLLAMA_BASE_URL_KEY = 'ss_ollama_base_url';
 const LITERTLM_SETTINGS_KEY = 'ss_litertlm_settings_v1';
+const LITERTLM_BASE_URL_DEFAULT_MIGRATION_KEY = 'ss_litertlm_base_url_default_v1';
 const LITERTLM_MODELS_KEY = 'ss_litertlm_models_v1';
 const LITERTLM_CLOUD_BASE_URL = 'https://llm1.abci.co.kr/v1';
 const LITERTLM_LEGACY_MODEL = 'gemma-4-E2B-it.litertlm';
@@ -13030,13 +13263,22 @@ function getLiteRTLMSettings() {
     try {
         const settings = Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
         settings.mode = 'cloud';
+        settings.cloudName = String(settings.cloudName || '').trim() || 'cloud';
         settings.cloudUrl = LITERTLM_CLOUD_BASE_URL;
+        delete settings.localUrl;
+        delete settings.localName;
         if (String(settings.model || '').trim() === LITERTLM_LEGACY_MODEL) {
             settings.model = LITERTLM_MIGRATED_MODEL;
+        }
+        if (localStorage.getItem(LITERTLM_BASE_URL_DEFAULT_MIGRATION_KEY) !== '1'
+            || localStorage.getItem(LITERTLM_SETTINGS_KEY) !== JSON.stringify(settings)) {
             localStorage.setItem(LITERTLM_SETTINGS_KEY, JSON.stringify(settings));
+            localStorage.setItem(LITERTLM_BASE_URL_DEFAULT_MIGRATION_KEY, '1');
         }
         return settings;
     } catch (_) {
+        localStorage.setItem(LITERTLM_SETTINGS_KEY, JSON.stringify(defaults));
+        localStorage.setItem(LITERTLM_BASE_URL_DEFAULT_MIGRATION_KEY, '1');
         return defaults;
     }
 }
@@ -13149,7 +13391,7 @@ function applyLiteRTLMMobilePreset() {
 }
 
 async function streamLiteRTLMChat(body, settings, signal, onStreamEvent) {
-    const baseUrl = normalizeLiteRTLMBaseUrl(settings.mode === 'cloud' ? settings.cloudUrl : settings.localUrl);
+    const baseUrl = normalizeLiteRTLMBaseUrl(settings.cloudUrl || LITERTLM_CLOUD_BASE_URL);
     const emit = typeof onStreamEvent === 'function' ? onStreamEvent : function () {};
     emit({ type: 'request.start', provider: 'litertlm', context_length: settings.contextLength, max_output_tokens: settings.maxGen, render_interval_ms: settings.renderIntervalMs });
     emit({ type: 'transport.start', provider: 'litertlm' });
@@ -13209,7 +13451,11 @@ async function streamLiteRTLMChat(body, settings, signal, onStreamEvent) {
 }
 
 async function requestLiteRTLM(path, options) {
-    const settings = await saveLiteRTLMSettings(false);
+    // Model requests can originate from AI JENA while the settings panel has
+    // never been opened. Reading form controls here used to replace the saved
+    // model with the panel's initial blank option. Runtime transport must use
+    // persisted settings; explicit settings actions save the form beforehand.
+    const settings = getLiteRTLMSettings();
     const baseUrl = normalizeLiteRTLMBaseUrl(settings.mode === 'cloud' ? settings.cloudUrl : settings.localUrl);
     const response = await fetch(baseUrl + path, options);
     if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text() || response.statusText));
@@ -13867,6 +14113,38 @@ async function createDeepseekApiError(response, fallbackLabel) {
     return error;
 }
 
+function shouldUseLocalDeepseekProxy() {
+    return /^https?:$/.test(location.protocol) && /^(127\.0\.0\.1|localhost|\[::1\])$/i.test(location.hostname);
+}
+
+async function deepseekApiFetch(baseUrl, path, key, body, signal, timeoutSeconds) {
+    const tauriInvoke = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+    if (typeof tauriInvoke === 'function') {
+        if (signal && signal.aborted) throw signal.reason || new DOMException('요청이 취소되었습니다.', 'AbortError');
+        const result = await tauriInvoke('deepseek_api_request', {
+            request: { baseUrl: baseUrl, path: path, apiKey: key, body: body, timeoutSeconds: timeoutSeconds || 300 }
+        });
+        return new Response(String(result.body || ''), {
+            status: Number(result.status || 500),
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+    if (shouldUseLocalDeepseekProxy()) {
+        return fetch('/__mdviewer_deepseek_proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ baseUrl: baseUrl, path: path, apiKey: key, body: body, timeoutSeconds: timeoutSeconds || 300 }),
+            signal: signal
+        });
+    }
+    return fetch(baseUrl + path, {
+        method: body == null ? 'GET' : 'POST',
+        headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: body == null ? undefined : JSON.stringify(body),
+        signal: signal
+    });
+}
+
 async function getDeepseekUserBalance(keyOverride, baseUrlOverride) {
     const state = getDeepseekApiState();
     const key = String(keyOverride || state.key || '').trim();
@@ -13874,13 +14152,7 @@ async function getDeepseekUserBalance(keyOverride, baseUrlOverride) {
     const baseUrl = normalizeDeepseekBaseUrl(baseUrlOverride || state.baseUrl);
     let response;
     try {
-        response = await fetch(baseUrl + '/user/balance', {
-            method: 'GET',
-            headers: {
-                'Authorization': 'Bearer ' + key,
-                'Accept': 'application/json'
-            }
-        });
+        response = await deepseekApiFetch(baseUrl, '/user/balance', key, null, null, state.timeoutSeconds);
     } catch (error) {
         throw new Error('DeepSeek 잔액 서버에 연결할 수 없습니다. (' + (error && error.message ? error.message : error) + ')');
     }
@@ -13913,13 +14185,7 @@ async function listDeepseekChatModels(keyOverride, baseUrlOverride) {
     const url = baseUrl + '/models';
     let response;
     try {
-        response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                'Authorization': 'Bearer ' + key,
-                'Accept': 'application/json'
-            }
-        });
+        response = await deepseekApiFetch(baseUrl, '/models', key, null, null, state.timeoutSeconds);
     } catch (error) {
         throw new Error('DeepSeek 서버에 연결할 수 없습니다. 네트워크와 Base URL을 확인하세요. (' + (error && error.message ? error.message : error) + ')');
     }
@@ -13958,7 +14224,8 @@ async function callDeepseekChatText(
     modelOverride,
     signal,
     keyOverride,
-    baseUrlOverride
+    baseUrlOverride,
+    options
 ) {
     const state = getDeepseekApiState();
     const key = String(keyOverride || state.key || '').trim();
@@ -13976,20 +14243,35 @@ async function callDeepseekChatText(
     if (!payloadMessages.length) throw new Error('전송할 대화가 없습니다.');
 
     const url = baseUrl + '/chat/completions';
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Authorization': 'Bearer ' + key,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-            model: normalizedModel,
-            messages: payloadMessages,
-            stream: false
-        }),
-        signal: signal
-    });
+    const opts = options || {};
+    const reasoningMode = opts.reasoningMode === true;
+    const maxTokens = Math.max(256, Math.min(384000, Number(opts.maxTokens) || state.maxTokens || 8192));
+    const effort = ['low', 'high', 'max'].includes(String(opts.reasoningEffort || state.reasoningEffort).toLowerCase())
+        ? String(opts.reasoningEffort || state.reasoningEffort).toLowerCase() : 'high';
+    const timeoutSeconds = Math.max(30, Math.min(3600, Number(opts.timeoutSeconds) || state.timeoutSeconds || 300));
+    const requestBody = {
+        model: normalizedModel,
+        messages: payloadMessages,
+        stream: false,
+        max_tokens: maxTokens,
+        thinking: { type: reasoningMode ? 'enabled' : 'disabled' }
+    };
+    if (reasoningMode) requestBody.reasoning_effort = effort;
+    const timeoutController = new AbortController();
+    const abortFromCaller = function () { timeoutController.abort(signal?.reason || new DOMException('요청이 취소되었습니다.', 'AbortError')); };
+    if (signal) signal.addEventListener('abort', abortFromCaller, { once: true });
+    const timeoutId = setTimeout(function () { timeoutController.abort(new DOMException('DeepSeek 제한 시간을 초과했습니다.', 'TimeoutError')); }, timeoutSeconds * 1000);
+    let response;
+    try {
+        response = await deepseekApiFetch(baseUrl, '/chat/completions', key, requestBody, timeoutController.signal, timeoutSeconds);
+    } catch (error) {
+        if (error && error.name === 'TimeoutError') throw new Error('DeepSeek 응답 제한 시간(' + timeoutSeconds + '초)을 초과했습니다. 설정에서 시간을 늘려주세요.');
+        if (error && error.name === 'TypeError') throw new Error('DeepSeek 연결에 실패했습니다. 로컬 서버를 재시작한 뒤 다시 시도하세요. (' + error.message + ')');
+        throw error;
+    } finally {
+        clearTimeout(timeoutId);
+        if (signal) signal.removeEventListener('abort', abortFromCaller);
+    }
 
     if (!response.ok) {
         throw await createDeepseekApiError(response, 'DeepSeek 생성 오류');
@@ -14001,6 +14283,8 @@ async function callDeepseekChatText(
         provider: 'deepseek',
         model: normalizedModel,
         text: text,
+        reasoning: String(data.choices?.[0]?.message?.reasoning_content || ''),
+        maxOutputTokens: maxTokens,
         usage: data.usage || null,
         finishReason: data.choices && data.choices[0] ? data.choices[0].finish_reason : '',
         raw: data
@@ -14156,7 +14440,51 @@ async function callOpenAIText(prompt, systemInstruction, useSearch, modelOverrid
     return callOpenAIChatText([{ role: 'user', content: String(prompt || '') }], systemInstruction, modelOverride, signal, 'quick', keyOverride);
 }
 
-async function callAIStudioChat(messages, systemInstruction, modelOverride, signal, responseMode, academicSearch, academicEvidenceCount) {
+async function readAIStudioEventStream(response, emit) {
+    if (!response.body || typeof response.body.getReader !== 'function') throw new Error('AI Studio 스트림을 읽을 수 없습니다.');
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const chunks = [];
+    while (true) {
+        const part = await reader.read();
+        buffer += decoder.decode(part.value || new Uint8Array(), { stream: !part.done });
+        const events = buffer.split(/\r?\n\r?\n/);
+        buffer = events.pop() || '';
+        events.forEach(function (eventBlock) {
+            const jsonText = eventBlock.split(/\r?\n/).filter(function (line) { return line.indexOf('data:') === 0; })
+                .map(function (line) { return line.slice(5).trim(); }).join('');
+            if (!jsonText || jsonText === '[DONE]') return;
+            const chunk = JSON.parse(jsonText);
+            chunks.push(chunk);
+            const candidate = chunk.candidates?.[0] || {};
+            const parts = candidate.content?.parts || [];
+            parts.forEach(function (item) {
+                const value = String(item && item.text || '');
+                if (!value) return;
+                emit({ type: item.thought === true ? 'reasoning.delta' : 'message.delta', provider: 'aistudio', content: value });
+            });
+        });
+        if (part.done) break;
+    }
+    if (buffer.trim()) {
+        const jsonText = buffer.split(/\r?\n/).filter(function (line) { return line.indexOf('data:') === 0; })
+            .map(function (line) { return line.slice(5).trim(); }).join('');
+        if (jsonText && jsonText !== '[DONE]') chunks.push(JSON.parse(jsonText));
+    }
+    const mergedParts = [];
+    let usageMetadata = {};
+    let finishReason = '';
+    chunks.forEach(function (chunk) {
+        const candidate = chunk.candidates?.[0] || {};
+        (candidate.content?.parts || []).forEach(function (item) { mergedParts.push(item); });
+        if (candidate.finishReason) finishReason = candidate.finishReason;
+        if (chunk.usageMetadata) usageMetadata = chunk.usageMetadata;
+    });
+    return { candidates: [{ content: { parts: mergedParts }, finishReason: finishReason }], usageMetadata: usageMetadata };
+}
+
+async function callAIStudioChat(messages, systemInstruction, modelOverride, signal, responseMode, academicSearch, academicEvidenceCount, onStreamEvent) {
     const key = await getAIStudioKeyForChat();
     if (!key) throw new Error('AI Studio API Key가 없습니다. 앱 설정에서 API Key를 먼저 저장하세요.');
     const model = String(modelOverride || 'gemini-2.5-flash').trim();
@@ -14199,7 +14527,15 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     }
     const payload = { contents: contents, generationConfig: generationConfig };
     if (systemInstruction && !imageModel) payload.systemInstruction = { parts: [{ text: String(systemInstruction) }] };
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key);
+    const streaming = !imageModel && typeof onStreamEvent === 'function';
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model)
+        + (streaming ? ':streamGenerateContent?alt=sse&key=' : ':generateContent?key=') + encodeURIComponent(key);
+    if (streaming) {
+        onStreamEvent({ type: 'request.start', provider: 'aistudio', context_length: Number(modelLimits.inputTokenLimit) || 0, max_output_tokens: maxOutputTokens, estimated_input_tokens: estimateAIChatTokens([systemInstruction || ''].concat(normalized.map(function (message) { return message.content || ''; })).join('\n\n')) });
+        onStreamEvent({ type: 'transport.start', provider: 'aistudio' });
+        onStreamEvent({ type: 'chat.start', provider: 'aistudio' });
+        onStreamEvent({ type: 'prompt_processing.start', provider: 'aistudio' });
+    }
     let response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -14223,7 +14559,8 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
         } catch (_) {}
         throw new Error(message);
     }
-    const data = await response.json();
+    if (streaming) onStreamEvent({ type: 'prompt_processing.end', provider: 'aistudio' });
+    const data = streaming ? await readAIStudioEventStream(response, onStreamEvent) : await response.json();
     const candidate = data.candidates?.[0] || {};
     const parts = candidate.content?.parts || [];
     const reasoningParts = [];
@@ -14256,9 +14593,16 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
     if (!text && images.length) text = '요청한 이미지를 생성했습니다.';
     else if (!text) text = '모델이 추론 내용만 반환하고 최종 답변을 생성하지 못했습니다. 출력 토큰 설정을 확인하세요.';
     const usageMetadata = data.usageMetadata || {};
-    const promptTokens = Math.max(0, Number(usageMetadata.promptTokenCount) || 0);
-    const completionTokens = Math.max(0, Number(usageMetadata.candidatesTokenCount) || 0);
-    const reasoningTokens = Math.max(0, Number(usageMetadata.thoughtsTokenCount) || 0);
+    const hasProviderUsage = ['promptTokenCount', 'candidatesTokenCount', 'thoughtsTokenCount', 'totalTokenCount']
+        .some(function (key) { return Number.isFinite(Number(usageMetadata[key])); });
+    const estimatedPromptText = [systemInstruction || ''].concat(normalized.map(function (message) { return message.content || ''; })).join('\n\n');
+    const promptTokens = Math.max(0, Number(usageMetadata.promptTokenCount) || (hasProviderUsage ? 0 : estimateAIChatTokens(estimatedPromptText)));
+    const completionTokens = Math.max(0, Number(usageMetadata.candidatesTokenCount) || (hasProviderUsage ? 0 : estimateAIChatTokens(text)));
+    const reasoningTokens = Math.max(0, Number(usageMetadata.thoughtsTokenCount) || (hasProviderUsage ? 0 : estimateAIChatTokens(reasoning)));
+    if (streaming) {
+        onStreamEvent({ type: 'message.end', provider: 'aistudio' });
+        onStreamEvent({ type: 'chat.end', provider: 'aistudio', result: { stats: { total_output_tokens: completionTokens + reasoningTokens, reasoning_output_tokens: reasoningTokens } } });
+    }
     return {
         provider: 'aistudio',
         model: model,
@@ -14271,7 +14615,9 @@ async function callAIStudioChat(messages, systemInstruction, modelOverride, sign
             completionTokens: completionTokens,
             reasoningTokens: reasoningTokens,
             outputTokens: completionTokens + reasoningTokens,
-            totalTokens: Math.max(0, Number(usageMetadata.totalTokenCount) || (promptTokens + completionTokens + reasoningTokens))
+            totalTokens: Math.max(0, Number(usageMetadata.totalTokenCount) || (promptTokens + completionTokens + reasoningTokens)),
+            estimated: !hasProviderUsage,
+            source: hasProviderUsage ? 'ai-studio' : 'lmstudio-estimate'
         },
         contextLength: Number(modelLimits.inputTokenLimit) || null,
         maxOutputTokens: imageModel ? null : maxOutputTokens
@@ -14505,6 +14851,14 @@ window.AIChatBridge = Object.freeze({
         saveStoredModelList(AI_CHAT_OPENAI_MODELS_KEY, models);
         return models;
     },
+    getCachedOpenAICompatibleModels: function () {
+        const models = readOpenAICompatibleModelsCache().map(function (item) { return item.id; });
+        const selected = String(localStorage.getItem('ss_openai_compatible_model_id') || '').trim();
+        return Array.from(new Set(models.concat(selected ? [selected] : []).filter(Boolean)));
+    },
+    refreshOpenAICompatibleModels: function () {
+        return fetchOpenAICompatibleModels(getStoredOpenAICompatibleConnection());
+    },
     refreshLMStudioModels: async function () {
         const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel();
         const models = result.models.map(function (item) { return item.id; }).filter(Boolean);
@@ -14553,6 +14907,32 @@ window.AIChatBridge = Object.freeze({
         const controller = new AbortController();
         aiChatAbortController = controller;
         try {
+            if (request.provider === 'openai-compatible') {
+                const connection = getStoredOpenAICompatibleConnection();
+                const model = String(request.model || connection.modelId || '').trim();
+                if (!model) throw new Error('OrcaRouter / OpenAI 호환 모델을 선택하세요.');
+                const messages = normalizeAIChatMessages(request.messages);
+                if (request.systemInstruction) messages.unshift({ role: 'system', content: String(request.systemInstruction) });
+                const response = await fetch(connection.baseUrl + '/chat/completions', {
+                    method: 'POST',
+                    headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: 'Bearer ' + connection.apiKey },
+                    body: JSON.stringify({ model: model, messages: messages, stream: false }),
+                    signal: controller.signal
+                });
+                if (!response.ok) throw new Error(await readOpenAICompatibleError(response));
+                const data = await response.json();
+                const choice = data && data.choices && data.choices[0] || {};
+                const message = choice.message || {};
+                return {
+                    provider: 'openai-compatible',
+                    model: String(data.model || model),
+                    text: String(message.content || choice.text || ''),
+                    reasoning: String(message.reasoning_content || message.reasoning || ''),
+                    finishReason: choice.finish_reason || '',
+                    usage: data.usage || null,
+                    responseId: data.id || null
+                };
+            }
             if (request.provider === 'litertlm') {
                 const settings = getLiteRTLMSettings();
                 const messages = normalizeAIChatMessages(request.messages);
@@ -14566,7 +14946,7 @@ window.AIChatBridge = Object.freeze({
                 return { provider: 'litertlm', model: result.data.model || body.model, text: String(choice.message && choice.message.content || choice.text || ''), reasoning: String(choice.message && choice.message.reasoning_content || ''), finishReason: choice.finish_reason || '', usage: result.data.usage || null, contextLength: settings.contextLength, maxOutputTokens: settings.maxGen, responseId: result.data.id || null };
             }
             if (request.provider === 'aistudio') {
-                return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch, request.academicEvidenceCount);
+                return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch, request.academicEvidenceCount, request.onStreamEvent);
             }
             if (request.provider === 'ollama') {
                 const result = await callOllamaChatText(
@@ -14594,7 +14974,15 @@ window.AIChatBridge = Object.freeze({
                     request.messages,
                     request.systemInstruction,
                     request.model,
-                    controller.signal
+                    controller.signal,
+                    undefined,
+                    undefined,
+                    {
+                        reasoningMode: request.mode === 'reasoning' && request.academicSearch !== true,
+                        maxTokens: getDeepseekApiState().maxTokens,
+                        timeoutSeconds: getDeepseekApiState().timeoutSeconds,
+                        reasoningEffort: getDeepseekApiState().reasoningEffort
+                    }
                 );
                 return {
                     provider: result.provider || 'deepseek',
@@ -14604,7 +14992,7 @@ window.AIChatBridge = Object.freeze({
                     finishReason: result.finishReason || result.raw?.choices?.[0]?.finish_reason || '',
                     usage: result.usage || null,
                     contextLength: null,
-                    maxOutputTokens: null,
+                    maxOutputTokens: result.maxOutputTokens || null,
                     responseId: result.responseId || null
                 };
             }
@@ -15366,6 +15754,12 @@ async function loadAiSettingsToUI() {
     const deepseekState = getDeepseekApiState();
     if (deepseekInput) deepseekInput.value = settings.deepseekApiKey || deepseekState.key || getProtectedAiCredential('deepseek', 'ss_deepseek_api_key');
     if (deepseekBaseInput) deepseekBaseInput.value = settings.deepseekBaseUrl || deepseekState.baseUrl || 'https://api.deepseek.com';
+    const deepseekMaxTokensInput = document.getElementById('deepseek-max-tokens');
+    const deepseekTimeoutInput = document.getElementById('deepseek-timeout');
+    const deepseekEffortInput = document.getElementById('deepseek-reasoning-effort');
+    if (deepseekMaxTokensInput) deepseekMaxTokensInput.value = String(deepseekState.maxTokens);
+    if (deepseekTimeoutInput) deepseekTimeoutInput.value = String(deepseekState.timeoutSeconds);
+    if (deepseekEffortInput) deepseekEffortInput.value = deepseekState.reasoningEffort;
     if (openaiInput) openaiInput.value = settings.openaiApiKey || getOpenAIApiState().key || '';
     if (settings.openaiApiKey) localStorage.setItem('ss_openai_api_key', settings.openaiApiKey);
     const imageCheck = document.getElementById('image-upload-enabled');

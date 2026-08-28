@@ -19,8 +19,14 @@ assert.match(html, /onclick="testSettingsLiteRTLMResponse\(\)"[^>]*>연결 테�
 assert.match(app, /const LITERTLM_CLOUD_BASE_URL = 'https:\/\/llm1\.abci\.co\.kr\/v1';/);
 assert.match(app, /settings\.mode = 'cloud';[\s\S]*?settings\.cloudUrl = LITERTLM_CLOUD_BASE_URL;/);
 assert.match(app, /const mode = 'cloud';/);
+assert.match(html, />Base URL 기본<\/span>/);
+assert.match(app, /const LITERTLM_BASE_URL_DEFAULT_MIGRATION_KEY/);
+assert.match(app, /delete settings\.localUrl/);
+assert.match(app, /streamLiteRTLMChat[\s\S]*?settings\.cloudUrl \|\| LITERTLM_CLOUD_BASE_URL/);
 assert.match(app, /requestLiteRTLM\('\/models'/);
 assert.match(app, /requestLiteRTLM\('\/chat\/completions'/);
+assert.match(app, /async function requestLiteRTLM\(path, options\) \{[\s\S]*?const settings = getLiteRTLMSettings\(\);[\s\S]*?const baseUrl = normalizeLiteRTLMBaseUrl/);
+assert.doesNotMatch(app, /async function requestLiteRTLM\(path, options\) \{\s*const settings = await saveLiteRTLMSettings\(false\);/);
 assert.doesNotMatch(html, /gemma-4-E2B-it\.litertlm/);
 assert.match(html, /<option value="">모델 가져오기를 실행하세요<\/option>/);
 assert.match(app, /if \(!settings\.model\) \{[\s\S]*?await loadSettingsLiteRTLMModels\(\)/);
