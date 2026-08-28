@@ -2263,45 +2263,28 @@
                                     <span class="px-2 py-1 rounded border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 text-[11px] font-semibold text-blue-700 dark:text-blue-300">Cloud / 로컬</span>
                                     <button type="button" id="litertlm-settings-fold-btn" onclick="toggleLiteRTLMSettingsFold()"
                                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
-                                        aria-expanded="true" aria-controls="litertlm-settings-body" title="LiteRT-LM 설정 접기/펼치기">접기</button>
+                                        aria-expanded="false" aria-controls="litertlm-settings-body" title="LiteRT-LM 설정 접기/펼치기">펼치기</button>
                                 </div>
                             </div>
-                            <div id="litertlm-settings-body" class="space-y-3">
-                            <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">Google LiteRT-LM의 OpenAI 호환 서버를 사용합니다. Cloud(Base URL) 또는 Local URL 중 활성화할 서버를 선택하세요.</p>
+                            <div id="litertlm-settings-body" class="hidden space-y-3">
+                            <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">Google LiteRT-LM의 OpenAI 호환 Cloud 서버를 사용합니다. 서버 주소는 앱에서 지정한 전용 URL만 사용합니다.</p>
                             <div class="rounded-md border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 p-3 space-y-2">
-                                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
-                                    <input type="radio" name="settings-litertlm-mode" id="settings-litertlm-cloud-mode" value="cloud" onchange="updateLiteRTLMSettingsModeUI()" class="text-blue-600 focus:ring-blue-500">
-                                    <span>Base URL (Cloud) 사용 (기본)</span>
-                                </label>
+                                <p class="text-xs font-semibold text-slate-700 dark:text-slate-200">Cloud 전용 연결</p>
                                 <div class="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2">
                                     <label class="text-xs text-slate-600 dark:text-slate-400">연결 이름
                                         <input id="settings-litertlm-cloud-name" type="text" value="cloud" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
                                     </label>
                                     <label class="text-xs text-slate-600 dark:text-slate-400">Cloud Base URL
-                                        <input id="settings-litertlm-cloud-url" type="url" value="https://" spellcheck="false" onfocus="ensureLiteRTLMUrlPrefix(this)" onblur="ensureLiteRTLMUrlPrefix(this)" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="rounded-md border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 p-3 space-y-2">
-                                <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer">
-                                    <input type="radio" name="settings-litertlm-mode" id="settings-litertlm-local-mode" value="local" checked onchange="updateLiteRTLMSettingsModeUI()" class="text-blue-600 focus:ring-blue-500">
-                                    <span>Local URL 사용</span>
-                                </label>
-                                <div class="grid grid-cols-1 sm:grid-cols-[120px_1fr] gap-2">
-                                    <label class="text-xs text-slate-600 dark:text-slate-400">연결 이름
-                                        <input id="settings-litertlm-local-name" type="text" value="Local S" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
-                                    </label>
-                                    <label class="text-xs text-slate-600 dark:text-slate-400">Local URL
-                                        <input id="settings-litertlm-local-url" type="url" value="http://localhost:9379/v1" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
+                                        <input id="settings-litertlm-cloud-url" type="url" value="https://llm1.abci.co.kr/v1" readonly aria-readonly="true" class="mt-1 w-full px-2 py-1.5 border rounded bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-600">
                                     </label>
                                 </div>
                             </div>
                             <label class="block text-xs text-slate-600 dark:text-slate-400">모델
                                 <select id="settings-litertlm-model" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
-                                    <option value="gemma-4-E2B-it.litertlm">gemma-4-E2B-it.litertlm</option>
+                                    <option value="">모델 가져오기를 실행하세요</option>
                                 </select>
                             </label>
-                            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            <div class="litertlm-parameter-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
                                 <label class="text-xs text-slate-600 dark:text-slate-400">Context length<input id="settings-litertlm-context-length" type="number" min="1" step="1" value="4096" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
                                 <label class="text-xs text-slate-600 dark:text-slate-400">Max gen<input id="settings-litertlm-max-gen" type="number" min="1" step="1" value="2048" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
                                 <label class="text-xs text-slate-600 dark:text-slate-400">Sampler<select id="settings-litertlm-sampler" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"><option value="greedy">Greedy</option><option value="top_k">Top-K</option><option value="top_p">Top-P</option></select></label>
@@ -2325,11 +2308,11 @@
                                 </label>
                             </div>
                             <p class="text-[11px] text-slate-500 dark:text-slate-400">LiteRT-LM은 스트리밍을 별도로 활성화합니다. 모바일에서는 여러 토큰을 묶어 100ms 간격으로 그려 배터리와 화면 렌더링 부담을 줄입니다.</p>
-                            <div class="flex flex-wrap items-center gap-2">
-                                <button type="button" onclick="saveLiteRTLMSettings(true)" class="px-2 py-1.5 rounded bg-blue-600 text-white text-xs hover:bg-blue-700">LiteRT-LM 설정 저장</button>
+                            <div class="litertlm-actions flex flex-wrap items-center gap-2">
+                                <button type="button" onclick="saveLiteRTLMSettings(true)" class="litertlm-save-button px-3 py-2 rounded bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">LiteRT-LM 설정 저장</button>
                                 <button type="button" onclick="applyLiteRTLMMobilePreset()" class="px-2 py-1.5 rounded border border-blue-400 text-blue-700 dark:text-blue-300 text-xs">모바일 경량 설정</button>
-                                <button type="button" onclick="loadSettingsLiteRTLMModels()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">연결·모델 확인</button>
-                                <button type="button" onclick="testSettingsLiteRTLMResponse()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">실제 응답 테스트</button>
+                                <button type="button" onclick="loadSettingsLiteRTLMModels()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">모델 가져오기</button>
+                                <button type="button" onclick="testSettingsLiteRTLMResponse()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">연결 테스트</button>
                             </div>
                             <p id="settings-litertlm-status" class="text-xs min-h-[1.25rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                             </div>
@@ -2344,10 +2327,10 @@
                                 </label>
                                 <button type="button" id="ai-chat-settings-fold-btn" onclick="toggleAiChatSettingsFold()"
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
-                                    aria-expanded="true" aria-controls="ai-chat-settings-body"
-                                    title="AI Jena 관련 설정 접기/펼치기">접기</button>
+                                    aria-expanded="false" aria-controls="ai-chat-settings-body"
+                                    title="AI Jena 관련 설정 접기/펼치기">펼치기</button>
                             </div>
-                            <div id="ai-chat-settings-body">
+                            <div id="ai-chat-settings-body" class="hidden">
                                 <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 모든 화면의 우측 하단에 AI Jena 버튼이 표시됩니다. 팝업·우측 Dock·전체화면을 지원하고 대화 기록은 IndexedDB에 저장됩니다. ScholarAI와 별도의 일반 멀티턴 대화이며, 아래의 LM Studio 연결 설정과 AI Studio API Key를 공유합니다.</p>
                                 <label class="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
                                     <input type="checkbox" id="ai-chat-menu-enabled" class="rounded border-slate-300 dark:border-slate-600 text-violet-600 focus:ring-violet-500">

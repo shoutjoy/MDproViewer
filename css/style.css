@@ -3133,6 +3133,60 @@ html.ai-chat-page-pushed .app-header .app-header-actions {
 #ai-link-settings-block .ai-settings-rack--deepseek { --ai-rack-rgb: 225 29 72; }
 #ai-link-settings-block .ai-settings-rack--openai { --ai-rack-rgb: 5 150 105; }
 
+/* LiteRT-LM is a plain div rack, so its body needs its own content inset. */
+#ai-link-settings-block #litertlm-settings-body {
+    box-sizing: border-box;
+    padding: 4px 18px 18px;
+    color: #334155;
+}
+
+#ai-link-settings-block #litertlm-settings-body label {
+    line-height: 1.4;
+}
+
+#ai-link-settings-block #litertlm-settings-body input,
+#ai-link-settings-block #litertlm-settings-body select {
+    color: #334155;
+}
+
+#ai-link-settings-block .litertlm-parameter-grid > label {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 6px;
+    font-weight: 600;
+}
+
+#ai-link-settings-block .litertlm-parameter-grid > label > input,
+#ai-link-settings-block .litertlm-parameter-grid > label > select {
+    margin-top: 0 !important;
+    min-height: 40px;
+}
+
+#ai-link-settings-block .litertlm-actions {
+    row-gap: 10px !important;
+}
+
+#ai-link-settings-block .litertlm-save-button {
+    border: 1px solid #1d4ed8;
+    background: #2563eb !important;
+    color: #fff !important;
+    box-shadow: 0 1px 2px rgb(15 23 42 / .18);
+}
+
+#ai-link-settings-block .litertlm-save-button:hover {
+    background: #1d4ed8 !important;
+}
+
+.dark #ai-link-settings-block #litertlm-settings-body {
+    color: #e2e8f0;
+}
+
+.dark #ai-link-settings-block #litertlm-settings-body input,
+.dark #ai-link-settings-block #litertlm-settings-body select {
+    color: #f1f5f9;
+}
+
 .dark #ai-link-settings-block .ai-settings-rack {
     border-color: rgb(var(--ai-rack-rgb) / .5) !important;
     background: linear-gradient(105deg, rgb(var(--ai-rack-rgb) / .16), rgb(15 23 42 / .58)) !important;
@@ -3149,5 +3203,8 @@ html.ai-chat-page-pushed .app-header .app-header-actions {
     #ai-link-settings-block .ai-settings-rack > div:first-child {
         min-height: 64px;
         padding: 10px 12px !important;
+    }
+    #ai-link-settings-block #litertlm-settings-body {
+        padding: 4px 12px 14px;
     }
 }

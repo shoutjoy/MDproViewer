@@ -5136,6 +5136,8 @@
       if (state.fastMode) state.responseMode = 'quick';
       state.showReasoning = storageGet(SHOW_REASONING_KEY, state.showReasoning ? '1' : '0') === '1';
       state.academicSearchEnabled = storageGet(ACADEMIC_SEARCH_KEY, state.academicSearchEnabled ? '1' : '0') === '1';
+      state.internetSearchEnabled = storageGet(INTERNET_SEARCH_KEY, state.internetSearchEnabled ? '1' : '0') === '1';
+      if (state.academicSearchEnabled && state.internetSearchEnabled) state.internetSearchEnabled = false;
       state.academicSearchCount = normalizeAcademicCount(storageGet(ACADEMIC_COUNT_KEY, String(state.academicSearchCount)));
       state.startLayout = normalizeLayout(storageGet(START_LAYOUT_KEY, state.startLayout));
       state.layout = normalizeLayout(storageGet(LAYOUT_KEY, state.layout));
