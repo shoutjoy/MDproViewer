@@ -5,7 +5,7 @@
   "identifier": "com.mdpro.viewer",
   "build": {
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist"
+    "frontendDist": "../../../TauriBuildManager/mdpro-viewer/dist"
   },
   "app": {
     "windows": [

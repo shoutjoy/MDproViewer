@@ -7,6 +7,7 @@
   var GEMINI_MODEL_KEY = 'ss_ai_chat_gemini_model';
   var DEEPSEEK_MODEL_KEY = 'ss_ai_chat_deepseek_model';
   var OPENAI_MODEL_KEY = 'ss_ai_chat_openai_model';
+  var OPENAI_COMPATIBLE_MODEL_KEY = 'ss_ai_chat_openai_compatible_model';
   var OLLAMA_MODEL_KEY = 'ss_ai_chat_ollama_model';
   var LITERTLM_MODEL_KEY = 'ss_ai_chat_litertlm_model';
   var WRITING_STYLE_KEY = 'ss_ai_chat_writing_style';
@@ -41,7 +42,7 @@
   var CURRENT_CONVERSATION_KEY = 'ss_ai_chat_current_conversation_id';
   var MIGRATION_KEY = 'ss_ai_chat_idb_migrated_v1';
   var SQLITE_SYNC_KEYS = new Set([
-    ENABLED_KEY, PROVIDER_KEY, GEMINI_MODEL_KEY, DEEPSEEK_MODEL_KEY, OPENAI_MODEL_KEY,
+    ENABLED_KEY, PROVIDER_KEY, GEMINI_MODEL_KEY, DEEPSEEK_MODEL_KEY, OPENAI_MODEL_KEY, OPENAI_COMPATIBLE_MODEL_KEY,
     OLLAMA_MODEL_KEY, LITERTLM_MODEL_KEY, WRITING_STYLE_KEY, ANSWER_APPEARANCE_KEY, ANSWER_FONT_SIZE_KEY, RESPONSE_MODE_KEY, FAST_MODE_KEY, SHOW_REASONING_KEY,
     ACADEMIC_SEARCH_KEY, ACADEMIC_COUNT_KEY, INTERNET_SEARCH_KEY, LAYOUT_KEY, START_LAYOUT_KEY
   ]);
@@ -117,6 +118,7 @@
     litertlmModel: '',
     deepseekModel: 'deepseek-v4-flash',
     openaiModel: 'gpt-5.6-sol',
+    openaiCompatibleModel: 'orcarouter/free',
     lmModel: '',
     lmContextLength: 0,
     messages: [],
@@ -340,6 +342,7 @@
       ollamaModel: state.ollamaModel,
       deepseekModel: state.deepseekModel,
       openaiModel: state.openaiModel,
+      openaiCompatibleModel: state.openaiCompatibleModel,
       messages: state.messages.slice(-MAX_STORED_MESSAGES)
     };
   }
@@ -443,7 +446,7 @@
     });
     if (record && record.provider) {
       var nextProvider = String(record.provider || '').toLowerCase();
-      state.provider = nextProvider === 'aistudio' || nextProvider === 'ollama' || nextProvider === 'deepseek' || nextProvider === 'openai' ? nextProvider : 'lmstudio';
+      state.provider = nextProvider === 'aistudio' || nextProvider === 'ollama' || nextProvider === 'litertlm' || nextProvider === 'deepseek' || nextProvider === 'openai-compatible' || nextProvider === 'openai' ? nextProvider : 'lmstudio';
     }
     if (record && record.responseMode) state.responseMode = record.responseMode === 'reasoning' ? 'reasoning' : 'quick';
     if (record && typeof record.showReasoning === 'boolean') state.showReasoning = record.showReasoning;
@@ -453,6 +456,7 @@
     if (record && record.ollamaModel) state.ollamaModel = record.ollamaModel;
     if (record && record.deepseekModel) state.deepseekModel = record.deepseekModel;
     if (record && record.openaiModel) state.openaiModel = record.openaiModel;
+    if (record && record.openaiCompatibleModel) state.openaiCompatibleModel = record.openaiCompatibleModel;
     storageSet(CURRENT_CONVERSATION_KEY, state.conversationId);
     storageSet(PROVIDER_KEY, state.provider);
     storageSet(RESPONSE_MODE_KEY, state.responseMode);
@@ -463,6 +467,7 @@
     storageSet(OLLAMA_MODEL_KEY, state.ollamaModel);
     storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
     storageSet(OPENAI_MODEL_KEY, state.openaiModel);
+    storageSet(OPENAI_COMPATIBLE_MODEL_KEY, state.openaiCompatibleModel);
     updateProviderUI();
     setResponseMode(state.responseMode);
     setShowReasoning(state.showReasoning);
@@ -485,7 +490,7 @@
             titleCustomized: false, pinned: false, pinnedAt: 0,
             provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
             academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-            geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel,
+            geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel, openaiCompatibleModel: state.openaiCompatibleModel,
             messages: legacy
           };
           await requestPromise(conversationStore('readwrite').put(migrated));
@@ -504,7 +509,7 @@
           titleCustomized: false, pinned: false, pinnedAt: 0,
           provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
           academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-          geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel, messages: []
+          geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel, openaiCompatibleModel: state.openaiCompatibleModel, messages: []
         };
         state.conversations = [current];
         await requestPromise(conversationStore('readwrite').put(current));
@@ -596,7 +601,7 @@
       + '    </div>'
       + '    <div id="ai-chat-provider-controls" class="ai-chat-provider-controls collapsed">'
       + '      <div class="ai-chat-provider-row">'
-      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="litertlm">LiteRT-LM</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select></label>'
+      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="litertlm">LiteRT-LM</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai-compatible">OrcaRouter / OpenAI 호환</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select></label>'
       + '        <label>모델<select id="ai-chat-model"></select></label>'
       + '        <button type="button" id="ai-chat-refresh-model" title="현재 모델 새로고침">↻</button>'
       + '      </div>'
@@ -766,7 +771,7 @@
       finishAcademicCountEdit(true);
     });
     document.getElementById('ai-chat-provider').addEventListener('change', function (event) {
-      state.provider = (event.target.value === 'aistudio' || event.target.value === 'ollama' || event.target.value === 'litertlm' || event.target.value === 'deepseek' || event.target.value === 'openai') ? event.target.value : 'lmstudio';
+      state.provider = (event.target.value === 'aistudio' || event.target.value === 'ollama' || event.target.value === 'litertlm' || event.target.value === 'deepseek' || event.target.value === 'openai-compatible' || event.target.value === 'openai') ? event.target.value : 'lmstudio';
       storageSet(PROVIDER_KEY, state.provider);
       updateProviderUI();
       refreshModels(false);
@@ -787,6 +792,13 @@
       if (state.provider === 'openai') {
         state.openaiModel = event.target.value || DEFAULT_OPENAI_MODELS[0];
         storageSet(OPENAI_MODEL_KEY, state.openaiModel);
+        updateHeaderModel();
+        saveHistory();
+        return;
+      }
+      if (state.provider === 'openai-compatible') {
+        state.openaiCompatibleModel = event.target.value || 'orcarouter/free';
+        storageSet(OPENAI_COMPATIBLE_MODEL_KEY, state.openaiCompatibleModel);
         updateHeaderModel();
         saveHistory();
         return;
@@ -1582,7 +1594,9 @@
     var type = String(event.type);
     var providerLabel = event.provider === 'ollama' || state.provider === 'ollama'
       ? 'Ollama'
-      : (event.provider === 'litertlm' || state.provider === 'litertlm' ? 'LiteRT-LM' : 'LM Studio');
+      : (event.provider === 'litertlm' || state.provider === 'litertlm'
+          ? 'LiteRT-LM'
+          : (event.provider === 'aistudio' || state.provider === 'aistudio' ? 'AI Studio' : 'LM Studio'));
     if (type === 'request.start') {
       liveStream.contextLength = Math.max(0, Number(event.context_length) || 0);
       liveStream.maxOutputTokens = Math.max(0, Number(event.max_output_tokens) || 0);
@@ -1671,7 +1685,7 @@
     thinkingProgress = 2;
     liveStream = {
       phase: 'connecting',
-      stage: (state.provider === 'ollama' ? 'Ollama' : 'LM Studio') + ' 연결 중',
+      stage: (state.provider === 'ollama' ? 'Ollama' : (state.provider === 'aistudio' ? 'AI Studio' : 'LM Studio')) + ' 연결 중',
       progress: 2,
       contextLength: state.lmContextLength || 0,
       maxOutputTokens: 0,
@@ -1793,6 +1807,8 @@
       summary.textContent = 'AI 공급자 · DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
     } else if (state.provider === 'openai') {
       summary.textContent = 'AI 공급자 · OpenAI · ' + openaiModelLabel(state.openaiModel || DEFAULT_OPENAI_MODELS[0]);
+    } else if (state.provider === 'openai-compatible') {
+      summary.textContent = 'AI 공급자 · OrcaRouter / OpenAI 호환 · ' + (state.openaiCompatibleModel || '모델 확인 필요');
     } else {
       summary.textContent = 'AI 공급자 · AI Studio · ' + geminiModelLabel(state.geminiModel);
     }
@@ -2235,6 +2251,8 @@
       header.textContent = 'DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
     } else if (state.provider === 'openai') {
       header.textContent = 'OpenAI · ' + openaiModelLabel(state.openaiModel || DEFAULT_OPENAI_MODELS[0]);
+    } else if (state.provider === 'openai-compatible') {
+      header.textContent = 'OrcaRouter / OpenAI 호환 · ' + (state.openaiCompatibleModel || '모델 확인 필요');
     } else {
       header.textContent = 'AI Studio · ' + geminiModelLabel(state.geminiModel);
     }
@@ -2263,6 +2281,7 @@
     if (state.provider === 'litertlm') return state.litertlmModel;
     if (state.provider === 'deepseek') return state.deepseekModel;
     if (state.provider === 'openai') return state.openaiModel;
+    if (state.provider === 'openai-compatible') return state.openaiCompatibleModel;
     return null;
   }
 
@@ -2393,6 +2412,14 @@
       var openaiModelSelect = document.getElementById('ai-chat-model');
       if (openaiModelSelect && openaiModelSelect.value) state.openaiModel = openaiModelSelect.value;
       storageSet(OPENAI_MODEL_KEY, state.openaiModel || DEFAULT_OPENAI_MODELS[0]);
+    } else if (state.provider === 'openai-compatible') {
+      var compatibleModels = [];
+      try { compatibleModels = getBridge().getCachedOpenAICompatibleModels(); } catch (_) {}
+      if (!compatibleModels.length && state.openaiCompatibleModel) compatibleModels = [state.openaiCompatibleModel];
+      setModelOptions(compatibleModels, state.openaiCompatibleModel, false);
+      var compatibleSelect = document.getElementById('ai-chat-model');
+      if (compatibleSelect && compatibleSelect.value) state.openaiCompatibleModel = compatibleSelect.value;
+      storageSet(OPENAI_COMPATIBLE_MODEL_KEY, state.openaiCompatibleModel || 'orcarouter/free');
     } else {
       var cached = DEFAULT_GEMINI_MODELS;
       try { cached = getBridge().getCachedGeminiModels(); } catch (e) {}
@@ -2466,6 +2493,14 @@
           state.openaiModel ? 'OpenAI Responses API를 사용합니다: ' + openaiModelLabel(state.openaiModel) : 'OpenAI 모델이 없습니다.',
           state.openaiModel ? 'ok' : 'error'
         );
+      } else if (state.provider === 'openai-compatible') {
+        var compatibleModels = silent ? bridge.getCachedOpenAICompatibleModels() : await bridge.refreshOpenAICompatibleModels();
+        if (state.provider !== requestedProvider) return;
+        setModelOptions(compatibleModels || [], state.openaiCompatibleModel, false);
+        var compatibleModelSelect = document.getElementById('ai-chat-model');
+        state.openaiCompatibleModel = compatibleModelSelect && compatibleModelSelect.value ? compatibleModelSelect.value : '';
+        storageSet(OPENAI_COMPATIBLE_MODEL_KEY, state.openaiCompatibleModel);
+        setStatus(state.openaiCompatibleModel ? 'OrcaRouter / OpenAI 호환 모델: ' + state.openaiCompatibleModel : '사용 가능한 OpenAI 호환 모델이 없습니다.', state.openaiCompatibleModel ? 'ok' : 'error');
       } else {
         var models = silent ? bridge.getCachedGeminiModels() : await bridge.refreshGeminiModels();
         if (state.provider !== requestedProvider) return;
@@ -4070,19 +4105,24 @@
           item.appendChild(answerLabel);
         }
         if (String(message.content || '').trim()) item.appendChild(content);
-        if (message.role === 'assistant' && (message.provider === 'lmstudio' || message.provider === 'ollama') && message.usage) {
+        if (message.role === 'assistant' && (message.provider === 'lmstudio' || message.provider === 'ollama' || message.provider === 'aistudio') && message.usage) {
           var usage = message.usage || {};
           var responseStatsParts = [];
           var inputTokenCount = Number(usage.input_tokens || usage.promptTokens || usage.prompt_tokens || 0);
           var outputTokenCount = responseOutputTokens(message, null);
           var reasoningTokenCount = Number(usage.reasoning_output_tokens || usage.reasoningTokens || 0);
+          var tokenPrefix = usage.estimated ? '≈' : '';
           if (message.contextLength) {
-            responseStatsParts.push('컨텍스트 ' + formatStreamNumber(inputTokenCount) + ' / ' + formatStreamNumber(message.contextLength));
+            responseStatsParts.push('입력 ' + tokenPrefix + formatStreamNumber(inputTokenCount) + ' / 컨텍스트 ' + formatStreamNumber(message.contextLength));
+          } else if (inputTokenCount) {
+            responseStatsParts.push('입력 ' + tokenPrefix + formatStreamNumber(inputTokenCount) + ' tok');
           }
           if (outputTokenCount || message.maxOutputTokens) {
-            responseStatsParts.push('출력 ' + formatStreamNumber(outputTokenCount) + (message.maxOutputTokens ? ' / ' + formatStreamNumber(message.maxOutputTokens) : '') + ' tok');
+            responseStatsParts.push('출력 ' + tokenPrefix + formatStreamNumber(outputTokenCount) + (message.maxOutputTokens ? ' / ' + formatStreamNumber(message.maxOutputTokens) : '') + ' tok');
           }
-          if (reasoningTokenCount) responseStatsParts.push('추론 ' + formatStreamNumber(reasoningTokenCount) + ' tok');
+          if (reasoningTokenCount) responseStatsParts.push('추론 ' + tokenPrefix + formatStreamNumber(reasoningTokenCount) + ' tok');
+          if (usage.totalTokens || usage.total_tokens) responseStatsParts.push('합계 ' + tokenPrefix + formatStreamNumber(usage.totalTokens || usage.total_tokens) + ' tok');
+          if (message.provider === 'aistudio') responseStatsParts.push(usage.estimated ? 'LM Studio 기준 추정' : 'AI Studio 제공값');
           if (usage.tokens_per_second) responseStatsParts.push(Number(usage.tokens_per_second).toFixed(1) + ' tok/s');
           if (usage.time_to_first_token_seconds) responseStatsParts.push('첫 토큰 ' + Number(usage.time_to_first_token_seconds).toFixed(2) + '초');
           if (responseStatsParts.length) {
@@ -4265,6 +4305,8 @@
       ? 'DeepSeek'
       : state.provider === 'openai'
       ? 'OpenAI'
+      : state.provider === 'openai-compatible'
+      ? 'OrcaRouter / OpenAI 호환'
       : 'AI Studio (Gemini)';
     var modelLabel = state.provider === 'lmstudio'
       ? (state.lmModel || '확인되지 않음')
@@ -4274,6 +4316,8 @@
       ? (state.deepseekModel || '확인되지 않음')
       : state.provider === 'openai'
       ? (state.openaiModel || '확인되지 않음')
+      : state.provider === 'openai-compatible'
+      ? (state.openaiCompatibleModel || '확인되지 않음')
       : state.geminiModel;
     var lines = [
       '# AI Jena 대화',
@@ -4344,7 +4388,7 @@
       id: newId(), title: '새 대화', createdAt: Date.now(), updatedAt: Date.now(),
       provider: state.provider, responseMode: state.responseMode, showReasoning: state.showReasoning,
       academicSearchEnabled: state.academicSearchEnabled, academicSearchCount: state.academicSearchCount,
-      geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel, messages: []
+      geminiModel: state.geminiModel, ollamaModel: state.ollamaModel, deepseekModel: state.deepseekModel, openaiModel: state.openaiModel, openaiCompatibleModel: state.openaiCompatibleModel, messages: []
     };
     if (state.dbReady) {
       await requestPromise(conversationStore('readwrite').put(record));
@@ -5045,7 +5089,7 @@
     createUI();
     bindPreserveEditorSelectionOnPanel();
     var savedProvider = storageGet(PROVIDER_KEY, 'lmstudio');
-    state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'litertlm' || savedProvider === 'deepseek' || savedProvider === 'openai'
+    state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'litertlm' || savedProvider === 'deepseek' || savedProvider === 'openai-compatible' || savedProvider === 'openai'
       ? savedProvider
       : (savedProvider === 'lmstudio' ? 'lmstudio' : 'lmstudio');
     state.providerControlsOpen = storageGet(PROVIDER_CONTROLS_KEY, '0') === '1';
@@ -5082,6 +5126,7 @@
     state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, '');
     state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, DEFAULT_DEEPSEEK_MODELS[0]);
     state.openaiModel = storageGet(OPENAI_MODEL_KEY, DEFAULT_OPENAI_MODELS[0]);
+    state.openaiCompatibleModel = storageGet(OPENAI_COMPATIBLE_MODEL_KEY, storageGet('ss_openai_compatible_model_id', 'orcarouter/free'));
     // AI Jena starts from the user-selected start layout. Popup/fullscreen
     // positions are restored from the last saved coordinates.
     state.startLayout = normalizeLayout(storageGet(START_LAYOUT_KEY, 'dock'));
@@ -5121,13 +5166,14 @@
     },
     syncSettings: function () {
       var provider = storageGet(PROVIDER_KEY, state.provider);
-      state.provider = provider === 'aistudio' || provider === 'ollama' || provider === 'litertlm' || provider === 'deepseek' || provider === 'openai'
+      state.provider = provider === 'aistudio' || provider === 'ollama' || provider === 'litertlm' || provider === 'deepseek' || provider === 'openai-compatible' || provider === 'openai'
         ? provider : 'lmstudio';
       state.geminiModel = storageGet(GEMINI_MODEL_KEY, state.geminiModel);
       state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, state.ollamaModel);
       state.litertlmModel = storageGet(LITERTLM_MODEL_KEY, state.litertlmModel);
       state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
       state.openaiModel = storageGet(OPENAI_MODEL_KEY, state.openaiModel);
+      state.openaiCompatibleModel = storageGet(OPENAI_COMPATIBLE_MODEL_KEY, storageGet('ss_openai_compatible_model_id', state.openaiCompatibleModel));
       state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, state.writingStyle));
       state.answerAppearance = normalizeAnswerAppearance(storageGet(ANSWER_APPEARANCE_KEY, state.answerAppearance));
       state.answerFontSize = normalizeAnswerFontSize(storageGet(ANSWER_FONT_SIZE_KEY, String(state.answerFontSize)));

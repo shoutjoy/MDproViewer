@@ -2031,7 +2031,7 @@
                                             <span aria-hidden="true">▼</span>
                                         </button>
                                         <div id="openai-compatible-model-menu" role="listbox"
-                                            class="hidden absolute z-30 left-0 right-0 mt-1 overflow-hidden rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg">
+                                            class="hidden absolute z-30 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-lg">
                                             <button type="button" role="option" onclick="selectOpenAICompatibleModel('deepseek/deepseek-v4-flash-free')" class="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-sky-950/40">deepseek/deepseek-v4-flash-free</button>
                                             <button type="button" role="option" onclick="selectOpenAICompatibleModel('deepseek/deepseek-v4-pro-free')" class="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-sky-950/40">deepseek/deepseek-v4-pro-free</button>
                                             <button type="button" role="option" onclick="selectOpenAICompatibleModel('qwen/qwen3.8-27b-free')" class="block w-full px-3 py-2 text-left text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-sky-950/40">qwen/qwen3.8-27b-free</button>
@@ -2040,6 +2040,15 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="flex flex-wrap items-center gap-2 rounded-md border border-sky-200 dark:border-sky-900/70 bg-white/70 dark:bg-slate-900/40 p-2">
+                                    <label class="mr-auto inline-flex items-center gap-2 text-xs font-semibold text-sky-800 dark:text-sky-200 cursor-pointer select-none">
+                                        <input id="openai-compatible-free-models-only" type="checkbox" checked onchange="applyOpenAICompatibleModelFilter()" class="rounded border-sky-400 text-sky-600 focus:ring-sky-500">
+                                        <span>무료 모델만</span>
+                                    </label>
+                                    <button type="button" id="openai-compatible-check-models-button" onclick="checkOpenAICompatibleModels()" class="px-3 py-1.5 rounded border border-sky-400 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/40">모델 확인</button>
+                                    <button type="button" id="openai-compatible-test-button" onclick="testOpenAICompatibleConnection()" class="px-3 py-1.5 rounded border border-emerald-500 text-xs font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">연결 테스트</button>
+                                </div>
+                                <p id="openai-compatible-connection-status" class="text-[11px] min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                                 <p id="openai-compatible-save-feedback" class="text-[11px] min-h-[1rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                                 <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
                                     <button type="button" onclick="resetOpenAICompatibleSettings()" class="px-3 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">Orca 기본값으로 초기화</button>
@@ -2100,7 +2109,28 @@
                                 oninput="validateDeepseekBaseUrlInputUI()"
                                 class="mt-1 w-full px-3 py-1.5 border rounded bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
                             <p id="deepseek-base-url-feedback" class="text-xs mt-1 min-h-[1.25rem]" aria-live="polite"></p>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2">
+                                <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">최대 출력 토큰
+                                    <input id="deepseek-max-tokens" type="number" min="256" max="384000" step="256" value="8192"
+                                        class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                </label>
+                                <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">제한 시간(초)
+                                    <input id="deepseek-timeout" type="number" min="30" max="3600" step="10" value="300"
+                                        class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                </label>
+                                <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">추론 강도
+                                    <select id="deepseek-reasoning-effort" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                        <option value="low">Low</option>
+                                        <option value="high" selected>High</option>
+                                        <option value="max">Max</option>
+                                    </select>
+                                </label>
+                            </div>
                             <div class="flex items-center justify-end gap-2 mt-2">
+                                <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener noreferrer"
+                                    class="text-xs text-sky-600 dark:text-sky-400 hover:underline">
+                                    API Key 발급
+                                </a>
                                 <a href="https://platform.deepseek.com/top_up" target="_blank" rel="noopener noreferrer"
                                     class="text-xs text-amber-600 dark:text-amber-400 hover:underline">
                                     잔액 충전
@@ -2260,7 +2290,7 @@
                             <div class="flex items-center justify-between gap-2">
                                 <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">LiteRT-LM 설정</p>
                                 <div class="flex items-center gap-2">
-                                    <span class="px-2 py-1 rounded border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 text-[11px] font-semibold text-blue-700 dark:text-blue-300">Cloud / 로컬</span>
+                                    <span class="px-2 py-1 rounded border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 text-[11px] font-semibold text-blue-700 dark:text-blue-300">Base URL 기본</span>
                                     <button type="button" id="litertlm-settings-fold-btn" onclick="toggleLiteRTLMSettingsFold()"
                                         class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700"
                                         aria-expanded="false" aria-controls="litertlm-settings-body" title="LiteRT-LM 설정 접기/펼치기">펼치기</button>
@@ -3398,7 +3428,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260823-ai-jena-menu-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260825-link-1&amp;verticalEditToolbar=20260823-2&amp;headerHeadingDisplay=20260825-1&amp;documentTheme=20260825-1&amp;fastSafetyTimeout=20260825-1&amp;fastCompleteStreaming=20260825-1&amp;fastLimitsUi=20260825-2&amp;aiDetailsToggle=20260825-1&amp;splitTab=20260825-1"
+    src="./js/app.js?v=20260828-litertlm-base-url-default-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260825-link-1&amp;verticalEditToolbar=20260823-2&amp;headerHeadingDisplay=20260825-1&amp;documentTheme=20260825-1&amp;fastSafetyTimeout=20260825-1&amp;fastCompleteStreaming=20260825-1&amp;fastLimitsUi=20260825-2&amp;aiDetailsToggle=20260825-1&amp;splitTab=20260825-1"
     charset="utf-8"
     defer>
 </script>

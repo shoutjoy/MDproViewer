@@ -2,8 +2,15 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const tauriRoot = path.resolve(__dirname, "..");
-const projectRoot = path.resolve(tauriRoot, "..");
-const output = path.join(tauriRoot, "dist");
+const configuredSource = String(process.env.MDPRO_VIEWER_SOURCE || "").trim();
+const siblingSource = path.resolve(tauriRoot, "..", "MDproViewer");
+const projectRoot = configuredSource
+  ? path.resolve(configuredSource)
+  : (fs.existsSync(path.join(siblingSource, "index.html")) ? siblingSource : path.resolve(tauriRoot, ".."));
+const buildManagerRoot = path.resolve(tauriRoot, "..", "..", "TauriBuildManager", "mdpro-viewer");
+const output = String(process.env.MDPRO_TAURI_DIST || "").trim()
+  ? path.resolve(process.env.MDPRO_TAURI_DIST)
+  : path.join(buildManagerRoot, "dist");
 const excluded = new Set([
   ".git", ".vscode", "Tauri", "tests",
   ".cursorrules", ".gitignore", "run.py",
@@ -26,3 +33,4 @@ if (!fs.existsSync(path.join(output, "index.html"))) {
 }
 
 console.log(`MDproViewer frontend prepared at ${output}`);
+console.log(`Source: ${projectRoot}`);

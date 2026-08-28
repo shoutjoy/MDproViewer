@@ -9,6 +9,7 @@ import socket
 import urllib.error
 import urllib.parse
 import urllib.request
+import json
 
 from LocalSave_sqlite.server.api import SqliteApiRouter
 from LocalSave_sqlite.server.database import DatabaseManager
@@ -39,6 +40,7 @@ SQLITE_API = SqliteApiRouter(DIR, manager=SQLITE_MANAGER)
 
 class Handler(http.server.SimpleHTTPRequestHandler):
     IMAGE_PROXY_PATH = "/__mdviewer_image_proxy"
+    DEEPSEEK_PROXY_PATH = "/__mdviewer_deepseek_proxy"
     IMAGE_PROXY_LIMIT = 30 * 1024 * 1024
 
     def send_header(self, keyword, value):
@@ -137,7 +139,53 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
         if SQLITE_API.handle(self, "POST"):
             return
+        if urllib.parse.urlsplit(self.path).path == self.DEEPSEEK_PROXY_PATH:
+            self._proxy_deepseek()
+            return
         self.send_error(404, "Not Found")
+
+    def _proxy_deepseek(self):
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            self._send_proxy_error(403, "DeepSeek proxy is available only from this computer")
+            return
+        try:
+            size = int(self.headers.get("Content-Length") or 0)
+            if size <= 0 or size > 4 * 1024 * 1024:
+                raise ValueError("Invalid request size")
+            envelope = json.loads(self.rfile.read(size).decode("utf-8"))
+            base_url = str(envelope.get("baseUrl") or "https://api.deepseek.com").rstrip("/")
+            target = urllib.parse.urlsplit(base_url)
+            if target.scheme != "https" or target.hostname not in {"api.deepseek.com"}:
+                raise ValueError("Only the official DeepSeek API host is allowed")
+            api_path = str(envelope.get("path") or "")
+            if api_path not in {"/chat/completions", "/models", "/user/balance"}:
+                raise ValueError("Unsupported DeepSeek API path")
+            api_key = str(envelope.get("apiKey") or "").strip()
+            if not api_key:
+                raise ValueError("DeepSeek API key is missing")
+            body = envelope.get("body")
+            data = None if body is None else json.dumps(body).encode("utf-8")
+            request = urllib.request.Request(
+                base_url + api_path,
+                data=data,
+                method="GET" if body is None else "POST",
+                headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json", "Accept": "application/json"},
+            )
+            timeout = max(30, min(3600, int(envelope.get("timeoutSeconds") or 300)))
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    payload = response.read(16 * 1024 * 1024)
+                    status = response.status
+            except urllib.error.HTTPError as error:
+                payload = error.read(16 * 1024 * 1024)
+                status = error.code
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except (ValueError, OSError, urllib.error.URLError, json.JSONDecodeError) as error:
+            self._send_proxy_error(502, error)
 
     def do_PUT(self):
         if SQLITE_API.handle(self, "PUT"):
