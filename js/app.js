@@ -8,6 +8,8 @@ const AI_AUTHENTICATION_REQUIRED = false;
 const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
 const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
+const VIEW_PADDING_KEY = 'md_viewer_view_padding_v1';
+const DEFAULT_VIEW_PADDING = 24;
 const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const SETTINGS_CONTAINER_FOLD_STATE_KEY = 'md_viewer_settings_container_fold_state_v1';
 const FILE_DOWNLOAD_PREFIX_KEY = 'mdpro_file_download_prefix_v1';
@@ -110,8 +112,8 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
-    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260806-ai-jena-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260825-fast-limits-3',
+    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260828-litertlm-models-2',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -3712,6 +3714,9 @@ function toggleMode(mode) {
     }
     if (window.ViewModeTextInput && typeof window.ViewModeTextInput.updateInteractionState === 'function') {
         requestAnimationFrame(window.ViewModeTextInput.updateInteractionState);
+    }
+    if (typeof window.refreshEditorFormatGutter === 'function') {
+        requestAnimationFrame(window.refreshEditorFormatGutter);
     }
 }
 
@@ -9163,6 +9168,36 @@ function setViewModeEditEnabledToLocal(enabled) {
     else localStorage.removeItem(VIEW_MODE_EDIT_KEY);
 }
 
+function normalizeViewPadding(value) {
+    if (value == null || value === '') return DEFAULT_VIEW_PADDING;
+    const size = Number(value);
+    return [0, 16, 24, 32].includes(size) ? size : DEFAULT_VIEW_PADDING;
+}
+
+function getViewPaddingFromLocal() {
+    return normalizeViewPadding(localStorage.getItem(VIEW_PADDING_KEY));
+}
+
+function applyViewPadding(value) {
+    const size = normalizeViewPadding(value);
+    document.documentElement.style.setProperty('--md-view-padding', size + 'px');
+    const select = document.getElementById('view-padding-size');
+    if (select) select.value = String(size);
+    if (typeof window.refreshMarkdownCommentHighlight === 'function') {
+        window.refreshMarkdownCommentHighlight({ force: true, geometry: true });
+    }
+    if (typeof window.refreshEditorFormatGutter === 'function') {
+        window.refreshEditorFormatGutter();
+    }
+    return size;
+}
+
+async function setViewPaddingSetting(value) {
+    const size = applyViewPadding(value);
+    localStorage.setItem(VIEW_PADDING_KEY, String(size));
+    try { await setAiSettings({ viewPadding: size }); } catch (e) {}
+}
+
 function getSettingsContainerFoldState() {
     try {
         const parsed = JSON.parse(localStorage.getItem(SETTINGS_CONTAINER_FOLD_STATE_KEY) || '{}');
@@ -11700,6 +11735,8 @@ async function persistAiSettingsFromModal() {
     const viewModeEditEnabledValue = !!(viewModeEditEl && viewModeEditEl.checked);
     viewModeEditEnabled = viewModeEditEnabledValue;
     setViewModeEditEnabledToLocal(viewModeEditEnabledValue);
+    const viewPaddingValue = applyViewPadding(document.getElementById('view-padding-size')?.value);
+    localStorage.setItem(VIEW_PADDING_KEY, String(viewPaddingValue));
     applyEditToolsVisibilityByMode();
     saveScholarAIProviderSettingsFromUI(false);
     if (!db) return;
@@ -11777,6 +11814,7 @@ async function persistAiSettingsFromModal() {
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
         viewModeEditEnabled: viewModeEditEnabledValue,
+        viewPadding: viewPaddingValue,
         googleCalendarEnabled: googleCalendarEnabled,
         imgbbApiKey: imgbbKey,
         sqliteEnabled: sqliteEnabled
@@ -11809,6 +11847,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     ENTER_BUTTON_BR_KEY,
     SELECTION_WRAP_KEY,
     VIEW_MODE_EDIT_KEY,
+    VIEW_PADDING_KEY,
     SETTINGS_SHORTCUTS_FOLD_KEY,
     SETTINGS_CONTAINER_FOLD_STATE_KEY,
     FILE_DOWNLOAD_PREFIX_KEY,
@@ -12822,6 +12861,7 @@ const OLLAMA_MODELS_KEY = 'ss_ollama_models_v1';
 const aiChatOllamaContextLengths = Object.create(null);
 const OLLAMA_BASE_URL_KEY = 'ss_ollama_base_url';
 const LITERTLM_SETTINGS_KEY = 'ss_litertlm_settings_v1';
+const LITERTLM_MODELS_KEY = 'ss_litertlm_models_v1';
 const AI_CHAT_GEMINI_DEFAULT_MODELS = [
     'gemini-3.5-flash',
     'gemini-3.1-pro-preview',
@@ -12918,12 +12958,21 @@ function normalizeOllamaBaseUrl(value) {
 }
 
 function getLiteRTLMSettings() {
-    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: '', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true };
+    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: 'https://', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true, streaming: true, renderIntervalMs: 100 };
     try {
-        return Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
+        const settings = Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
+        if (!String(settings.cloudUrl || '').trim()) settings.cloudUrl = 'https://';
+        return settings;
     } catch (_) {
         return defaults;
     }
+}
+
+function ensureLiteRTLMUrlPrefix(input) {
+    if (!input) return;
+    const value = String(input.value || '').trim();
+    if (!value) input.value = 'https://';
+    else if (!/^https?:\/\//i.test(value)) input.value = 'https://' + value.replace(/^\/+/, '');
 }
 
 function normalizeLiteRTLMBaseUrl(value) {
@@ -12971,7 +13020,8 @@ function loadLiteRTLMSettingsToUI() {
         'settings-litertlm-sampler': settings.sampler,
         'settings-litertlm-temperature': settings.temperature,
         'settings-litertlm-top-p': settings.topP,
-        'settings-litertlm-top-k': settings.topK
+        'settings-litertlm-top-k': settings.topK,
+        'settings-litertlm-render-interval': settings.renderIntervalMs
     };
     Object.keys(values).forEach(function (id) { const el = document.getElementById(id); if (el) el.value = values[id]; });
     const cloud = document.getElementById('settings-litertlm-cloud-mode');
@@ -12980,6 +13030,8 @@ function loadLiteRTLMSettingsToUI() {
     if (local) local.checked = settings.mode !== 'cloud';
     const thinking = document.getElementById('settings-litertlm-thinking');
     if (thinking) thinking.checked = settings.thinking !== false;
+    const streaming = document.getElementById('settings-litertlm-streaming');
+    if (streaming) streaming.checked = settings.streaming !== false;
     const model = document.getElementById('settings-litertlm-model');
     if (model && settings.model && !Array.from(model.options).some(function (option) { return option.value === settings.model; })) model.add(new Option(settings.model, settings.model));
     if (model) model.value = settings.model;
@@ -12987,18 +13039,21 @@ function loadLiteRTLMSettingsToUI() {
     setLiteRTLMSettingsFolded(localStorage.getItem('ss_litertlm_settings_folded') === '1');
 }
 
-function saveLiteRTLMSettings(showStatus) {
+async function saveLiteRTLMSettings(showStatus) {
     const read = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
     const cloud = document.getElementById('settings-litertlm-cloud-mode');
     const thinking = document.getElementById('settings-litertlm-thinking');
+    const streaming = document.getElementById('settings-litertlm-streaming');
     const mode = cloud && cloud.checked ? 'cloud' : 'local';
     const settings = {
-        mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: read('settings-litertlm-cloud-url'),
+        mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: read('settings-litertlm-cloud-url') || 'https://',
         localName: read('settings-litertlm-local-name') || 'Local S', localUrl: read('settings-litertlm-local-url') || 'http://localhost:9379/v1',
         model: read('settings-litertlm-model') || 'gemma-4-E2B-it.litertlm', contextLength: Math.max(1, Number(read('settings-litertlm-context-length')) || 4096),
         maxGen: Math.max(1, Number(read('settings-litertlm-max-gen')) || 2048), sampler: read('settings-litertlm-sampler') || 'greedy',
         temperature: Math.max(0, Number(read('settings-litertlm-temperature')) || 0), topP: Math.min(1, Math.max(0, Number(read('settings-litertlm-top-p')) || 0)),
-        topK: Math.max(1, Number(read('settings-litertlm-top-k')) || 40), thinking: !thinking || thinking.checked
+        topK: Math.max(1, Number(read('settings-litertlm-top-k')) || 40), thinking: !thinking || thinking.checked,
+        streaming: !streaming || streaming.checked,
+        renderIntervalMs: Math.max(50, Math.min(500, Number(read('settings-litertlm-render-interval')) || 100))
     };
     const activeUrl = mode === 'cloud' ? settings.cloudUrl : settings.localUrl;
     if (!activeUrl) throw new Error(mode === 'cloud' ? 'Cloud Base URL을 입력하세요.' : 'Local URL을 입력하세요.');
@@ -13006,14 +13061,91 @@ function saveLiteRTLMSettings(showStatus) {
     localStorage.setItem(LITERTLM_SETTINGS_KEY, JSON.stringify(settings));
     if (showStatus) {
         const status = document.getElementById('settings-litertlm-status');
-        if (status) status.textContent = 'LiteRT-LM 설정을 저장했습니다.';
-        showToast('LiteRT-LM 설정을 저장했습니다.');
+        if (status) status.textContent = '설정을 저장했습니다. LiteRT-LM에 연결하는 중...';
+        try {
+            const models = await loadSettingsLiteRTLMModels();
+            if (window.AIChat && typeof window.AIChat.syncSettings === 'function') window.AIChat.syncSettings();
+            showToast('LiteRT-LM 연결 완료 · 모델 ' + models.length + '개');
+        } catch (_) {
+            showToast('설정은 저장했지만 LiteRT-LM 연결에 실패했습니다.', 'error');
+        }
     }
     return settings;
 }
 
+function applyLiteRTLMMobilePreset() {
+    const values = { 'settings-litertlm-context-length': 2048, 'settings-litertlm-max-gen': 512, 'settings-litertlm-render-interval': 100 };
+    Object.keys(values).forEach(function (id) { const input = document.getElementById(id); if (input) input.value = values[id]; });
+    const thinking = document.getElementById('settings-litertlm-thinking');
+    const streaming = document.getElementById('settings-litertlm-streaming');
+    if (thinking) thinking.checked = false;
+    if (streaming) streaming.checked = true;
+    const status = document.getElementById('settings-litertlm-status');
+    if (status) status.textContent = '모바일 경량값을 적용했습니다. 저장 버튼을 눌러 확정하세요.';
+}
+
+async function streamLiteRTLMChat(body, settings, signal, onStreamEvent) {
+    const baseUrl = normalizeLiteRTLMBaseUrl(settings.mode === 'cloud' ? settings.cloudUrl : settings.localUrl);
+    const emit = typeof onStreamEvent === 'function' ? onStreamEvent : function () {};
+    emit({ type: 'request.start', provider: 'litertlm', context_length: settings.contextLength, max_output_tokens: settings.maxGen, render_interval_ms: settings.renderIntervalMs });
+    emit({ type: 'transport.start', provider: 'litertlm' });
+    const response = await fetch(baseUrl + '/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
+        body: JSON.stringify(Object.assign({}, body, { stream: true })), signal: signal
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text() || response.statusText));
+    if (!response.body) throw new Error('LiteRT-LM 스트림 응답 본문이 없습니다.');
+    emit({ type: 'chat.start', provider: 'litertlm' });
+    emit({ type: 'prompt_processing.start', provider: 'litertlm' });
+    let text = '', reasoning = '', finishReason = '', responseId = null, responseModel = body.model, usage = null, buffer = '';
+    let answerStarted = false, reasoningStarted = false, reasoningEnded = false, promptEnded = false;
+    function processPayload(payload) {
+        const value = String(payload || '').trim();
+        if (!value || value === '[DONE]') return;
+        let data;
+        try { data = JSON.parse(value); } catch (_) { return; }
+        if (data.error) throw new Error(String(data.error.message || data.error));
+        responseId = data.id || responseId; responseModel = data.model || responseModel; usage = data.usage || usage;
+        const choice = data.choices && data.choices[0] || {};
+        const delta = choice.delta || choice.message || {};
+        const reasoningDelta = String(delta.reasoning_content || delta.reasoning || '');
+        const answerDelta = String(delta.content || choice.text || '');
+        if (!promptEnded && (reasoningDelta || answerDelta)) { promptEnded = true; emit({ type: 'prompt_processing.end', provider: 'litertlm' }); }
+        if (reasoningDelta) {
+            if (!reasoningStarted) { reasoningStarted = true; emit({ type: 'reasoning.start', provider: 'litertlm' }); }
+            reasoning += reasoningDelta; emit({ type: 'reasoning.delta', provider: 'litertlm', content: reasoningDelta });
+        }
+        if (answerDelta) {
+            if (reasoningStarted && !reasoningEnded) { reasoningEnded = true; emit({ type: 'reasoning.end', provider: 'litertlm' }); }
+            if (!answerStarted) { answerStarted = true; emit({ type: 'message.start', provider: 'litertlm' }); }
+            text += answerDelta; emit({ type: 'message.delta', provider: 'litertlm', content: answerDelta });
+        }
+        finishReason = choice.finish_reason || finishReason;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n');
+        let boundary;
+        while ((boundary = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 1);
+            if (line.startsWith('data:')) processPayload(line.slice(5));
+            else if (line.trim().startsWith('{')) processPayload(line);
+        }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) processPayload(buffer.replace(/^data:\s*/i, ''));
+    if (reasoningStarted && !reasoningEnded) emit({ type: 'reasoning.end', provider: 'litertlm' });
+    if (answerStarted) emit({ type: 'message.end', provider: 'litertlm' });
+    const completionTokens = Number(usage && (usage.completion_tokens || usage.output_tokens)) || 0;
+    emit({ type: 'chat.end', provider: 'litertlm', result: { stats: { total_output_tokens: completionTokens, reasoning_output_tokens: Number(usage && usage.reasoning_tokens) || 0 } } });
+    return { provider: 'litertlm', model: responseModel, text: text, reasoning: reasoning, finishReason: finishReason, usage: usage, contextLength: settings.contextLength, maxOutputTokens: settings.maxGen, responseId: responseId };
+}
+
 async function requestLiteRTLM(path, options) {
-    const settings = saveLiteRTLMSettings(false);
+    const settings = await saveLiteRTLMSettings(false);
     const baseUrl = normalizeLiteRTLMBaseUrl(settings.mode === 'cloud' ? settings.cloudUrl : settings.localUrl);
     const response = await fetch(baseUrl + path, options);
     if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text() || response.statusText));
@@ -13034,7 +13166,8 @@ async function loadSettingsLiteRTLMModels() {
             models.forEach(function (name) { select.add(new Option(name, name)); });
             select.value = models.indexOf(result.settings.model) >= 0 ? result.settings.model : models[0];
         }
-        saveLiteRTLMSettings(false);
+        localStorage.setItem(LITERTLM_MODELS_KEY, JSON.stringify(models));
+        await saveLiteRTLMSettings(false);
         if (status) status.textContent = '연결 완료 · 모델 ' + models.length + '개: ' + models.join(' · ');
         return models;
     } catch (error) {
@@ -13047,7 +13180,7 @@ async function testSettingsLiteRTLMResponse() {
     const status = document.getElementById('settings-litertlm-status');
     try {
         if (status) status.textContent = 'LiteRT-LM 실제 응답을 기다리는 중...';
-        const settings = saveLiteRTLMSettings(false);
+        const settings = await saveLiteRTLMSettings(false);
         const body = { model: settings.model, messages: [{ role: 'user', content: '한 문장으로 연결 테스트 성공이라고 답하세요.' }], stream: false, max_tokens: Math.min(settings.maxGen, 64), temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, thinking: settings.thinking };
         const result = await requestLiteRTLM('/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
         const text = String(result.data && result.data.choices && result.data.choices[0] && result.data.choices[0].message && result.data.choices[0].message.content || '').trim();
@@ -14276,6 +14409,12 @@ window.AIChatBridge = Object.freeze({
     getCachedOllamaModels: function () {
         return readStoredModelList(OLLAMA_MODELS_KEY);
     },
+    getCachedLiteRTLMModels: function () {
+        return readStoredModelList(LITERTLM_MODELS_KEY);
+    },
+    refreshLiteRTLMModels: function () {
+        return loadSettingsLiteRTLMModels();
+    },
     refreshOllamaModels: async function () {
         const models = await listOllamaModels();
         saveStoredModelList(OLLAMA_MODELS_KEY, models);
@@ -14345,6 +14484,18 @@ window.AIChatBridge = Object.freeze({
         const controller = new AbortController();
         aiChatAbortController = controller;
         try {
+            if (request.provider === 'litertlm') {
+                const settings = getLiteRTLMSettings();
+                const messages = normalizeAIChatMessages(request.messages);
+                if (request.systemInstruction) messages.unshift({ role: 'system', content: String(request.systemInstruction) });
+                const body = { model: request.model || settings.model, messages: messages, stream: false, max_tokens: settings.maxGen, temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, sampler: settings.sampler, thinking: settings.thinking };
+                if (settings.streaming !== false && typeof request.onStreamEvent === 'function') {
+                    return await streamLiteRTLMChat(body, settings, controller.signal, request.onStreamEvent);
+                }
+                const result = await requestLiteRTLM('/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+                const choice = result.data && result.data.choices && result.data.choices[0] || {};
+                return { provider: 'litertlm', model: result.data.model || body.model, text: String(choice.message && choice.message.content || choice.text || ''), reasoning: String(choice.message && choice.message.reasoning_content || ''), finishReason: choice.finish_reason || '', usage: result.data.usage || null, contextLength: settings.contextLength, maxOutputTokens: settings.maxGen, responseId: result.data.id || null };
+            }
             if (request.provider === 'aistudio') {
                 return await callAIStudioChat(request.messages, request.systemInstruction, request.model, controller.signal, request.academicSearch ? 'quick' : request.mode, request.academicSearch, request.academicEvidenceCount);
             }
@@ -15071,6 +15222,7 @@ async function loadAiSettingsToUI() {
         const localViewModeEditEnabled = getViewModeEditEnabledFromLocal();
         if (viewModeEditCheckEmpty) viewModeEditCheckEmpty.checked = localViewModeEditEnabled;
         viewModeEditEnabled = localViewModeEditEnabled;
+        applyViewPadding(getViewPaddingFromLocal());
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
         const openaiInputEmpty = document.getElementById('openai-api-key');
@@ -15191,6 +15343,11 @@ async function loadAiSettingsToUI() {
     if (viewModeEditCheck) viewModeEditCheck.checked = viewModeEditValue;
     viewModeEditEnabled = viewModeEditValue;
     setViewModeEditEnabledToLocal(viewModeEditValue);
+    const viewPaddingValue = typeof settings.viewPadding === 'number'
+        ? normalizeViewPadding(settings.viewPadding)
+        : getViewPaddingFromLocal();
+    applyViewPadding(viewPaddingValue);
+    localStorage.setItem(VIEW_PADDING_KEY, String(viewPaddingValue));
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     const effectiveImgbbKey = settings.imgbbApiKey || getProtectedAiCredential('imgbb', 'ss_imgbb_api_key');
     if (imageKeyInput) imageKeyInput.value = effectiveImgbbKey;
@@ -15335,6 +15492,11 @@ async function initAiVisibility() {
         ? settings.viewModeEditEnabled
         : getViewModeEditEnabledFromLocal();
     setViewModeEditEnabledToLocal(viewModeEditEnabled);
+    const viewPaddingValue = settings && typeof settings.viewPadding === 'number'
+        ? normalizeViewPadding(settings.viewPadding)
+        : getViewPaddingFromLocal();
+    applyViewPadding(viewPaddingValue);
+    localStorage.setItem(VIEW_PADDING_KEY, String(viewPaddingValue));
     if (window.ViewModeTextInput && typeof window.ViewModeTextInput.updateInteractionState === 'function') {
         window.ViewModeTextInput.updateInteractionState();
     }

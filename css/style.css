@@ -25,6 +25,16 @@
             cursor: text;
             font-size: var(--md-app-font-size, 16px);
         }
+        /* Reading comfort only: print uses a separate, padding-free #print-root. */
+        #viewer:not(.html-document-preview) {
+            box-sizing: border-box;
+            padding: var(--md-view-padding, 24px);
+        }
+        #viewer-edit-ta,
+        #viewer-edit-highlight {
+            box-sizing: border-box;
+            padding: var(--md-view-padding, 24px);
+        }
         #viewer-container.html-document-active {
             padding: 0 !important;
             overflow: hidden;
@@ -1153,6 +1163,83 @@
         }
         #editor-doc-wrap.md-comment-editor-wrap {
             position: relative;
+        }
+        #editor-format-gutter {
+            position: absolute;
+            top: 0;
+            right: calc(100% + 8px);
+            z-index: 3;
+            width: 48px;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+        }
+        .editor-format-marker {
+            position: absolute;
+            right: 0;
+            min-width: 34px;
+            height: 20px;
+            padding: 0 5px;
+            border: 1px solid #94a3b8;
+            border-radius: 5px;
+            background: rgba(248, 250, 252, .94);
+            color: #475569;
+            font: 700 9px/18px Inter, sans-serif;
+            letter-spacing: -.02em;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, .14);
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        .editor-format-marker:hover,
+        .editor-format-marker:focus-visible {
+            border-color: #6366f1;
+            background: #eef2ff;
+            color: #4338ca;
+            outline: none;
+        }
+        .editor-format-heading { border-left: 3px solid #0ea5e9; color: #0369a1; }
+        .editor-format-list { border-left: 3px solid #10b981; color: #047857; }
+        .editor-format-quote { border-left: 3px solid #a855f7; color: #7e22ce; }
+        .editor-format-code { border-left: 3px solid #f59e0b; color: #92400e; }
+        .editor-format-table { border-left: 3px solid #06b6d4; color: #0e7490; }
+        .editor-format-rule { border-left: 3px solid #64748b; }
+        .dark .editor-format-marker {
+            border-color: #475569;
+            background: rgba(30, 41, 59, .96);
+            color: #cbd5e1;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, .35);
+        }
+        .dark .editor-format-marker:hover,
+        .dark .editor-format-marker:focus-visible {
+            border-color: #818cf8;
+            background: #312e81;
+            color: #eef2ff;
+        }
+        #editor-format-measure {
+            position: fixed;
+            left: -100000px;
+            top: 0;
+            box-sizing: border-box;
+            height: auto;
+            border: 0;
+            margin: 0;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        .editor-format-measure-anchor {
+            display: inline-block;
+            width: 0;
+            height: 1px;
+            vertical-align: top;
+            padding: 0;
+            margin: 0;
+        }
+        @media (max-width: 767px) {
+            #editor-format-gutter { display: none; }
         }
         #viewer-edit-highlight {
             position: absolute;
@@ -2652,31 +2739,31 @@ html:not(.dark) #toolbar > div:not(#edit-tools) > button {
 }
 
 html:not(.dark) #sidebar {
-    border-color: #74869c !important;
-    background: linear-gradient(180deg, #64748b 0%, #596a80 100%) !important;
-    color: #f8fafc;
-    box-shadow: 8px 0 24px rgba(15, 23, 42, .08);
+    border-color: #d7e0ea !important;
+    background: linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%) !important;
+    color: #334155;
+    box-shadow: 8px 0 24px rgba(15, 23, 42, .05);
 }
 
 html:not(.dark) #sidebar > div:first-child,
 html:not(.dark) #sidebar > div:last-child {
-    border-color: rgba(255, 255, 255, .16) !important;
+    border-color: #dbe3ec !important;
 }
 
 html:not(.dark) #sidebar > div:first-child > .sidebar-text > button,
 html:not(.dark) #sidebar > div:last-child button {
-    border: 1px solid rgba(255, 255, 255, .13);
-    background: rgba(255, 255, 255, .1) !important;
-    color: #fff !important;
+    border: 1px solid #d6dee8;
+    background: rgba(255, 255, 255, .82) !important;
+    color: #334155 !important;
 }
 
 html:not(.dark) #sidebar > div:first-child > .sidebar-text > button:hover,
 html:not(.dark) #sidebar > div:last-child button:hover {
-    background: rgba(255, 255, 255, .18) !important;
+    background: #fff !important;
 }
 
 html:not(.dark) #sidebar .sidebar-header-btns > .flex {
-    background: rgba(15, 23, 42, .16) !important;
+    background: #e5ebf2 !important;
 }
 
 html:not(.dark) #sidebar .sidebar-header-btns > .flex:last-child {
@@ -2686,44 +2773,54 @@ html:not(.dark) #sidebar .sidebar-header-btns > .flex:last-child {
 html:not(.dark) #sidebar .sidebar-header-btns > .flex:last-child button,
 html:not(.dark) #sidebar .sidebar-header-btns > .flex:last-child svg,
 html:not(.dark) #sidebar .search-container > svg {
-    color: #fff !important;
+    color: #475569 !important;
 }
 
 html:not(.dark) #sidebar #tab-toc {
-    color: #e2e8f0 !important;
+    color: #475569 !important;
+}
+
+html:not(.dark) #sidebar #toc-list button {
+    color: #334155 !important;
+}
+
+html:not(.dark) #sidebar #toc-list button:hover,
+html:not(.dark) #sidebar #toc-list button:focus-visible {
+    background: #e2e8f0 !important;
+    color: #0f172a !important;
 }
 
 html:not(.dark) #sidebar .sidebar-folder-header {
-    border: 1px solid rgba(255, 255, 255, .12);
-    background: rgba(255, 255, 255, .1);
-    color: #f8fafc !important;
+    border: 1px solid #d8e1ea;
+    background: rgba(255, 255, 255, .62);
+    color: #334155 !important;
 }
 
 html:not(.dark) #sidebar .sidebar-folder-header:hover {
-    background: rgba(255, 255, 255, .16) !important;
+    background: #fff !important;
 }
 
 html:not(.dark) #sidebar .sidebar-folder-header > svg,
 html:not(.dark) #sidebar .sidebar-folder-header > i,
 html:not(.dark) #sidebar .sidebar-folder-name {
-    color: #f8fafc !important;
+    color: #334155 !important;
 }
 
 html:not(.dark) #sidebar .sidebar-folder-action-btn {
-    border-color: rgba(255, 255, 255, .48);
-    background: rgba(255, 255, 255, .08);
-    color: #fff;
+    border-color: #cbd5e1;
+    background: rgba(255, 255, 255, .78);
+    color: #475569;
 }
 
 html:not(.dark) #sidebar .sidebar-folder-action-btn:hover,
 html:not(.dark) #sidebar .sidebar-folder-action-btn:focus-visible {
-    border-color: rgba(255, 255, 255, .82);
-    background: rgba(255, 255, 255, .2);
-    color: #fff;
+    border-color: #94a3b8;
+    background: #fff;
+    color: #1e293b;
 }
 
 html:not(.dark) #sidebar:not(.sidebar-collapsed) .sidebar-folder-body {
-    border-left-color: rgba(255, 255, 255, .32);
+    border-left-color: #cbd5e1;
 }
 
 html:not(.dark) #sidebar input,

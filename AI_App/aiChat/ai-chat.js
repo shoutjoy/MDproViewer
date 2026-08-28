@@ -8,6 +8,7 @@
   var DEEPSEEK_MODEL_KEY = 'ss_ai_chat_deepseek_model';
   var OPENAI_MODEL_KEY = 'ss_ai_chat_openai_model';
   var OLLAMA_MODEL_KEY = 'ss_ai_chat_ollama_model';
+  var LITERTLM_MODEL_KEY = 'ss_ai_chat_litertlm_model';
   var WRITING_STYLE_KEY = 'ss_ai_chat_writing_style';
   var ANSWER_APPEARANCE_KEY = 'ss_ai_chat_answer_appearance';
   var ANSWER_FONT_SIZE_KEY = 'ss_ai_chat_answer_font_size';
@@ -41,7 +42,7 @@
   var MIGRATION_KEY = 'ss_ai_chat_idb_migrated_v1';
   var SQLITE_SYNC_KEYS = new Set([
     ENABLED_KEY, PROVIDER_KEY, GEMINI_MODEL_KEY, DEEPSEEK_MODEL_KEY, OPENAI_MODEL_KEY,
-    OLLAMA_MODEL_KEY, WRITING_STYLE_KEY, ANSWER_APPEARANCE_KEY, ANSWER_FONT_SIZE_KEY, RESPONSE_MODE_KEY, FAST_MODE_KEY, SHOW_REASONING_KEY,
+    OLLAMA_MODEL_KEY, LITERTLM_MODEL_KEY, WRITING_STYLE_KEY, ANSWER_APPEARANCE_KEY, ANSWER_FONT_SIZE_KEY, RESPONSE_MODE_KEY, FAST_MODE_KEY, SHOW_REASONING_KEY,
     ACADEMIC_SEARCH_KEY, ACADEMIC_COUNT_KEY, INTERNET_SEARCH_KEY, LAYOUT_KEY, START_LAYOUT_KEY
   ]);
   var CHAT_DB_NAME = 'md_viewer_ai_chat';
@@ -113,6 +114,7 @@
     academicSearchCount: 10,
     geminiModel: 'gemini-3.5-flash',
     ollamaModel: '',
+    litertlmModel: '',
     deepseekModel: 'deepseek-v4-flash',
     openaiModel: 'gpt-5.6-sol',
     lmModel: '',
@@ -594,7 +596,7 @@
       + '    </div>'
       + '    <div id="ai-chat-provider-controls" class="ai-chat-provider-controls collapsed">'
       + '      <div class="ai-chat-provider-row">'
-      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select></label>'
+      + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="litertlm">LiteRT-LM</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select></label>'
       + '        <label>모델<select id="ai-chat-model"></select></label>'
       + '        <button type="button" id="ai-chat-refresh-model" title="현재 모델 새로고침">↻</button>'
       + '      </div>'
@@ -764,7 +766,7 @@
       finishAcademicCountEdit(true);
     });
     document.getElementById('ai-chat-provider').addEventListener('change', function (event) {
-      state.provider = (event.target.value === 'aistudio' || event.target.value === 'ollama' || event.target.value === 'deepseek' || event.target.value === 'openai') ? event.target.value : 'lmstudio';
+      state.provider = (event.target.value === 'aistudio' || event.target.value === 'ollama' || event.target.value === 'litertlm' || event.target.value === 'deepseek' || event.target.value === 'openai') ? event.target.value : 'lmstudio';
       storageSet(PROVIDER_KEY, state.provider);
       updateProviderUI();
       refreshModels(false);
@@ -772,6 +774,11 @@
     });
     document.getElementById('ai-chat-model').addEventListener('change', function (event) {
       if (state.provider === 'lmstudio') return;
+      if (state.provider === 'litertlm') {
+        state.litertlmModel = event.target.value || '';
+        storageSet(LITERTLM_MODEL_KEY, state.litertlmModel);
+        updateHeaderModel(); saveHistory(); return;
+      }
       if (state.provider === 'deepseek') {
         state.deepseekModel = event.target.value || DEFAULT_DEEPSEEK_MODELS[0];
         storageSet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
@@ -1559,7 +1566,8 @@
   }
 
   function scheduleLiveStreamRender(force) {
-    if (force || Date.now() - liveStreamLastRenderAt >= 80) {
+    var renderInterval = Math.max(50, Number(liveStream && liveStream.renderIntervalMs) || 80);
+    if (force || Date.now() - liveStreamLastRenderAt >= renderInterval) {
       updateLiveStreamDom();
       return;
     }
@@ -1572,11 +1580,14 @@
   function handleStreamEvent(event) {
     if (!liveStream || !event || !event.type) return;
     var type = String(event.type);
-    var providerLabel = event.provider === 'ollama' || state.provider === 'ollama' ? 'Ollama' : 'LM Studio';
+    var providerLabel = event.provider === 'ollama' || state.provider === 'ollama'
+      ? 'Ollama'
+      : (event.provider === 'litertlm' || state.provider === 'litertlm' ? 'LiteRT-LM' : 'LM Studio');
     if (type === 'request.start') {
       liveStream.contextLength = Math.max(0, Number(event.context_length) || 0);
       liveStream.maxOutputTokens = Math.max(0, Number(event.max_output_tokens) || 0);
       liveStream.estimatedInputTokens = Math.max(0, Number(event.estimated_input_tokens) || 0);
+      liveStream.renderIntervalMs = Math.max(50, Number(event.render_interval_ms) || 80);
       liveStream.stage = providerLabel + '에 요청을 전송하는 중';
       liveStream.progress = 2;
     } else if (type === 'transport.start') {
@@ -1635,7 +1646,7 @@
       var exactTokenRatio = liveStream.maxOutputTokens
         ? liveStream.exactOutputTokens / liveStream.maxOutputTokens
         : 0;
-      liveStream.stage = exactTokenRatio >= 0.92 && (state.provider === 'lmstudio' || state.provider === 'ollama')
+      liveStream.stage = exactTokenRatio >= 0.92 && (state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm')
         ? '출력 한도 근접 · 이어쓰기 준비'
         : '응답 완료';
       liveStream.progress = 100;
@@ -1776,6 +1787,8 @@
       summary.textContent = 'AI 공급자 · LM Studio · ' + (state.lmModel || '로드 모델 확인 필요');
     } else if (state.provider === 'ollama') {
       summary.textContent = 'AI 공급자 · Ollama · ' + (state.ollamaModel || '모델 확인 필요');
+    } else if (state.provider === 'litertlm') {
+      summary.textContent = 'AI 공급자 · LiteRT-LM · ' + (state.litertlmModel || '모델 확인 필요');
     } else if (state.provider === 'deepseek') {
       summary.textContent = 'AI 공급자 · DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
     } else if (state.provider === 'openai') {
@@ -2216,6 +2229,8 @@
         : 'LM Studio · 로드 모델 확인 필요';
     } else if (state.provider === 'ollama') {
       header.textContent = 'Ollama · ' + (state.ollamaModel || '모델 확인 필요');
+    } else if (state.provider === 'litertlm') {
+      header.textContent = 'LiteRT-LM · ' + (state.litertlmModel || '모델 확인 필요');
     } else if (state.provider === 'deepseek') {
       header.textContent = 'DeepSeek · ' + deepseekModelLabel(state.deepseekModel || DEFAULT_DEEPSEEK_MODELS[0]);
     } else if (state.provider === 'openai') {
@@ -2245,6 +2260,7 @@
   function activeProviderModel() {
     if (state.provider === 'aistudio') return state.geminiModel;
     if (state.provider === 'ollama') return state.ollamaModel;
+    if (state.provider === 'litertlm') return state.litertlmModel;
     if (state.provider === 'deepseek') return state.deepseekModel;
     if (state.provider === 'openai') return state.openaiModel;
     return null;
@@ -2354,6 +2370,13 @@
       var ollamaModelSelect = document.getElementById('ai-chat-model');
       if (ollamaModelSelect && ollamaModelSelect.value) state.ollamaModel = ollamaModelSelect.value;
       storageSet(OLLAMA_MODEL_KEY, state.ollamaModel || '');
+    } else if (state.provider === 'litertlm') {
+      var cachedLiteRTLMModels = [];
+      try { cachedLiteRTLMModels = getBridge().getCachedLiteRTLMModels(); } catch (_) {}
+      setModelOptions(cachedLiteRTLMModels, state.litertlmModel, false);
+      var liteModelSelect = document.getElementById('ai-chat-model');
+      state.litertlmModel = liteModelSelect && liteModelSelect.value ? liteModelSelect.value : '';
+      storageSet(LITERTLM_MODEL_KEY, state.litertlmModel);
     } else if (state.provider === 'deepseek') {
       var cachedDeepseekModels = [];
       try { cachedDeepseekModels = getBridge().getCachedDeepseekModels(); } catch (e) {}
@@ -2409,6 +2432,14 @@
           ? 'Ollama 모델을 사용합니다: ' + state.ollamaModel
           : 'Ollama 모델이 없습니다. 로컬 서버와 설정 주소를 확인하세요.',
           state.ollamaModel ? 'ok' : 'error');
+      } else if (state.provider === 'litertlm') {
+        var liteModels = silent ? bridge.getCachedLiteRTLMModels() : await bridge.refreshLiteRTLMModels();
+        if (state.provider !== requestedProvider) return;
+        setModelOptions(liteModels || [], state.litertlmModel, false);
+        var liteSelect = document.getElementById('ai-chat-model');
+        state.litertlmModel = liteSelect && liteSelect.value ? liteSelect.value : '';
+        storageSet(LITERTLM_MODEL_KEY, state.litertlmModel);
+        setStatus(state.litertlmModel ? 'LiteRT-LM 연결 완료: ' + state.litertlmModel : 'LiteRT-LM 모델이 없습니다.', state.litertlmModel ? 'ok' : 'error');
       } else if (state.provider === 'deepseek') {
         var deepseekModels = silent ? bridge.getCachedDeepseekModels() : await bridge.refreshDeepseekModels();
         if (state.provider !== requestedProvider) return;
@@ -2456,6 +2487,9 @@
         setModelOptions([], '', true);
       } else if (state.provider === 'ollama') {
         state.ollamaModel = '';
+        setModelOptions([], '', false);
+      } else if (state.provider === 'litertlm') {
+        state.litertlmModel = '';
         setModelOptions([], '', false);
       } else if (state.provider === 'deepseek') {
         state.deepseekModel = '';
@@ -3306,7 +3340,7 @@
         splitAcademicResponse: splitAcademic,
         previousResponseId: null,
         messages: continuationMessages,
-        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' ? handleStreamEvent : undefined,
         systemInstruction: academicSearch
           ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0, continuationEvidenceProfile)
           : [
@@ -4179,7 +4213,7 @@
         + '  <strong>실시간 답변</strong>'
         + '  <div id="ai-chat-live-answer-content" aria-live="polite"></div>'
         + '</section>'
-        + '<small>LM Studio 이벤트와 출력 토큰 사용량을 실시간으로 측정합니다.</small>';
+        + '<small>선택한 로컬 AI의 출력 토큰과 생성 속도를 실시간으로 표시합니다.</small>';
       list.appendChild(thinking);
       updateThinkingProgress();
     }
@@ -4865,7 +4899,7 @@
         messages: academicSearchActive
           ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic, academicProfile) }]
           : contextMessages(),
-        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' ? handleStreamEvent : undefined,
         systemInstruction: academicSearchActive
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0, academicProfile)
           : internetSearchActive
@@ -5011,7 +5045,7 @@
     createUI();
     bindPreserveEditorSelectionOnPanel();
     var savedProvider = storageGet(PROVIDER_KEY, 'lmstudio');
-    state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'deepseek' || savedProvider === 'openai'
+    state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'litertlm' || savedProvider === 'deepseek' || savedProvider === 'openai'
       ? savedProvider
       : (savedProvider === 'lmstudio' ? 'lmstudio' : 'lmstudio');
     state.providerControlsOpen = storageGet(PROVIDER_CONTROLS_KEY, '0') === '1';
@@ -5087,10 +5121,11 @@
     },
     syncSettings: function () {
       var provider = storageGet(PROVIDER_KEY, state.provider);
-      state.provider = provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'openai'
+      state.provider = provider === 'aistudio' || provider === 'ollama' || provider === 'litertlm' || provider === 'deepseek' || provider === 'openai'
         ? provider : 'lmstudio';
       state.geminiModel = storageGet(GEMINI_MODEL_KEY, state.geminiModel);
       state.ollamaModel = storageGet(OLLAMA_MODEL_KEY, state.ollamaModel);
+      state.litertlmModel = storageGet(LITERTLM_MODEL_KEY, state.litertlmModel);
       state.deepseekModel = storageGet(DEEPSEEK_MODEL_KEY, state.deepseekModel);
       state.openaiModel = storageGet(OPENAI_MODEL_KEY, state.openaiModel);
       state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, state.writingStyle));
