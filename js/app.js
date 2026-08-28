@@ -12958,7 +12958,7 @@ function normalizeOllamaBaseUrl(value) {
 }
 
 function getLiteRTLMSettings() {
-    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: 'https://', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true };
+    const defaults = { mode: 'local', cloudName: 'cloud', cloudUrl: 'https://', localName: 'Local S', localUrl: 'http://localhost:9379/v1', model: 'gemma-4-E2B-it.litertlm', contextLength: 4096, maxGen: 2048, sampler: 'greedy', temperature: 0.3, topP: 0.9, topK: 40, thinking: true, streaming: true, renderIntervalMs: 100 };
     try {
         const settings = Object.assign({}, defaults, JSON.parse(localStorage.getItem(LITERTLM_SETTINGS_KEY) || '{}'));
         if (!String(settings.cloudUrl || '').trim()) settings.cloudUrl = 'https://';
@@ -13020,7 +13020,8 @@ function loadLiteRTLMSettingsToUI() {
         'settings-litertlm-sampler': settings.sampler,
         'settings-litertlm-temperature': settings.temperature,
         'settings-litertlm-top-p': settings.topP,
-        'settings-litertlm-top-k': settings.topK
+        'settings-litertlm-top-k': settings.topK,
+        'settings-litertlm-render-interval': settings.renderIntervalMs
     };
     Object.keys(values).forEach(function (id) { const el = document.getElementById(id); if (el) el.value = values[id]; });
     const cloud = document.getElementById('settings-litertlm-cloud-mode');
@@ -13029,6 +13030,8 @@ function loadLiteRTLMSettingsToUI() {
     if (local) local.checked = settings.mode !== 'cloud';
     const thinking = document.getElementById('settings-litertlm-thinking');
     if (thinking) thinking.checked = settings.thinking !== false;
+    const streaming = document.getElementById('settings-litertlm-streaming');
+    if (streaming) streaming.checked = settings.streaming !== false;
     const model = document.getElementById('settings-litertlm-model');
     if (model && settings.model && !Array.from(model.options).some(function (option) { return option.value === settings.model; })) model.add(new Option(settings.model, settings.model));
     if (model) model.value = settings.model;
@@ -13040,6 +13043,7 @@ async function saveLiteRTLMSettings(showStatus) {
     const read = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
     const cloud = document.getElementById('settings-litertlm-cloud-mode');
     const thinking = document.getElementById('settings-litertlm-thinking');
+    const streaming = document.getElementById('settings-litertlm-streaming');
     const mode = cloud && cloud.checked ? 'cloud' : 'local';
     const settings = {
         mode: mode, cloudName: read('settings-litertlm-cloud-name') || 'cloud', cloudUrl: read('settings-litertlm-cloud-url') || 'https://',
@@ -13047,7 +13051,9 @@ async function saveLiteRTLMSettings(showStatus) {
         model: read('settings-litertlm-model') || 'gemma-4-E2B-it.litertlm', contextLength: Math.max(1, Number(read('settings-litertlm-context-length')) || 4096),
         maxGen: Math.max(1, Number(read('settings-litertlm-max-gen')) || 2048), sampler: read('settings-litertlm-sampler') || 'greedy',
         temperature: Math.max(0, Number(read('settings-litertlm-temperature')) || 0), topP: Math.min(1, Math.max(0, Number(read('settings-litertlm-top-p')) || 0)),
-        topK: Math.max(1, Number(read('settings-litertlm-top-k')) || 40), thinking: !thinking || thinking.checked
+        topK: Math.max(1, Number(read('settings-litertlm-top-k')) || 40), thinking: !thinking || thinking.checked,
+        streaming: !streaming || streaming.checked,
+        renderIntervalMs: Math.max(50, Math.min(500, Number(read('settings-litertlm-render-interval')) || 100))
     };
     const activeUrl = mode === 'cloud' ? settings.cloudUrl : settings.localUrl;
     if (!activeUrl) throw new Error(mode === 'cloud' ? 'Cloud Base URL을 입력하세요.' : 'Local URL을 입력하세요.');
@@ -13065,6 +13071,77 @@ async function saveLiteRTLMSettings(showStatus) {
         }
     }
     return settings;
+}
+
+function applyLiteRTLMMobilePreset() {
+    const values = { 'settings-litertlm-context-length': 2048, 'settings-litertlm-max-gen': 512, 'settings-litertlm-render-interval': 100 };
+    Object.keys(values).forEach(function (id) { const input = document.getElementById(id); if (input) input.value = values[id]; });
+    const thinking = document.getElementById('settings-litertlm-thinking');
+    const streaming = document.getElementById('settings-litertlm-streaming');
+    if (thinking) thinking.checked = false;
+    if (streaming) streaming.checked = true;
+    const status = document.getElementById('settings-litertlm-status');
+    if (status) status.textContent = '모바일 경량값을 적용했습니다. 저장 버튼을 눌러 확정하세요.';
+}
+
+async function streamLiteRTLMChat(body, settings, signal, onStreamEvent) {
+    const baseUrl = normalizeLiteRTLMBaseUrl(settings.mode === 'cloud' ? settings.cloudUrl : settings.localUrl);
+    const emit = typeof onStreamEvent === 'function' ? onStreamEvent : function () {};
+    emit({ type: 'request.start', provider: 'litertlm', context_length: settings.contextLength, max_output_tokens: settings.maxGen, render_interval_ms: settings.renderIntervalMs });
+    emit({ type: 'transport.start', provider: 'litertlm' });
+    const response = await fetch(baseUrl + '/chat/completions', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream, application/json' },
+        body: JSON.stringify(Object.assign({}, body, { stream: true })), signal: signal
+    });
+    if (!response.ok) throw new Error('HTTP ' + response.status + ': ' + (await response.text() || response.statusText));
+    if (!response.body) throw new Error('LiteRT-LM 스트림 응답 본문이 없습니다.');
+    emit({ type: 'chat.start', provider: 'litertlm' });
+    emit({ type: 'prompt_processing.start', provider: 'litertlm' });
+    let text = '', reasoning = '', finishReason = '', responseId = null, responseModel = body.model, usage = null, buffer = '';
+    let answerStarted = false, reasoningStarted = false, reasoningEnded = false, promptEnded = false;
+    function processPayload(payload) {
+        const value = String(payload || '').trim();
+        if (!value || value === '[DONE]') return;
+        let data;
+        try { data = JSON.parse(value); } catch (_) { return; }
+        if (data.error) throw new Error(String(data.error.message || data.error));
+        responseId = data.id || responseId; responseModel = data.model || responseModel; usage = data.usage || usage;
+        const choice = data.choices && data.choices[0] || {};
+        const delta = choice.delta || choice.message || {};
+        const reasoningDelta = String(delta.reasoning_content || delta.reasoning || '');
+        const answerDelta = String(delta.content || choice.text || '');
+        if (!promptEnded && (reasoningDelta || answerDelta)) { promptEnded = true; emit({ type: 'prompt_processing.end', provider: 'litertlm' }); }
+        if (reasoningDelta) {
+            if (!reasoningStarted) { reasoningStarted = true; emit({ type: 'reasoning.start', provider: 'litertlm' }); }
+            reasoning += reasoningDelta; emit({ type: 'reasoning.delta', provider: 'litertlm', content: reasoningDelta });
+        }
+        if (answerDelta) {
+            if (reasoningStarted && !reasoningEnded) { reasoningEnded = true; emit({ type: 'reasoning.end', provider: 'litertlm' }); }
+            if (!answerStarted) { answerStarted = true; emit({ type: 'message.start', provider: 'litertlm' }); }
+            text += answerDelta; emit({ type: 'message.delta', provider: 'litertlm', content: answerDelta });
+        }
+        finishReason = choice.finish_reason || finishReason;
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n');
+        let boundary;
+        while ((boundary = buffer.indexOf('\n')) >= 0) {
+            const line = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 1);
+            if (line.startsWith('data:')) processPayload(line.slice(5));
+            else if (line.trim().startsWith('{')) processPayload(line);
+        }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) processPayload(buffer.replace(/^data:\s*/i, ''));
+    if (reasoningStarted && !reasoningEnded) emit({ type: 'reasoning.end', provider: 'litertlm' });
+    if (answerStarted) emit({ type: 'message.end', provider: 'litertlm' });
+    const completionTokens = Number(usage && (usage.completion_tokens || usage.output_tokens)) || 0;
+    emit({ type: 'chat.end', provider: 'litertlm', result: { stats: { total_output_tokens: completionTokens, reasoning_output_tokens: Number(usage && usage.reasoning_tokens) || 0 } } });
+    return { provider: 'litertlm', model: responseModel, text: text, reasoning: reasoning, finishReason: finishReason, usage: usage, contextLength: settings.contextLength, maxOutputTokens: settings.maxGen, responseId: responseId };
 }
 
 async function requestLiteRTLM(path, options) {
@@ -14411,7 +14488,10 @@ window.AIChatBridge = Object.freeze({
                 const settings = getLiteRTLMSettings();
                 const messages = normalizeAIChatMessages(request.messages);
                 if (request.systemInstruction) messages.unshift({ role: 'system', content: String(request.systemInstruction) });
-                const body = { model: request.model || settings.model, messages: messages, stream: false, max_tokens: settings.maxGen, temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, thinking: settings.thinking };
+                const body = { model: request.model || settings.model, messages: messages, stream: false, max_tokens: settings.maxGen, temperature: settings.temperature, top_p: settings.topP, top_k: settings.topK, sampler: settings.sampler, thinking: settings.thinking };
+                if (settings.streaming !== false && typeof request.onStreamEvent === 'function') {
+                    return await streamLiteRTLMChat(body, settings, controller.signal, request.onStreamEvent);
+                }
                 const result = await requestLiteRTLM('/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
                 const choice = result.data && result.data.choices && result.data.choices[0] || {};
                 return { provider: 'litertlm', model: result.data.model || body.model, text: String(choice.message && choice.message.content || choice.text || ''), reasoning: String(choice.message && choice.message.reasoning_content || ''), finishReason: choice.finish_reason || '', usage: result.data.usage || null, contextLength: settings.contextLength, maxOutputTokens: settings.maxGen, responseId: result.data.id || null };

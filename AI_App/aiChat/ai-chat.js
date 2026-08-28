@@ -1566,7 +1566,8 @@
   }
 
   function scheduleLiveStreamRender(force) {
-    if (force || Date.now() - liveStreamLastRenderAt >= 80) {
+    var renderInterval = Math.max(50, Number(liveStream && liveStream.renderIntervalMs) || 80);
+    if (force || Date.now() - liveStreamLastRenderAt >= renderInterval) {
       updateLiveStreamDom();
       return;
     }
@@ -1579,11 +1580,14 @@
   function handleStreamEvent(event) {
     if (!liveStream || !event || !event.type) return;
     var type = String(event.type);
-    var providerLabel = event.provider === 'ollama' || state.provider === 'ollama' ? 'Ollama' : 'LM Studio';
+    var providerLabel = event.provider === 'ollama' || state.provider === 'ollama'
+      ? 'Ollama'
+      : (event.provider === 'litertlm' || state.provider === 'litertlm' ? 'LiteRT-LM' : 'LM Studio');
     if (type === 'request.start') {
       liveStream.contextLength = Math.max(0, Number(event.context_length) || 0);
       liveStream.maxOutputTokens = Math.max(0, Number(event.max_output_tokens) || 0);
       liveStream.estimatedInputTokens = Math.max(0, Number(event.estimated_input_tokens) || 0);
+      liveStream.renderIntervalMs = Math.max(50, Number(event.render_interval_ms) || 80);
       liveStream.stage = providerLabel + '에 요청을 전송하는 중';
       liveStream.progress = 2;
     } else if (type === 'transport.start') {
@@ -1642,7 +1646,7 @@
       var exactTokenRatio = liveStream.maxOutputTokens
         ? liveStream.exactOutputTokens / liveStream.maxOutputTokens
         : 0;
-      liveStream.stage = exactTokenRatio >= 0.92 && (state.provider === 'lmstudio' || state.provider === 'ollama')
+      liveStream.stage = exactTokenRatio >= 0.92 && (state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm')
         ? '출력 한도 근접 · 이어쓰기 준비'
         : '응답 완료';
       liveStream.progress = 100;
@@ -3336,7 +3340,7 @@
         splitAcademicResponse: splitAcademic,
         previousResponseId: null,
         messages: continuationMessages,
-        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' ? handleStreamEvent : undefined,
         systemInstruction: academicSearch
           ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0, continuationEvidenceProfile)
           : [
@@ -4209,7 +4213,7 @@
         + '  <strong>실시간 답변</strong>'
         + '  <div id="ai-chat-live-answer-content" aria-live="polite"></div>'
         + '</section>'
-        + '<small>LM Studio 이벤트와 출력 토큰 사용량을 실시간으로 측정합니다.</small>';
+        + '<small>선택한 로컬 AI의 출력 토큰과 생성 속도를 실시간으로 표시합니다.</small>';
       list.appendChild(thinking);
       updateThinkingProgress();
     }
@@ -4895,7 +4899,7 @@
         messages: academicSearchActive
           ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic, academicProfile) }]
           : contextMessages(),
-        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' ? handleStreamEvent : undefined,
         systemInstruction: academicSearchActive
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0, academicProfile)
           : internetSearchActive
