@@ -8,6 +8,8 @@ const AI_AUTHENTICATION_REQUIRED = false;
 const ENTER_BUTTON_BR_KEY = 'md_viewer_enter_button_br';
 const SELECTION_WRAP_KEY = 'md_viewer_selection_wrap_enabled';
 const VIEW_MODE_EDIT_KEY = 'md_viewer_view_mode_edit_enabled';
+const VIEW_PADDING_KEY = 'md_viewer_view_padding_v1';
+const DEFAULT_VIEW_PADDING = 24;
 const SETTINGS_SHORTCUTS_FOLD_KEY = 'md_viewer_settings_shortcuts_folded';
 const SETTINGS_CONTAINER_FOLD_STATE_KEY = 'md_viewer_settings_container_fold_state_v1';
 const FILE_DOWNLOAD_PREFIX_KEY = 'mdpro_file_download_prefix_v1';
@@ -111,7 +113,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260825-fast-limits-3',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260828-litertlm-models-2',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -3712,6 +3714,9 @@ function toggleMode(mode) {
     }
     if (window.ViewModeTextInput && typeof window.ViewModeTextInput.updateInteractionState === 'function') {
         requestAnimationFrame(window.ViewModeTextInput.updateInteractionState);
+    }
+    if (typeof window.refreshEditorFormatGutter === 'function') {
+        requestAnimationFrame(window.refreshEditorFormatGutter);
     }
 }
 
@@ -9163,6 +9168,36 @@ function setViewModeEditEnabledToLocal(enabled) {
     else localStorage.removeItem(VIEW_MODE_EDIT_KEY);
 }
 
+function normalizeViewPadding(value) {
+    if (value == null || value === '') return DEFAULT_VIEW_PADDING;
+    const size = Number(value);
+    return [0, 16, 24, 32].includes(size) ? size : DEFAULT_VIEW_PADDING;
+}
+
+function getViewPaddingFromLocal() {
+    return normalizeViewPadding(localStorage.getItem(VIEW_PADDING_KEY));
+}
+
+function applyViewPadding(value) {
+    const size = normalizeViewPadding(value);
+    document.documentElement.style.setProperty('--md-view-padding', size + 'px');
+    const select = document.getElementById('view-padding-size');
+    if (select) select.value = String(size);
+    if (typeof window.refreshMarkdownCommentHighlight === 'function') {
+        window.refreshMarkdownCommentHighlight({ force: true, geometry: true });
+    }
+    if (typeof window.refreshEditorFormatGutter === 'function') {
+        window.refreshEditorFormatGutter();
+    }
+    return size;
+}
+
+async function setViewPaddingSetting(value) {
+    const size = applyViewPadding(value);
+    localStorage.setItem(VIEW_PADDING_KEY, String(size));
+    try { await setAiSettings({ viewPadding: size }); } catch (e) {}
+}
+
 function getSettingsContainerFoldState() {
     try {
         const parsed = JSON.parse(localStorage.getItem(SETTINGS_CONTAINER_FOLD_STATE_KEY) || '{}');
@@ -11700,6 +11735,8 @@ async function persistAiSettingsFromModal() {
     const viewModeEditEnabledValue = !!(viewModeEditEl && viewModeEditEl.checked);
     viewModeEditEnabled = viewModeEditEnabledValue;
     setViewModeEditEnabledToLocal(viewModeEditEnabledValue);
+    const viewPaddingValue = applyViewPadding(document.getElementById('view-padding-size')?.value);
+    localStorage.setItem(VIEW_PADDING_KEY, String(viewPaddingValue));
     applyEditToolsVisibilityByMode();
     saveScholarAIProviderSettingsFromUI(false);
     if (!db) return;
@@ -11777,6 +11814,7 @@ async function persistAiSettingsFromModal() {
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
         viewModeEditEnabled: viewModeEditEnabledValue,
+        viewPadding: viewPaddingValue,
         googleCalendarEnabled: googleCalendarEnabled,
         imgbbApiKey: imgbbKey,
         sqliteEnabled: sqliteEnabled
@@ -11809,6 +11847,7 @@ const SETTINGS_EXPORT_LOCAL_KEYS = [
     ENTER_BUTTON_BR_KEY,
     SELECTION_WRAP_KEY,
     VIEW_MODE_EDIT_KEY,
+    VIEW_PADDING_KEY,
     SETTINGS_SHORTCUTS_FOLD_KEY,
     SETTINGS_CONTAINER_FOLD_STATE_KEY,
     FILE_DOWNLOAD_PREFIX_KEY,
@@ -14293,6 +14332,12 @@ window.AIChatBridge = Object.freeze({
     getCachedOllamaModels: function () {
         return readStoredModelList(OLLAMA_MODELS_KEY);
     },
+    getCachedLiteRTLMModels: function () {
+        return readStoredModelList(LITERTLM_MODELS_KEY);
+    },
+    refreshLiteRTLMModels: function () {
+        return loadSettingsLiteRTLMModels();
+    },
     refreshOllamaModels: async function () {
         const models = await listOllamaModels();
         saveStoredModelList(OLLAMA_MODELS_KEY, models);
@@ -14605,8 +14650,6 @@ function ensureSidebarAILoaded() {
             getCachedScholarAIDeepseekModels: function () { return readStoredModelList(AI_CHAT_DEEPSEEK_MODELS_KEY); },
             getCachedScholarAIOpenAIModels: function () { return mergeAIChatOpenAIModels(readStoredModelList(AI_CHAT_OPENAI_MODELS_KEY)); },
             getCachedScholarAILMStudioModels: function () { return readStoredModelList(SCHOLAR_AI_LM_MODELS_KEY); },
-            getCachedLiteRTLMModels: function () { return readStoredModelList(LITERTLM_MODELS_KEY); },
-            refreshLiteRTLMModels: function () { return loadSettingsLiteRTLMModels(); },
             refreshScholarAILMStudioModels: async function () {
                 const ids = await getScholarAIProviderRuntime().listLMStudioModels();
                 saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
@@ -15099,6 +15142,7 @@ async function loadAiSettingsToUI() {
         const localViewModeEditEnabled = getViewModeEditEnabledFromLocal();
         if (viewModeEditCheckEmpty) viewModeEditCheckEmpty.checked = localViewModeEditEnabled;
         viewModeEditEnabled = localViewModeEditEnabled;
+        applyViewPadding(getViewPaddingFromLocal());
         const imageInputEmpty = document.getElementById('ai-imgbb-api-key');
         if (imageInputEmpty) imageInputEmpty.value = '';
         const openaiInputEmpty = document.getElementById('openai-api-key');
@@ -15219,6 +15263,11 @@ async function loadAiSettingsToUI() {
     if (viewModeEditCheck) viewModeEditCheck.checked = viewModeEditValue;
     viewModeEditEnabled = viewModeEditValue;
     setViewModeEditEnabledToLocal(viewModeEditValue);
+    const viewPaddingValue = typeof settings.viewPadding === 'number'
+        ? normalizeViewPadding(settings.viewPadding)
+        : getViewPaddingFromLocal();
+    applyViewPadding(viewPaddingValue);
+    localStorage.setItem(VIEW_PADDING_KEY, String(viewPaddingValue));
     const imageKeyInput = document.getElementById('ai-imgbb-api-key');
     const effectiveImgbbKey = settings.imgbbApiKey || getProtectedAiCredential('imgbb', 'ss_imgbb_api_key');
     if (imageKeyInput) imageKeyInput.value = effectiveImgbbKey;
@@ -15363,6 +15412,11 @@ async function initAiVisibility() {
         ? settings.viewModeEditEnabled
         : getViewModeEditEnabledFromLocal();
     setViewModeEditEnabledToLocal(viewModeEditEnabled);
+    const viewPaddingValue = settings && typeof settings.viewPadding === 'number'
+        ? normalizeViewPadding(settings.viewPadding)
+        : getViewPaddingFromLocal();
+    applyViewPadding(viewPaddingValue);
+    localStorage.setItem(VIEW_PADDING_KEY, String(viewPaddingValue));
     if (window.ViewModeTextInput && typeof window.ViewModeTextInput.updateInteractionState === 'function') {
         window.ViewModeTextInput.updateInteractionState();
     }
