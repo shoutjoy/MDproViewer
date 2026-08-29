@@ -1631,6 +1631,28 @@ body.theme-light .ai-chat-message.user .ai-chat-message-content {
   color: #e8f4f5;
 }
 
+/* The light app theme keeps Jena's shell dark. Give the live answer an
+   explicitly bright reading color so earlier light-theme rules cannot make
+   streamed text disappear against that shell. */
+body.theme-light .ai-chat-live-stream.answer > div {
+  color: #ecfff9;
+  font-family: system-ui, "Segoe UI", "Malgun Gothic", sans-serif;
+  font-weight: 500;
+}
+
+/* Completed answers stay white in the light theme. Keep code blocks airy and
+   distinguish their typeface without changing the rest of the answer text. */
+body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered pre {
+  border: 1px solid #e8edf3;
+  background: #fbfcfe;
+  color: #475569;
+}
+
+body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered code {
+  color: #475569;
+  font-family: "Comic Sans MS", "Comic Sans", cursive;
+}
+
 .ai-chat-panel.layout-dock {
   border-radius: 0;
   border-left: 1px solid #22a7b8;

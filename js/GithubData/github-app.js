@@ -805,6 +805,34 @@
         return normalized;
     }
 
+    function sanitizeGithubPathSegment(value) {
+        return String(value || '').trim().replace(/[\\/:*?"<>|]+/g, '_');
+    }
+
+    function buildGithubFolderPath(folders, folderId) {
+        const items = Array.isArray(folders) ? folders : [];
+        const byId = new Map();
+        items.forEach(function (folder) {
+            const id = String(folder && folder.id || '').trim();
+            if (id) byId.set(id, folder);
+        });
+
+        const parts = [];
+        const visited = new Set();
+        let currentId = String(folderId || 'root').trim() || 'root';
+        while (currentId && currentId !== 'root' && !visited.has(currentId)) {
+            visited.add(currentId);
+            const folder = byId.get(currentId);
+            if (!folder) break;
+            const segment = sanitizeGithubPathSegment(folder.name);
+            if (segment) parts.unshift(segment);
+            const parentId = String(folder.parentId || 'root').trim() || 'root';
+            if (parentId === currentId) break;
+            currentId = parentId;
+        }
+        return normalizeGithubFolderPath(parts.join('/'));
+    }
+
     function openGithubDocumentCreateModal(defaultFolder) {
         return new Promise(function (resolve) {
             const overlay = document.createElement('div');
@@ -1099,27 +1127,34 @@
                     return String(item && item.id || '') === String(doc.folderId || 'root');
                 }) || null
                 : null;
-            return { doc: doc, folder: folder, storageMode: 'sqlite' };
+            return { doc: doc, folder: folder, folders: folders, storageMode: 'sqlite' };
         }
 
         const tx = db.transaction(['documents', 'folders'], 'readonly');
         const docsStore = tx.objectStore('documents');
         const foldersStore = tx.objectStore('folders');
-        const doc = await new Promise(function (resolve) {
+        const docPromise = new Promise(function (resolve) {
             const req = docsStore.get(id);
             req.onsuccess = function () { resolve(req.result || null); };
             req.onerror = function () { resolve(null); };
         });
+        const foldersPromise = new Promise(function (resolve) {
+            const req = foldersStore.getAll();
+            req.onsuccess = function () { resolve(Array.isArray(req.result) ? req.result : []); };
+            req.onerror = function () { resolve([]); };
+        });
+        const doc = await docPromise;
+        const folders = await foldersPromise;
         const folder = await new Promise(function (resolve) {
             if (!doc) {
                 resolve(null);
                 return;
             }
-            const req = foldersStore.get(String(doc.folderId || 'root'));
-            req.onsuccess = function () { resolve(req.result || null); };
-            req.onerror = function () { resolve(null); };
+            resolve(folders.find(function (item) {
+                return String(item && item.id || '') === String(doc.folderId || 'root');
+            }) || null);
         });
-        return { doc: doc, folder: folder, storageMode: 'indb' };
+        return { doc: doc, folder: folder, folders: folders, storageMode: 'indb' };
     }
 
     async function pushDocToGithub(docId, storageMode) {
@@ -1145,10 +1180,11 @@
             showToast('Document not found.');
             return false;
         }
-        const folderName = folder && String(folder.id || '') !== 'root'
-            ? String(folder.name || '').trim().replace(/[\\/:*?"<>|]+/g, '_')
-            : '';
-        const docName = String(doc.title || 'untitled').trim().replace(/[\\/:*?"<>|]+/g, '_') || 'untitled';
+        const folderPath = buildGithubFolderPath(source && source.folders, doc.folderId);
+        const folderName = folderPath || (folder && String(folder.id || '') !== 'root'
+            ? sanitizeGithubPathSegment(folder.name)
+            : '');
+        const docName = sanitizeGithubPathSegment(doc.title || 'untitled') || 'untitled';
         const pushFolder = await chooseGithubPushFolder(settings, folderName || cfg.defaultPushPath);
         if (pushFolder === null) {
             showToast('GitHub push canceled.');
@@ -1174,9 +1210,16 @@
                 if (!notFound) throw e;
             }
 
+            let pushContent = String(doc.content ?? '');
+            const activeDocId = typeof window.getCurrentDbDocumentId === 'function'
+                ? String(window.getCurrentDbDocumentId() || '')
+                : '';
+            if (activeDocId === id && typeof window.getCurrentMarkdownSnapshot === 'function') {
+                pushContent = window.getCurrentMarkdownSnapshot();
+            }
             const body = {
                 message: 'push: ' + docName + ' (' + new Date().toISOString() + ')',
-                content: encodeTextToGithubBase64(doc.content || ''),
+                content: encodeTextToGithubBase64(pushContent),
                 branch: cfg.branch
             };
             if (existingSha) body.sha = existingSha;
@@ -1195,7 +1238,7 @@
                 remotePath: remotePath,
                 title: getGithubDocTitleFromPath(path),
                 folderPath: path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : 'root',
-                content: String(doc.content || ''),
+                content: pushContent,
                 sha: String(pushed && pushed.content && pushed.content.sha ? pushed.content.sha : ''),
                 updatedAt: new Date().toISOString()
             };
@@ -1435,6 +1478,7 @@
         checkGithubConnectionFromModal: checkGithubConnectionFromModal,
         loadFromGithubCache: loadFromGithubCache,
         getGithubPushSource: getGithubPushSource,
+        buildGithubFolderPath: buildGithubFolderPath,
         createGithubDocumentInFolder: createGithubDocumentInFolder,
         readTextFile: readTextFile,
         upsertTextFile: upsertTextFile,

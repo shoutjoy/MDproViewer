@@ -4501,6 +4501,11 @@ function getCurrentDbDocumentId() {
     return currentDbDocId ? String(currentDbDocId) : '';
 }
 
+function getCurrentMarkdownSnapshot() {
+    syncCurrentMarkdownFromEditor();
+    return String(currentMarkdown ?? '');
+}
+
 async function getCurrentFileGoogleDocId() {
     const docId = getCurrentDbDocumentId();
     if (!docId || !db || (currentDocumentRef && currentDocumentRef.storageMode !== 'indb')) return '';
@@ -16659,6 +16664,7 @@ window.openPdfMergeWindow = openPdfMergeWindow;
 window.printPage = printPage;
 window.copyViewFormattedToClipboard = copyViewFormattedToClipboard;
 window.getCurrentDbDocumentId = getCurrentDbDocumentId;
+window.getCurrentMarkdownSnapshot = getCurrentMarkdownSnapshot;
 window.getCurrentFileGoogleDocId = getCurrentFileGoogleDocId;
 window.setCurrentFileGoogleDocId = setCurrentFileGoogleDocId;
 window.toggleSidebarVisibility = toggleSidebarVisibility;
