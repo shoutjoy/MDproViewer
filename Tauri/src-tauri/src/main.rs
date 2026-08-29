@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::Path;
 use std::time::Duration;
 
 #[derive(Deserialize)]
@@ -16,6 +17,53 @@ struct DeepseekRequest {
 struct DeepseekResponse {
     status: u16,
     body: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InitialFilePayload {
+    path: String,
+    text: String,
+    file_name: String,
+    size_bytes: u64,
+    modified_at: Option<u64>,
+}
+
+#[tauri::command]
+fn get_initial_file() -> Result<Option<InitialFilePayload>, String> {
+    let path = std::env::args_os()
+        .skip(1)
+        .map(std::path::PathBuf::from)
+        .find(|candidate| candidate.is_file());
+    let Some(path) = path else {
+        return Ok(None);
+    };
+
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !matches!(extension.as_str(), "md" | "markdown" | "mdown" | "txt" | "csv" | "html" | "htm") {
+        return Ok(None);
+    }
+
+    let bytes = std::fs::read(&path).map_err(|error| format!("{}: {}", path.display(), error))?;
+    let metadata = std::fs::metadata(&path).map_err(|error| format!("{}: {}", path.display(), error))?;
+    let modified_at = metadata.modified().ok()
+        .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|value| value.as_millis().min(u128::from(u64::MAX)) as u64);
+
+    Ok(Some(InitialFilePayload {
+        file_name: path.file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_else(|| Path::new("document.md").to_str().unwrap())
+            .to_string(),
+        path: path.to_string_lossy().into_owned(),
+        text: String::from_utf8_lossy(&bytes).into_owned(),
+        size_bytes: metadata.len(),
+        modified_at,
+    }))
 }
 
 #[tauri::command]
@@ -40,7 +88,7 @@ async fn deepseek_api_request(request: DeepseekRequest) -> Result<DeepseekRespon
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![deepseek_api_request])
+        .invoke_handler(tauri::generate_handler![deepseek_api_request, get_initial_file])
         .run(tauri::generate_context!())
         .expect("error while running MDpro Viewer");
 }
