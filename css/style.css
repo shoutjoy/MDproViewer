@@ -496,6 +496,12 @@
                 overflow: visible !important;
                 background-color: white !important;
             }
+            html.dark,
+            html.dark body.printing-active {
+                background-color: #ffffff !important;
+                color: #1e293b !important;
+                color-scheme: light;
+            }
             body.printing-active > *:not(#print-root) { display: none !important; }
             body.printing-active #print-root { display: block !important; }
             body, .markdown-body { background-color: white !important; color: #1e293b !important; }
@@ -517,7 +523,63 @@
                 margin: 0 !important;
                 padding: 0 !important;
                 overflow: visible !important;
+                background-color: #ffffff !important;
+                color: #1e293b !important;
+                color-scheme: light;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
             }
+            /* 인쇄 결과는 현재 화면 테마와 무관하게 라이트 보기 모드 색상을 사용한다. */
+            #print-root .markdown-body h1 {
+                color: #1e3a8a !important;
+                border-bottom-color: #bfdbfe !important;
+                background: linear-gradient(90deg, rgba(219, 234, 254, .85), rgba(255, 255, 255, 0)) !important;
+            }
+            #print-root .markdown-body h2 {
+                color: #1d4ed8 !important;
+                border-bottom-color: #93c5fd !important;
+                background: linear-gradient(90deg, rgba(219, 234, 254, .7), rgba(255, 255, 255, 0)) !important;
+            }
+            #print-root .markdown-body h3 { color: #0284c7 !important; border-left-color: #38bdf8 !important; }
+            #print-root .markdown-body h4 { color: #0369a1 !important; border-left-color: #7dd3fc !important; }
+            #print-root .markdown-body h5,
+            #print-root .markdown-body h6 { color: #2563eb !important; }
+            #print-root .markdown-body b,
+            #print-root .markdown-body strong {
+                color: #7c3aed !important;
+                background: none !important;
+                text-shadow: none !important;
+            }
+            #print-root .markdown-body a,
+            #print-root .markdown-body .md-footnote-ref a,
+            #print-root .markdown-body .md-footnote-backref,
+            #print-root .markdown-body .md-footnote-url { color: #2563eb !important; }
+            #print-root .markdown-body code,
+            #print-root .markdown-body pre {
+                background-color: #e2e8f0 !important;
+                color: #1e293b !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            #print-root .markdown-body pre code {
+                background-color: transparent !important;
+                color: inherit !important;
+            }
+            #print-root .markdown-body blockquote {
+                border-left-color: #cbd5e1 !important;
+                color: #64748b !important;
+            }
+            #print-root .markdown-body table,
+            #print-root .markdown-body th,
+            #print-root .markdown-body td { border-color: #cbd5e1 !important; }
+            #print-root .markdown-body thead th { background-color: #e2e8f0 !important; }
+            #print-root .markdown-body .tbl-caption,
+            #print-root .markdown-body .md-footnotes,
+            #print-root .markdown-body .katex { color: #334155 !important; }
+            #print-root .markdown-body li::marker { color: #ef4444 !important; }
+            #print-root .markdown-body ol > li::marker { color: #10b981 !important; }
+            #print-root .markdown-body ul ul > li::marker { color: #f43f5e !important; }
+            #print-root .markdown-body ul ul ul > li::marker { color: #fda4af !important; }
             #print-root pre,
             #print-root blockquote,
             #print-root table,
@@ -1486,6 +1548,12 @@
         }
         
         /* Sidebar Transitions */
+        .sidebar-primary-actions {
+            display: grid;
+            grid-template-columns: 36px minmax(0, 1fr) minmax(0, 1fr);
+            width: 100%;
+        }
+
         #editor-shift-float {
             position: fixed;
         }

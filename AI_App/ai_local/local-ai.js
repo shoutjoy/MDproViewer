@@ -275,6 +275,11 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
     return url || defaults.baseUrl;
   }
 
+  function normalizeOptionalBaseUrl(value) {
+    return trim(value).replace(/\/+$/, '')
+      .replace(/\/chat\/completions$/i, '').replace(/\/models$/i, '');
+  }
+
   function finiteOr(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
@@ -288,8 +293,14 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
   function normalizeConfig(input) {
     const raw = input || {};
     const source = Object.assign({}, defaults, raw);
+    const baseUrlPrimary = normalizeBaseUrl(raw.baseUrlPrimary || raw.baseUrl || raw.lmStudioBaseUrl || source.baseUrl);
+    const baseUrlSecondary = normalizeOptionalBaseUrl(raw.baseUrlSecondary);
+    const activeBaseUrlSlot = raw.activeBaseUrlSlot === 'secondary' && baseUrlSecondary ? 'secondary' : 'primary';
     return {
-      baseUrl: normalizeBaseUrl(raw.baseUrl || raw.lmStudioBaseUrl || source.baseUrl),
+      baseUrl: activeBaseUrlSlot === 'secondary' ? baseUrlSecondary : baseUrlPrimary,
+      baseUrlPrimary: baseUrlPrimary,
+      baseUrlSecondary: baseUrlSecondary,
+      activeBaseUrlSlot: activeBaseUrlSlot,
       model: trim(raw.model || raw.modelId || raw.lmStudioModel || source.model || defaults.model),
       apiKey: trim(raw.apiKey || raw.lmStudioApiKey || source.apiKey),
       temperature: finiteOr(source.temperature, defaults.temperature),

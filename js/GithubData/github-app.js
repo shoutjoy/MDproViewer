@@ -344,8 +344,7 @@
             syncBtn.classList.toggle('flex', showSync);
         }
         if (syncLabel) {
-            const labelTarget = cfg.repoWithPath || cfg.repo;
-            syncLabel.textContent = labelTarget ? ('sync ' + labelTarget) : 'sync';
+            syncLabel.textContent = 'SYNC';
         }
         if (repoLink) {
             const linkPath = getGithubLinkPathFromConfig(cfg);
@@ -438,7 +437,7 @@
     function githubApiHeaders(token) {
         return {
             'Accept': 'application/vnd.github+json',
-            'Authorization': 'token ' + String(token || '').trim(),
+            'Authorization': 'Bearer ' + String(token || '').trim(),
             'X-GitHub-Api-Version': '2022-11-28'
         };
     }

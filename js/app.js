@@ -643,8 +643,21 @@ function isDocumentFileDrag(event) {
 async function openDroppedDocumentFile(file) {
     if (!file) return false;
     const extension = getSelectedFileExtension(file);
+    if (isSelectedImageFile(file, extension)) {
+        if (isFmaViewerFeatureEnabled()) {
+            openSelectedFileInBrowserViewer(file, extension);
+        } else if (!openSelectedImageInPreviewPopup(file)) {
+            showToast('이미지를 PV 창에서 열지 못했습니다. 팝업 허용 설정을 확인하세요.');
+        }
+        return true;
+    }
     if (extension === '.docx') return openDocxInEditor(file);
     if (extension === '.pdf') return openPdfInEditor(file);
+    if (DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)) {
+        if (openSelectedFileInBrowserViewer(file, extension)) return true;
+        showToast('이 파일 형식은 현재 Tauri 앱 내부에서 직접 열 수 없습니다: ' + file.name);
+        return false;
+    }
     await readFile(file);
     return true;
 }
@@ -2204,6 +2217,7 @@ window.onload = async () => {
         });
     });
 
+    if (editorTextarea) bindEditorDocumentHistory();
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
         scheduleCurrentDocumentMetadataDisplay();
@@ -2299,12 +2313,14 @@ window.onload = async () => {
                     tidySeparatorSpacing: tidySeparatorSpacing
                 });
                 if (applied && applied.changed && typeof applied.text === 'string') {
+                    const historyBefore = beginEditorHistoryTransaction();
                     editorTextarea.value = applied.text;
                     currentMarkdown = applied.text;
                     lastEditCaretPos = Math.max(0, Math.min(Number(applied.caretPos) || 0, applied.text.length));
                     performAutoSave();
                     if (activeSidebarTab === 'toc') renderTOC();
                     renderMarkdown();
+                    commitEditorHistoryTransaction(historyBefore, 'view-toolbar');
                     requestAnimationFrame(function () {
                         if (isEditMode || !viewerContainer) return;
                         const ratio = getMarkdownRatioFromCharPos(lastEditCaretPos);
@@ -2516,33 +2532,13 @@ window.onload = async () => {
         }
         if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'z') {
             e.preventDefault();
-            let handledBySnapshot = false;
-            if (e.shiftKey) {
-                const redone = document.execCommand('redo');
-                if (!redone) handledBySnapshot = redoFromReplaceStack();
-            } else {
-                const undone = document.execCommand('undo');
-                if (!undone) handledBySnapshot = undoFromReplaceStack();
-            }
-            if (handledBySnapshot) return;
-            setTimeout(() => {
-                currentMarkdown = editorTextarea.value;
-                renderMarkdown();
-                if (activeSidebarTab === 'toc') renderTOC();
-                performAutoSave();
-            }, 10);
+            if (e.shiftKey) redoEditorDocumentHistory();
+            else undoEditorDocumentHistory();
             return;
         }
         if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'y') {
             e.preventDefault();
-            const redone = document.execCommand('redo');
-            if (!redone && redoFromReplaceStack()) return;
-            setTimeout(() => {
-                currentMarkdown = editorTextarea.value;
-                renderMarkdown();
-                if (activeSidebarTab === 'toc') renderTOC();
-                performAutoSave();
-            }, 10);
+            redoEditorDocumentHistory();
             return;
         }
         // Line Navigation & Modification
@@ -2577,6 +2573,7 @@ function updateContent(md) {
     notebookLmEqualsHrPreprocess = false;
     currentMarkdown = md;
     if (editorTextarea) editorTextarea.value = md;
+    resetEditorDocumentHistory();
     updateCurrentDocumentMetadataDisplay();
     mainRenderDirty = true;
     renderMarkdown({ force: !isEditMode });
@@ -6796,7 +6793,9 @@ function getTidyActionDeps() {
         renderMarkdown: renderMarkdown,
         renderTOC: renderTOC,
         performAutoSave: performAutoSave,
-        showToast: showToast
+        showToast: showToast,
+        beginHistory: beginEditorHistoryTransaction,
+        commitHistory: commitEditorHistoryTransaction
     };
 }
 
@@ -7108,11 +7107,13 @@ function applyInlineFormatFromViewerSelection(type) {
     const replacement = before + selectedText + after;
     const nextText = source.substring(0, idx) + replacement + source.substring(idx + selectedText.length);
 
+    const historyBefore = beginEditorHistoryTransaction();
     currentMarkdown = nextText;
     if (editorTextarea) editorTextarea.value = nextText;
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'viewer-format');
     if (selection && typeof selection.removeAllRanges === 'function') selection.removeAllRanges();
     showToast(isBold ? 'Bold ?곸슜 ?꾨즺' : 'Italic ?곸슜 ?꾨즺');
     return true;
@@ -7311,6 +7312,7 @@ function insertListAtSelection(kind) {
     const replacement = mapped.join('\n');
     const next = text.substring(0, blockStart) + replacement + text.substring(blockEnd);
 
+    const historyBefore = beginEditorHistoryTransaction();
     editorTextarea.value = next;
     currentMarkdown = next;
     editorTextarea.focus();
@@ -7320,6 +7322,7 @@ function insertListAtSelection(kind) {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'list');
 }
 
 const captionInsertState = {
@@ -7800,6 +7803,7 @@ function renumberAllFootnotes() {
     const selectionStart = Number(editorTextarea.selectionStart) || 0;
     const selectionEnd = Number(editorTextarea.selectionEnd) || 0;
 
+    const historyBefore = beginEditorHistoryTransaction();
     editorTextarea.value = nextText;
     currentMarkdown = nextText;
     editorTextarea.focus();
@@ -7812,6 +7816,7 @@ function renumberAllFootnotes() {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'footnote-renumber');
     showToast('Footnotes renumbered: ' + orderedLabels.length);
 }
 function convertSelectionPatternToTable() {
@@ -9724,6 +9729,20 @@ function ensureAiProviderFoldsDefault() {
         details.open = false;
     });
     localStorage.setItem(AI_PROVIDER_FOLDS_DEFAULT_VERSION_KEY, '1');
+}
+
+function collapseAiProviderSettingsForOpen() {
+    setAiChatSettingsFoldedToLocal(true);
+    localStorage.setItem(SCHOLAR_LM_SETTINGS_FOLD_KEY, '1');
+    localStorage.setItem(SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY, '1');
+    applyAiChatSettingsFold(true);
+    applyScholarLmSettingsFold(true);
+    applyScholarOllamaSettingsFold(true);
+    setLiteRTLMSettingsFolded(true);
+    document.querySelectorAll('#ai-link-settings-block details').forEach(function (details) {
+        details.open = false;
+    });
+    initializeAiSettingsDetailsToggles();
 }
 
 function setAiChatSettingsFoldedToLocal(folded) {
@@ -12821,8 +12840,15 @@ function setSettingsScholarAIStatus(message, isError) {
 
 function readScholarAIProviderSettingsForm() {
     const value = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+    const selectedUrl = document.querySelector('input[name="settings-lmstudio-base-url-slot"]:checked');
+    const baseUrlPrimary = value('settings-lmstudio-base-url');
+    const baseUrlSecondary = value('settings-lmstudio-base-url-secondary');
+    const activeBaseUrlSlot = selectedUrl && selectedUrl.value === 'secondary' && baseUrlSecondary ? 'secondary' : 'primary';
     return {
-        baseUrl: value('settings-lmstudio-base-url'),
+        baseUrl: activeBaseUrlSlot === 'secondary' ? baseUrlSecondary : baseUrlPrimary,
+        baseUrlPrimary: baseUrlPrimary,
+        baseUrlSecondary: baseUrlSecondary,
+        activeBaseUrlSlot: activeBaseUrlSlot,
         apiKey: value('settings-lmstudio-api-key'),
         temperature: Number(value('settings-lmstudio-temperature') || 0.4),
         maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
@@ -12969,7 +12995,10 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     let config;
     try { config = window.LocalAI.loadConfig(localStorage); } catch (_) { config = window.LocalAI.defaults || {}; }
     const setValue = function (id, value) { const el = document.getElementById(id); if (el) el.value = value == null ? '' : value; };
-    setValue('settings-lmstudio-base-url', config.baseUrl || 'http://127.0.0.1:5678/v1');
+    setValue('settings-lmstudio-base-url', config.baseUrlPrimary || config.baseUrl || 'http://127.0.0.1:5678/v1');
+    setValue('settings-lmstudio-base-url-secondary', config.baseUrlSecondary || '');
+    const activeUrlSlot = document.querySelector('input[name="settings-lmstudio-base-url-slot"][value="' + (config.activeBaseUrlSlot === 'secondary' ? 'secondary' : 'primary') + '"]');
+    if (activeUrlSlot) activeUrlSlot.checked = true;
     setValue('settings-lmstudio-api-key', config.apiKey || '');
     setValue('settings-lmstudio-temperature', config.temperature == null ? 0.4 : config.temperature);
     setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
@@ -13041,6 +13070,25 @@ async function testSettingsLMStudioConnection() {
     setSettingsScholarAIStatus('LM Studio 연결 성공 · 현재 모델 ' + result.model + ' · ' + result.latencyMs + 'ms', false);
 }
 
+function renderSettingsGeminiModels(models) {
+    const modelList = document.getElementById('settings-gemini-models-list');
+    if (!modelList) return;
+    const values = Array.from(new Set((Array.isArray(models) ? models : []).map(String).filter(Boolean)));
+    modelList.replaceChildren();
+    values.forEach(function (model, index) {
+        const item = document.createElement('li');
+        item.className = 'flex items-start gap-2 px-3 py-2 break-all';
+        const number = document.createElement('span');
+        number.className = 'shrink-0 font-semibold text-indigo-500 dark:text-indigo-400';
+        number.textContent = String(index + 1) + '.';
+        const name = document.createElement('span');
+        name.textContent = model;
+        item.append(number, name);
+        modelList.appendChild(item);
+    });
+    modelList.classList.toggle('hidden', !values.length);
+}
+
 async function loadSettingsGeminiModels() {
     const keyInput = document.getElementById('ai-api-key');
     const key = keyInput && keyInput.value ? keyInput.value.trim() : '';
@@ -13055,20 +13103,15 @@ async function loadSettingsGeminiModels() {
         localStorage.setItem('ss_gemini_api_key_verified', credentialFingerprint(key));
         setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · 사용 가능 Gemini 모델 ' + models.length + '개 확인');
         const modelStatus = document.getElementById('settings-gemini-models-status');
-        const modelList = document.getElementById('settings-gemini-models-list');
         if (modelStatus) modelStatus.textContent = '사용 가능 모델 ' + models.length + '개 (텍스트 ' + textModels.length + '개)';
-        if (modelList) {
-            modelList.textContent = models.join(' · ');
-            modelList.classList.toggle('hidden', !models.length);
-        }
+        renderSettingsGeminiModels(models);
         setSettingsScholarAIStatus('AI Studio에서 사용 가능한 Gemini 모델 ' + models.length + '개를 불러왔습니다.', false);
     } catch (error) {
         localStorage.removeItem('ss_gemini_api_key_verified');
         setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error', '연결 확인 실패: ' + (error && error.message ? error.message : error));
         const modelStatus = document.getElementById('settings-gemini-models-status');
-        const modelList = document.getElementById('settings-gemini-models-list');
         if (modelStatus) modelStatus.textContent = '모델 조회 실패: ' + (error && error.message ? error.message : error);
-        if (modelList) { modelList.textContent = ''; modelList.classList.add('hidden'); }
+        renderSettingsGeminiModels([]);
         setSettingsScholarAIStatus('Gemini 모델 조회 실패: ' + (error && error.message ? error.message : error), true);
     }
 }
@@ -16029,7 +16072,7 @@ function openSettingsModal() {
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
     syncFileDownloadPrefixSettingUI();
     applyAiUseFold(getAiUseFoldedFromLocal());
-    applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
+    collapseAiProviderSettingsForOpen();
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
     loadAiSettingsToUI();
@@ -16966,9 +17009,17 @@ function closeFindReplace() {
 }
 
 let lastFindIndex = -1;
-const replaceUndoStack = [];
-const replaceRedoStack = [];
-const REPLACE_UNDO_LIMIT = 80;
+const EDITOR_HISTORY_LIMIT = 200;
+const EDITOR_TYPING_GROUP_MS = 750;
+const editorDocumentHistory = {
+    past: [],
+    future: [],
+    pendingBeforeInput: null,
+    current: null,
+    applying: false,
+    lastInputAt: 0,
+    lastInputKind: ''
+};
 
 function captureEditorSnapshot() {
     if (!editorTextarea) return null;
@@ -16981,8 +17032,101 @@ function captureEditorSnapshot() {
     };
 }
 
+function editorSnapshotsEqual(a, b) {
+    return !!a && !!b && a.value === b.value;
+}
+
+function getEditorInputHistoryKind(inputType) {
+    const value = String(inputType || '');
+    if (value === 'insertText' || value === 'insertCompositionText') return 'typing';
+    if (value.indexOf('delete') === 0) return 'delete';
+    return value || 'edit';
+}
+
+function pushEditorHistoryBefore(before, after, options) {
+    if (!before || !after || editorSnapshotsEqual(before, after)) {
+        editorDocumentHistory.current = after || before || editorDocumentHistory.current;
+        return false;
+    }
+    const opts = options || {};
+    const now = Date.now();
+    const kind = String(opts.kind || 'edit');
+    const coalesce = !!opts.coalesce
+        && editorDocumentHistory.past.length > 0
+        && editorDocumentHistory.lastInputKind === kind
+        && now - editorDocumentHistory.lastInputAt <= EDITOR_TYPING_GROUP_MS;
+    if (!coalesce) {
+        editorDocumentHistory.past.push(before);
+        if (editorDocumentHistory.past.length > EDITOR_HISTORY_LIMIT) editorDocumentHistory.past.shift();
+    }
+    editorDocumentHistory.future.length = 0;
+    editorDocumentHistory.current = after;
+    editorDocumentHistory.lastInputAt = now;
+    editorDocumentHistory.lastInputKind = kind;
+    return true;
+}
+
+function beginEditorHistoryTransaction() {
+    return captureEditorSnapshot();
+}
+
+function commitEditorHistoryTransaction(before, kind) {
+    const after = captureEditorSnapshot();
+    if (!after) return false;
+    // A real input event already recorded this exact result.
+    if (editorSnapshotsEqual(editorDocumentHistory.current, after)) return false;
+    return pushEditorHistoryBefore(before || editorDocumentHistory.current, after, { kind: kind || 'command' });
+}
+
+function resetEditorDocumentHistory() {
+    editorDocumentHistory.past.length = 0;
+    editorDocumentHistory.future.length = 0;
+    editorDocumentHistory.pendingBeforeInput = null;
+    editorDocumentHistory.current = captureEditorSnapshot();
+    editorDocumentHistory.lastInputAt = 0;
+    editorDocumentHistory.lastInputKind = '';
+}
+
+function bindEditorDocumentHistory() {
+    if (!editorTextarea || editorTextarea.__documentHistoryBound) return;
+    editorTextarea.__documentHistoryBound = true;
+    resetEditorDocumentHistory();
+    editorTextarea.addEventListener('beforeinput', function () {
+        if (editorDocumentHistory.applying) return;
+        editorDocumentHistory.pendingBeforeInput = captureEditorSnapshot();
+    });
+    editorTextarea.addEventListener('input', function (event) {
+        if (editorDocumentHistory.applying) return;
+        const before = editorDocumentHistory.pendingBeforeInput || editorDocumentHistory.current;
+        const after = captureEditorSnapshot();
+        const kind = getEditorInputHistoryKind(event && event.inputType);
+        pushEditorHistoryBefore(before, after, {
+            kind: kind,
+            coalesce: kind === 'typing' || kind === 'delete'
+        });
+        editorDocumentHistory.pendingBeforeInput = null;
+    });
+    // Toolbar and menu commands sometimes assign textarea.value directly and
+    // therefore produce no browser input event. Capture those synchronous
+    // command boundaries so they join the same document history.
+    function captureUiCommand(event) {
+        if (editorDocumentHistory.applying) return;
+        if (event && event.type === 'keydown') {
+            const key = String(event.key || '').toLowerCase();
+            if (!(event.ctrlKey || event.metaKey || event.altKey) && key !== 'tab' && key !== 'enter') return;
+        }
+        const before = beginEditorHistoryTransaction();
+        setTimeout(function () {
+            commitEditorHistoryTransaction(before, event && event.type === 'keydown' ? 'keyboard-command' : 'toolbar-command');
+        }, 0);
+    }
+    document.addEventListener('click', captureUiCommand, true);
+    document.addEventListener('keydown', captureUiCommand, true);
+}
+
 function applyEditorSnapshot(snapshot) {
     if (!editorTextarea || !snapshot) return false;
+    editorDocumentHistory.applying = true;
     editorTextarea.value = String(snapshot.value || '');
     const max = editorTextarea.value.length;
     const start = Math.max(0, Math.min(Number(snapshot.selectionStart) || 0, max));
@@ -16995,38 +17139,42 @@ function applyEditorSnapshot(snapshot) {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    editorDocumentHistory.current = captureEditorSnapshot();
+    editorDocumentHistory.pendingBeforeInput = null;
+    editorDocumentHistory.lastInputAt = 0;
+    editorDocumentHistory.lastInputKind = '';
+    editorDocumentHistory.applying = false;
     return true;
 }
 
 function pushReplaceUndoSnapshot() {
-    const snap = captureEditorSnapshot();
-    if (!snap) return;
-    replaceUndoStack.push(snap);
-    if (replaceUndoStack.length > REPLACE_UNDO_LIMIT) replaceUndoStack.shift();
-    replaceRedoStack.length = 0;
+    return beginEditorHistoryTransaction();
 }
 
-function undoFromReplaceStack() {
-    if (!replaceUndoStack.length) return false;
-    const prev = replaceUndoStack.pop();
+function undoEditorDocumentHistory() {
+    if (!editorDocumentHistory.past.length) return false;
+    const prev = editorDocumentHistory.past.pop();
     const current = captureEditorSnapshot();
     if (current) {
-        replaceRedoStack.push(current);
-        if (replaceRedoStack.length > REPLACE_UNDO_LIMIT) replaceRedoStack.shift();
+        editorDocumentHistory.future.push(current);
+        if (editorDocumentHistory.future.length > EDITOR_HISTORY_LIMIT) editorDocumentHistory.future.shift();
     }
     return applyEditorSnapshot(prev);
 }
 
-function redoFromReplaceStack() {
-    if (!replaceRedoStack.length) return false;
-    const next = replaceRedoStack.pop();
+function redoEditorDocumentHistory() {
+    if (!editorDocumentHistory.future.length) return false;
+    const next = editorDocumentHistory.future.pop();
     const current = captureEditorSnapshot();
     if (current) {
-        replaceUndoStack.push(current);
-        if (replaceUndoStack.length > REPLACE_UNDO_LIMIT) replaceUndoStack.shift();
+        editorDocumentHistory.past.push(current);
+        if (editorDocumentHistory.past.length > EDITOR_HISTORY_LIMIT) editorDocumentHistory.past.shift();
     }
     return applyEditorSnapshot(next);
 }
+
+function undoFromReplaceStack() { return undoEditorDocumentHistory(); }
+function redoFromReplaceStack() { return redoEditorDocumentHistory(); }
 
 function swapFindReplaceValues() {
     const findInput = document.getElementById('find-input');
@@ -17153,7 +17301,9 @@ function replaceRangeWithOptions(text, start, end, replacement) {
 function replaceTextareaContentWithUndo(nextText, selectionStart, selectionEnd) {
     if (!editorTextarea) return;
     const normalizedText = String(nextText || '');
-    if (normalizedText !== String(editorTextarea.value || '')) pushReplaceUndoSnapshot();
+    const historyBefore = normalizedText !== String(editorTextarea.value || '')
+        ? beginEditorHistoryTransaction()
+        : null;
     editorTextarea.focus();
     editorTextarea.setSelectionRange(0, editorTextarea.value.length);
     const applied = document.execCommand('insertText', false, normalizedText);
@@ -17164,6 +17314,7 @@ function replaceTextareaContentWithUndo(nextText, selectionStart, selectionEnd) 
         const safeEnd = Math.max(0, Math.min(selectionEnd, max));
         editorTextarea.setSelectionRange(safeStart, safeEnd);
     }
+    if (historyBefore) commitEditorHistoryTransaction(historyBefore, 'replace');
 }
 
 function getReplaceSearchBounds(text) {
