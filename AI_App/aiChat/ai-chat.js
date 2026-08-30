@@ -5214,6 +5214,24 @@
       openAtStartLayout();
       return true;
     },
+    completeTask: async function (options) {
+      var request = options && typeof options === 'object' ? options : {};
+      if (state.running) throw new Error('AI Jena가 다른 응답을 생성하고 있습니다. 완료 후 다시 시도하세요.');
+      var provider = state.provider;
+      var model = activeProviderModel();
+      var result = await getBridge().complete({
+        provider: provider,
+        model: model,
+        mode: 'quick',
+        fastMode: true,
+        messages: [{ role: 'user', content: String(request.prompt || '') }],
+        systemInstruction: String(request.systemInstruction || '')
+      });
+      return Object.assign({}, result || {}, {
+        provider: result && result.provider || provider,
+        model: result && result.model || model
+      });
+    },
     close: function () { setOpen(false); }
   });
 

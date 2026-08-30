@@ -109,6 +109,99 @@ test('custom TIDY scripts compile as functions and round-trip as GitHub JS files
   assert.match(file, /^\/\* mdviewer-tidy-script:v1/);
 });
 
+test('custom TIDY scripts accept a complete JS file with trailing comments', () => {
+  const sandbox = {
+    console,
+    document: {
+      currentScript: { src: 'http://127.0.0.1/js/Tidy/tidy-script-manager.js' },
+      getElementById() { return null; }
+    },
+    URL, TextEncoder, TextDecoder, Uint8Array, btoa, atob,
+    Date, Math, Map, Set, Promise
+  };
+  sandbox.window = sandbox;
+  load('js/Tidy/tidy-script-manager.js', sandbox);
+
+  const completeFile = `/** JSONL to Markdown */
+function transform(source, context) {
+  return '# result\\n\\n' + source + '\\n' + context.scope;
+}
+
+// module.exports = transform;`;
+  const fn = sandbox.TidyScriptManager.compileTransformer(completeFile);
+  assert.equal(fn('input', { scope: 'document' }), '# result\n\ninput\ndocument');
+
+  const fenced = '```javascript\n' + completeFile + '\n```';
+  assert.equal(sandbox.TidyScriptManager.compileTransformer(fenced)('x', { scope: 'selection' }), '# result\n\nx\nselection');
+});
+
+test('custom TIDY scripts adapt Node fs file converters to the editor text', () => {
+  const sandbox = {
+    console,
+    document: {
+      currentScript: { src: 'http://127.0.0.1/js/Tidy/tidy-script-manager.js' },
+      getElementById() { return null; }
+    },
+    URL, TextEncoder, TextDecoder, Uint8Array, btoa, atob,
+    Date, Math, Map, Set, Promise
+  };
+  sandbox.window = sandbox;
+  load('js/Tidy/tidy-script-manager.js', sandbox);
+
+  const fileScript = `const fs = require('fs');
+const input = 'data.jsonl';
+const output = 'formatted.md';
+function run() {
+  const text = fs.readFileSync(input, 'utf8');
+  fs.writeFileSync(output, '# converted\\n\\n' + text, 'utf8');
+}
+run();`;
+  const fn = sandbox.TidyScriptManager.compileTransformer(fileScript);
+  assert.equal(fn('{"messages":[]}', { scope: 'document' }), '# converted\n\n{"messages":[]}');
+});
+
+test('TIDY Jena rewrites code with the configured AI Jena provider and validates the result', async () => {
+  const stored = new Map();
+  let requested = null;
+  const sandbox = {
+    console,
+    document: {
+      currentScript: { src: 'http://127.0.0.1/js/Tidy/tidy-script-manager.js' },
+      getElementById() { return null; }
+    },
+    localStorage: {
+      getItem(key) { return stored.get(key) || null; },
+      setItem(key, value) { stored.set(key, String(value)); }
+    },
+    async openAiJenaChat(open) { assert.equal(open, false); },
+    AIChat: {
+      async completeTask(options) {
+        requested = options;
+        return {
+          provider: 'aistudio', model: 'gemini-test',
+          text: '```javascript\nfunction transform(source, context) { return source.trim(); }\n```'
+        };
+      }
+    },
+    URL, TextEncoder, TextDecoder, Uint8Array, btoa, atob,
+    Date, Math, Map, Set, Promise
+  };
+  sandbox.window = sandbox;
+  load('js/Tidy/tidy-script-manager.js', sandbox);
+
+  const info = sandbox.TidyScriptManagerBridge.getJenaStatus();
+  assert.match(info.defaultPrompt, /function transform\(source, context\)/);
+  const result = await sandbox.TidyScriptManagerBridge.rewriteWithJena({
+    code: 'const fs = require("fs");',
+    prompt: '원래 기능을 보존하세요.'
+  });
+  assert.equal(result.code, 'function transform(source, context) { return source.trim(); }');
+  assert.equal(result.provider, 'aistudio');
+  assert.equal(result.model, 'gemini-test');
+  assert.match(requested.prompt, /<INPUT_JAVASCRIPT>/);
+  assert.equal(stored.get('mdviewer_tidy_jena_normalize_prompt_v1'), '원래 기능을 보존하세요.');
+});
+
 test('TIDY UI, popup input modes, storage policies, and GitHub file bridge are wired', () => {
   const index = read('index.html');
   const app = read('js/app.js');
@@ -118,6 +211,7 @@ test('TIDY UI, popup input modes, storage policies, and GitHub file bridge are w
   const wasmPolicy = read('Local_SQLiteWASM/settings-policy.js');
   const pythonPolicy = read('LocalSave_sqlite/server/settings_policy.py');
   const github = read('js/GithubData/github-app.js');
+  const aiChat = read('AI_App/aiChat/ai-chat.js');
 
   assert.match(index, />noteCover<\/button>/);
   assert.match(index, /class="tidy-quick-panel/);
@@ -136,6 +230,8 @@ test('TIDY UI, popup input modes, storage policies, and GitHub file bridge are w
   assert.match(app, /TidyScriptManager\.configure/);
   assert.match(popup, /직접 입력/);
   assert.match(popup, /JS 업로드/);
+  assert.match(popup, /JS JENA 인공지능/);
+  assert.match(popup, /JENA 규격 수정 프롬프트/);
   assert.match(popup, /SQLite 가져오기/);
   assert.match(popup, /GitHub 가져오기/);
   assert.match(migration, /tidyCustomScripts: \['collections', 'workspace'\]/);
@@ -144,6 +240,7 @@ test('TIDY UI, popup input modes, storage policies, and GitHub file bridge are w
   assert.match(github, /async function upsertTextFile\(/);
   assert.match(github, /async function listTextFiles\(/);
   assert.match(github, /upsertTextFile: upsertTextFile/);
+  assert.match(aiChat, /completeTask:\s*async function/);
 });
 
 

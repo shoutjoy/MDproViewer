@@ -36,6 +36,11 @@
         .tab.active { border-color: #22d3ee; color: #67e8f9; }
         .upload { display: none; border: 1px dashed #475569; border-radius: 9px; padding: 14px; margin-bottom: 10px; background: rgba(15,23,42,.6); }
         .upload.visible { display: block; }
+        .jena-panel { display: none; border: 1px solid #155e75; border-radius: 9px; padding: 14px; margin-bottom: 10px; background: rgba(8,47,73,.3); }
+        .jena-panel.visible { display: block; }
+        .jena-panel textarea { min-height: 150px; margin-top: 7px; font-size: 12px; }
+        .jena-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+        .jena-model { color: #67e8f9; font-size: 11px; }
         .storage { margin-top: 14px; padding: 12px; border: 1px solid #334155; border-radius: 9px; background: #0f172a; }
         .storage label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; margin-right: 14px; }
         .status { min-height: 38px; padding: 10px 18px; border-top: 1px solid #1e293b; color: #94a3b8; background: #0f172a; font-size: 12px; }
@@ -64,10 +69,20 @@
             <div class="tabs">
                 <button class="btn tab active" data-mode="direct" type="button">직접 입력</button>
                 <button class="btn tab" data-mode="upload" type="button">JS 업로드</button>
+                <button class="btn tab" data-mode="jena" type="button">JS JENA 인공지능</button>
             </div>
             <div id="upload-panel" class="upload">
                 <input id="file" type="file" accept=".js,text/javascript,application/javascript">
                 <p class="help">업로드한 코드를 아래 편집기에 불러온 뒤 확인하고 저장합니다.</p>
+            </div>
+            <div id="jena-panel" class="jena-panel">
+                <div class="help">아래 규격 프롬프트와 현재 코드를 AI Jena에 보내 TIDY용 함수로 수정합니다. 결과는 편집기에만 반영되며 확인 후 저장합니다.</div>
+                <label class="field" style="margin-top:10px"><span>JENA 규격 수정 프롬프트</span><textarea id="jena-prompt" spellcheck="false"></textarea></label>
+                <div class="jena-actions">
+                    <button class="btn primary" id="jena-run-btn" type="button">현재 코드를 TIDY 규격으로 수정</button>
+                    <button class="btn" id="jena-reset-prompt-btn" type="button">기본 프롬프트 복원</button>
+                    <span id="jena-model" class="jena-model"></span>
+                </div>
             </div>
             <label class="field"><span>변환 함수</span><textarea id="code" spellcheck="false"></textarea></label>
             <div class="warning">신뢰하는 코드만 추가하세요. 코드는 자동 실행되지 않으며, TIDY에서 해당 기능 버튼을 눌렀을 때 선택 영역 또는 문서 전체를 변환합니다. 실행은 10초 후 자동 중단됩니다.</div>
@@ -95,6 +110,7 @@
     var records = [];
     var selectedId = '';
     var template = 'function transform(source, context) {\n  // source: 선택 영역 또는 문서 전체 Markdown\n  // context.scope: "selection" 또는 "document"\n  return source;\n}';
+    var defaultJenaPrompt = '';
     var $ = function (id) { return document.getElementById(id); };
 
     function status(message, kind) {
@@ -179,6 +195,7 @@
         button.onclick = function () {
             document.querySelectorAll('.tab').forEach(function (item) { item.classList.toggle('active', item === button); });
             $('upload-panel').classList.toggle('visible', button.dataset.mode === 'upload');
+            $('jena-panel').classList.toggle('visible', button.dataset.mode === 'jena');
         };
     });
     $('file').onchange = async function () {
@@ -199,10 +216,31 @@
     $('close-btn').onclick = function () { window.close(); };
     $('sqlite-import-btn').onclick = function () { importFrom('SQLite'); };
     $('github-import-btn').onclick = function () { importFrom('GitHub'); };
+    $('jena-run-btn').onclick = async function () {
+        var button = $('jena-run-btn');
+        button.disabled = true;
+        status('AI Jena가 현재 코드를 TIDY 규격으로 수정하는 중...');
+        try {
+            var result = await bridge.rewriteWithJena({ code: $('code').value, prompt: $('jena-prompt').value });
+            $('code').value = result.code;
+            $('jena-prompt').value = result.prompt;
+            $('jena-model').textContent = [result.provider, result.model].filter(Boolean).join(' · ');
+            status('AI Jena 규격 수정 완료 · 코드를 확인한 뒤 저장하세요.', 'ok');
+        } catch (error) {
+            status('AI Jena 수정 실패: ' + (error && error.message ? error.message : error), 'error');
+        } finally { button.disabled = false; }
+    };
+    $('jena-reset-prompt-btn').onclick = function () {
+        $('jena-prompt').value = defaultJenaPrompt;
+        status('JENA 규격 프롬프트를 기본값으로 복원했습니다. AI 실행 시 저장됩니다.', 'ok');
+    };
 
     if (!bridge) { status('메인 MD Viewer 창과 연결할 수 없습니다. TIDY 메뉴에서 다시 여세요.', 'error'); return; }
-    Promise.all([reload(''), bridge.getStorageStatus()]).then(function (values) {
+    Promise.all([reload(''), bridge.getStorageStatus(), bridge.getJenaStatus()]).then(function (values) {
         var storage = values[1] || {};
+        var jena = values[2] || {};
+        defaultJenaPrompt = jena.defaultPrompt || '';
+        $('jena-prompt').value = jena.prompt || defaultJenaPrompt;
         $('save-sqlite').disabled = !storage.sqliteAvailable;
         $('sqlite-import-btn').disabled = !storage.sqliteAvailable;
         $('save-github').disabled = !storage.githubAvailable;
