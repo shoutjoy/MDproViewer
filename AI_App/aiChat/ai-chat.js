@@ -570,7 +570,7 @@
       + '        <button type="button" data-ai-chat-layout="dock" role="menuitem"><span class="ai-chat-layout-label">Dock · 우측 사이드바 <kbd>Alt+2</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="dock">OFF</span></button>'
       + '        <button type="button" data-ai-chat-layout="fullscreen" role="menuitem"><span class="ai-chat-layout-label">전체화면 · 기록 보기 <kbd>Alt+3</kbd></span><span class="ai-chat-start-badge" data-ai-chat-start="fullscreen">OFF</span></button>'
       + '        <div class="ai-chat-answer-font-size"><div class="ai-chat-answer-font-head"><span>답변 폰트</span><output id="ai-chat-answer-font-size-value" for="ai-chat-answer-font-size">14px</output></div><div class="ai-chat-answer-font-controls"><button type="button" id="ai-chat-answer-font-size-down" class="ai-chat-font-size-step" aria-label="답변 폰트 줄이기">−</button><input id="ai-chat-answer-font-size" type="range" min="5" max="25" step="1" value="14" aria-label="답변 폰트"><button type="button" id="ai-chat-answer-font-size-up" class="ai-chat-font-size-step" aria-label="답변 폰트 키우기">+</button></div></div>'
-      + '        <div class="ai-chat-fast-limits ai-chat-layout-fast-limits"><label>FAST TOK <input id="ai-chat-layout-fast-token-limit" type="number" min="1" step="1" value="3000" inputmode="numeric"></label><label>LIMIT TIME <input id="ai-chat-layout-fast-time-limit" type="number" min="1" step="1" value="120" inputmode="numeric"><span>초</span></label></div>'
+      + '        <div class="ai-chat-fast-limits ai-chat-layout-fast-limits"><label>FAST TOK <input id="ai-chat-layout-fast-token-limit" type="number" min="1" step="1" value="4000" inputmode="numeric"></label><label>LIMIT TIME <input id="ai-chat-layout-fast-time-limit" type="number" min="1" step="1" value="580" inputmode="numeric"><span>초</span></label></div>'
       + '        <button type="button" id="ai-chat-set-start-layout" class="ai-chat-set-start-layout" role="menuitem">현재 배치를 시작 위치로 지정</button>'
       + '      </div>'
       + '    </div>'
@@ -595,10 +595,6 @@
       + '    <button type="button" id="ai-chat-provider-toggle" class="ai-chat-provider-toggle" aria-expanded="false">'
       + '      <span id="ai-chat-provider-chevron" aria-hidden="true">▸</span><span id="ai-chat-provider-summary">AI 공급자 · 연결 확인 전</span><small id="ai-chat-provider-toggle-label">설정</small>'
       + '    </button>'
-      + '    <div class="ai-chat-fast-limits" aria-label="FAST 응답 설정">'
-      + '      <label>FAST TOK <input id="ai-chat-fast-token-limit" type="number" min="1" step="1" value="3000" inputmode="numeric" aria-label="FAST 최대 토큰"></label>'
-      + '      <label>LIMIT TIME <input id="ai-chat-fast-time-limit" type="number" min="1" step="1" value="120" inputmode="numeric" aria-label="FAST 제한 시간(초)"><span>초</span></label>'
-      + '    </div>'
       + '    <div id="ai-chat-provider-controls" class="ai-chat-provider-controls collapsed">'
       + '      <div class="ai-chat-provider-row">'
       + '        <label>AI 공급자<select id="ai-chat-provider"><option value="lmstudio">LM Studio</option><option value="litertlm">LiteRT-LM</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai-compatible">OrcaRouter / OpenAI 호환</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select></label>'
@@ -691,16 +687,8 @@
       setProviderControlsOpen(!state.providerControlsOpen);
     });
     syncFastLimitControls();
-    document.getElementById('ai-chat-fast-token-limit').addEventListener('change', saveFastLimitControls);
-    document.getElementById('ai-chat-fast-time-limit').addEventListener('change', saveFastLimitControls);
-    document.getElementById('ai-chat-layout-fast-token-limit').addEventListener('change', function () {
-      document.getElementById('ai-chat-fast-token-limit').value = this.value;
-      saveFastLimitControls();
-    });
-    document.getElementById('ai-chat-layout-fast-time-limit').addEventListener('change', function () {
-      document.getElementById('ai-chat-fast-time-limit').value = this.value;
-      saveFastLimitControls();
-    });
+    document.getElementById('ai-chat-layout-fast-token-limit').addEventListener('change', saveFastLimitControls);
+    document.getElementById('ai-chat-layout-fast-time-limit').addEventListener('change', saveFastLimitControls);
     document.getElementById('ai-chat-layout-menu-button').addEventListener('click', function (event) {
       event.stopPropagation();
       toggleLayoutMenu();
@@ -1759,22 +1747,18 @@
 
   function syncFastLimitControls() {
     var config = readLocalFastConfig() || {};
-    var tokenInput = document.getElementById('ai-chat-fast-token-limit');
-    var timeInput = document.getElementById('ai-chat-fast-time-limit');
-    if (tokenInput) tokenInput.value = String(Math.max(1, Number(config.fastMaxTokens) || 3000));
-    if (timeInput) timeInput.value = String(Math.max(1, Math.round((Number(config.fastTimeoutMs) || 120000) / 1000)));
     var layoutTokenInput = document.getElementById('ai-chat-layout-fast-token-limit');
     var layoutTimeInput = document.getElementById('ai-chat-layout-fast-time-limit');
-    if (layoutTokenInput) layoutTokenInput.value = tokenInput ? tokenInput.value : '3000';
-    if (layoutTimeInput) layoutTimeInput.value = timeInput ? timeInput.value : '120';
+    if (layoutTokenInput) layoutTokenInput.value = String(Math.max(1, Number(config.fastMaxTokens) || 4000));
+    if (layoutTimeInput) layoutTimeInput.value = String(Math.max(1, Math.round((Number(config.fastTimeoutMs) || 580000) / 1000)));
   }
 
   function saveFastLimitControls() {
     if (!root.LocalAI || typeof root.LocalAI.saveConfig !== 'function') return;
-    var tokenInput = document.getElementById('ai-chat-fast-token-limit');
-    var timeInput = document.getElementById('ai-chat-fast-time-limit');
-    var fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 3000));
-    var fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 120));
+    var tokenInput = document.getElementById('ai-chat-layout-fast-token-limit');
+    var timeInput = document.getElementById('ai-chat-layout-fast-time-limit');
+    var fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 4000));
+    var fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 580));
     try {
       var current = readLocalFastConfig() || {};
       root.LocalAI.saveConfig(Object.assign({}, current, {
@@ -2332,9 +2316,8 @@
   }
 
   function mergeGeminiModels(models) {
-    return Array.from(new Set(DEFAULT_GEMINI_MODELS.concat(
-      (Array.isArray(models) ? models : []).map(String).filter(Boolean)
-    )));
+    var available = Array.from(new Set((Array.isArray(models) ? models : []).map(String).filter(Boolean)));
+    return available.length ? available : DEFAULT_GEMINI_MODELS.slice();
   }
 
   function updateModelModeUI() {

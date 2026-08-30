@@ -66,7 +66,6 @@
       '  <button type="button" onclick="saveScholarAIProviderSettingsFromUI(true)" class="px-2 py-1.5 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700">LM 설정 저장</button>',
       '  <button type="button" onclick="loadSettingsLMStudioModels()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">현재 로드 모델 확인</button>',
       '  <button type="button" onclick="testSettingsLMStudioConnection()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">LM 연결 테스트</button>',
-      '  <button type="button" onclick="loadSettingsGeminiModels()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">Gemini 모델 불러오기</button>',
       '</div>',
       '<p id="settings-scholar-ai-provider-status" class="text-xs min-h-[1.25rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>',
       '<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">',

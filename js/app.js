@@ -8974,8 +8974,7 @@ function hashPassword(plain) {
 
 function isValidGoogleAiApiKey(key) {
     const k = (key || '').trim();
-    if (!k) return false;
-    return /^AIza[0-9A-Za-z_-]{35,120}$/.test(k);
+    return !!k;
 }
 
 function getProtectedAiCredential(id, legacyStorageKey) {
@@ -9152,12 +9151,12 @@ function validateApiKeyInputUI() {
         return;
     }
     if (isValidGoogleAiApiKey(key)) {
-        input.className = ok + ' ai-api-key-input';
+        input.className = neutral + ' ai-api-key-input';
         const verified = localStorage.getItem('ss_gemini_api_key_verified') === credentialFingerprint(key)
             && getProtectedAiCredential('gemini', 'ss_gemini_api_key') === key;
         if (fb && !verified) {
-            fb.textContent = 'API key 형식이 올바릅니다. 저장하면 연결을 확인합니다.';
-            fb.className = 'text-xs mt-1 text-green-600 dark:text-green-400 min-h-[1.25rem]';
+            fb.textContent = '키를 저장하면 AI Studio에 연결하여 실제 사용 가능 여부를 확인합니다.';
+            fb.className = 'text-xs mt-1 text-slate-500 dark:text-slate-400 min-h-[1.25rem]';
         }
         setCredentialConnectionVisual(
             'ai-api-key',
@@ -9165,13 +9164,6 @@ function validateApiKeyInputUI() {
             verified ? 'connected' : 'neutral',
             verified ? '연결됨: AI Studio API Key 확인 완료' : null
         );
-    } else {
-        input.className = bad + ' ai-api-key-input';
-        if (fb) {
-            fb.textContent = 'Invalid key format. It should usually start with AIza...';
-            fb.className = 'text-xs mt-1 text-red-600 dark:text-red-400 min-h-[1.25rem]';
-        }
-        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error');
     }
 }
 
@@ -9184,18 +9176,20 @@ let openaiApiKeyCheckPromise = null;
 
 async function verifyAIStudioApiKeyConnection(apiKey) {
     const key = String(apiKey || '').trim();
-    if (!isValidGoogleAiApiKey(key)) throw new Error('AI Studio API Key 형식이 올바르지 않습니다.');
+    if (!key) throw new Error('AI Studio API Key를 입력하세요.');
     if (aiStudioConnectionCheckPromise && aiStudioConnectionCheckKey === key) return aiStudioConnectionCheckPromise;
     setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'checking', 'AI Studio 연결을 확인하는 중...');
     const request = (async function () {
         try {
-            const models = await listAIStudioTextModels(key);
-            saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, models);
+            const models = await listAIStudioChatModels(key);
+            const textModels = models.filter(function (id) { return !/(?:^|[-_.])(image|imagen)(?:$|[-_.])/i.test(id); });
+            saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, textModels);
+            saveStoredModelList(AI_CHAT_GEMINI_MODELS_KEY, models);
             localStorage.setItem('ss_gemini_api_key', key);
             localStorage.setItem('ss_gemini_api_key_verified', credentialFingerprint(key));
             const currentInput = document.getElementById('ai-api-key');
             if (!currentInput || String(currentInput.value || '').trim() === key) {
-                setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · Gemini 모델 ' + models.length + '개 확인');
+                setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · 사용 가능 Gemini 모델 ' + models.length + '개 확인');
             } else {
                 validateApiKeyInputUI();
             }
@@ -9226,14 +9220,8 @@ async function verifyAIStudioApiKeyConnection(apiKey) {
 async function saveApiKey() {
     const input = document.getElementById('ai-api-key');
     const key = (input && input.value) ? input.value.trim() : '';
-    if (key && !isValidGoogleAiApiKey(key)) {
-        validateApiKeyInputUI();
-        showToast("Invalid API key format.");
-        return;
-    }
-    await setAiSettings({ apiKey: key });
-    if (key) localStorage.setItem('ss_gemini_api_key', key);
-    else {
+    if (!key) {
+        await setAiSettings({ apiKey: '' });
         localStorage.removeItem('ss_gemini_api_key');
         localStorage.removeItem('ss_gemini_api_key_verified');
         validateApiKeyInputUI();
@@ -9242,9 +9230,10 @@ async function saveApiKey() {
     }
     try {
         await verifyAIStudioApiKeyConnection(key);
+        await setAiSettings({ apiKey: key });
         showToast('AI Studio API key가 저장되고 연결되었습니다.');
     } catch (error) {
-        showToast('API key는 저장했지만 AI Studio 연결을 확인하지 못했습니다.');
+        showToast('AI Studio 연결 검증에 실패하여 키를 저장하지 않았습니다.');
     }
 }
 
@@ -12839,8 +12828,8 @@ function readScholarAIProviderSettingsForm() {
         maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
         quickMaxTokens: Number(value('settings-aichat-quick-max-tokens') || 4096),
         reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
-        fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 3000),
-        fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 120) * 1000,
+        fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 4000),
+        fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 580) * 1000,
         fastSafetyTimeout: !!(document.getElementById('settings-aichat-fast-safety-timeout') && document.getElementById('settings-aichat-fast-safety-timeout').checked),
         fastCompleteStreaming: !!(document.getElementById('settings-aichat-fast-complete-streaming') && document.getElementById('settings-aichat-fast-complete-streaming').checked),
         reasoningLevel: value('settings-aichat-reasoning-level') || 'auto',
@@ -12853,16 +12842,16 @@ function syncAiJenaFastLimitsInSettings(config) {
     const source = config || {};
     const tokenInput = document.getElementById('settings-ai-jena-fast-token-limit');
     const timeInput = document.getElementById('settings-ai-jena-fast-time-limit');
-    if (tokenInput) tokenInput.value = Math.max(1, Number(source.fastMaxTokens) || 3000);
-    if (timeInput) timeInput.value = Math.max(1, Math.round((Number(source.fastTimeoutMs) || 120000) / 1000));
+    if (tokenInput) tokenInput.value = Math.max(1, Number(source.fastMaxTokens) || 4000);
+    if (timeInput) timeInput.value = Math.max(1, Math.round((Number(source.fastTimeoutMs) || 580000) / 1000));
 }
 
 function saveAiJenaFastLimitsFromSettings() {
     if (!window.LocalAI) return;
     const tokenInput = document.getElementById('settings-ai-jena-fast-token-limit');
     const timeInput = document.getElementById('settings-ai-jena-fast-time-limit');
-    const fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 3000));
-    const fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 120));
+    const fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 4000));
+    const fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 580));
     try {
         const current = window.LocalAI.loadConfig(localStorage);
         const config = getScholarAIProviderRuntime().saveLMStudioConfig(Object.assign({}, current, {
@@ -12986,8 +12975,8 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
     setValue('settings-aichat-quick-max-tokens', config.quickMaxTokens || 4096);
     setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
-    setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 3000);
-    setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 120000) / 1000)));
+    setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 4000);
+    setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 580000) / 1000)));
     syncAiJenaFastLimitsInSettings(config);
     const fastSafetyTimeout = document.getElementById('settings-aichat-fast-safety-timeout');
     if (fastSafetyTimeout) fastSafetyTimeout.checked = config.fastSafetyTimeout !== false;
@@ -13058,15 +13047,28 @@ async function loadSettingsGeminiModels() {
     setSettingsScholarAIStatus('Gemini 모델을 불러오는 중...', false);
     setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'checking', 'AI Studio 연결을 확인하는 중...');
     try {
-        const models = await listAIStudioTextModels(key);
-        saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, models);
+        const models = await listAIStudioChatModels(key);
+        const textModels = models.filter(function (id) { return !/(?:^|[-_.])(image|imagen)(?:$|[-_.])/i.test(id); });
+        saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, textModels);
+        saveStoredModelList(AI_CHAT_GEMINI_MODELS_KEY, models);
         localStorage.setItem('ss_gemini_api_key', key);
         localStorage.setItem('ss_gemini_api_key_verified', credentialFingerprint(key));
-        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · Gemini 모델 ' + models.length + '개 확인');
-        setSettingsScholarAIStatus('Gemini 텍스트 모델 ' + models.length + '개를 불러왔습니다.', false);
+        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · 사용 가능 Gemini 모델 ' + models.length + '개 확인');
+        const modelStatus = document.getElementById('settings-gemini-models-status');
+        const modelList = document.getElementById('settings-gemini-models-list');
+        if (modelStatus) modelStatus.textContent = '사용 가능 모델 ' + models.length + '개 (텍스트 ' + textModels.length + '개)';
+        if (modelList) {
+            modelList.textContent = models.join(' · ');
+            modelList.classList.toggle('hidden', !models.length);
+        }
+        setSettingsScholarAIStatus('AI Studio에서 사용 가능한 Gemini 모델 ' + models.length + '개를 불러왔습니다.', false);
     } catch (error) {
         localStorage.removeItem('ss_gemini_api_key_verified');
         setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error', '연결 확인 실패: ' + (error && error.message ? error.message : error));
+        const modelStatus = document.getElementById('settings-gemini-models-status');
+        const modelList = document.getElementById('settings-gemini-models-list');
+        if (modelStatus) modelStatus.textContent = '모델 조회 실패: ' + (error && error.message ? error.message : error);
+        if (modelList) { modelList.textContent = ''; modelList.classList.add('hidden'); }
         setSettingsScholarAIStatus('Gemini 모델 조회 실패: ' + (error && error.message ? error.message : error), true);
     }
 }
@@ -13139,7 +13141,7 @@ async function listAIStudioTextModels(apiKeyOverride) {
     }).map(function (model) {
         return String(model.name || '').replace(/^models\//, '');
     }).filter(Boolean);
-    return Array.from(new Set(SCHOLAR_AI_TEXT_MODELS_FALLBACK.concat(filtered))).sort();
+    return Array.from(new Set(filtered)).sort();
 }
 
 function getScholarAIProviderRuntime() {
@@ -13236,7 +13238,8 @@ const SCHOLAR_AI_TEXT_MODELS_FALLBACK = [
 ];
 
 function mergeAIChatGeminiModels(models) {
-    return Array.from(new Set(AI_CHAT_GEMINI_DEFAULT_MODELS.concat(Array.isArray(models) ? models : []).filter(Boolean)));
+    const available = Array.from(new Set((Array.isArray(models) ? models : []).map(String).filter(Boolean)));
+    return available.length ? available : AI_CHAT_GEMINI_DEFAULT_MODELS.slice();
 }
 
 function mergeAIChatDeepseekModels(models) {
@@ -14062,7 +14065,7 @@ async function listAIStudioChatModels(apiKeyOverride) {
         const id = String(model.name || '').replace(/^models\//, '');
         return /^gemini-/i.test(id)
             && methods.indexOf('generateContent') >= 0
-            && !/(embedding|image)/i.test(id);
+            && !/(?:^|[-_.])embedding(?:$|[-_.])/i.test(id);
     }).map(function (model) {
         const id = String(model.name || '').replace(/^models\//, '');
         if (id) {
@@ -14073,7 +14076,7 @@ async function listAIStudioChatModels(apiKeyOverride) {
         }
         return id;
     }).filter(Boolean);
-    return mergeAIChatGeminiModels(models);
+    return Array.from(new Set(models)).sort();
 }
 
 async function getAIChatGeminiModelLimits(model, key, signal) {
@@ -15068,8 +15071,8 @@ window.AIChatBridge = Object.freeze({
             const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 8192);
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
             const fastMode = request.fastMode === true;
-            const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 3000);
-            const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 120000);
+            const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 4000);
+            const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 580000);
             const fastSafetyTimeoutMs = config.fastSafetyTimeout === false
                 ? configuredFastTimeoutMs
                 : Math.max(configuredFastTimeoutMs, 120000);
