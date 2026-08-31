@@ -5197,11 +5197,35 @@
       openAtStartLayout();
       return true;
     },
+    getTaskModels: async function (provider, refresh) {
+      provider = provider || state.provider;
+      var configs = {
+        lmstudio: ['LMStudio', state.lmModel, []],
+        litertlm: ['LiteRTLM', state.litertlmModel, []],
+        aistudio: ['Gemini', state.geminiModel, DEFAULT_GEMINI_MODELS],
+        ollama: ['Ollama', state.ollamaModel, []],
+        deepseek: ['Deepseek', state.deepseekModel, DEFAULT_DEEPSEEK_MODELS],
+        openai: ['OpenAI', state.openaiModel, DEFAULT_OPENAI_MODELS],
+        'openai-compatible': ['OpenAICompatible', state.openaiCompatibleModel, []]
+      };
+      var config = configs[provider];
+      if (!config) throw new Error('지원하지 않는 AI 공급자입니다.');
+      var bridge = getBridge();
+      var method = (refresh ? 'refresh' : 'getCached') + config[0] + 'Models';
+      var result = typeof bridge[method] === 'function' ? await bridge[method]() : [];
+      var models = Array.isArray(result) ? result : (result && result.models || []);
+      if (provider === 'lmstudio') models = result && result.model ? [result.model] : (refresh ? [] : [config[1]].filter(Boolean));
+      if (!models.length && !refresh) models = config[2];
+      if (provider === 'aistudio') models = models.filter(function (model) { return !isGeminiImageModel(model); });
+      return { provider: provider, model: config[1] || '', models: Array.from(new Set(models)) };
+    },
     completeTask: async function (options) {
       var request = options && typeof options === 'object' ? options : {};
       if (state.running) throw new Error('AI Jena가 다른 응답을 생성하고 있습니다. 완료 후 다시 시도하세요.');
-      var provider = state.provider;
-      var model = activeProviderModel();
+      var provider = request.provider || state.provider;
+      if (!/^(lmstudio|litertlm|aistudio|ollama|deepseek|openai|openai-compatible)$/.test(provider)) throw new Error('지원하지 않는 AI 공급자입니다.');
+      var model = request.provider ? String(request.model || '') : activeProviderModel();
+      if (request.provider && provider !== 'lmstudio' && !model) throw new Error('AI 모델을 선택하세요.');
       var result = await getBridge().complete({
         provider: provider,
         model: model,

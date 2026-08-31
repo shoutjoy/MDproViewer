@@ -22,6 +22,8 @@
     var scripts = [];
     var configured = false;
     var runBusy = false;
+    var managerWindow = null;
+    var managerToken = '';
 
     function stringValue(value) {
         return String(value == null ? '' : value);
@@ -392,6 +394,8 @@
             throw new Error('AI Jena가 준비되지 않았습니다. 메인 창에서 AI Jena 설정을 확인하세요.');
         }
         var result = await global.AIChat.completeTask({
+            provider: request.provider || undefined,
+            model: request.model || undefined,
             systemInstruction: JENA_DEFAULT_PROMPT + '\n사용자가 편집한 규격 프롬프트도 반드시 함께 준수하세요.',
             prompt: prompt + '\n\n<INPUT_JAVASCRIPT>\n' + code + '\n</INPUT_JAVASCRIPT>'
         });
@@ -403,6 +407,12 @@
 
     function getJenaStatus() {
         return { prompt: getJenaPrompt(), defaultPrompt: JENA_DEFAULT_PROMPT };
+    }
+
+    async function getJenaModels(provider, refresh) {
+        if (typeof global.openAiJenaChat === 'function') await global.openAiJenaChat(false);
+        if (!global.AIChat || typeof global.AIChat.getTaskModels !== 'function') throw new Error('메인 창을 새로고침한 뒤 다시 여세요.');
+        return global.AIChat.getTaskModels(provider, refresh);
     }
 
     function runInWorker(code, source, context) {
@@ -490,7 +500,9 @@
 
     function openManager() {
         if (global.TidyActions && typeof global.TidyActions.closeMenu === 'function') global.TidyActions.closeMenu();
-        var popup = global.open(managerUrl, 'mdviewer-tidy-script-manager', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+        managerToken = createId();
+        var popup = global.open(managerUrl + '#bridge=' + encodeURIComponent(managerToken), 'mdviewer-tidy-script-manager', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+        managerWindow = popup;
         if (!popup && typeof deps.showToast === 'function') deps.showToast('팝업이 차단되었습니다. 이 사이트의 팝업을 허용하세요.');
         if (popup) popup.focus();
         return !!popup;
@@ -520,6 +532,26 @@
         parseUpload: parseGithubFile,
         getStorageStatus: getStorageStatus,
         getJenaStatus: getJenaStatus,
+        getJenaModels: getJenaModels,
+        getJenaSelection: async function () {
+            var settings = typeof deps.getSettings === 'function' ? await deps.getSettings() : {};
+            return settings.tidyJenaSelection || {};
+        },
+        setJenaSelection: async function (selection) {
+            if (typeof deps.setSettings === 'function') await deps.setSettings({ tidyJenaSelection: { provider: stringValue(selection.provider), model: stringValue(selection.model) } });
+        },
         rewriteWithJena: rewriteWithJena
     };
+    if (typeof global.addEventListener === 'function') global.addEventListener('message', async function (event) {
+        var message = event.data;
+        if (!managerWindow || event.source !== managerWindow || !message || message.type !== 'tidy-manager-request' || message.token !== managerToken) return;
+        var expectedOrigin = new URL(managerUrl).origin;
+        if (event.origin !== expectedOrigin) return;
+        var api = global.TidyScriptManagerBridge;
+        if (!Object.prototype.hasOwnProperty.call(api, message.method) || typeof api[message.method] !== 'function') return;
+        var response = { type: 'tidy-manager-response', id: message.id, token: message.token };
+        try { response.result = await api[message.method].apply(null, Array.isArray(message.args) ? message.args : []); }
+        catch (error) { response.error = String(error && error.message || error); }
+        event.source.postMessage(response, expectedOrigin === 'null' ? '*' : expectedOrigin);
+    });
 })(window);

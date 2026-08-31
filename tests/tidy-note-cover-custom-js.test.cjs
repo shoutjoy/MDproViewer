@@ -200,6 +200,84 @@ test('TIDY Jena rewrites code with the configured AI Jena provider and validates
   assert.equal(result.model, 'gemini-test');
   assert.match(requested.prompt, /<INPUT_JAVASCRIPT>/);
   assert.equal(stored.get('mdviewer_tidy_jena_normalize_prompt_v1'), '원래 기능을 보존하세요.');
+  await sandbox.TidyScriptManagerBridge.rewriteWithJena({ code: 'function transform(source) { return source; }', provider: 'openai', model: 'test-model' });
+  assert.equal(requested.provider, 'openai');
+  assert.equal(requested.model, 'test-model');
+});
+
+test('JENA task overrides do not mutate chat selection and model loading uses provider cache', async () => {
+  const source = read('AI_App/aiChat/ai-chat.js');
+  const methods = source.slice(source.indexOf('    getTaskModels: async function'), source.indexOf('    close: function () { setOpen(false); }'));
+  let requested;
+  const state = { provider: 'aistudio', geminiModel: 'chat-model', openaiModel: 'saved-model', running: false };
+  const api = vm.runInNewContext('({' + methods + '})', {
+    state, DEFAULT_GEMINI_MODELS: [], DEFAULT_OPENAI_MODELS: [], DEFAULT_DEEPSEEK_MODELS: [],
+    isGeminiImageModel: () => false, activeProviderModel: () => state.geminiModel,
+    getBridge: () => ({ getCachedOpenAIModels: () => ['saved-model', 'task-model'], complete: async options => { requested = options; return { text: 'ok' }; } })
+  });
+  const models = await api.getTaskModels('openai', false);
+  assert.deepEqual(Array.from(models.models), ['saved-model', 'task-model']);
+  await api.completeTask({ provider: 'openai', model: 'task-model', prompt: 'convert' });
+  assert.equal(requested.provider, 'openai');
+  assert.equal(requested.model, 'task-model');
+  assert.equal(state.provider, 'aistudio');
+  assert.equal(state.geminiModel, 'chat-model');
+  await api.completeTask({ prompt: 'default' });
+  assert.equal(requested.model, 'chat-model');
+  await assert.rejects(api.completeTask({ provider: 'openai' }), /모델을 선택/);
+});
+
+test('file popup keeps JENA tab working when direct opener access throws', () => {
+  const elements = new Map();
+  function element(id) {
+    if (!elements.has(id)) elements.set(id, {
+      value: '', disabled: false, dataset: {},
+      classList: { toggle(name, enabled) { this[name] = enabled; } },
+      replaceChildren() {}, appendChild() {}
+    });
+    return elements.get(id);
+  }
+  const tabs = ['direct', 'upload', 'jena'].map(mode => Object.assign(element(mode), { dataset: { mode } }));
+  const opener = {};
+  Object.defineProperty(opener, 'TidyScriptManagerBridge', { get() { throw new Error('Blocked a frame with origin null from accessing a cross-origin frame'); } });
+  const sandbox = {
+    document: { getElementById: element, querySelectorAll: () => tabs, createElement: () => element('empty') },
+    opener, location: { hash: '' }, URLSearchParams, console
+  };
+  sandbox.window = sandbox;
+  const script = read('js/Tidy/tidy-script-manager.html').match(/<script>([\s\S]*?)<\/script>/)[1];
+  vm.runInNewContext(script, sandbox);
+  tabs[2].onclick();
+  assert.equal(element('jena-panel').classList.visible, true);
+  assert.equal(element('jena').classList.active, true);
+  assert.match(element('status').textContent, /메인.*새로고침/);
+  assert.equal(element('jena-run-btn').disabled, true);
+});
+
+test('file popup RPC accepts only the opened manager and its token', async () => {
+  let listener;
+  let popupUrl;
+  const responses = [];
+  const popup = { focus() {}, postMessage(message) { responses.push(message); } };
+  const sandbox = {
+    console, URL, Date, Math, Map, Set, Promise,
+    document: { currentScript: { src: 'file:///C:/app/js/Tidy/tidy-script-manager.js' }, getElementById() { return null; } },
+    localStorage: { getItem() { return null; } },
+    addEventListener(type, callback) { if (type === 'message') listener = callback; },
+    open(url) { popupUrl = url; return popup; }
+  };
+  sandbox.window = sandbox;
+  load('js/Tidy/tidy-script-manager.js', sandbox);
+  sandbox.TidyScriptManager.openManager();
+  const token = new URLSearchParams(new URL(popupUrl).hash.slice(1)).get('bridge');
+  const data = { type: 'tidy-manager-request', token, id: 1, method: 'getJenaStatus', args: [] };
+  await listener({ source: {}, origin: 'null', data });
+  await listener({ source: popup, origin: 'null', data: { ...data, token: 'wrong' } });
+  await listener({ source: popup, origin: 'https://untrusted.example', data });
+  assert.equal(responses.length, 0);
+  await listener({ source: popup, origin: 'null', data });
+  assert.equal(responses.length, 1);
+  assert.match(responses[0].result.defaultPrompt, /transform/);
 });
 
 test('TIDY UI, popup input modes, storage policies, and GitHub file bridge are wired', () => {

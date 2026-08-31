@@ -1189,6 +1189,36 @@ async function tryGetInitialFileViaTauri() {
     }
 }
 
+async function initializeTauriFileOpen() {
+    const tauri = window.__TAURI__;
+    if (tauri && tauri.event && typeof tauri.event.listen === 'function') {
+        await tauri.event.listen('mdpro-open-file', async function (event) {
+            try {
+                const opened = await applyIncomingOpenedFile(event.payload, {
+                    askBeforeReplace: true,
+                    toastMessage: '드래그한 파일을 열었습니다.',
+                    showMissingTextToast: true
+                });
+                if (opened) receivedExternalContent = true;
+            } catch (error) {
+                showToast('파일 열기 실패: ' + (error.message || error));
+            }
+        });
+        await tauri.event.listen('mdpro-open-file-error', function (event) {
+            showToast('파일 열기 실패: ' + event.payload);
+        });
+    }
+    const data = await tryGetInitialFileViaTauri();
+    if (data) {
+        const opened = await applyIncomingOpenedFile(data, {
+            askBeforeReplace: false,
+            toastMessage: '시작 파일을 열었습니다.',
+            showMissingTextToast: true
+        });
+        if (opened) receivedExternalContent = true;
+    }
+}
+
 async function applyIncomingOpenedFile(rawPayload, options) {
     const opts = options || {};
     let payload = normalizeExternalOpenPayload(rawPayload);
@@ -1204,7 +1234,9 @@ async function applyIncomingOpenedFile(rawPayload, options) {
     }
 
     const sig = buildExternalOpenSignature(payload);
-    if (sig && sig === lastExternalOpenSignature) return true;
+    if (sig && sig === lastExternalOpenSignature
+        && String(editorTextarea ? editorTextarea.value : currentMarkdown) === payload.text
+        && String(currentFilePath || '') === payload.path) return true;
 
     if (opts.askBeforeReplace) {
         const canProceed = await confirmSaveBeforeOpeningAnotherFile();
@@ -2038,6 +2070,8 @@ window.onload = async () => {
         initializeOptionalCodeMirrorPrototype();
         toggleMode('edit');
 
+        // Open native files even if optional storage initialization later fails.
+        await tauriFileOpenReady;
         await initDB();
         if (window.TextStyleTool && typeof window.TextStyleTool.setDatabase === 'function') {
             try {
@@ -2207,15 +2241,6 @@ window.onload = async () => {
             applyIncomingOpenedFile(data, { askBeforeReplace: false, toastMessage: 'Loaded initial file.' });
         }).catch(function () {});
     }
-
-    tryGetInitialFileViaTauri().then(function (data) {
-        if (!data) return;
-        applyIncomingOpenedFile(data, {
-            askBeforeReplace: false,
-            toastMessage: '시작 파일을 열었습니다.',
-            showMissingTextToast: true
-        });
-    });
 
     if (editorTextarea) bindEditorDocumentHistory();
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
@@ -17523,3 +17548,10 @@ window.findPrev = findPrev;
 window.replaceCurrent = replaceCurrent;
 window.replaceAll = replaceAll;
 window.swapFindReplaceValues = swapFindReplaceValues;
+
+// This deferred script runs when the editor DOM exists. Do not wait for
+// window.load or MiniPreviewUI.ready: remote resources may never finish offline.
+const tauriFileOpenReady = initializeTauriFileOpen().catch(function (error) {
+    console.error('Native file initialization failed:', error);
+    showToast('파일 연결 초기화 실패: ' + (error.message || error));
+});

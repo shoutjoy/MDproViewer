@@ -8,6 +8,7 @@
     "frontendDist": "../../../TauriBuildManager/mdpro-viewer/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "MDpro Viewer",
@@ -16,7 +17,7 @@
         "minWidth": 900,
         "minHeight": 640,
         "center": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": true
       }
     ],
     "security": {
