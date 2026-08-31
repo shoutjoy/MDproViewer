@@ -1164,6 +1164,18 @@ async function tryGetOpenedFileViaElectronApi() {
     }
 }
 
+async function tryGetInitialFileViaTauri() {
+    const tauriInvoke = window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke;
+    if (typeof tauriInvoke !== 'function') return null;
+    try {
+        const result = await tauriInvoke('get_initial_file');
+        return result ? normalizeExternalOpenPayload(result) : null;
+    } catch (error) {
+        showToast('시작 파일을 열 수 없습니다: ' + (error && error.message ? error.message : error));
+        return null;
+    }
+}
+
 async function applyIncomingOpenedFile(rawPayload, options) {
     const opts = options || {};
     let payload = normalizeExternalOpenPayload(rawPayload);
@@ -2182,6 +2194,15 @@ window.onload = async () => {
             applyIncomingOpenedFile(data, { askBeforeReplace: false, toastMessage: 'Loaded initial file.' });
         }).catch(function () {});
     }
+
+    tryGetInitialFileViaTauri().then(function (data) {
+        if (!data) return;
+        applyIncomingOpenedFile(data, {
+            askBeforeReplace: false,
+            toastMessage: '시작 파일을 열었습니다.',
+            showMissingTextToast: true
+        });
+    });
 
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
