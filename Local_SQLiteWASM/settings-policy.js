@@ -41,6 +41,7 @@
         sitesList: ['collections', 'workspace', ['array'], 2 * 1024 * 1024],
         templateCustomList: ['collections', 'workspace', ['array'], 4 * 1024 * 1024],
         tidyCustomScripts: ['collections', 'workspace', ['array'], 4 * 1024 * 1024],
+        tidyJenaSelection: ['preferences', 'workspace', ['object'], 8192],
         textStyleCustomFonts: ['collections', 'workspace', ['array'], 4 * 1024 * 1024],
         shareSites: ['collections', 'workspace', ['array'], 256 * 1024],
         customShareDestinations: ['collections', 'workspace', ['array'], 2 * 1024 * 1024],

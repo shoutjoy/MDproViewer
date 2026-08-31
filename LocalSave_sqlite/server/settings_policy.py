@@ -89,6 +89,7 @@ SAFE_SETTING_RULES: Dict[str, SettingRule] = {
     "sitesList": SettingRule("collections", "workspace", ("array",), 2 * 1024 * 1024),
     "templateCustomList": SettingRule("collections", "workspace", ("array",), 4 * 1024 * 1024),
     "tidyCustomScripts": SettingRule("collections", "workspace", ("array",), 4 * 1024 * 1024),
+    "tidyJenaSelection": SettingRule("preferences", "workspace", ("object",), 8192),
     "textStyleCustomFonts": SettingRule("collections", "workspace", ("array",), 4 * 1024 * 1024),
     "shareSites": SettingRule("collections", "workspace", ("array",), 256 * 1024),
     "customShareDestinations": SettingRule("collections", "workspace", ("array",), 2 * 1024 * 1024),

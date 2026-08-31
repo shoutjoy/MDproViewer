@@ -114,7 +114,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260828-aistudio-live-tokens-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260830-tidy-jena-normalize-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -643,8 +643,21 @@ function isDocumentFileDrag(event) {
 async function openDroppedDocumentFile(file) {
     if (!file) return false;
     const extension = getSelectedFileExtension(file);
+    if (isSelectedImageFile(file, extension)) {
+        if (isFmaViewerFeatureEnabled()) {
+            openSelectedFileInBrowserViewer(file, extension);
+        } else if (!openSelectedImageInPreviewPopup(file)) {
+            showToast('이미지를 PV 창에서 열지 못했습니다. 팝업 허용 설정을 확인하세요.');
+        }
+        return true;
+    }
     if (extension === '.docx') return openDocxInEditor(file);
     if (extension === '.pdf') return openPdfInEditor(file);
+    if (DEDICATED_LOCAL_VIEWER_EXTENSIONS.has(extension)) {
+        if (openSelectedFileInBrowserViewer(file, extension)) return true;
+        showToast('이 파일 형식은 현재 Tauri 앱 내부에서 직접 열 수 없습니다: ' + file.name);
+        return false;
+    }
     await readFile(file);
     return true;
 }
@@ -1176,6 +1189,36 @@ async function tryGetInitialFileViaTauri() {
     }
 }
 
+async function initializeTauriFileOpen() {
+    const tauri = window.__TAURI__;
+    if (tauri && tauri.event && typeof tauri.event.listen === 'function') {
+        await tauri.event.listen('mdpro-open-file', async function (event) {
+            try {
+                const opened = await applyIncomingOpenedFile(event.payload, {
+                    askBeforeReplace: true,
+                    toastMessage: '드래그한 파일을 열었습니다.',
+                    showMissingTextToast: true
+                });
+                if (opened) receivedExternalContent = true;
+            } catch (error) {
+                showToast('파일 열기 실패: ' + (error.message || error));
+            }
+        });
+        await tauri.event.listen('mdpro-open-file-error', function (event) {
+            showToast('파일 열기 실패: ' + event.payload);
+        });
+    }
+    const data = await tryGetInitialFileViaTauri();
+    if (data) {
+        const opened = await applyIncomingOpenedFile(data, {
+            askBeforeReplace: false,
+            toastMessage: '시작 파일을 열었습니다.',
+            showMissingTextToast: true
+        });
+        if (opened) receivedExternalContent = true;
+    }
+}
+
 async function applyIncomingOpenedFile(rawPayload, options) {
     const opts = options || {};
     let payload = normalizeExternalOpenPayload(rawPayload);
@@ -1191,7 +1234,9 @@ async function applyIncomingOpenedFile(rawPayload, options) {
     }
 
     const sig = buildExternalOpenSignature(payload);
-    if (sig && sig === lastExternalOpenSignature) return true;
+    if (sig && sig === lastExternalOpenSignature
+        && String(editorTextarea ? editorTextarea.value : currentMarkdown) === payload.text
+        && String(currentFilePath || '') === payload.path) return true;
 
     if (opts.askBeforeReplace) {
         const canProceed = await confirmSaveBeforeOpeningAnotherFile();
@@ -2025,6 +2070,8 @@ window.onload = async () => {
         initializeOptionalCodeMirrorPrototype();
         toggleMode('edit');
 
+        // Open native files even if optional storage initialization later fails.
+        await tauriFileOpenReady;
         await initDB();
         if (window.TextStyleTool && typeof window.TextStyleTool.setDatabase === 'function') {
             try {
@@ -2195,15 +2242,7 @@ window.onload = async () => {
         }).catch(function () {});
     }
 
-    tryGetInitialFileViaTauri().then(function (data) {
-        if (!data) return;
-        applyIncomingOpenedFile(data, {
-            askBeforeReplace: false,
-            toastMessage: '시작 파일을 열었습니다.',
-            showMissingTextToast: true
-        });
-    });
-
+    if (editorTextarea) bindEditorDocumentHistory();
     if (editorTextarea) editorTextarea.addEventListener('input', () => {
         currentMarkdown = editorTextarea.value;
         scheduleCurrentDocumentMetadataDisplay();
@@ -2299,12 +2338,14 @@ window.onload = async () => {
                     tidySeparatorSpacing: tidySeparatorSpacing
                 });
                 if (applied && applied.changed && typeof applied.text === 'string') {
+                    const historyBefore = beginEditorHistoryTransaction();
                     editorTextarea.value = applied.text;
                     currentMarkdown = applied.text;
                     lastEditCaretPos = Math.max(0, Math.min(Number(applied.caretPos) || 0, applied.text.length));
                     performAutoSave();
                     if (activeSidebarTab === 'toc') renderTOC();
                     renderMarkdown();
+                    commitEditorHistoryTransaction(historyBefore, 'view-toolbar');
                     requestAnimationFrame(function () {
                         if (isEditMode || !viewerContainer) return;
                         const ratio = getMarkdownRatioFromCharPos(lastEditCaretPos);
@@ -2516,33 +2557,13 @@ window.onload = async () => {
         }
         if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'z') {
             e.preventDefault();
-            let handledBySnapshot = false;
-            if (e.shiftKey) {
-                const redone = document.execCommand('redo');
-                if (!redone) handledBySnapshot = redoFromReplaceStack();
-            } else {
-                const undone = document.execCommand('undo');
-                if (!undone) handledBySnapshot = undoFromReplaceStack();
-            }
-            if (handledBySnapshot) return;
-            setTimeout(() => {
-                currentMarkdown = editorTextarea.value;
-                renderMarkdown();
-                if (activeSidebarTab === 'toc') renderTOC();
-                performAutoSave();
-            }, 10);
+            if (e.shiftKey) redoEditorDocumentHistory();
+            else undoEditorDocumentHistory();
             return;
         }
         if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'y') {
             e.preventDefault();
-            const redone = document.execCommand('redo');
-            if (!redone && redoFromReplaceStack()) return;
-            setTimeout(() => {
-                currentMarkdown = editorTextarea.value;
-                renderMarkdown();
-                if (activeSidebarTab === 'toc') renderTOC();
-                performAutoSave();
-            }, 10);
+            redoEditorDocumentHistory();
             return;
         }
         // Line Navigation & Modification
@@ -2577,6 +2598,7 @@ function updateContent(md) {
     notebookLmEqualsHrPreprocess = false;
     currentMarkdown = md;
     if (editorTextarea) editorTextarea.value = md;
+    resetEditorDocumentHistory();
     updateCurrentDocumentMetadataDisplay();
     mainRenderDirty = true;
     renderMarkdown({ force: !isEditMode });
@@ -6801,7 +6823,9 @@ function getTidyActionDeps() {
         renderMarkdown: renderMarkdown,
         renderTOC: renderTOC,
         performAutoSave: performAutoSave,
-        showToast: showToast
+        showToast: showToast,
+        beginHistory: beginEditorHistoryTransaction,
+        commitHistory: commitEditorHistoryTransaction
     };
 }
 
@@ -7113,11 +7137,13 @@ function applyInlineFormatFromViewerSelection(type) {
     const replacement = before + selectedText + after;
     const nextText = source.substring(0, idx) + replacement + source.substring(idx + selectedText.length);
 
+    const historyBefore = beginEditorHistoryTransaction();
     currentMarkdown = nextText;
     if (editorTextarea) editorTextarea.value = nextText;
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'viewer-format');
     if (selection && typeof selection.removeAllRanges === 'function') selection.removeAllRanges();
     showToast(isBold ? 'Bold ?곸슜 ?꾨즺' : 'Italic ?곸슜 ?꾨즺');
     return true;
@@ -7316,6 +7342,7 @@ function insertListAtSelection(kind) {
     const replacement = mapped.join('\n');
     const next = text.substring(0, blockStart) + replacement + text.substring(blockEnd);
 
+    const historyBefore = beginEditorHistoryTransaction();
     editorTextarea.value = next;
     currentMarkdown = next;
     editorTextarea.focus();
@@ -7325,6 +7352,7 @@ function insertListAtSelection(kind) {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'list');
 }
 
 const captionInsertState = {
@@ -7805,6 +7833,7 @@ function renumberAllFootnotes() {
     const selectionStart = Number(editorTextarea.selectionStart) || 0;
     const selectionEnd = Number(editorTextarea.selectionEnd) || 0;
 
+    const historyBefore = beginEditorHistoryTransaction();
     editorTextarea.value = nextText;
     currentMarkdown = nextText;
     editorTextarea.focus();
@@ -7817,6 +7846,7 @@ function renumberAllFootnotes() {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'footnote-renumber');
     showToast('Footnotes renumbered: ' + orderedLabels.length);
 }
 function convertSelectionPatternToTable() {
@@ -8979,8 +9009,7 @@ function hashPassword(plain) {
 
 function isValidGoogleAiApiKey(key) {
     const k = (key || '').trim();
-    if (!k) return false;
-    return /^AIza[0-9A-Za-z_-]{35,120}$/.test(k);
+    return !!k;
 }
 
 function getProtectedAiCredential(id, legacyStorageKey) {
@@ -9157,12 +9186,12 @@ function validateApiKeyInputUI() {
         return;
     }
     if (isValidGoogleAiApiKey(key)) {
-        input.className = ok + ' ai-api-key-input';
+        input.className = neutral + ' ai-api-key-input';
         const verified = localStorage.getItem('ss_gemini_api_key_verified') === credentialFingerprint(key)
             && getProtectedAiCredential('gemini', 'ss_gemini_api_key') === key;
         if (fb && !verified) {
-            fb.textContent = 'API key 형식이 올바릅니다. 저장하면 연결을 확인합니다.';
-            fb.className = 'text-xs mt-1 text-green-600 dark:text-green-400 min-h-[1.25rem]';
+            fb.textContent = '키를 저장하면 AI Studio에 연결하여 실제 사용 가능 여부를 확인합니다.';
+            fb.className = 'text-xs mt-1 text-slate-500 dark:text-slate-400 min-h-[1.25rem]';
         }
         setCredentialConnectionVisual(
             'ai-api-key',
@@ -9170,13 +9199,6 @@ function validateApiKeyInputUI() {
             verified ? 'connected' : 'neutral',
             verified ? '연결됨: AI Studio API Key 확인 완료' : null
         );
-    } else {
-        input.className = bad + ' ai-api-key-input';
-        if (fb) {
-            fb.textContent = 'Invalid key format. It should usually start with AIza...';
-            fb.className = 'text-xs mt-1 text-red-600 dark:text-red-400 min-h-[1.25rem]';
-        }
-        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error');
     }
 }
 
@@ -9189,18 +9211,20 @@ let openaiApiKeyCheckPromise = null;
 
 async function verifyAIStudioApiKeyConnection(apiKey) {
     const key = String(apiKey || '').trim();
-    if (!isValidGoogleAiApiKey(key)) throw new Error('AI Studio API Key 형식이 올바르지 않습니다.');
+    if (!key) throw new Error('AI Studio API Key를 입력하세요.');
     if (aiStudioConnectionCheckPromise && aiStudioConnectionCheckKey === key) return aiStudioConnectionCheckPromise;
     setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'checking', 'AI Studio 연결을 확인하는 중...');
     const request = (async function () {
         try {
-            const models = await listAIStudioTextModels(key);
-            saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, models);
+            const models = await listAIStudioChatModels(key);
+            const textModels = models.filter(function (id) { return !/(?:^|[-_.])(image|imagen)(?:$|[-_.])/i.test(id); });
+            saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, textModels);
+            saveStoredModelList(AI_CHAT_GEMINI_MODELS_KEY, models);
             localStorage.setItem('ss_gemini_api_key', key);
             localStorage.setItem('ss_gemini_api_key_verified', credentialFingerprint(key));
             const currentInput = document.getElementById('ai-api-key');
             if (!currentInput || String(currentInput.value || '').trim() === key) {
-                setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · Gemini 모델 ' + models.length + '개 확인');
+                setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · 사용 가능 Gemini 모델 ' + models.length + '개 확인');
             } else {
                 validateApiKeyInputUI();
             }
@@ -9231,14 +9255,8 @@ async function verifyAIStudioApiKeyConnection(apiKey) {
 async function saveApiKey() {
     const input = document.getElementById('ai-api-key');
     const key = (input && input.value) ? input.value.trim() : '';
-    if (key && !isValidGoogleAiApiKey(key)) {
-        validateApiKeyInputUI();
-        showToast("Invalid API key format.");
-        return;
-    }
-    await setAiSettings({ apiKey: key });
-    if (key) localStorage.setItem('ss_gemini_api_key', key);
-    else {
+    if (!key) {
+        await setAiSettings({ apiKey: '' });
         localStorage.removeItem('ss_gemini_api_key');
         localStorage.removeItem('ss_gemini_api_key_verified');
         validateApiKeyInputUI();
@@ -9247,9 +9265,10 @@ async function saveApiKey() {
     }
     try {
         await verifyAIStudioApiKeyConnection(key);
+        await setAiSettings({ apiKey: key });
         showToast('AI Studio API key가 저장되고 연결되었습니다.');
     } catch (error) {
-        showToast('API key는 저장했지만 AI Studio 연결을 확인하지 못했습니다.');
+        showToast('AI Studio 연결 검증에 실패하여 키를 저장하지 않았습니다.');
     }
 }
 
@@ -9740,6 +9759,20 @@ function ensureAiProviderFoldsDefault() {
         details.open = false;
     });
     localStorage.setItem(AI_PROVIDER_FOLDS_DEFAULT_VERSION_KEY, '1');
+}
+
+function collapseAiProviderSettingsForOpen() {
+    setAiChatSettingsFoldedToLocal(true);
+    localStorage.setItem(SCHOLAR_LM_SETTINGS_FOLD_KEY, '1');
+    localStorage.setItem(SCHOLAR_OLLAMA_SETTINGS_FOLD_KEY, '1');
+    applyAiChatSettingsFold(true);
+    applyScholarLmSettingsFold(true);
+    applyScholarOllamaSettingsFold(true);
+    setLiteRTLMSettingsFolded(true);
+    document.querySelectorAll('#ai-link-settings-block details').forEach(function (details) {
+        details.open = false;
+    });
+    initializeAiSettingsDetailsToggles();
 }
 
 function setAiChatSettingsFoldedToLocal(folded) {
@@ -12837,15 +12870,22 @@ function setSettingsScholarAIStatus(message, isError) {
 
 function readScholarAIProviderSettingsForm() {
     const value = function (id) { const el = document.getElementById(id); return el ? String(el.value || '').trim() : ''; };
+    const selectedUrl = document.querySelector('input[name="settings-lmstudio-base-url-slot"]:checked');
+    const baseUrlPrimary = value('settings-lmstudio-base-url');
+    const baseUrlSecondary = value('settings-lmstudio-base-url-secondary');
+    const activeBaseUrlSlot = selectedUrl && selectedUrl.value === 'secondary' && baseUrlSecondary ? 'secondary' : 'primary';
     return {
-        baseUrl: value('settings-lmstudio-base-url'),
+        baseUrl: activeBaseUrlSlot === 'secondary' ? baseUrlSecondary : baseUrlPrimary,
+        baseUrlPrimary: baseUrlPrimary,
+        baseUrlSecondary: baseUrlSecondary,
+        activeBaseUrlSlot: activeBaseUrlSlot,
         apiKey: value('settings-lmstudio-api-key'),
         temperature: Number(value('settings-lmstudio-temperature') || 0.4),
         maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
         quickMaxTokens: Number(value('settings-aichat-quick-max-tokens') || 4096),
         reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
-        fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 3000),
-        fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 120) * 1000,
+        fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 4000),
+        fastTimeoutMs: Number(value('settings-aichat-fast-timeout') || 580) * 1000,
         fastSafetyTimeout: !!(document.getElementById('settings-aichat-fast-safety-timeout') && document.getElementById('settings-aichat-fast-safety-timeout').checked),
         fastCompleteStreaming: !!(document.getElementById('settings-aichat-fast-complete-streaming') && document.getElementById('settings-aichat-fast-complete-streaming').checked),
         reasoningLevel: value('settings-aichat-reasoning-level') || 'auto',
@@ -12858,16 +12898,16 @@ function syncAiJenaFastLimitsInSettings(config) {
     const source = config || {};
     const tokenInput = document.getElementById('settings-ai-jena-fast-token-limit');
     const timeInput = document.getElementById('settings-ai-jena-fast-time-limit');
-    if (tokenInput) tokenInput.value = Math.max(1, Number(source.fastMaxTokens) || 3000);
-    if (timeInput) timeInput.value = Math.max(1, Math.round((Number(source.fastTimeoutMs) || 120000) / 1000));
+    if (tokenInput) tokenInput.value = Math.max(1, Number(source.fastMaxTokens) || 4000);
+    if (timeInput) timeInput.value = Math.max(1, Math.round((Number(source.fastTimeoutMs) || 580000) / 1000));
 }
 
 function saveAiJenaFastLimitsFromSettings() {
     if (!window.LocalAI) return;
     const tokenInput = document.getElementById('settings-ai-jena-fast-token-limit');
     const timeInput = document.getElementById('settings-ai-jena-fast-time-limit');
-    const fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 3000));
-    const fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 120));
+    const fastMaxTokens = Math.max(1, Math.round(Number(tokenInput && tokenInput.value) || 4000));
+    const fastTimeoutSeconds = Math.max(1, Math.round(Number(timeInput && timeInput.value) || 580));
     try {
         const current = window.LocalAI.loadConfig(localStorage);
         const config = getScholarAIProviderRuntime().saveLMStudioConfig(Object.assign({}, current, {
@@ -12985,14 +13025,17 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     let config;
     try { config = window.LocalAI.loadConfig(localStorage); } catch (_) { config = window.LocalAI.defaults || {}; }
     const setValue = function (id, value) { const el = document.getElementById(id); if (el) el.value = value == null ? '' : value; };
-    setValue('settings-lmstudio-base-url', config.baseUrl || 'http://127.0.0.1:5678/v1');
+    setValue('settings-lmstudio-base-url', config.baseUrlPrimary || config.baseUrl || 'http://127.0.0.1:5678/v1');
+    setValue('settings-lmstudio-base-url-secondary', config.baseUrlSecondary || '');
+    const activeUrlSlot = document.querySelector('input[name="settings-lmstudio-base-url-slot"][value="' + (config.activeBaseUrlSlot === 'secondary' ? 'secondary' : 'primary') + '"]');
+    if (activeUrlSlot) activeUrlSlot.checked = true;
     setValue('settings-lmstudio-api-key', config.apiKey || '');
     setValue('settings-lmstudio-temperature', config.temperature == null ? 0.4 : config.temperature);
     setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
     setValue('settings-aichat-quick-max-tokens', config.quickMaxTokens || 4096);
     setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
-    setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 3000);
-    setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 120000) / 1000)));
+    setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 4000);
+    setValue('settings-aichat-fast-timeout', Math.max(1, Math.round((config.fastTimeoutMs || 580000) / 1000)));
     syncAiJenaFastLimitsInSettings(config);
     const fastSafetyTimeout = document.getElementById('settings-aichat-fast-safety-timeout');
     if (fastSafetyTimeout) fastSafetyTimeout.checked = config.fastSafetyTimeout !== false;
@@ -13057,21 +13100,48 @@ async function testSettingsLMStudioConnection() {
     setSettingsScholarAIStatus('LM Studio 연결 성공 · 현재 모델 ' + result.model + ' · ' + result.latencyMs + 'ms', false);
 }
 
+function renderSettingsGeminiModels(models) {
+    const modelList = document.getElementById('settings-gemini-models-list');
+    if (!modelList) return;
+    const values = Array.from(new Set((Array.isArray(models) ? models : []).map(String).filter(Boolean)));
+    modelList.replaceChildren();
+    values.forEach(function (model, index) {
+        const item = document.createElement('li');
+        item.className = 'flex items-start gap-2 px-3 py-2 break-all';
+        const number = document.createElement('span');
+        number.className = 'shrink-0 font-semibold text-indigo-500 dark:text-indigo-400';
+        number.textContent = String(index + 1) + '.';
+        const name = document.createElement('span');
+        name.textContent = model;
+        item.append(number, name);
+        modelList.appendChild(item);
+    });
+    modelList.classList.toggle('hidden', !values.length);
+}
+
 async function loadSettingsGeminiModels() {
     const keyInput = document.getElementById('ai-api-key');
     const key = keyInput && keyInput.value ? keyInput.value.trim() : '';
     setSettingsScholarAIStatus('Gemini 모델을 불러오는 중...', false);
     setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'checking', 'AI Studio 연결을 확인하는 중...');
     try {
-        const models = await listAIStudioTextModels(key);
-        saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, models);
+        const models = await listAIStudioChatModels(key);
+        const textModels = models.filter(function (id) { return !/(?:^|[-_.])(image|imagen)(?:$|[-_.])/i.test(id); });
+        saveStoredModelList(SCHOLAR_AI_GEMINI_MODELS_KEY, textModels);
+        saveStoredModelList(AI_CHAT_GEMINI_MODELS_KEY, models);
         localStorage.setItem('ss_gemini_api_key', key);
         localStorage.setItem('ss_gemini_api_key_verified', credentialFingerprint(key));
-        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · Gemini 모델 ' + models.length + '개 확인');
-        setSettingsScholarAIStatus('Gemini 텍스트 모델 ' + models.length + '개를 불러왔습니다.', false);
+        setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'connected', '연결됨: AI Studio · 사용 가능 Gemini 모델 ' + models.length + '개 확인');
+        const modelStatus = document.getElementById('settings-gemini-models-status');
+        if (modelStatus) modelStatus.textContent = '사용 가능 모델 ' + models.length + '개 (텍스트 ' + textModels.length + '개)';
+        renderSettingsGeminiModels(models);
+        setSettingsScholarAIStatus('AI Studio에서 사용 가능한 Gemini 모델 ' + models.length + '개를 불러왔습니다.', false);
     } catch (error) {
         localStorage.removeItem('ss_gemini_api_key_verified');
         setCredentialConnectionVisual('ai-api-key', 'ai-api-key-feedback', 'error', '연결 확인 실패: ' + (error && error.message ? error.message : error));
+        const modelStatus = document.getElementById('settings-gemini-models-status');
+        if (modelStatus) modelStatus.textContent = '모델 조회 실패: ' + (error && error.message ? error.message : error);
+        renderSettingsGeminiModels([]);
         setSettingsScholarAIStatus('Gemini 모델 조회 실패: ' + (error && error.message ? error.message : error), true);
     }
 }
@@ -13144,7 +13214,7 @@ async function listAIStudioTextModels(apiKeyOverride) {
     }).map(function (model) {
         return String(model.name || '').replace(/^models\//, '');
     }).filter(Boolean);
-    return Array.from(new Set(SCHOLAR_AI_TEXT_MODELS_FALLBACK.concat(filtered))).sort();
+    return Array.from(new Set(filtered)).sort();
 }
 
 function getScholarAIProviderRuntime() {
@@ -13241,7 +13311,8 @@ const SCHOLAR_AI_TEXT_MODELS_FALLBACK = [
 ];
 
 function mergeAIChatGeminiModels(models) {
-    return Array.from(new Set(AI_CHAT_GEMINI_DEFAULT_MODELS.concat(Array.isArray(models) ? models : []).filter(Boolean)));
+    const available = Array.from(new Set((Array.isArray(models) ? models : []).map(String).filter(Boolean)));
+    return available.length ? available : AI_CHAT_GEMINI_DEFAULT_MODELS.slice();
 }
 
 function mergeAIChatDeepseekModels(models) {
@@ -14067,7 +14138,7 @@ async function listAIStudioChatModels(apiKeyOverride) {
         const id = String(model.name || '').replace(/^models\//, '');
         return /^gemini-/i.test(id)
             && methods.indexOf('generateContent') >= 0
-            && !/(embedding|image)/i.test(id);
+            && !/(?:^|[-_.])embedding(?:$|[-_.])/i.test(id);
     }).map(function (model) {
         const id = String(model.name || '').replace(/^models\//, '');
         if (id) {
@@ -14078,7 +14149,7 @@ async function listAIStudioChatModels(apiKeyOverride) {
         }
         return id;
     }).filter(Boolean);
-    return mergeAIChatGeminiModels(models);
+    return Array.from(new Set(models)).sort();
 }
 
 async function getAIChatGeminiModelLimits(model, key, signal) {
@@ -15073,8 +15144,8 @@ window.AIChatBridge = Object.freeze({
             const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 8192);
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
             const fastMode = request.fastMode === true;
-            const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 3000);
-            const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 120000);
+            const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 4000);
+            const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 580000);
             const fastSafetyTimeoutMs = config.fastSafetyTimeout === false
                 ? configuredFastTimeoutMs
                 : Math.max(configuredFastTimeoutMs, 120000);
@@ -16031,7 +16102,7 @@ function openSettingsModal() {
     applySettingsShortcutsFold(getSettingsShortcutsFoldedFromLocal());
     syncFileDownloadPrefixSettingUI();
     applyAiUseFold(getAiUseFoldedFromLocal());
-    applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
+    collapseAiProviderSettingsForOpen();
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
     applyGithubSettingsFold(getGithubSettingsFoldedFromLocal());
     loadAiSettingsToUI();
@@ -16969,9 +17040,17 @@ function closeFindReplace() {
 }
 
 let lastFindIndex = -1;
-const replaceUndoStack = [];
-const replaceRedoStack = [];
-const REPLACE_UNDO_LIMIT = 80;
+const EDITOR_HISTORY_LIMIT = 200;
+const EDITOR_TYPING_GROUP_MS = 750;
+const editorDocumentHistory = {
+    past: [],
+    future: [],
+    pendingBeforeInput: null,
+    current: null,
+    applying: false,
+    lastInputAt: 0,
+    lastInputKind: ''
+};
 
 function captureEditorSnapshot() {
     if (!editorTextarea) return null;
@@ -16984,8 +17063,101 @@ function captureEditorSnapshot() {
     };
 }
 
+function editorSnapshotsEqual(a, b) {
+    return !!a && !!b && a.value === b.value;
+}
+
+function getEditorInputHistoryKind(inputType) {
+    const value = String(inputType || '');
+    if (value === 'insertText' || value === 'insertCompositionText') return 'typing';
+    if (value.indexOf('delete') === 0) return 'delete';
+    return value || 'edit';
+}
+
+function pushEditorHistoryBefore(before, after, options) {
+    if (!before || !after || editorSnapshotsEqual(before, after)) {
+        editorDocumentHistory.current = after || before || editorDocumentHistory.current;
+        return false;
+    }
+    const opts = options || {};
+    const now = Date.now();
+    const kind = String(opts.kind || 'edit');
+    const coalesce = !!opts.coalesce
+        && editorDocumentHistory.past.length > 0
+        && editorDocumentHistory.lastInputKind === kind
+        && now - editorDocumentHistory.lastInputAt <= EDITOR_TYPING_GROUP_MS;
+    if (!coalesce) {
+        editorDocumentHistory.past.push(before);
+        if (editorDocumentHistory.past.length > EDITOR_HISTORY_LIMIT) editorDocumentHistory.past.shift();
+    }
+    editorDocumentHistory.future.length = 0;
+    editorDocumentHistory.current = after;
+    editorDocumentHistory.lastInputAt = now;
+    editorDocumentHistory.lastInputKind = kind;
+    return true;
+}
+
+function beginEditorHistoryTransaction() {
+    return captureEditorSnapshot();
+}
+
+function commitEditorHistoryTransaction(before, kind) {
+    const after = captureEditorSnapshot();
+    if (!after) return false;
+    // A real input event already recorded this exact result.
+    if (editorSnapshotsEqual(editorDocumentHistory.current, after)) return false;
+    return pushEditorHistoryBefore(before || editorDocumentHistory.current, after, { kind: kind || 'command' });
+}
+
+function resetEditorDocumentHistory() {
+    editorDocumentHistory.past.length = 0;
+    editorDocumentHistory.future.length = 0;
+    editorDocumentHistory.pendingBeforeInput = null;
+    editorDocumentHistory.current = captureEditorSnapshot();
+    editorDocumentHistory.lastInputAt = 0;
+    editorDocumentHistory.lastInputKind = '';
+}
+
+function bindEditorDocumentHistory() {
+    if (!editorTextarea || editorTextarea.__documentHistoryBound) return;
+    editorTextarea.__documentHistoryBound = true;
+    resetEditorDocumentHistory();
+    editorTextarea.addEventListener('beforeinput', function () {
+        if (editorDocumentHistory.applying) return;
+        editorDocumentHistory.pendingBeforeInput = captureEditorSnapshot();
+    });
+    editorTextarea.addEventListener('input', function (event) {
+        if (editorDocumentHistory.applying) return;
+        const before = editorDocumentHistory.pendingBeforeInput || editorDocumentHistory.current;
+        const after = captureEditorSnapshot();
+        const kind = getEditorInputHistoryKind(event && event.inputType);
+        pushEditorHistoryBefore(before, after, {
+            kind: kind,
+            coalesce: kind === 'typing' || kind === 'delete'
+        });
+        editorDocumentHistory.pendingBeforeInput = null;
+    });
+    // Toolbar and menu commands sometimes assign textarea.value directly and
+    // therefore produce no browser input event. Capture those synchronous
+    // command boundaries so they join the same document history.
+    function captureUiCommand(event) {
+        if (editorDocumentHistory.applying) return;
+        if (event && event.type === 'keydown') {
+            const key = String(event.key || '').toLowerCase();
+            if (!(event.ctrlKey || event.metaKey || event.altKey) && key !== 'tab' && key !== 'enter') return;
+        }
+        const before = beginEditorHistoryTransaction();
+        setTimeout(function () {
+            commitEditorHistoryTransaction(before, event && event.type === 'keydown' ? 'keyboard-command' : 'toolbar-command');
+        }, 0);
+    }
+    document.addEventListener('click', captureUiCommand, true);
+    document.addEventListener('keydown', captureUiCommand, true);
+}
+
 function applyEditorSnapshot(snapshot) {
     if (!editorTextarea || !snapshot) return false;
+    editorDocumentHistory.applying = true;
     editorTextarea.value = String(snapshot.value || '');
     const max = editorTextarea.value.length;
     const start = Math.max(0, Math.min(Number(snapshot.selectionStart) || 0, max));
@@ -16998,38 +17170,42 @@ function applyEditorSnapshot(snapshot) {
     renderMarkdown();
     if (activeSidebarTab === 'toc') renderTOC();
     performAutoSave();
+    editorDocumentHistory.current = captureEditorSnapshot();
+    editorDocumentHistory.pendingBeforeInput = null;
+    editorDocumentHistory.lastInputAt = 0;
+    editorDocumentHistory.lastInputKind = '';
+    editorDocumentHistory.applying = false;
     return true;
 }
 
 function pushReplaceUndoSnapshot() {
-    const snap = captureEditorSnapshot();
-    if (!snap) return;
-    replaceUndoStack.push(snap);
-    if (replaceUndoStack.length > REPLACE_UNDO_LIMIT) replaceUndoStack.shift();
-    replaceRedoStack.length = 0;
+    return beginEditorHistoryTransaction();
 }
 
-function undoFromReplaceStack() {
-    if (!replaceUndoStack.length) return false;
-    const prev = replaceUndoStack.pop();
+function undoEditorDocumentHistory() {
+    if (!editorDocumentHistory.past.length) return false;
+    const prev = editorDocumentHistory.past.pop();
     const current = captureEditorSnapshot();
     if (current) {
-        replaceRedoStack.push(current);
-        if (replaceRedoStack.length > REPLACE_UNDO_LIMIT) replaceRedoStack.shift();
+        editorDocumentHistory.future.push(current);
+        if (editorDocumentHistory.future.length > EDITOR_HISTORY_LIMIT) editorDocumentHistory.future.shift();
     }
     return applyEditorSnapshot(prev);
 }
 
-function redoFromReplaceStack() {
-    if (!replaceRedoStack.length) return false;
-    const next = replaceRedoStack.pop();
+function redoEditorDocumentHistory() {
+    if (!editorDocumentHistory.future.length) return false;
+    const next = editorDocumentHistory.future.pop();
     const current = captureEditorSnapshot();
     if (current) {
-        replaceUndoStack.push(current);
-        if (replaceUndoStack.length > REPLACE_UNDO_LIMIT) replaceUndoStack.shift();
+        editorDocumentHistory.past.push(current);
+        if (editorDocumentHistory.past.length > EDITOR_HISTORY_LIMIT) editorDocumentHistory.past.shift();
     }
     return applyEditorSnapshot(next);
 }
+
+function undoFromReplaceStack() { return undoEditorDocumentHistory(); }
+function redoFromReplaceStack() { return redoEditorDocumentHistory(); }
 
 function swapFindReplaceValues() {
     const findInput = document.getElementById('find-input');
@@ -17156,7 +17332,9 @@ function replaceRangeWithOptions(text, start, end, replacement) {
 function replaceTextareaContentWithUndo(nextText, selectionStart, selectionEnd) {
     if (!editorTextarea) return;
     const normalizedText = String(nextText || '');
-    if (normalizedText !== String(editorTextarea.value || '')) pushReplaceUndoSnapshot();
+    const historyBefore = normalizedText !== String(editorTextarea.value || '')
+        ? beginEditorHistoryTransaction()
+        : null;
     editorTextarea.focus();
     editorTextarea.setSelectionRange(0, editorTextarea.value.length);
     const applied = document.execCommand('insertText', false, normalizedText);
@@ -17167,6 +17345,7 @@ function replaceTextareaContentWithUndo(nextText, selectionStart, selectionEnd) 
         const safeEnd = Math.max(0, Math.min(selectionEnd, max));
         editorTextarea.setSelectionRange(safeStart, safeEnd);
     }
+    if (historyBefore) commitEditorHistoryTransaction(historyBefore, 'replace');
 }
 
 function getReplaceSearchBounds(text) {
@@ -17375,3 +17554,10 @@ window.findPrev = findPrev;
 window.replaceCurrent = replaceCurrent;
 window.replaceAll = replaceAll;
 window.swapFindReplaceValues = swapFindReplaceValues;
+
+// This deferred script runs when the editor DOM exists. Do not wait for
+// window.load or MiniPreviewUI.ready: remote resources may never finish offline.
+const tauriFileOpenReady = initializeTauriFileOpen().catch(function (error) {
+    console.error('Native file initialization failed:', error);
+    showToast('파일 연결 초기화 실패: ' + (error.message || error));
+});

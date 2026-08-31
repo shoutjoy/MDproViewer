@@ -20,8 +20,8 @@ assert.match(
 );
 assert.match(
     app,
-    /async function openDroppedDocumentFile\(file\)[\s\S]*?extension === '\.docx'[\s\S]*?openDocxInEditor\(file\)[\s\S]*?extension === '\.pdf'[\s\S]*?openPdfInEditor\(file\)[\s\S]*?readFile\(file\)/,
-    'DOCX와 PDF 드롭은 편집 가져오기 경로로, Markdown 드롭은 일반 문서 읽기 경로로 보내야 합니다.'
+    /async function openDroppedDocumentFile\(file\)[\s\S]*?isSelectedImageFile\(file, extension\)[\s\S]*?extension === '\.docx'[\s\S]*?openDocxInEditor\(file\)[\s\S]*?extension === '\.pdf'[\s\S]*?openPdfInEditor\(file\)[\s\S]*?DEDICATED_LOCAL_VIEWER_EXTENSIONS\.has\(extension\)[\s\S]*?readFile\(file\)/,
+    '이미지, DOCX, PDF 드롭은 각 전용 경로로, Markdown/HTML/TXT 등은 일반 문서 읽기 경로로 보내야 합니다.'
 );
 assert.match(
     app,
@@ -34,4 +34,11 @@ assert.match(
     '이미지 삽입 모달처럼 자체 드롭 처리가 있는 영역의 이벤트를 중복 처리하면 안 됩니다.'
 );
 
-console.log('Markdown, DOCX, and PDF document drop wiring checks passed');
+const tauriConfig = JSON.parse(fs.readFileSync(path.join(root, 'Tauri', 'src-tauri', 'tauri.conf.json'), 'utf8'));
+assert.equal(
+    tauriConfig.app.windows[0].dragDropEnabled,
+    false,
+    'Tauri가 운영체제 드롭을 가로채지 않고 HTML5 파일 드롭 이벤트를 전달해야 합니다.'
+);
+
+console.log('Tauri document drop wiring checks passed');

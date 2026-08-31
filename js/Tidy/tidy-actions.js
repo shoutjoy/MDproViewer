@@ -113,6 +113,7 @@
         var scrollLeft = editorTextarea.scrollLeft;
         var selectionDirection = editorTextarea.selectionDirection || 'none';
         var hasSelection = hasExplicitRange ? !!result.replaceSelection : start !== end;
+        var historyBefore = typeof deps.beginHistory === 'function' ? deps.beginHistory() : null;
 
         if (hasSelection) {
             var fullText = editorTextarea.value;
@@ -135,6 +136,7 @@
         if (typeof deps.renderMarkdown === 'function') deps.renderMarkdown();
         if (deps.activeSidebarTab === 'toc' && typeof deps.renderTOC === 'function') deps.renderTOC();
         if (typeof deps.performAutoSave === 'function') deps.performAutoSave();
+        if (typeof deps.commitHistory === 'function') deps.commitHistory(historyBefore, 'tidy');
         return true;
     }
 

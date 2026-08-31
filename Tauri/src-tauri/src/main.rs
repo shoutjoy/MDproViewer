@@ -1,7 +1,11 @@
+// Release builds are Windows GUI applications; do not allocate a console.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::Path;
 use std::time::Duration;
+use tauri::Emitter;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,7 +23,7 @@ struct DeepseekResponse {
     body: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct InitialFilePayload {
     path: String,
@@ -39,13 +43,17 @@ fn get_initial_file() -> Result<Option<InitialFilePayload>, String> {
         return Ok(None);
     };
 
+    read_document_file(&path).map(Some)
+}
+
+fn read_document_file(path: &Path) -> Result<InitialFilePayload, String> {
     let extension = path
         .extension()
         .and_then(|value| value.to_str())
         .unwrap_or_default()
         .to_ascii_lowercase();
     if !matches!(extension.as_str(), "md" | "markdown" | "mdown" | "txt" | "csv" | "html" | "htm") {
-        return Ok(None);
+        return Err("지원하는 텍스트 문서: md, markdown, mdown, txt, csv, html, htm".into());
     }
 
     let bytes = std::fs::read(&path).map_err(|error| format!("{}: {}", path.display(), error))?;
@@ -54,7 +62,7 @@ fn get_initial_file() -> Result<Option<InitialFilePayload>, String> {
         .and_then(|value| value.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|value| value.as_millis().min(u128::from(u64::MAX)) as u64);
 
-    Ok(Some(InitialFilePayload {
+    Ok(InitialFilePayload {
         file_name: path.file_name()
             .and_then(|value| value.to_str())
             .unwrap_or_else(|| Path::new("document.md").to_str().unwrap())
@@ -63,7 +71,7 @@ fn get_initial_file() -> Result<Option<InitialFilePayload>, String> {
         text: String::from_utf8_lossy(&bytes).into_owned(),
         size_bytes: metadata.len(),
         modified_at,
-    }))
+    })
 }
 
 #[tauri::command]
@@ -88,6 +96,16 @@ async fn deepseek_api_request(request: DeepseekRequest) -> Result<DeepseekRespon
 
 fn main() {
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                if let Some(path) = paths.first() {
+                    match read_document_file(path) {
+                        Ok(payload) => { let _ = window.emit("mdpro-open-file", payload); }
+                        Err(error) => { let _ = window.emit("mdpro-open-file-error", error); }
+                    }
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![deepseek_api_request, get_initial_file])
         .run(tauri::generate_context!())
         .expect("error while running MDpro Viewer");

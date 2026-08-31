@@ -29,6 +29,7 @@
         googleCalendarEmail: ['integrations', 'profile'], naverBlogId: ['integrations', 'profile'],
         sitesList: ['collections', 'workspace'], templateCustomList: ['collections', 'workspace'],
         tidyCustomScripts: ['collections', 'workspace'],
+        tidyJenaSelection: ['preferences', 'workspace'],
         shareSites: ['collections', 'workspace'], customShareDestinations: ['collections', 'workspace'],
         userInfo: ['profile', 'profile'],
         encryptedToolVault: ['security', 'profile'],

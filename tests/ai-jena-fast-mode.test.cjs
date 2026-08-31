@@ -28,8 +28,11 @@ test('FAST streaming continues past the time limit once an answer has started', 
   assert.match(localAI, /xhr\.timeout = 0/);
 });
 
-test('AI Jena exposes editable FAST token and time limits below settings', () => {
-  assert.match(chat, /id="ai-chat-provider-toggle"[\s\S]*id="ai-chat-fast-token-limit"[\s\S]*id="ai-chat-fast-time-limit"/);
+test('AI Jena keeps FAST limits out of the chat header and persists menu settings', () => {
+  assert.doesNotMatch(chat, /id="ai-chat-fast-token-limit"/);
+  assert.doesNotMatch(chat, /id="ai-chat-fast-time-limit"/);
+  assert.match(chat, /id="ai-chat-layout-fast-token-limit"/);
+  assert.match(chat, /id="ai-chat-layout-fast-time-limit"/);
   assert.match(chat, /fastMaxTokens: fastMaxTokens/);
   assert.match(chat, /fastTimeoutMs: fastTimeoutSeconds \* 1000/);
 });
@@ -44,8 +47,8 @@ test('FAST limits are also available in menu settings and below answer font size
 test('FAST Mermaid requests return code only and use a bounded local-model budget', () => {
   assert.match(chat, /return exactly one fenced mermaid code block and nothing else/);
   assert.match(chat, /MERMAID_DARK_MODE_PROMPT_RULE/);
-  assert.match(app, /Number\(config\.fastMaxTokens\) \|\| 3000/);
-  assert.match(app, /Number\(config\.fastTimeoutMs\) \|\| 120000/);
+  assert.match(app, /Number\(config\.fastMaxTokens\) \|\| 4000/);
+  assert.match(app, /Number\(config\.fastTimeoutMs\) \|\| 580000/);
   assert.match(app, /fastMode\s*\? fastSafetyTimeoutMs/);
 });
 

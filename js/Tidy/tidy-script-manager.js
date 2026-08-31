@@ -4,6 +4,16 @@
     var SETTINGS_KEY = 'tidyCustomScripts';
     var GITHUB_FOLDER = 'mdviewer/tidy-scripts';
     var FILE_HEADER = 'mdviewer-tidy-script:v1';
+    var JENA_PROMPT_KEY = 'mdviewer_tidy_jena_normalize_prompt_v1';
+    var JENA_DEFAULT_PROMPT = [
+        '입력된 JavaScript를 MD Viewer TIDY 사용자 함수 규격으로 수정하세요.',
+        '반드시 전역 함수 선언 function transform(source, context) { ... } 하나를 제공하세요.',
+        'source는 선택 영역 또는 문서 전체 문자열이며 context.scope는 selection 또는 document입니다.',
+        '반환값은 문자열 또는 { value: 문자열, message?: 문자열 }이어야 합니다.',
+        'fs, require, import, export, window, document, DOM, fetch, 네트워크, 외부 패키지와 실제 파일 입출력을 사용하지 마세요.',
+        '원본 코드의 변환 목적과 결과 형식은 보존하되 입출력만 source와 return 방식으로 바꾸세요.',
+        'transform을 자동 호출하지 말고 설명이나 머리말 없이 완전한 JavaScript 코드만 출력하세요.'
+    ].join('\n');
     var sourceUrl = document.currentScript && document.currentScript.src ? document.currentScript.src : '';
     var managerUrl = sourceUrl
         ? new URL('./tidy-script-manager.html', sourceUrl).href
@@ -12,6 +22,8 @@
     var scripts = [];
     var configured = false;
     var runBusy = false;
+    var managerWindow = null;
+    var managerToken = '';
 
     function stringValue(value) {
         return String(value == null ? '' : value);
@@ -58,7 +70,7 @@
         }).slice(0, 100);
     }
 
-    function compileTransformer(code) {
+    function compileTransformerExpression(code) {
         var source = stringValue(code).trim();
         if (!/^(?:async\s+)?function(?:\s+[A-Za-z_$][\w$]*)?\s*\(/.test(source)) {
             throw new Error('코드는 function transform(source, context) { ... } 형식이어야 합니다.');
@@ -66,6 +78,53 @@
         var fn = Function('"use strict"; return (' + source + ');')();
         if (typeof fn !== 'function') throw new Error('변환 함수를 찾을 수 없습니다.');
         return fn;
+    }
+
+    function unwrapCodeFence(code) {
+        var source = stringValue(code).trim();
+        var fenced = source.match(/^```(?:javascript|js)?\s*\n([\s\S]*?)\n```\s*$/i);
+        return fenced ? fenced[1].trim() : source;
+    }
+
+    function isFsFileTransformer(source) {
+        return /require\s*\(\s*['"](?:node:)?fs['"]\s*\)/.test(source)
+            && /\.readFileSync\s*\(/.test(source)
+            && /\.writeFileSync\s*\(/.test(source);
+    }
+
+    function wrapFsFileTransformer(source) {
+        return 'function transform(source, context) {'
+            + 'var output = null;'
+            + 'var fs = {'
+            + 'readFileSync:function(){return String(source == null ? "" : source);},'
+            + 'writeFileSync:function(path,value){output=String(value == null ? "" : value);}'
+            + '};'
+            + 'var require=function(name){if(name==="fs"||name==="node:fs")return fs;throw new Error("지원하지 않는 모듈: "+name);};'
+            + 'Function("require","console",' + JSON.stringify(source) + ')(require,console);'
+            + 'if(output===null)throw new Error("fs.writeFileSync 결과를 찾을 수 없습니다.");'
+            + 'return output;'
+            + '}';
+    }
+
+    function executableCode(code) {
+        var source = unwrapCodeFence(code);
+        return isFsFileTransformer(source) ? wrapFsFileTransformer(source) : source;
+    }
+
+    function compileTransformer(code) {
+        var source = executableCode(code);
+        if (!source) throw new Error('JavaScript 코드를 입력하세요.');
+        try {
+            return compileTransformerExpression(source);
+        } catch (expressionError) {
+            var moduleObject = { exports: null };
+            var script = Function('module', 'exports', '"use strict";\n' + source
+                + '\n; if (typeof transform === "function") return transform;'
+                + ' if (typeof module.exports === "function") return module.exports;');
+            var fn = script(moduleObject, moduleObject.exports);
+            if (typeof fn !== 'function') throw new Error('transform 함수를 찾을 수 없습니다.');
+            return fn;
+        }
     }
 
     function utf8ToBase64(text) {
@@ -301,6 +360,61 @@
         });
     }
 
+    function extractJenaCode(text) {
+        var source = stringValue(text).trim();
+        var answer = source.match(/\[ANSWER\]([\s\S]*?)\[\/ANSWER\]/i);
+        if (answer) source = answer[1].trim();
+        var fences = Array.from(source.matchAll(/```(?:javascript|js)?\s*\n([\s\S]*?)\n```/gi));
+        if (fences.length) {
+            fences.sort(function (a, b) { return b[1].length - a[1].length; });
+            source = fences[0][1].trim();
+        }
+        return source.replace(/^\s*(?:JavaScript|JS)\s*:\s*/i, '').trim();
+    }
+
+    function getJenaPrompt() {
+        var saved = '';
+        try { saved = stringValue(global.localStorage.getItem(JENA_PROMPT_KEY)).trim(); } catch (_) {}
+        return saved || JENA_DEFAULT_PROMPT;
+    }
+
+    function setJenaPrompt(value) {
+        var prompt = stringValue(value).trim() || JENA_DEFAULT_PROMPT;
+        try { global.localStorage.setItem(JENA_PROMPT_KEY, prompt); } catch (_) {}
+        return prompt;
+    }
+
+    async function rewriteWithJena(input) {
+        var request = input && typeof input === 'object' ? input : {};
+        var code = stringValue(request.code).trim();
+        if (!code) throw new Error('먼저 변환할 JavaScript 코드를 입력하거나 업로드하세요.');
+        var prompt = setJenaPrompt(request.prompt);
+        if (typeof global.openAiJenaChat === 'function') await global.openAiJenaChat(false);
+        if (!global.AIChat || typeof global.AIChat.completeTask !== 'function') {
+            throw new Error('AI Jena가 준비되지 않았습니다. 메인 창에서 AI Jena 설정을 확인하세요.');
+        }
+        var result = await global.AIChat.completeTask({
+            provider: request.provider || undefined,
+            model: request.model || undefined,
+            systemInstruction: JENA_DEFAULT_PROMPT + '\n사용자가 편집한 규격 프롬프트도 반드시 함께 준수하세요.',
+            prompt: prompt + '\n\n<INPUT_JAVASCRIPT>\n' + code + '\n</INPUT_JAVASCRIPT>'
+        });
+        var rewritten = extractJenaCode(result && result.text);
+        if (!rewritten) throw new Error('AI Jena가 JavaScript 코드를 반환하지 않았습니다.');
+        compileTransformer(rewritten);
+        return { code: rewritten, provider: result.provider || '', model: result.model || '', prompt: prompt };
+    }
+
+    function getJenaStatus() {
+        return { prompt: getJenaPrompt(), defaultPrompt: JENA_DEFAULT_PROMPT };
+    }
+
+    async function getJenaModels(provider, refresh) {
+        if (typeof global.openAiJenaChat === 'function') await global.openAiJenaChat(false);
+        if (!global.AIChat || typeof global.AIChat.getTaskModels !== 'function') throw new Error('메인 창을 새로고침한 뒤 다시 여세요.');
+        return global.AIChat.getTaskModels(provider, refresh);
+    }
+
     function runInWorker(code, source, context) {
         if (typeof Worker !== 'function' || typeof Blob !== 'function' || !global.URL || typeof global.URL.createObjectURL !== 'function') {
             return Promise.resolve().then(function () { return compileTransformer(code)(source, context); });
@@ -308,7 +422,10 @@
         return new Promise(function (resolve, reject) {
             var workerSource = ''
                 + 'self.onmessage=async function(event){try{'
-                + 'var data=event.data||{};var fn=(0,eval)("("+data.code+")");'
+                + 'var data=event.data||{};var module={exports:null};var exports=module.exports;'
+                + 'var fn;try{fn=(0,eval)("("+data.code+"\\n)");}catch(expressionError){'
+                + 'fn=Function("module","exports","\\\"use strict\\\";\\n"+data.code+"\\n; if(typeof transform===\\\"function\\\") return transform; if(typeof module.exports===\\\"function\\\") return module.exports;")(module,exports);}'
+                + 'if(typeof fn!=="function")throw new Error("transform 함수를 찾을 수 없습니다.");'
                 + 'var result=await fn(data.source,Object.freeze(data.context||{}));'
                 + 'self.postMessage({ok:true,result:result});'
                 + '}catch(error){self.postMessage({ok:false,error:String(error&&error.message?error.message:error)});}};';
@@ -333,7 +450,7 @@
                 global.URL.revokeObjectURL(url);
                 reject(new Error(event && event.message ? event.message : '사용자 JS Worker 실행 실패'));
             };
-            worker.postMessage({ code: code, source: source, context: context });
+            worker.postMessage({ code: executableCode(code), source: source, context: context });
         });
     }
 
@@ -383,7 +500,9 @@
 
     function openManager() {
         if (global.TidyActions && typeof global.TidyActions.closeMenu === 'function') global.TidyActions.closeMenu();
-        var popup = global.open(managerUrl, 'mdviewer-tidy-script-manager', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+        managerToken = createId();
+        var popup = global.open(managerUrl + '#bridge=' + encodeURIComponent(managerToken), 'mdviewer-tidy-script-manager', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+        managerWindow = popup;
         if (!popup && typeof deps.showToast === 'function') deps.showToast('팝업이 차단되었습니다. 이 사이트의 팝업을 허용하세요.');
         if (popup) popup.focus();
         return !!popup;
@@ -411,6 +530,28 @@
         importSqlite: importSqlite,
         importGithub: importGithub,
         parseUpload: parseGithubFile,
-        getStorageStatus: getStorageStatus
+        getStorageStatus: getStorageStatus,
+        getJenaStatus: getJenaStatus,
+        getJenaModels: getJenaModels,
+        getJenaSelection: async function () {
+            var settings = typeof deps.getSettings === 'function' ? await deps.getSettings() : {};
+            return settings.tidyJenaSelection || {};
+        },
+        setJenaSelection: async function (selection) {
+            if (typeof deps.setSettings === 'function') await deps.setSettings({ tidyJenaSelection: { provider: stringValue(selection.provider), model: stringValue(selection.model) } });
+        },
+        rewriteWithJena: rewriteWithJena
     };
+    if (typeof global.addEventListener === 'function') global.addEventListener('message', async function (event) {
+        var message = event.data;
+        if (!managerWindow || event.source !== managerWindow || !message || message.type !== 'tidy-manager-request' || message.token !== managerToken) return;
+        var expectedOrigin = new URL(managerUrl).origin;
+        if (event.origin !== expectedOrigin) return;
+        var api = global.TidyScriptManagerBridge;
+        if (!Object.prototype.hasOwnProperty.call(api, message.method) || typeof api[message.method] !== 'function') return;
+        var response = { type: 'tidy-manager-response', id: message.id, token: message.token };
+        try { response.result = await api[message.method].apply(null, Array.isArray(message.args) ? message.args : []); }
+        catch (error) { response.error = String(error && error.message || error); }
+        event.source.postMessage(response, expectedOrigin === 'null' ? '*' : expectedOrigin);
+    });
 })(window);

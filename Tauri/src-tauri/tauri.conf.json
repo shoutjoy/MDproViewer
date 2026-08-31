@@ -8,6 +8,7 @@
     "frontendDist": "../../../TauriBuildManager/mdpro-viewer/dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "MDpro Viewer",
@@ -15,7 +16,8 @@
         "height": 900,
         "minWidth": 900,
         "minHeight": 640,
-        "center": true
+        "center": true,
+        "dragDropEnabled": true
       }
     ],
     "security": {
@@ -25,6 +27,14 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": []
+    "icon": [],
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown", "mdown"],
+        "name": "MDpro Markdown Document",
+        "description": "Markdown document",
+        "role": "Viewer"
+      }
+    ]
   }
 }

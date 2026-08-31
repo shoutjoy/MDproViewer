@@ -9,6 +9,7 @@ const previewPath = path.join(root, 'js', 'UI_PV', 'editpv.js');
 const previewSource = fs.readFileSync(previewPath, 'utf8');
 const appSource = fs.readFileSync(path.join(root, 'js', 'app.js'), 'utf8');
 const indexSource = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
+const styleSource = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
 
 function createPreviewDocumentHtml() {
     const stylesheetLinks = [
@@ -77,6 +78,14 @@ test('PV defaults and post-render hooks stay aligned with print output', () => {
     assert.match(previewSource, /content\.style\.setProperty\('--md-app-font-size', fs \+ 'px'\)/);
     assert.match(indexSource, /editpv\.js\?[^"\r\n]*pvPrint=20260811-1/);
     assert.match(indexSource, /app\.js\?[^"\r\n]*imageSizeHint=20260811-1/);
+});
+
+test('native print always uses the light viewer palette even when the app is dark', () => {
+    assert.match(styleSource, /#print-root \.markdown-body \{[^}]*color-scheme: light;[^}]*print-color-adjust: exact;/s);
+    assert.match(styleSource, /#print-root \.markdown-body pre \{[^}]*background-color: #e2e8f0 !important;[^}]*color: #1e293b !important;/s);
+    assert.match(styleSource, /#print-root \.markdown-body h1 \{[^}]*color: #1e3a8a !important;/s);
+    assert.match(styleSource, /#print-root \.markdown-body strong \{[^}]*color: #7c3aed !important;[^}]*text-shadow: none !important;/s);
+    assert.match(indexSource, /style\.css\?[^"\r\n]*printLight=20260831-2/);
 });
 
 test('image height hints are applied and removed from rendered print text', () => {

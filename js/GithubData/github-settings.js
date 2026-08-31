@@ -19,7 +19,8 @@
             + '  <div id="github-settings-body" class="hidden pl-6 space-y-2">'
             + '    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">Personal Access Token (PAT)</label>'
             + '    <input type="password" id="github-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off" class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
-            + '    <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">토큰 발급: https://github.com/settings/tokens/new</a>'
+            + '    <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Fine-grained PAT 발급 (비공개 저장소 선택)</a>'
+            + '    <p class="text-[11px] text-slate-500 dark:text-slate-400">비공개 저장소는 Repository access에서 대상 저장소를 선택하고 Contents 권한을 Read and write로 설정하세요.</p>'
             + '    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">브랜치</label>'
             + '    <input type="text" id="github-branch-input" placeholder="main" class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">'
             + '    <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400">pull 최대 파일 수 (1~10000)</label>'
@@ -152,9 +153,37 @@
         githubConnectionCheckKey = key;
         setGithubConnectionStatus('checking', 'GitHub 연결 확인 중...');
         githubConnectionCheckPromise = (async function () {
-            await githubApiRequest('https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name), {}, cfg.token);
-            await githubApiRequest('https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/git/ref/heads/' + encodeURIComponent(cfg.branch), {}, cfg.token);
-            setGithubConnectionStatus('ok', '연결됨: ' + cfg.repo + ' / ' + cfg.branch);
+            let account;
+            try {
+                account = await githubApiRequest('https://api.github.com/user', {}, cfg.token);
+            } catch (e) {
+                if (e && (e.status === 401 || e.status === 403)) {
+                    throw new Error('PAT 인증 실패: 토큰이 만료·폐기되었거나 올바르게 복사되지 않았습니다.');
+                }
+                throw e;
+            }
+
+            let repository;
+            try {
+                repository = await githubApiRequest('https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name), {}, cfg.token);
+            } catch (e) {
+                if (e && e.status === 404) {
+                    throw new Error('비공개 저장소 접근 권한 없음: Fine-grained PAT의 Repository access에 ' + cfg.repo + '를 추가하고 Contents를 Read and write로 설정하세요.');
+                }
+                throw e;
+            }
+
+            try {
+                await githubApiRequest('https://api.github.com/repos/' + encodeURIComponent(cfg.owner) + '/' + encodeURIComponent(cfg.name) + '/git/ref/heads/' + encodeURIComponent(cfg.branch), {}, cfg.token);
+            } catch (e) {
+                if (e && e.status === 404) {
+                    throw new Error('브랜치를 찾을 수 없음: ' + cfg.repo + ' 저장소에 ' + cfg.branch + ' 브랜치가 있는지 확인하세요.');
+                }
+                throw e;
+            }
+            const visibility = repository && repository.private ? '비공개' : '공개';
+            const login = account && account.login ? String(account.login) : 'GitHub 계정';
+            setGithubConnectionStatus('ok', '연결됨: ' + cfg.repo + ' / ' + cfg.branch + ' (' + visibility + ', ' + login + ')');
             return true;
         })();
         try {
@@ -229,7 +258,8 @@
         const method = options && options.method ? options.method : 'GET';
         const headers = Object.assign({
             Accept: 'application/vnd.github+json',
-            Authorization: 'token ' + String(token || '').trim()
+            Authorization: 'Bearer ' + String(token || '').trim(),
+            'X-GitHub-Api-Version': '2022-11-28'
         }, (options && options.headers) || {});
         const opts = Object.assign({}, options || {}, { method: method, headers: headers });
         return fetch(url, opts).then(async function (res) {

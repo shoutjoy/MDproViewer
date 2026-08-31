@@ -8,7 +8,10 @@
         :root { color-scheme: dark; font-family: Inter, Pretendard, "Noto Sans KR", system-ui, sans-serif; }
         * { box-sizing: border-box; }
         body { margin: 0; min-height: 100vh; background: #020617; color: #e2e8f0; }
-        button, input, textarea { font: inherit; }
+        button, input, textarea, select { font: inherit; }
+        .jena-selectors { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; margin-top: 12px; }
+        .jena-selectors label { flex: 1 1 180px; min-width: 0; margin: 0; }
+        .jena-selectors select { width: 100%; padding: 8px; border: 1px solid #334155; border-radius: 7px; background: #07101f; color: #f8fafc; }
         button { cursor: pointer; }
         .shell { min-height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
         header { padding: 18px 22px; border-bottom: 1px solid #1e293b; background: #0f172a; }
@@ -36,6 +39,11 @@
         .tab.active { border-color: #22d3ee; color: #67e8f9; }
         .upload { display: none; border: 1px dashed #475569; border-radius: 9px; padding: 14px; margin-bottom: 10px; background: rgba(15,23,42,.6); }
         .upload.visible { display: block; }
+        .jena-panel { display: none; border: 1px solid #155e75; border-radius: 9px; padding: 14px; margin-bottom: 10px; background: rgba(8,47,73,.3); }
+        .jena-panel.visible { display: block; }
+        .jena-panel textarea { min-height: 150px; margin-top: 7px; font-size: 12px; }
+        .jena-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+        .jena-model { color: #67e8f9; font-size: 11px; }
         .storage { margin-top: 14px; padding: 12px; border: 1px solid #334155; border-radius: 9px; background: #0f172a; }
         .storage label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; margin-right: 14px; }
         .status { min-height: 38px; padding: 10px 18px; border-top: 1px solid #1e293b; color: #94a3b8; background: #0f172a; font-size: 12px; }
@@ -64,10 +72,26 @@
             <div class="tabs">
                 <button class="btn tab active" data-mode="direct" type="button">직접 입력</button>
                 <button class="btn tab" data-mode="upload" type="button">JS 업로드</button>
+                <button class="btn tab" data-mode="jena" type="button">JS JENA 인공지능</button>
             </div>
             <div id="upload-panel" class="upload">
                 <input id="file" type="file" accept=".js,text/javascript,application/javascript">
                 <p class="help">업로드한 코드를 아래 편집기에 불러온 뒤 확인하고 저장합니다.</p>
+            </div>
+            <div id="jena-panel" class="jena-panel">
+                <div class="help">아래 규격 프롬프트와 현재 코드를 AI Jena에 보내 TIDY용 함수로 수정합니다. 결과는 편집기에만 반영되며 확인 후 저장합니다.</div>
+                <div class="jena-selectors">
+                    <label class="field"><span>인공지능 공급자</span><select id="jena-provider"><option value="">현재 JENA 설정 사용</option><option value="aistudio">AI Studio (Gemini)</option><option value="openai">OpenAI (유료 API)</option><option value="deepseek">DeepSeek</option><option value="openai-compatible">OrcaRouter / OpenAI 호환</option><option value="lmstudio">LM Studio</option><option value="ollama">Ollama</option><option value="litertlm">LiteRT-LM</option></select></label>
+                    <label class="field"><span>모델</span><select id="jena-model-select" disabled><option value="">현재 JENA 설정 사용</option></select></label>
+                    <button class="btn" id="jena-refresh-models" type="button">모델 새로고침</button>
+                </div>
+                <p class="help">API 키와 서버 주소는 메인 JENA 설정을 사용합니다. 모델 목록은 연결 성공을 보장하지 않습니다.</p>
+                <label class="field" style="margin-top:10px"><span>JENA 규격 수정 프롬프트</span><textarea id="jena-prompt" spellcheck="false"></textarea></label>
+                <div class="jena-actions">
+                    <button class="btn primary" id="jena-run-btn" type="button">현재 코드를 TIDY 규격으로 수정</button>
+                    <button class="btn" id="jena-reset-prompt-btn" type="button">기본 프롬프트 복원</button>
+                    <span id="jena-model" class="jena-model"></span>
+                </div>
             </div>
             <label class="field"><span>변환 함수</span><textarea id="code" spellcheck="false"></textarea></label>
             <div class="warning">신뢰하는 코드만 추가하세요. 코드는 자동 실행되지 않으며, TIDY에서 해당 기능 버튼을 눌렀을 때 선택 영역 또는 문서 전체를 변환합니다. 실행은 10초 후 자동 중단됩니다.</div>
@@ -91,10 +115,44 @@
 <script>
 (function () {
     'use strict';
-    var bridge = window.opener && window.opener.TidyScriptManagerBridge;
+    var bridge = null;
+    // file:// windows can have opaque origins: direct opener access may throw.
+    try { bridge = window.opener && window.opener.TidyScriptManagerBridge; } catch (_) {}
+    if (!bridge && window.opener) {
+        var token = new URLSearchParams(window.location.hash.slice(1)).get('bridge');
+        if (token) {
+            var pending = new Map();
+            var requestId = 0;
+            window.addEventListener('message', function (event) {
+                var data = event.data;
+                if (event.source !== window.opener || !data || data.type !== 'tidy-manager-response' || data.token !== token) return;
+                var entry = pending.get(data.id);
+                if (!entry) return;
+                clearTimeout(entry.timer);
+                pending.delete(data.id);
+                if (data.error) entry.reject(new Error(data.error));
+                else entry.resolve(data.result);
+            });
+            bridge = {};
+            ['list', 'save', 'remove', 'importSqlite', 'importGithub', 'parseUpload', 'getStorageStatus', 'getJenaStatus', 'getJenaModels', 'getJenaSelection', 'setJenaSelection', 'rewriteWithJena'].forEach(function (method) {
+                bridge[method] = function () {
+                    var args = Array.from(arguments);
+                    return new Promise(function (resolve, reject) {
+                        var id = ++requestId;
+                        var timer = setTimeout(function () { pending.delete(id); reject(new Error('메인 창 연결 시간이 초과되었습니다. 메인 창을 새로고침하고 TIDY에서 다시 여세요.')); }, method === 'rewriteWithJena' ? 300000 : 60000);
+                        pending.set(id, { resolve: resolve, reject: reject, timer: timer });
+                        window.opener.postMessage({ type: 'tidy-manager-request', token: token, id: id, method: method, args: args }, '*');
+                    });
+                };
+            });
+        }
+    }
     var records = [];
     var selectedId = '';
     var template = 'function transform(source, context) {\n  // source: 선택 영역 또는 문서 전체 Markdown\n  // context.scope: "selection" 또는 "document"\n  return source;\n}';
+    var defaultJenaPrompt = '';
+    var modelLoadId = 0;
+    var jenaRunning = false;
     var $ = function (id) { return document.getElementById(id); };
 
     function status(message, kind) {
@@ -179,6 +237,7 @@
         button.onclick = function () {
             document.querySelectorAll('.tab').forEach(function (item) { item.classList.toggle('active', item === button); });
             $('upload-panel').classList.toggle('visible', button.dataset.mode === 'upload');
+            $('jena-panel').classList.toggle('visible', button.dataset.mode === 'jena');
         };
     });
     $('file').onchange = async function () {
@@ -186,7 +245,7 @@
         if (!file) return;
         if (!/\.js$/i.test(file.name)) { status('.js 파일만 업로드할 수 있습니다.', 'error'); return; }
         try {
-            var parsed = bridge.parseUpload(await file.text(), file.name);
+            var parsed = await bridge.parseUpload(await file.text(), file.name);
             $('name').value = parsed.name || file.name.replace(/\.js$/i, '');
             $('code').value = parsed.code || '';
             $('enabled').checked = parsed.enabled !== false;
@@ -199,10 +258,76 @@
     $('close-btn').onclick = function () { window.close(); };
     $('sqlite-import-btn').onclick = function () { importFrom('SQLite'); };
     $('github-import-btn').onclick = function () { importFrom('GitHub'); };
+    function selection() { return { provider: $('jena-provider').value, model: $('jena-model-select').value }; }
+    async function loadJenaModels(refresh, preferred) {
+        var loadId = ++modelLoadId;
+        var provider = $('jena-provider').value;
+        var select = $('jena-model-select');
+        select.disabled = true;
+        $('jena-run-btn').disabled = true;
+        select.replaceChildren(new Option(provider ? '모델 불러오는 중...' : '현재 JENA 설정 사용', ''));
+        try {
+            if (provider) {
+                var info = await bridge.getJenaModels(provider, refresh);
+                if (loadId !== modelLoadId) return;
+                select.replaceChildren();
+                info.models.forEach(function (model) { select.appendChild(new Option(model, model)); });
+                if (!info.models.length) select.appendChild(new Option('모델 없음 · JENA 연결 설정 확인', ''));
+                var wanted = preferred || info.model;
+                if (info.models.indexOf(wanted) >= 0) select.value = wanted;
+                select.disabled = jenaRunning || provider === 'lmstudio' || !info.models.length;
+            }
+            await bridge.setJenaSelection(selection());
+        } catch (error) {
+            if (loadId !== modelLoadId) return;
+            select.replaceChildren(new Option('모델 불러오기 실패 · 새로고침하세요', ''));
+            status(error.message || String(error), 'error');
+        } finally {
+            if (loadId === modelLoadId) $('jena-run-btn').disabled = jenaRunning || !!(provider && !select.value);
+        }
+    }
+    $('jena-provider').onchange = function () { loadJenaModels(false); };
+    $('jena-model-select').onchange = function () { bridge.setJenaSelection(selection()).catch(function (error) { status(error.message, 'error'); }); };
+    $('jena-refresh-models').onclick = function () { loadJenaModels(true, $('jena-model-select').value); };
+    $('jena-run-btn').onclick = async function () {
+        var button = $('jena-run-btn');
+        jenaRunning = true;
+        var modelDisabled = $('jena-model-select').disabled;
+        ['jena-provider', 'jena-model-select', 'jena-refresh-models'].forEach(function (id) { $(id).disabled = true; });
+        button.disabled = true;
+        status('AI Jena가 현재 코드를 TIDY 규격으로 수정하는 중...');
+        try {
+            var result = await bridge.rewriteWithJena({ code: $('code').value, prompt: $('jena-prompt').value, provider: selection().provider, model: selection().model });
+            $('code').value = result.code;
+            $('jena-prompt').value = result.prompt;
+            $('jena-model').textContent = [result.provider, result.model].filter(Boolean).join(' · ');
+            status('AI Jena 규격 수정 완료 · 코드를 확인한 뒤 저장하세요.', 'ok');
+        } catch (error) {
+            status('AI Jena 수정 실패: ' + (error && error.message ? error.message : error), 'error');
+        } finally {
+            jenaRunning = false;
+            button.disabled = false;
+            $('jena-provider').disabled = false;
+            $('jena-refresh-models').disabled = false;
+            $('jena-model-select').disabled = modelDisabled;
+        }
+    };
+    $('jena-reset-prompt-btn').onclick = function () {
+        $('jena-prompt').value = defaultJenaPrompt;
+        status('JENA 규격 프롬프트를 기본값으로 복원했습니다. AI 실행 시 저장됩니다.', 'ok');
+    };
 
-    if (!bridge) { status('메인 MD Viewer 창과 연결할 수 없습니다. TIDY 메뉴에서 다시 여세요.', 'error'); return; }
-    Promise.all([reload(''), bridge.getStorageStatus()]).then(function (values) {
+    if (!bridge) {
+        setForm(null);
+        status('메인 창 연결이 필요합니다. 메인 MD Viewer 창을 새로고침한 뒤 TIDY 메뉴에서 다시 여세요.', 'error');
+        ['save-btn', 'delete-btn', 'sqlite-import-btn', 'github-import-btn', 'jena-run-btn', 'jena-refresh-models', 'jena-provider', 'file'].forEach(function (id) { $(id).disabled = true; });
+        return;
+    }
+    Promise.all([reload(''), bridge.getStorageStatus(), bridge.getJenaStatus()]).then(function (values) {
         var storage = values[1] || {};
+        var jena = values[2] || {};
+        defaultJenaPrompt = jena.defaultPrompt || '';
+        $('jena-prompt').value = jena.prompt || defaultJenaPrompt;
         $('save-sqlite').disabled = !storage.sqliteAvailable;
         $('sqlite-import-btn').disabled = !storage.sqliteAvailable;
         $('save-github').disabled = !storage.githubAvailable;
@@ -210,6 +335,10 @@
         $('storage-detail').textContent = 'SQLite: ' + (storage.sqliteAvailable ? (storage.sqliteBackend || '연결됨') : '사용 불가')
             + ' / GitHub: ' + (storage.githubAvailable ? (storage.githubRepo + ' · ' + storage.githubBranch) : '설정 필요');
         status('준비되었습니다.', 'ok');
+        bridge.getJenaSelection().then(function (saved) {
+            $('jena-provider').value = saved.provider || '';
+            return loadJenaModels(false, saved.model);
+        }).catch(function (error) { status(error.message, 'error'); });
     }).catch(function (error) { status(error && error.message ? error.message : String(error), 'error'); });
 })();
 </script>

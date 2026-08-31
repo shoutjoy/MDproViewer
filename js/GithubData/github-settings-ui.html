@@ -15,8 +15,9 @@
         <input type="password" id="github-token-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
             autocomplete="off"
             class="w-full px-3 py-1.5 border rounded-md text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-600">
-        <a href="https://github.com/settings/tokens/new" target="_blank" rel="noopener noreferrer"
-            class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">토큰 발급: https://github.com/settings/tokens/new</a>
+        <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer"
+            class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">Fine-grained PAT 발급 (비공개 저장소 선택)</a>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400">비공개 저장소는 Repository access에서 대상 저장소를 선택하고 Contents 권한을 Read and write로 설정하세요.</p>
         <div class="flex items-center gap-2 flex-wrap">
             <button type="button" onclick="checkGithubConnectionFromModal()"
                 class="px-3 py-1.5 bg-cyan-600 rounded-md text-xs font-medium text-white hover:bg-cyan-700">연결 확인</button>
