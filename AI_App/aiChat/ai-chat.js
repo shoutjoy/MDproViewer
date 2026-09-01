@@ -153,6 +153,7 @@
   var topLayerPromotionTimer = null;
   var pendingAttachments = [];
   var queuedRequests = [];
+  var conversationStoreReadyPromise = null;
   var MAX_ATTACHMENTS = 8;
   var attachmentLoading = false;
 
@@ -673,7 +674,7 @@
     document.getElementById('ai-chat-writing-style-settings').addEventListener('click', function () {
       if (typeof root.openAIWritingStyleSettings === 'function') root.openAIWritingStyleSettings();
     });
-    document.getElementById('ai-chat-send').addEventListener('click', sendMessage);
+    document.getElementById('ai-chat-send').addEventListener('click', requestSendMessage);
     document.getElementById('ai-chat-stop').addEventListener('click', stopMessage);
     var importSelectionButton = document.getElementById('ai-chat-import-selection');
     importSelectionButton.addEventListener('mousedown', function (event) {
@@ -830,7 +831,7 @@
     chatInput.addEventListener('keydown', function (event) {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault();
-        sendMessage();
+        requestSendMessage();
       }
     });
     chatInput.addEventListener('paste', function (event) {
@@ -1565,11 +1566,12 @@
     }
     if (answerWrap) answerWrap.hidden = false;
     if (answerBody) {
-      answerBody.classList.toggle('waiting', !liveStream.answer);
-      answerBody.textContent = liveStream.answer || (showLiveReasoning
+      var visibleLiveAnswer = cleanAssistantProtocolArtifacts(liveStream.answer, true);
+      answerBody.classList.toggle('waiting', !visibleLiveAnswer);
+      answerBody.textContent = visibleLiveAnswer || (showLiveReasoning
         ? '추론이 끝난 뒤 첫 응답 토큰이 도착하면 여기에 바로 표시됩니다.'
         : '첫 응답 토큰을 기다리는 중…');
-      followLiveStreamEnd(answerBody, followAnswer && !!liveStream.answer);
+      followLiveStreamEnd(answerBody, followAnswer && !!visibleLiveAnswer);
     }
     followLiveStreamEnd(list, followMessages);
     setStatus(liveStream.stage + ' · ' + Math.floor(elapsed) + '초 · ' + (measuredTps ? measuredTps.toFixed(1) + ' tok/s' : '첫 토큰 대기'), 'loading');
@@ -2774,8 +2776,24 @@
     }
   }
 
+  function cleanAssistantProtocolArtifacts(value, streaming) {
+    var text = String(value || '')
+      // OrcaRouter and some OpenAI-compatible models escape the brackets in
+      // our response envelope (for example: \[/ANSWER\]). Normalize those
+      // variants before parsing so they never become visible answer text.
+      .replace(/\\*\[\s*\\*(\/?)\s*(CHECKLIST|EXPLANATION|ANSWER)\s*\\*\]/gi, '[$1$2]')
+      .replace(/\[\/?(?:CHECKLIST|EXPLANATION|ANSWER)\]/gi, '');
+    if (streaming) {
+      // Hide a control tag while its final characters are still arriving.
+      text = text.replace(/\\*\[\s*\\*\/?\s*(?:C(?:H(?:E(?:C(?:K(?:L(?:I(?:S(?:T)?)?)?)?)?)?)?)?|E(?:X(?:P(?:L(?:A(?:N(?:A(?:T(?:I(?:O(?:N)?)?)?)?)?)?)?)?)?)?|A(?:N(?:S(?:W(?:E(?:R)?)?)?)?)?)?\s*\\*$/i, '');
+    }
+    return text.replace(/(?:&#x20;|&#32;|&nbsp;)(?=\s*$)/gi, '').trim();
+  }
+
   function parseAssistantSections(rawText) {
-    var raw = String(rawText || '').trim();
+    var raw = String(rawText || '')
+      .replace(/\\*\[\s*\\*(\/?)\s*(CHECKLIST|EXPLANATION|ANSWER)\s*\\*\]/gi, '[$1$2]')
+      .trim();
     var checklist = '';
     var explanation = '';
     var answer = raw;
@@ -2846,7 +2864,11 @@
         }
       }
     }
-    return { answer: answer || raw, explanation: explanation, checklist: checklist, remaining: remaining };
+    answer = cleanAssistantProtocolArtifacts(answer || raw, false);
+    explanation = cleanAssistantProtocolArtifacts(explanation, false);
+    checklist = cleanAssistantProtocolArtifacts(checklist, false);
+    remaining = cleanAssistantProtocolArtifacts(remaining, false);
+    return { answer: answer, explanation: explanation, checklist: checklist, remaining: remaining };
   }
 
   var ACADEMIC_CHECKLIST = [
@@ -3561,6 +3583,16 @@
     setStatus('선택한 AI 답변만 지웠습니다.', 'ok');
   }
 
+  function deleteReasoning(message) {
+    if (state.running) return setStatus('현재 응답이 끝난 뒤 추론을 지울 수 있습니다.', 'error');
+    if (!message || !String(message.reasoning || '').trim()) return;
+    if (!root.confirm('이 답변의 모델 생각/추론만 지울까요? 최종 답변은 유지됩니다.')) return;
+    message.reasoning = '';
+    saveHistory();
+    renderMessages();
+    setStatus('선택한 모델 생각/추론만 지웠습니다.', 'ok');
+  }
+
   function createQuestionActions(message, messageIndex) {
     var actions = document.createElement('div');
     actions.className = 'ai-chat-question-actions';
@@ -3669,6 +3701,77 @@
       return;
     }
     copyText(md);
+  }
+
+  function createReasoningActions(messageIndex, message) {
+    var reasoningMessage = { content: String(message && message.reasoning || '') };
+    var actions = document.createElement('div');
+    actions.className = 'ai-chat-message-actions ai-chat-reasoning-actions';
+    var expandedLayout = !!state.insertActionsExpanded;
+    var copyRow = null;
+    var mainRow = null;
+    if (expandedLayout) {
+      actions.classList.add('insert-actions-expanded');
+      copyRow = document.createElement('div');
+      copyRow.className = 'ai-chat-actions-row';
+      mainRow = document.createElement('div');
+      mainRow.className = 'ai-chat-actions-row';
+    }
+    var copyHost = copyRow || actions;
+    var mainHost = mainRow || actions;
+    var rawViewGroup = document.createElement('div');
+    rawViewGroup.className = 'ai-chat-raw-view-group';
+    copyHost.appendChild(rawViewGroup);
+    var copyRaw = document.createElement('button');
+    copyRaw.type = 'button';
+    copyRaw.textContent = 'MD raw 복사';
+    copyRaw.title = '추론 Markdown 원문 복사';
+    copyRaw.addEventListener('click', function () { copyAnswerMarkdownRaw(reasoningMessage); });
+    rawViewGroup.appendChild(copyRaw);
+    var markdownToggle = document.createElement('button');
+    markdownToggle.type = 'button';
+    markdownToggle.className = 'ai-chat-markdown-toggle';
+    markdownToggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.7"/></svg>';
+    markdownToggle.title = message._showReasoningMarkdownSource ? '렌더링된 추론 보기' : '추론 Markdown 문법 보기';
+    markdownToggle.setAttribute('aria-label', markdownToggle.title);
+    markdownToggle.setAttribute('aria-pressed', message._showReasoningMarkdownSource ? 'true' : 'false');
+    markdownToggle.addEventListener('click', function () {
+      message._showReasoningMarkdownSource = !message._showReasoningMarkdownSource;
+      renderMessages({ preserveScroll: true });
+    });
+    rawViewGroup.appendChild(markdownToggle);
+    var copyRender = document.createElement('button');
+    copyRender.type = 'button';
+    copyRender.textContent = 'MD render 복사';
+    copyRender.title = '렌더된 추론(HTML/텍스트) 복사';
+    copyRender.addEventListener('click', function () { copyAnswerMarkdownRendered(reasoningMessage); });
+    copyHost.appendChild(copyRender);
+    var copyQa = document.createElement('button');
+    copyQa.type = 'button';
+    copyQa.textContent = 'Q&A 복사';
+    copyQa.title = '이 추론과 연결된 질문을 함께 복사';
+    copyQa.addEventListener('click', function () { copyQuestionAnswer(messageIndex, reasoningMessage); });
+    copyHost.appendChild(copyQa);
+    appendAssistantDocumentInsertActions(actions, messageIndex, reasoningMessage, expandedLayout ? mainHost : null);
+    var previewBtn = document.createElement('button');
+    previewBtn.type = 'button';
+    previewBtn.textContent = '새창에서 보기';
+    previewBtn.title = '추론 MD/PV 미리보기 · 렌더된 추론을 문서에 넣기';
+    previewBtn.addEventListener('click', function () { openAnswerPreviewWindow(messageIndex, reasoningMessage); });
+    mainHost.appendChild(previewBtn);
+    var deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'ai-chat-answer-delete';
+    deleteButton.textContent = '추론 지우기';
+    deleteButton.title = '이 모델 생각/추론만 삭제';
+    deleteButton.disabled = state.running;
+    deleteButton.addEventListener('click', function () { deleteReasoning(message); });
+    mainHost.appendChild(deleteButton);
+    if (expandedLayout) {
+      actions.appendChild(copyRow);
+      actions.appendChild(mainRow);
+    }
+    return actions;
   }
 
   async function insertQuestionAnswer(messageIndex, message, mode) {
@@ -4127,9 +4230,16 @@
           summary.textContent = '모델의 생각/추론';
           var reasoningBody = document.createElement('div');
           reasoningBody.className = 'ai-chat-reasoning-content';
-          reasoningBody.textContent = message.reasoning;
+          if (!message._showReasoningMarkdownSource && root.AIChatMarkdown && typeof root.AIChatMarkdown.toHtml === 'function') {
+            reasoningBody.classList.add('markdown-rendered');
+            reasoningBody.innerHTML = root.AIChatMarkdown.toHtml(message.reasoning);
+          } else {
+            reasoningBody.classList.add('markdown-source');
+            reasoningBody.textContent = message.reasoning;
+          }
           reasoning.appendChild(summary);
           reasoning.appendChild(reasoningBody);
+          reasoning.appendChild(createReasoningActions(messageIndex, message));
           item.appendChild(reasoning);
         }
         if (message.role === 'assistant' && (String(message.content || '').trim() || (Array.isArray(message.images) && message.images.length))) {
@@ -4859,9 +4969,24 @@
     if (input) input.focus();
   }
 
+  function requestSendMessage() {
+    return Promise.resolve(sendMessage()).catch(function (error) {
+      var message = error && error.message ? error.message : String(error || '알 수 없는 오류');
+      stopThinkingProgress();
+      setRunning(false);
+      setStatus('프롬프트를 전송하지 못했습니다: ' + message, 'error');
+    });
+  }
+
   async function sendMessage(queuedRequest) {
     if (state.running && !queuedRequest) return queueComposerRequest();
-    if (state.storageInitializing) return;
+    if (state.storageInitializing) {
+      setStatus('대화 저장소 준비가 끝나면 바로 전송합니다...', 'loading');
+      if (conversationStoreReadyPromise) await conversationStoreReadyPromise;
+      if (state.storageInitializing) {
+        throw new Error('대화 저장소 초기화가 완료되지 않았습니다.');
+      }
+    }
     if (attachmentLoading) return setStatus('첨부 파일을 모두 읽은 뒤 전송해 주세요.', 'error');
     var input = document.getElementById('ai-chat-input');
     var text = queuedRequest ? String(queuedRequest.text || '').trim() : (input ? String(input.value || '').trim() : '');
@@ -5207,7 +5332,7 @@
     updateLayoutButtons();
     setEnabled(state.enabled);
     setRunning(false);
-    initializeConversationStore();
+    conversationStoreReadyPromise = initializeConversationStore();
     saveBuiltInPromptRules();
     var checkbox = document.getElementById('ai-chat-enabled');
     if (checkbox && !checkbox._aiChatBound) {

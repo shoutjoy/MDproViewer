@@ -114,7 +114,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260830-tidy-jena-normalize-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260902-send-recovery-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -15528,7 +15528,9 @@ function ensureSidebarAILoaded() {
         const storedPromptPack = String(s && s.scholarAIPromptPack || '').trim();
         const cachedPromptPack = String(localStorage.getItem('ss_scholar_ai_system') || '').trim();
         const defaultPromptPack = typeof window.getDefaultScholarAIPrompt === 'function' ? String(window.getDefaultScholarAIPrompt() || '').trim() : '';
-        const sharedPromptPack = storedPromptPack || cachedPromptPack || defaultPromptPack;
+        const sourcePromptPack = storedPromptPack || cachedPromptPack || defaultPromptPack;
+        const sharedPromptPack = typeof window.mergeScholarAIQuickToolPrompts === 'function'
+            ? window.mergeScholarAIQuickToolPrompts(sourcePromptPack) : sourcePromptPack;
         if (sharedPromptPack) localStorage.setItem('ss_scholar_ai_system', sharedPromptPack);
         if ((!s || storedPromptPack !== sharedPromptPack) && sharedPromptPack) {
             setAiSettings({ scholarAIPromptPack: sharedPromptPack }).catch(function () {});
@@ -15745,7 +15747,15 @@ function ensureSidebarAILoaded() {
             },
             getScholarAISystemInstruction: function () {
                 const saved = (localStorage.getItem('ss_scholar_ai_system') || '').trim();
-                if (saved) return saved;
+                if (saved) {
+                    const merged = typeof window.mergeScholarAIQuickToolPrompts === 'function'
+                        ? window.mergeScholarAIQuickToolPrompts(saved) : saved;
+                    if (merged !== saved) {
+                        localStorage.setItem('ss_scholar_ai_system', merged);
+                        setAiSettings({ scholarAIPromptPack: merged }).catch(function () {});
+                    }
+                    return merged;
+                }
                 if (typeof window.getDefaultScholarAIPrompt === 'function') {
                     try { return window.getDefaultScholarAIPrompt() || ''; } catch (e) {}
                 }

@@ -162,6 +162,35 @@ test('ScholarAI shares one editable prompt pack with inDB AI settings', () => {
   assert.match(inDb, /saveInDbScholarAIPrompt/);
 });
 
+test('legacy and every role prompt visibly include all quick-tool rules', () => {
+  const source = read('sidebarAI/Scholarai_prompt.js');
+  const context = { window: {} };
+  vm.runInNewContext(source, context, { filename: 'Scholarai_prompt.js' });
+  for (const role of ['researcher', 'editor', 'developer', 'slider-maker']) {
+    const prompt = context.window.getScholarAIPromptByRole(role);
+    assert.match(prompt, /\[QUICK TOOL\] 학술적 ~이다\/-다 문체 변경/);
+    assert.match(prompt, /\[QUICK TOOL\] 학술 번역/);
+    assert.match(prompt, /\[QUICK TOOL\] 학술 슬라이드 생성/);
+  }
+  const migrated = context.window.mergeScholarAIQuickToolPrompts('[ROLE] Senior Software Engineer');
+  assert.match(migrated, /정규식 기반 서술어 검색/);
+  assert.match(migrated, /\[QUICK TOOL\] 학술 번역/);
+  assert.match(migrated, /\[QUICK TOOL\] 학술 슬라이드 생성/);
+});
+
+test('pre-prompt toolbar exposes the three new prompt presets', () => {
+  for (const relative of ['index.html', 'sidebarAI/sidebar-ai.html', 'sidebarAI/sidebar-ai.js']) {
+    const source = read(relative);
+    assert.match(source, /scholarAIUsePromptRole\('academic-ida'\)[^>]*>~이다 문체</);
+    assert.match(source, /scholarAIUsePromptRole\('academic-translation'\)[^>]*>학술번역</);
+    assert.match(source, /scholarAIUsePromptRole\('academic-slides'\)[^>]*>슬라이드 생성</);
+  }
+  const promptSource = read('sidebarAI/Scholarai_prompt.js');
+  assert.match(promptSource, /'academic-ida': \[ACADEMIC_IDA_WORKFLOW/);
+  assert.match(promptSource, /'academic-translation': \[ACADEMIC_TRANSLATION_WORKFLOW/);
+  assert.match(promptSource, /'academic-slides': \[SLIDE_GENERATION_WORKFLOW/);
+});
+
 test('upgrade runtime is loaded after the existing ScholarAI core', () => {
   const app = read('js/app.js');
   const insert = read('sidebarAI/insert.js');

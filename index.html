@@ -41,7 +41,7 @@
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/storage-tree.css?v=20260812-1" charset="utf-8">
     <link rel="stylesheet" href="./sidebarAI/sidebar-ai.css?v=20260817-scholar-upgrades-1" charset="utf-8">
-    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260825-fast-limits-3" charset="utf-8">
+    <link rel="stylesheet" href="./AI_App/aiChat/ai-chat.css?v=20260902-reasoning-actions-1" charset="utf-8">
     <link rel="stylesheet" href="./AI_App/dataCenter/ai-data-center.css?v=20260823-dark-chrome-7" charset="utf-8">
     <link rel="stylesheet" href="./js/Scholarref/styles/scholarref.css?v=20260812-scholar-modules-1" charset="utf-8">
     <link rel="stylesheet" href="./ShareSites/Share/share.css?v=20260408-2" charset="utf-8">
@@ -588,6 +588,9 @@
                       <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('editor')">Editor</button>
                       <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('developer')">Developer</button>
                       <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
+                      <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('academic-ida')">~이다 문체</button>
+                      <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('academic-translation')">학술번역</button>
+                      <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('academic-slides')">슬라이드 생성</button>
                     </div>
                     <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="사전 프롬프트를 입력하거나 편집하세요. 필요시 내용을 추가할 수 있습니다." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
                     <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:7px"><button type="button" id="scholar-ai-pre-prompt-edit" class="sa-btn ghost" onclick="scholarAIEditPrePrompt()">수정</button><button type="button" id="scholar-ai-pre-prompt-save" class="sa-btn" onclick="scholarAISavePrePrompt()">저장</button></div>

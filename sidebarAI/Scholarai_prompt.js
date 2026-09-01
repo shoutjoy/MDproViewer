@@ -119,13 +119,16 @@
   ].join('\n');
 
   var PRESET_MAP = {
-    researcher: [ROLE_RESEARCHER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    editor: [ROLE_EDITOR, ACADEMIC_IDA_WORKFLOW, ACADEMIC_TRANSLATION_WORKFLOW, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    developer: [ROLE_DEVELOPER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    slide_editor: [ROLE_SLIDE_MAKER, SLIDE_GENERATION_WORKFLOW, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    slide: [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    'slider-maker': [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    slider_maker: [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n')
+    'academic-ida': [ACADEMIC_IDA_WORKFLOW, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    'academic-translation': [ACADEMIC_TRANSLATION_WORKFLOW, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    'academic-slides': [SLIDE_GENERATION_WORKFLOW, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    researcher: [ROLE_RESEARCHER, QUICK_TOOL_WORKFLOWS, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    editor: [ROLE_EDITOR, QUICK_TOOL_WORKFLOWS, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    developer: [ROLE_DEVELOPER, QUICK_TOOL_WORKFLOWS, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    slide_editor: [ROLE_SLIDE_MAKER, QUICK_TOOL_WORKFLOWS, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    slide: [ROLE_SLIDE_MAKER, QUICK_TOOL_WORKFLOWS, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    'slider-maker': [ROLE_SLIDE_MAKER, QUICK_TOOL_WORKFLOWS, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    slider_maker: [ROLE_SLIDE_MAKER, QUICK_TOOL_WORKFLOWS, OUTPUT_POLICY, COMMON_POLICY].join('\n\n')
   };
 
   function getScholarAIPromptByRole(role) {
@@ -159,8 +162,19 @@
     ].join('\n');
   }
 
+  function mergeScholarAIQuickToolPrompts(prompt) {
+    var current = String(prompt || '').trim();
+    if (!current) return getDefaultScholarAIPrompt();
+    var sections = [];
+    if (current.indexOf('[QUICK TOOL] 학술적 ~이다/-다 문체 변경') < 0) sections.push(ACADEMIC_IDA_WORKFLOW);
+    if (current.indexOf('[QUICK TOOL] 학술 번역') < 0) sections.push(ACADEMIC_TRANSLATION_WORKFLOW);
+    if (current.indexOf('[QUICK TOOL] 학술 슬라이드 생성') < 0) sections.push(SLIDE_GENERATION_WORKFLOW);
+    return sections.length ? current + '\n\n' + sections.join('\n\n') : current;
+  }
+
   window.ScholarAIPromptProfiles = PRESET_MAP;
   window.getScholarAIPromptByRole = getScholarAIPromptByRole;
   window.getDefaultScholarAIPrompt = getDefaultScholarAIPrompt;
   window.getScholarAIQuickToolPromptPack = function () { return QUICK_TOOL_WORKFLOWS; };
+  window.mergeScholarAIQuickToolPrompts = mergeScholarAIQuickToolPrompts;
 })();

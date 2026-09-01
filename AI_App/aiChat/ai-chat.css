@@ -1077,6 +1077,13 @@ body.ai-chat-history-resizing { cursor: ew-resize !important; user-select: none 
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.ai-chat-reasoning-content.markdown-rendered { white-space: normal; }
+.ai-chat-reasoning-actions {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 7px 8px;
+  border-top-color: rgba(89,111,148,.7);
+}
 
 .ai-chat-thinking {
   width: 100%;
