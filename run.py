@@ -41,6 +41,7 @@ SQLITE_API = SqliteApiRouter(DIR, manager=SQLITE_MANAGER)
 class Handler(http.server.SimpleHTTPRequestHandler):
     IMAGE_PROXY_PATH = "/__mdviewer_image_proxy"
     DEEPSEEK_PROXY_PATH = "/__mdviewer_deepseek_proxy"
+    LMSTUDIO_PROXY_PATH = "/__mdviewer_lmstudio_proxy"
     IMAGE_PROXY_LIMIT = 30 * 1024 * 1024
 
     def send_header(self, keyword, value):
@@ -134,15 +135,65 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             query = urllib.parse.parse_qs(parsed.query)
             self._proxy_image((query.get("url") or [""])[0])
             return
+        if parsed.path == self.LMSTUDIO_PROXY_PATH:
+            query = urllib.parse.parse_qs(parsed.query)
+            self._proxy_lmstudio((query.get("url") or [""])[0], "GET")
+            return
         super().do_GET()
 
     def do_POST(self):
         if SQLITE_API.handle(self, "POST"):
             return
-        if urllib.parse.urlsplit(self.path).path == self.DEEPSEEK_PROXY_PATH:
+        parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path == self.DEEPSEEK_PROXY_PATH:
             self._proxy_deepseek()
             return
+        if parsed.path == self.LMSTUDIO_PROXY_PATH:
+            query = urllib.parse.parse_qs(parsed.query)
+            self._proxy_lmstudio((query.get("url") or [""])[0], "POST")
+            return
         self.send_error(404, "Not Found")
+
+    def _proxy_lmstudio(self, raw_url, method):
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            self._send_proxy_error(403, "LM Studio proxy is available only from this computer")
+            return
+        try:
+            target = urllib.parse.urlsplit(str(raw_url or "").strip())
+            if target.scheme != "http" or target.hostname not in {"127.0.0.1", "localhost", "::1"}:
+                raise ValueError("Only a local LM Studio HTTP address is allowed")
+            if target.username or target.password:
+                raise ValueError("Credentials in the LM Studio URL are not allowed")
+            data = None
+            if method == "POST":
+                size = int(self.headers.get("Content-Length") or 0)
+                if size < 0 or size > 16 * 1024 * 1024:
+                    raise ValueError("Invalid LM Studio request size")
+                data = self.rfile.read(size) if size else b""
+            headers = {
+                "Accept": self.headers.get("Accept") or "application/json",
+                "Content-Type": self.headers.get("Content-Type") or "application/json",
+            }
+            authorization = self.headers.get("Authorization")
+            if authorization:
+                headers["Authorization"] = authorization
+            request = urllib.request.Request(target.geturl(), data=data, method=method, headers=headers)
+            try:
+                response = urllib.request.urlopen(request, timeout=3600)
+            except urllib.error.HTTPError as error:
+                response = error
+            with response:
+                self.send_response(response.status)
+                self.send_header("Content-Type", response.headers.get("Content-Type") or "application/json; charset=utf-8")
+                self.end_headers()
+                while True:
+                    chunk = response.read(64 * 1024)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+        except (ValueError, OSError, urllib.error.URLError) as error:
+            self._send_proxy_error(502, error)
 
     def _proxy_deepseek(self):
         if self.client_address[0] not in {"127.0.0.1", "::1"}:

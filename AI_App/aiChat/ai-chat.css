@@ -1457,16 +1457,12 @@ body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content
 body.theme-light .ai-chat-reasoning,
 body.theme-light .ai-chat-thinking,
 body.theme-light .ai-chat-live-stream,
-body.theme-light .ai-chat-checklist,
-body.theme-light .ai-chat-academic-results { border-color: #48484a; background: #242426; color: #d1d1d6; }
+body.theme-light .ai-chat-checklist { border-color: #48484a; background: #242426; color: #d1d1d6; }
 body.theme-light .ai-chat-reasoning summary,
 body.theme-light .ai-chat-live-stream > strong,
-body.theme-light .ai-chat-checklist > div:first-child,
-body.theme-light .ai-chat-academic-head { border-color: #48484a; background: #2c2c2e; color: #e5e5ea; }
+body.theme-light .ai-chat-checklist > div:first-child { border-color: #48484a; background: #2c2c2e; color: #e5e5ea; }
 body.theme-light .ai-chat-thinking-head strong,
-body.theme-light .ai-chat-checklist strong,
-body.theme-light .ai-chat-academic-results,
-body.theme-light .ai-chat-academic-list details p { color: #e5e5ea; }
+body.theme-light .ai-chat-checklist strong { color: #e5e5ea; }
 body.theme-light .ai-chat-thinking-track { background: #3a3a3c; }
 body.theme-light .ai-chat-live-stream > div { color: #d1d1d6; }
 body.theme-light .ai-chat-response-notice { border-color: #48484a; background: #2c2c2e; color: #a1a1a6; }

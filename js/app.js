@@ -12894,6 +12894,17 @@ function readScholarAIProviderSettingsForm() {
     };
 }
 
+function normalizeLMStudioBaseUrlField(input, optional) {
+    if (!input) return '';
+    let value = String(input.value || '').trim().replace(/\/+$/, '')
+        .replace(/\/chat\/completions$/i, '').replace(/\/models$/i, '');
+    if (!value && !optional) value = 'http://127.0.0.1:5678';
+    if (value && !/\/v1$/i.test(value)) value += '/v1';
+    input.value = value;
+    return value;
+}
+window.normalizeLMStudioBaseUrlField = normalizeLMStudioBaseUrlField;
+
 function syncAiJenaFastLimitsInSettings(config) {
     const source = config || {};
     const tokenInput = document.getElementById('settings-ai-jena-fast-token-limit');
@@ -12938,6 +12949,38 @@ function normalizeLMStudioLoadedModels(models) {
     }).filter(function (item) { return !!item.id; });
 }
 
+function renderSettingsLMStudioModelLoader(models, message) {
+    const loader = document.getElementById('settings-lmstudio-model-loader');
+    const select = document.getElementById('settings-lmstudio-model-to-load');
+    const button = document.getElementById('settings-lmstudio-load-model-btn');
+    if (!loader || !select) return;
+    const values = Array.from(new Set((Array.isArray(models) ? models : []).map(function (item) {
+        return String(typeof item === 'string' ? item : (item && (item.key || item.id)) || '').trim();
+    }).filter(Boolean)));
+    loader.classList.remove('hidden');
+    select.replaceChildren();
+    if (!values.length) {
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = message || '설치된 LLM을 찾지 못했습니다.';
+        select.appendChild(option);
+        if (button) button.disabled = true;
+        return;
+    }
+    values.forEach(function (model) {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        select.appendChild(option);
+    });
+    if (button) button.disabled = false;
+}
+
+function hideSettingsLMStudioModelLoader() {
+    const loader = document.getElementById('settings-lmstudio-model-loader');
+    if (loader) loader.classList.add('hidden');
+}
+
 function renderSettingsLMStudioLoadedModels(models, errorMessage) {
     const current = document.getElementById('settings-lmstudio-loaded-model');
     const detail = document.getElementById('settings-lmstudio-loaded-models-detail');
@@ -12972,6 +13015,7 @@ function renderSettingsLMStudioLoadedModels(models, errorMessage) {
         setCredentialConnectionVisual('settings-lmstudio-api-key', 'settings-lmstudio-api-key-feedback', 'neutral', lmKeyInput && lmKeyInput.value.trim() ? 'API Key 저장됨 · 모델 연결 확인 필요' : '선택 항목 · API Key 미사용');
         return;
     }
+    hideSettingsLMStudioModelLoader();
     const primary = loaded[0];
     current.textContent = primary.displayName && primary.displayName !== primary.id
         ? primary.displayName + '  ·  ' + primary.id
@@ -13051,6 +13095,10 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
 function saveScholarAIProviderSettingsFromUI(showStatus) {
     try {
         const config = getScholarAIProviderRuntime().saveLMStudioConfig(readScholarAIProviderSettingsForm());
+        const primaryInput = document.getElementById('settings-lmstudio-base-url');
+        const secondaryInput = document.getElementById('settings-lmstudio-base-url-secondary');
+        if (primaryInput) primaryInput.value = config.baseUrlPrimary;
+        if (secondaryInput) secondaryInput.value = config.baseUrlSecondary;
         setCredentialConnectionVisual(
             'settings-lmstudio-api-key',
             'settings-lmstudio-api-key-feedback',
@@ -13072,6 +13120,14 @@ async function loadSettingsLMStudioModels(options) {
     if (!config) return;
     if (!options.silent) setSettingsScholarAIStatus('LM Studio에서 현재 로드된 모델을 확인하는 중...', false);
     try {
+        const loaded = await getScholarAIProviderRuntime().listLMStudioLoadedModels(config);
+        if (!loaded.length) {
+            renderSettingsLMStudioLoadedModels([]);
+            const installed = await getScholarAIProviderRuntime().listLMStudioModels(config);
+            renderSettingsLMStudioModelLoader(installed, '설치된 LLM을 찾지 못했습니다.');
+            if (!options.silent) setSettingsScholarAIStatus('현재 로드 모델이 없습니다. 설치 모델을 선택해 로드하세요.', false);
+            return;
+        }
         const result = await getScholarAIProviderRuntime().syncLMStudioLoadedModel(config);
         const ids = result.models.map(function (item) { return item.id; }).filter(Boolean);
         saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
@@ -13080,10 +13136,41 @@ async function loadSettingsLMStudioModels(options) {
     } catch (error) {
         const message = error && error.message ? error.message : String(error);
         saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, []);
-        renderSettingsLMStudioLoadedModels([], message);
-        if (!options.silent) setSettingsScholarAIStatus('LM Studio 로드 모델 확인 실패: ' + message, true);
+        if (options.silent) {
+            renderSettingsLMStudioLoadedModels([]);
+            hideSettingsLMStudioModelLoader();
+            return;
+        }
+        renderSettingsLMStudioLoadedModels([], '연결 설정을 확인한 뒤 다시 시도하세요.');
+        setSettingsScholarAIStatus('LM Studio에 연결하지 못했습니다. 서버 실행 여부와 선택한 Base URL을 확인하세요.', false);
     }
 }
+
+async function loadSelectedSettingsLMStudioModel() {
+    const select = document.getElementById('settings-lmstudio-model-to-load');
+    const button = document.getElementById('settings-lmstudio-load-model-btn');
+    const model = String(select && select.value || '').trim();
+    if (!model) {
+        setSettingsScholarAIStatus('로드할 설치 모델을 선택하세요.', true);
+        return;
+    }
+    const config = saveScholarAIProviderSettingsFromUI(false);
+    if (!config) return;
+    if (button) button.disabled = true;
+    setSettingsScholarAIStatus('LM Studio에서 ' + model + ' 모델을 로드하는 중...', false);
+    try {
+        const result = await getScholarAIProviderRuntime().loadLMStudioModel(model, config);
+        const ids = (result.models || []).map(function (item) { return item.id; }).filter(Boolean);
+        saveStoredModelList(SCHOLAR_AI_LM_MODELS_KEY, ids);
+        renderSettingsLMStudioLoadedModels(result.models || []);
+        setSettingsScholarAIStatus('모델 로드 완료: ' + result.model, false);
+    } catch (error) {
+        setSettingsScholarAIStatus('모델을 로드하지 못했습니다: ' + (error && error.message ? error.message : error), true);
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+window.loadSelectedSettingsLMStudioModel = loadSelectedSettingsLMStudioModel;
 
 async function testSettingsLMStudioConnection() {
     const config = saveScholarAIProviderSettingsFromUI(false);
@@ -13091,7 +13178,8 @@ async function testSettingsLMStudioConnection() {
     setSettingsScholarAIStatus('LM Studio 연결을 확인하는 중...', false);
     const result = await getScholarAIProviderRuntime().testLMStudio(config);
     if (!result.ok) {
-        setSettingsScholarAIStatus('LM Studio 연결 실패: ' + (result.error || '알 수 없는 오류'), true);
+        renderSettingsLMStudioLoadedModels([], 'Local Server를 실행하고 선택한 Base URL을 확인하세요. 다른 기기 주소를 사용한다면 LM Studio에서 CORS를 허용해야 합니다.');
+        setSettingsScholarAIStatus('연결되지 않았습니다. LM Studio Local Server와 Base URL을 확인하세요.', false);
         return;
     }
     const ids = (result.models || []).map(function (item) { return item.id; }).filter(Boolean);
@@ -16120,6 +16208,10 @@ function openSettingsModal() {
 }
 
 const AI_WRITING_STYLE_PROMPT_KEY = 'mdpro_ai_writing_style_prompt_v1';
+const AI_WRITING_STYLE_DB_NAME = 'mdpro_writing_styles';
+const AI_WRITING_STYLE_DB_VERSION = 1;
+const AI_WRITING_STYLE_FILE_STORE = 'source_files';
+const AI_WRITING_STYLE_SETTING_STORE = 'settings';
 const DEFAULT_AI_WRITING_STYLE_PROMPT = [
     '다음 문체 지침을 모든 한국어 본문 작성과 문장 수정에 적용한다.',
     '상투적인 “-이다”, “-한다” 종결을 문장마다 반복하지 않는다. 문맥과 논리 기능에 따라 학술적 서술어를 다양하게 선택한다.',
@@ -16139,9 +16231,17 @@ function getAIWritingStylePrompt() {
     catch (_) { return DEFAULT_AI_WRITING_STYLE_PROMPT; }
 }
 
-function loadAIWritingStylePrompt() {
+async function loadAIWritingStylePrompt() {
     const input = document.getElementById('ai-writing-style-prompt');
     if (input) input.value = getAIWritingStylePrompt();
+    try {
+        const saved = await readAIWritingStyleSetting('active_prompt');
+        if (saved && saved.value) {
+            localStorage.setItem(AI_WRITING_STYLE_PROMPT_KEY, saved.value);
+            if (input) input.value = saved.value;
+        }
+        await renderAIWritingStyleFiles();
+    } catch (_) {}
 }
 
 function setAIWritingStylePromptFeedback(message, isError) {
@@ -16151,12 +16251,13 @@ function setAIWritingStylePromptFeedback(message, isError) {
     feedback.className = 'min-h-[1rem] text-[11px] ' + (isError ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400');
 }
 
-function saveAIWritingStylePrompt() {
+async function saveAIWritingStylePrompt() {
     const input = document.getElementById('ai-writing-style-prompt');
     const value = input ? String(input.value || '').trim() : '';
     if (!value) { setAIWritingStylePromptFeedback('문체 프롬프트를 입력해 주세요.', true); return false; }
     try {
         localStorage.setItem(AI_WRITING_STYLE_PROMPT_KEY, value);
+        await writeAIWritingStyleSetting('active_prompt', value);
         setAIWritingStylePromptFeedback('문체 프롬프트를 저장했습니다. 다음 AI 요청부터 적용됩니다.', false);
         return true;
     } catch (_) {
@@ -16169,10 +16270,166 @@ function resetAIWritingStylePrompt() {
     const input = document.getElementById('ai-writing-style-prompt');
     if (input) input.value = DEFAULT_AI_WRITING_STYLE_PROMPT;
     try { localStorage.removeItem(AI_WRITING_STYLE_PROMPT_KEY); } catch (_) {}
+    writeAIWritingStyleSetting('active_prompt', DEFAULT_AI_WRITING_STYLE_PROMPT).catch(function () {});
     setAIWritingStylePromptFeedback('학술 문체 기본값을 복원했습니다.', false);
 }
 
 window.getAIWritingStylePrompt = getAIWritingStylePrompt;
+
+function openAIWritingStyleDb() {
+    return new Promise(function (resolve, reject) {
+        const request = indexedDB.open(AI_WRITING_STYLE_DB_NAME, AI_WRITING_STYLE_DB_VERSION);
+        request.onupgradeneeded = function () {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(AI_WRITING_STYLE_FILE_STORE)) db.createObjectStore(AI_WRITING_STYLE_FILE_STORE, { keyPath: 'id' });
+            if (!db.objectStoreNames.contains(AI_WRITING_STYLE_SETTING_STORE)) db.createObjectStore(AI_WRITING_STYLE_SETTING_STORE, { keyPath: 'key' });
+        };
+        request.onsuccess = function () { resolve(request.result); };
+        request.onerror = function () { reject(request.error || new Error('문체 inDB를 열지 못했습니다.')); };
+    });
+}
+
+async function writeAIWritingStyleSetting(key, value) {
+    const db = await openAIWritingStyleDb();
+    return new Promise(function (resolve, reject) {
+        const tx = db.transaction(AI_WRITING_STYLE_SETTING_STORE, 'readwrite');
+        tx.objectStore(AI_WRITING_STYLE_SETTING_STORE).put({ key: key, value: value, updatedAt: Date.now() });
+        tx.oncomplete = function () { db.close(); resolve(); };
+        tx.onerror = function () { db.close(); reject(tx.error); };
+    });
+}
+
+async function readAIWritingStyleSetting(key) {
+    const db = await openAIWritingStyleDb();
+    return new Promise(function (resolve, reject) {
+        const tx = db.transaction(AI_WRITING_STYLE_SETTING_STORE, 'readonly');
+        const request = tx.objectStore(AI_WRITING_STYLE_SETTING_STORE).get(key);
+        request.onsuccess = function () { resolve(request.result || null); };
+        request.onerror = function () { reject(request.error); };
+        tx.oncomplete = function () { db.close(); };
+    });
+}
+
+async function getAIWritingStyleFiles() {
+    const db = await openAIWritingStyleDb();
+    return new Promise(function (resolve, reject) {
+        const tx = db.transaction(AI_WRITING_STYLE_FILE_STORE, 'readonly');
+        const request = tx.objectStore(AI_WRITING_STYLE_FILE_STORE).getAll();
+        request.onsuccess = function () { resolve((request.result || []).sort(function (a, b) { return a.createdAt - b.createdAt; })); };
+        request.onerror = function () { reject(request.error); };
+        tx.oncomplete = function () { db.close(); };
+    });
+}
+
+async function putAIWritingStyleFiles(records) {
+    const db = await openAIWritingStyleDb();
+    return new Promise(function (resolve, reject) {
+        const tx = db.transaction(AI_WRITING_STYLE_FILE_STORE, 'readwrite');
+        records.forEach(function (record) { tx.objectStore(AI_WRITING_STYLE_FILE_STORE).put(record); });
+        tx.oncomplete = function () { db.close(); resolve(); };
+        tx.onerror = function () { db.close(); reject(tx.error); };
+    });
+}
+
+function buildAIWritingStylePrompt(files) {
+    const excerpts = files.map(function (file, index) {
+        return '[문체 자료 ' + (index + 1) + ': ' + file.name + ']\n' + String(file.text || '').trim().slice(0, 12000);
+    }).filter(function (item) { return item.trim(); });
+    return [
+        '아래 문체 자료의 어휘 선택, 문장 길이, 문장 종결, 단락 전개, 논증 방식과 표현 습관을 분석하여 최종 답변 전체에 일관되게 적용한다.',
+        '자료의 사실·주장·고유명사·수치는 답변 내용으로 복사하지 말고 문체적 특성만 모방한다. 사용자의 현재 요청과 정확성을 항상 우선한다.',
+        '자료 사이에 차이가 있으면 공통적으로 반복되는 문체 특징을 우선하며, 부자연스러운 오탈자나 비문은 모방하지 않는다.',
+        '',
+        excerpts.join('\n\n')
+    ].join('\n').trim();
+}
+
+async function renderAIWritingStyleFiles() {
+    const list = document.getElementById('ai-writing-style-file-list');
+    if (!list) return;
+    const files = await getAIWritingStyleFiles();
+    list.replaceChildren();
+    if (!files.length) {
+        const empty = document.createElement('p'); empty.className = 'text-slate-400'; empty.textContent = '저장된 문체 자료가 없습니다.'; list.appendChild(empty); return;
+    }
+    files.forEach(function (file) {
+        const row = document.createElement('div'); row.className = 'flex items-center justify-between gap-2 rounded border border-slate-200 px-2 py-1 dark:border-slate-700';
+        const label = document.createElement('span'); label.className = 'min-w-0 truncate'; label.textContent = file.name + ' · ' + Math.max(1, Math.round((file.size || 0) / 1024)) + 'KB';
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'shrink-0 text-rose-600 hover:underline'; remove.textContent = '삭제'; remove.onclick = function () { deleteAIWritingStyleFile(file.id); };
+        row.append(label, remove); list.appendChild(row);
+    });
+}
+
+async function importAIWritingStyleSourceFiles(event) {
+    const input = event && event.target;
+    const files = Array.from(input && input.files || []);
+    if (!files.length) return;
+    try {
+        const records = await Promise.all(files.map(async function (file) {
+            return { id: (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random()), name: file.name, type: file.type || 'text/plain', size: file.size, text: await file.text(), createdAt: Date.now() };
+        }));
+        await putAIWritingStyleFiles(records);
+        const allFiles = await getAIWritingStyleFiles();
+        const prompt = buildAIWritingStylePrompt(allFiles);
+        const textarea = document.getElementById('ai-writing-style-prompt');
+        if (textarea) textarea.value = prompt;
+        localStorage.setItem(AI_WRITING_STYLE_PROMPT_KEY, prompt);
+        await writeAIWritingStyleSetting('active_prompt', prompt);
+        await renderAIWritingStyleFiles();
+        setAIWritingStylePromptFeedback(files.length + '개 파일을 inDB에 저장하고 문체 프롬프트를 자동 생성했습니다.', false);
+    } catch (error) { setAIWritingStylePromptFeedback('문체 파일 처리 실패: ' + (error.message || error), true); }
+    if (input) input.value = '';
+}
+
+async function deleteAIWritingStyleFile(id) {
+    const db = await openAIWritingStyleDb();
+    await new Promise(function (resolve, reject) {
+        const tx = db.transaction(AI_WRITING_STYLE_FILE_STORE, 'readwrite'); tx.objectStore(AI_WRITING_STYLE_FILE_STORE).delete(id);
+        tx.oncomplete = function () { db.close(); resolve(); }; tx.onerror = function () { db.close(); reject(tx.error); };
+    });
+    const files = await getAIWritingStyleFiles();
+    if (files.length) {
+        const prompt = buildAIWritingStylePrompt(files); localStorage.setItem(AI_WRITING_STYLE_PROMPT_KEY, prompt); await writeAIWritingStyleSetting('active_prompt', prompt);
+        const textarea = document.getElementById('ai-writing-style-prompt'); if (textarea) textarea.value = prompt;
+    } else {
+        localStorage.setItem(AI_WRITING_STYLE_PROMPT_KEY, DEFAULT_AI_WRITING_STYLE_PROMPT);
+        await writeAIWritingStyleSetting('active_prompt', DEFAULT_AI_WRITING_STYLE_PROMPT);
+        const textarea = document.getElementById('ai-writing-style-prompt'); if (textarea) textarea.value = DEFAULT_AI_WRITING_STYLE_PROMPT;
+    }
+    await renderAIWritingStyleFiles();
+}
+
+async function exportAIWritingStylePackage() {
+    const payload = { format: 'mdpro-writing-style', version: 1, exportedAt: new Date().toISOString(), prompt: getAIWritingStylePrompt(), files: await getAIWritingStyleFiles() };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'mdpro-writing-style.mstyle'; link.click(); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    setAIWritingStylePromptFeedback('문체 프롬프트와 자료 파일을 내보냈습니다.', false);
+}
+
+async function importAIWritingStylePackage(event) {
+    const input = event && event.target; const file = input && input.files && input.files[0]; if (!file) return;
+    try {
+        const payload = JSON.parse(await file.text());
+        if (!payload || payload.format !== 'mdpro-writing-style' || !Array.isArray(payload.files)) throw new Error('지원하지 않는 문체 파일입니다.');
+        await putAIWritingStyleFiles(payload.files);
+        const prompt = String(payload.prompt || buildAIWritingStylePrompt(await getAIWritingStyleFiles())).trim();
+        localStorage.setItem(AI_WRITING_STYLE_PROMPT_KEY, prompt); await writeAIWritingStyleSetting('active_prompt', prompt);
+        const textarea = document.getElementById('ai-writing-style-prompt'); if (textarea) textarea.value = prompt;
+        await renderAIWritingStyleFiles(); setAIWritingStylePromptFeedback('문체 패키지를 불러와 inDB에 저장했습니다.', false);
+    } catch (error) { setAIWritingStylePromptFeedback('문체 불러오기 실패: ' + (error.message || error), true); }
+    if (input) input.value = '';
+}
+
+function openAIWritingStyleSettings() {
+    if (typeof openSettingsModal === 'function') openSettingsModal();
+    const details = document.getElementById('ai-writing-style-prompt-settings');
+    if (details) { details.open = true; setTimeout(function () { details.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 50); }
+    loadAIWritingStylePrompt();
+}
+window.openAIWritingStyleSettings = openAIWritingStyleSettings;
+window.importAIWritingStyleSourceFiles = importAIWritingStyleSourceFiles;
+window.exportAIWritingStylePackage = exportAIWritingStylePackage;
+window.importAIWritingStylePackage = importAIWritingStylePackage;
 
 function focusGoogleCalendarSettings() {
     const settingsBody = document.getElementById('settings-modal-body');

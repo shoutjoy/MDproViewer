@@ -152,6 +152,7 @@
   var topLayerObserver = null;
   var topLayerPromotionTimer = null;
   var pendingAttachments = [];
+  var queuedRequests = [];
   var MAX_ATTACHMENTS = 8;
   var attachmentLoading = false;
 
@@ -574,6 +575,9 @@
       + '        <button type="button" id="ai-chat-set-start-layout" class="ai-chat-set-start-layout" role="menuitem">현재 배치를 시작 위치로 지정</button>'
       + '      </div>'
       + '    </div>'
+      + '    <button type="button" id="ai-chat-writing-style-settings" class="ai-chat-icon-action" title="문체 설정" aria-label="문체 설정">'
+      + '      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.55V21h-4v-.08A1.7 1.7 0 0 0 8.95 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.08V3h4v.08A1.7 1.7 0 0 0 15.05 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9 1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span class="ai-chat-action-label">문체</span>'
+      + '    </button>'
       + '    <button type="button" id="ai-chat-close" title="닫기" aria-label="AI Jena 닫기">×</button>'
       + '  </div>'
       + '</header>'
@@ -666,6 +670,9 @@
     document.getElementById('ai-chat-copy-all').addEventListener('click', copyConversation);
     document.getElementById('ai-chat-save-all').addEventListener('click', saveConversationMarkdown);
     document.getElementById('ai-chat-data-center-open').addEventListener('click', openAIDataCenter);
+    document.getElementById('ai-chat-writing-style-settings').addEventListener('click', function () {
+      if (typeof root.openAIWritingStyleSettings === 'function') root.openAIWritingStyleSettings();
+    });
     document.getElementById('ai-chat-send').addEventListener('click', sendMessage);
     document.getElementById('ai-chat-stop').addEventListener('click', stopMessage);
     var importSelectionButton = document.getElementById('ai-chat-import-selection');
@@ -2201,9 +2208,23 @@
     var showReasoning = document.getElementById('ai-chat-show-reasoning');
     var fastMode = document.getElementById('ai-chat-fast-mode');
     var modeButtons = document.querySelectorAll('#ai-chat-panel [data-ai-chat-mode]');
-    if (send) send.disabled = state.running || state.storageInitializing;
+    if (send) {
+      send.disabled = state.storageInitializing;
+      send.textContent = state.running
+        ? '대기 추가' + (queuedRequests.length ? ' (' + queuedRequests.length + ')' : '')
+        : '전송';
+      send.title = state.running ? '현재 답변이 끝나면 자동으로 전송합니다.' : '';
+    }
     if (stop) stop.disabled = !state.running;
-    if (input) input.disabled = state.running || state.storageInitializing;
+    // Keep the composer available while an answer is being generated so the
+    // user can prepare and queue the next question without affecting the
+    // active response.
+    if (input) {
+      input.disabled = state.storageInitializing;
+      input.placeholder = state.running
+        ? '답변 중 · 다음 질문을 미리 입력하세요.'
+        : '질문을 입력하세요. Enter 전송 · Shift+Enter 줄바꿈';
+    }
     if (provider) provider.disabled = state.running;
     if (model) model.disabled = state.running || state.provider === 'lmstudio';
     if (writingStyle) writingStyle.disabled = state.running;
@@ -4036,10 +4057,10 @@
           var explanation = document.createElement('section');
           explanation.className = 'ai-chat-explanation';
           var explanationHead = document.createElement('div');
-          explanationHead.innerHTML = '<strong>응답 설명</strong>';
+          explanationHead.innerHTML = '<strong>Jena\'s Thought</strong>';
           var explanationCopy = document.createElement('button');
           explanationCopy.type = 'button';
-          explanationCopy.textContent = '설명 복사';
+          explanationCopy.textContent = 'Thought 복사';
           explanationCopy.addEventListener('click', function () { copyText(message.explanation); });
           explanationHead.appendChild(explanationCopy);
           var explanationBody = document.createElement('div');
@@ -4271,7 +4292,7 @@
     if (!state.messages.length) return setStatus('복사할 대화가 없습니다.', 'error');
     copyText(state.messages.map(function (message) {
       var reasoning = state.showReasoning && message.reasoning ? '\n\n[모델의 생각/추론]\n' + message.reasoning : '';
-      var explanation = message.explanation ? '\n\n[응답 설명]\n' + message.explanation : '';
+      var explanation = message.explanation ? '\n\n[Jena\'s Thought]\n' + message.explanation : '';
       var checklist = message.checklist ? '\n\n[답변 체크리스트]\n' + message.checklist : '';
       var images = Array.isArray(message.images) && message.images.length ? '\n\n[생성 이미지 ' + message.images.length + '개]' : '';
       return (message.role === 'user' ? '나' : 'AI') + ':\n' + message.content + explanation + checklist + reasoning + images;
@@ -4329,7 +4350,7 @@
       }
       answerNumber += 1;
       lines.push('## 답변 ' + answerNumber, '');
-      if (message.explanation) lines.push('### 응답 설명', '', String(message.explanation).trim(), '');
+      if (message.explanation) lines.push('### Jena\'s Thought', '', String(message.explanation).trim(), '');
       if (message.checklist) lines.push('### 답변 체크리스트', '', String(message.checklist).trim(), '');
       if (state.showReasoning && message.reasoning) lines.push('### 모델의 생각/추론', '', String(message.reasoning).trim(), '');
       lines.push('### 최종 답변', '', String(message.content || '').trim(), '');
@@ -4789,21 +4810,41 @@
     ].filter(Boolean).join('\n');
   }
 
-  async function sendMessage() {
-    if (state.running || state.storageInitializing) return;
+  function queueComposerRequest() {
     if (attachmentLoading) return setStatus('첨부 파일을 모두 읽은 뒤 전송해 주세요.', 'error');
     var input = document.getElementById('ai-chat-input');
     var text = input ? String(input.value || '').trim() : '';
     if (!text && !pendingAttachments.length) return;
     if (!text) text = '첨부 파일의 내용을 분석해 주세요.';
-    var sendingAttachments = pendingAttachments.slice();
+    queuedRequests.push({ text: text, attachments: pendingAttachments.slice() });
+    if (input) input.value = '';
+    pendingAttachments = [];
+    renderPendingAttachments();
+    setRunning(true);
+    setStatus('다음 질문 ' + queuedRequests.length + '개가 전송 대기 중입니다.', 'loading');
+    if (input) input.focus();
+  }
+
+  async function sendMessage(queuedRequest) {
+    if (state.running && !queuedRequest) return queueComposerRequest();
+    if (state.storageInitializing) return;
+    if (attachmentLoading) return setStatus('첨부 파일을 모두 읽은 뒤 전송해 주세요.', 'error');
+    var input = document.getElementById('ai-chat-input');
+    var text = queuedRequest ? String(queuedRequest.text || '').trim() : (input ? String(input.value || '').trim() : '');
+    var sendingAttachments = queuedRequest && Array.isArray(queuedRequest.attachments)
+      ? queuedRequest.attachments.slice()
+      : pendingAttachments.slice();
+    if (!text && !sendingAttachments.length) return;
+    if (!text) text = '첨부 파일의 내용을 분석해 주세요.';
     var pendingUser = { role: 'user', content: text, attachments: sendingAttachments, createdAt: Date.now(), failed: false };
     await saveAIUsageAttachments(sendingAttachments, pendingUser.createdAt);
     state.messages.push(pendingUser);
     state.messages = state.messages.slice(-MAX_STORED_MESSAGES);
-    if (input) input.value = '';
-    pendingAttachments = [];
-    renderPendingAttachments();
+    if (!queuedRequest) {
+      if (input) input.value = '';
+      pendingAttachments = [];
+      renderPendingAttachments();
+    }
     saveHistory();
     setRunning(true);
     startThinkingProgress();
@@ -5048,12 +5089,15 @@
       academicAbortController = null;
       internetAbortController = null;
       stopThinkingProgress();
-      setRunning(false);
+      var nextQueuedRequest = queuedRequests.shift() || null;
+      setRunning(!!nextQueuedRequest);
       state.messages = state.messages.slice(-MAX_STORED_MESSAGES);
       saveHistory();
       renderMessages();
       updateHeaderModel();
-      if (input) input.focus();
+      if (nextQueuedRequest) {
+        Promise.resolve().then(function () { sendMessage(nextQueuedRequest); });
+      } else if (input) input.focus();
     }
   }
 
