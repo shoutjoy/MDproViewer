@@ -9,10 +9,10 @@ const css = fs.readFileSync(path.join(root, 'AI_App', 'aiChat', 'ai-chat.css'), 
 
 assert.match(chat, /id="ai-chat-document-write"/);
 assert.match(chat, /id="ai-chat-document-write-mode"/);
-assert.match(chat, /✍ 문서에 작성/);
-assert.match(chat, /← 현재 커서/);
-assert.match(chat, /↓ 맨 아래/);
-assert.match(chat, /↔ 선택 영역/);
+assert.match(chat, /aria-label="문서에 작성"[\s\S]*?<span aria-hidden="true">📝<\/span>/);
+assert.match(chat, /value="cursor" aria-label="현재 커서">←<\/option>/);
+assert.match(chat, /value="document-end" aria-label="문서 맨 아래">↓<\/option>/);
+assert.match(chat, /value="selection" hidden aria-label="선택 영역">↔<\/option>/);
 assert.match(chat, /function captureDocumentSelection/);
 assert.match(chat, /selectionSnapshot: documentSelectionSnapshot/);
 assert.match(chat, /replaceSelection: selectionWriteModeActive\(\)/);
@@ -32,5 +32,7 @@ assert.match(app, /beginDocumentWrite: function/);
 assert.match(app, /updateDocumentWrite: function/);
 assert.match(app, /finishDocumentWrite: function/);
 assert.match(css, /\.ai-chat-document-write-toggle/);
+assert.match(css, /\.ai-chat-document-write-toggle input \{[^}]*width: 15px;[^}]*height: 15px;[^}]*accent-color: #14b8a6;/s);
+assert.doesNotMatch(css, /\.ai-chat-document-write-toggle input \{[^}]*opacity: 0;/s);
 
 console.log('AI Jena document write wiring verified.');

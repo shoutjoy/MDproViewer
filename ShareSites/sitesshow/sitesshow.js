@@ -15,6 +15,8 @@
     let sitesPanelResizing = false;
     let sitesPanelSavedWidth = '';
     let sitesPanelSavedHeight = '';
+    const SITES_AI_JENA_GAP = 120;
+    const SITES_DOCK_BOTTOM_GAP = 74;
     let editingSiteIndex = -1;
     let editingPreferencesSiteIndex = -1;
 
@@ -376,9 +378,31 @@
         renderSitesPanel();
     }
 
+    function getOpenAiJenaDockWidth() {
+        const panel = document.getElementById('ai-chat-panel');
+        const dock = document.getElementById('ai-chat-dock-slot');
+        const isOpen = !!(panel && dock
+            && panel.classList.contains('open')
+            && panel.classList.contains('layout-dock')
+            && dock.classList.contains('active'));
+        return isOpen ? Math.max(0, dock.getBoundingClientRect().width) : 0;
+    }
+
+    function positionSitesPanelForAiJena() {
+        const panel = document.getElementById('sites-panel');
+        if (!panel || sitesPanelCompact || sitesPanelMoved) return;
+        const dockWidth = getOpenAiJenaDockWidth();
+        panel.style.left = '';
+        panel.style.top = '';
+        panel.style.right = (dockWidth > 0 ? dockWidth + SITES_AI_JENA_GAP : 12) + 'px';
+        panel.style.bottom = (dockWidth > 0 ? SITES_DOCK_BOTTOM_GAP : 12) + 'px';
+        panel.classList.toggle('ai-jena-dock-adjacent', dockWidth > 0);
+    }
+
     function toggleSitesCompactMode() {
         sitesPanelCompact = !sitesPanelCompact;
         applySitesPanelMode();
+        positionSitesPanelForAiJena();
     }
 
     function toggleSitesSettingsPanel() {
@@ -491,6 +515,7 @@
         bindSitesPanelDrag();
         bindSitesPanelResize();
         applySitesPanelMode();
+        positionSitesPanelForAiJena();
         renderSitesPanel();
         panel.classList.remove('hidden');
         panel.classList.add('flex');
@@ -509,6 +534,13 @@
         if (sitesPanelOpen) closeSitesPanel();
         else openSitesPanel();
     }
+
+    window.addEventListener('ai-jena-layout-change', function () {
+        if (sitesPanelOpen) positionSitesPanelForAiJena();
+    });
+    window.addEventListener('resize', function () {
+        if (sitesPanelOpen) positionSitesPanelForAiJena();
+    });
 
     function buildSiteNameFromUrl(url) {
         try {
@@ -751,4 +783,3 @@ window.ensureSitesShowUiReady = ensureSitesShowUiReady;
 ensureSitesShowUiReady();
 document.addEventListener('DOMContentLoaded', ensureSitesShowUiReady);
 window.addEventListener('load', ensureSitesShowUiReady);
-

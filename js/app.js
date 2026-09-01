@@ -550,6 +550,10 @@ let html2pptSavedWidth = '';
 let html2pptSavedHeight = '';
 let html2pptFullscreen = false;
 let html2pptRestoreState = null;
+const HTML2PPT_AI_JENA_SIDE_GAP = 48;
+const HTML2PPT_AI_JENA_LEFT_GAP = 72;
+const HTML2PPT_AI_JENA_TOP_GAP = 114;
+const HTML2PPT_AI_JENA_BOTTOM_GAP = 76;
 let templateCustomList = [];
 let settingsModalDragBound = false;
 let settingsModalDragging = false;
@@ -11223,12 +11227,23 @@ async function toggleTemplateNewFileSection() {
     try { await setAiSettings({ templateNewFileVisible: enabled }); } catch (e) { console.error(e); }
 }
 
+function getHtml2pptOpenAiJenaDockWidth() {
+    const chatPanel = document.getElementById('ai-chat-panel');
+    const dockSlot = document.getElementById('ai-chat-dock-slot');
+    const dockOpen = !!(chatPanel && dockSlot
+        && chatPanel.classList.contains('open')
+        && chatPanel.classList.contains('layout-dock')
+        && dockSlot.classList.contains('active'));
+    return dockOpen ? Math.max(0, dockSlot.getBoundingClientRect().width) : 0;
+}
+
 function applyHtml2pptPanelLayout() {
     const panel = document.getElementById('html2ppt-panel');
     const dockBtn = document.getElementById('html2ppt-panel-dock-btn');
     const fullBtn = document.getElementById('html2ppt-panel-full-btn');
     const resizeHandle = document.getElementById('html2ppt-panel-resizer');
     if (!panel) return;
+    const aiJenaDockWidth = getHtml2pptOpenAiJenaDockWidth();
 
     if (html2pptFullscreen) {
         panel.style.left = '8px';
@@ -11241,7 +11256,20 @@ function applyHtml2pptPanelLayout() {
         panel.style.maxHeight = 'none';
         if (dockBtn) dockBtn.disabled = true;
         if (resizeHandle) resizeHandle.style.display = 'none';
+    } else if (html2pptDockRight && aiJenaDockWidth > 0 && !html2pptMoved) {
+        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1280;
+        const workspaceWidth = Math.max(0, viewportWidth - aiJenaDockWidth);
+        panel.style.left = (workspaceWidth >= 1100 ? HTML2PPT_AI_JENA_LEFT_GAP : 12) + 'px';
+        panel.style.top = HTML2PPT_AI_JENA_TOP_GAP + 'px';
+        panel.style.right = (aiJenaDockWidth + (workspaceWidth >= 700 ? HTML2PPT_AI_JENA_SIDE_GAP : 12)) + 'px';
+        panel.style.bottom = HTML2PPT_AI_JENA_BOTTOM_GAP + 'px';
+        panel.style.width = 'auto';
+        panel.style.height = 'auto';
+        panel.style.maxWidth = 'none';
+        panel.style.maxHeight = 'none';
+        panel.classList.add('ai-jena-dock-adjacent');
     } else if (html2pptDockRight) {
+        panel.classList.remove('ai-jena-dock-adjacent');
         panel.style.left = 'auto';
         panel.style.top = '80px';
         panel.style.right = '12px';
@@ -11250,6 +11278,7 @@ function applyHtml2pptPanelLayout() {
         panel.style.height = html2pptSavedHeight || 'min(760px,86vh)';
         html2pptMoved = false;
     } else if (!html2pptMoved) {
+        panel.classList.remove('ai-jena-dock-adjacent');
         panel.style.left = '';
         panel.style.top = '80px';
         panel.style.right = '12px';
@@ -11415,6 +11444,13 @@ function toggleHtml2pptPanel() {
     if (html2pptPanelOpen) closeHtml2pptPanel();
     else openHtml2pptPanel();
 }
+
+window.addEventListener('ai-jena-layout-change', function () {
+    if (html2pptPanelOpen && !html2pptMoved) applyHtml2pptPanelLayout();
+});
+window.addEventListener('resize', function () {
+    if (html2pptPanelOpen && !html2pptMoved) applyHtml2pptPanelLayout();
+});
 
 function applyHtml2pptVisibility(settings) {
     const enabled = getHtml2pptVisibleFromSettings(settings || {});

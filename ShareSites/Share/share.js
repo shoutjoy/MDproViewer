@@ -20,6 +20,7 @@
     let shareSites = DEFAULT_SHARE_SITES.slice();
     let customShareDestinations = [];
     let shareModalDragBound = false;
+    let shareModalMoved = false;
 
     function getNaverBlogIdFromSettings(settings) {
         return String(settings && settings.naverBlogId ? settings.naverBlogId : '').trim();
@@ -806,7 +807,9 @@
         const header = document.getElementById('share-links-modal-header');
         if (!panel || !header) return;
         if (window.enableTouchModalDrag) {
-            window.enableTouchModalDrag(panel, header);
+            window.enableTouchModalDrag(panel, header, {
+                onMove: function () { shareModalMoved = true; }
+            });
         }
 
         let dragging = false;
@@ -831,6 +834,7 @@
             const y = Math.max(8, Math.min(window.innerHeight - panel.offsetHeight - 8, e.clientY - offsetY));
             panel.style.left = x + 'px';
             panel.style.top = y + 'px';
+            shareModalMoved = true;
         });
 
         document.addEventListener('mouseup', function () {
@@ -843,11 +847,19 @@
     function moveShareLinksModalToRightSide() {
         const panel = document.getElementById('share-links-modal-panel');
         if (!panel) return;
-        const rightMargin = 16;
-        const top = 100;
+        const chatPanel = document.getElementById('ai-chat-panel');
+        const dockSlot = document.getElementById('ai-chat-dock-slot');
+        const dockOpen = !!(chatPanel && dockSlot
+            && chatPanel.classList.contains('open')
+            && chatPanel.classList.contains('layout-dock')
+            && dockSlot.classList.contains('active'));
+        const dockWidth = dockOpen ? Math.max(0, dockSlot.getBoundingClientRect().width) : 0;
+        const rightMargin = dockWidth > 0 ? dockWidth + 36 : 16;
+        const top = dockWidth > 0 ? 124 : 100;
         panel.style.transform = 'none';
-        panel.style.left = Math.max(8, window.innerWidth - Math.min(panel.offsetWidth || 270, 280) - rightMargin) + 'px';
+        panel.style.left = Math.max(8, window.innerWidth - (panel.offsetWidth || 270) - rightMargin) + 'px';
         panel.style.top = Math.max(8, top) + 'px';
+        panel.classList.toggle('ai-jena-dock-adjacent', dockWidth > 0);
     }
 
     function optimizeShareLinksModalWidth() {
@@ -913,6 +925,7 @@
 
         const modal = document.getElementById('share-links-modal');
         if (modal) {
+            shareModalMoved = false;
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             requestAnimationFrame(function () {
@@ -921,6 +934,13 @@
             });
         }
     }
+
+    window.addEventListener('ai-jena-layout-change', function () {
+        if (isShareLinksModalOpen() && !shareModalMoved) moveShareLinksModalToRightSide();
+    });
+    window.addEventListener('resize', function () {
+        if (isShareLinksModalOpen() && !shareModalMoved) moveShareLinksModalToRightSide();
+    });
 
     function applyToDocsVisibility(settings) {
         const s = settings || {};
