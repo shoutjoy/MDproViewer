@@ -590,6 +590,7 @@
                       <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
                     </div>
                     <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="사전 프롬프트를 입력하거나 편집하세요. 필요시 내용을 추가할 수 있습니다." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
+                    <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:7px"><button type="button" id="scholar-ai-pre-prompt-edit" class="sa-btn ghost" onclick="scholarAIEditPrePrompt()">수정</button><button type="button" id="scholar-ai-pre-prompt-save" class="sa-btn" onclick="scholarAISavePrePrompt()">저장</button></div>
                   </div>
                   <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
                     <label style="font-size:10px;margin-bottom:4px">모델</label>
@@ -2265,17 +2266,13 @@
                             <p id="settings-scholar-ai-provider-status" class="text-xs min-h-[1.25rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
                             <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
                                 <a href="https://lmstudio.ai/download" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">LM Studio 다운로드</a>
-                                <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">Ollama 다운로드</a>
-                                <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">Ollama 모델 찾기</a>
                             </div>
                         </div>
                         <div id="ollama-provider-settings" class="pt-3 mt-3 border-t border-emerald-300 dark:border-emerald-900/70 space-y-3">
-                            <div>
-                                <p class="text-[11px] text-slate-500 dark:text-slate-400">실행 중인 로컬 Ollama 서버에 API Key 없이 직접 연결합니다.</p>
-                            </div>
-                            <label class="text-xs text-slate-600 dark:text-slate-400">Ollama Base URL
+                            <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">실행 중인 로컬 Ollama 서버에 API Key 없이 연결합니다.</p>
+                            <label class="block text-xs font-medium text-slate-600 dark:text-slate-400">Ollama Base URL
                                 <input id="settings-ollama-base-url" type="url" spellcheck="false" value="http://127.0.0.1:11434"
-                                    class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                    class="mt-1 block w-full min-w-0 px-3 py-2 border rounded-md bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
                             </label>
                             <div class="rounded-md border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/80 p-2.5">
                                 <div class="flex items-center justify-between gap-2">
@@ -2286,10 +2283,20 @@
                             </div>
                             <div class="flex flex-wrap items-center gap-2">
                                 <button type="button" onclick="saveOllamaSettings(true)" class="px-2 py-1.5 rounded bg-emerald-700 text-white text-xs hover:bg-emerald-800">Ollama 설정 저장</button>
-                                <button type="button" onclick="loadSettingsOllamaModels()" class="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">모델 확인</button>
+                                <div class="flex min-w-0 items-center gap-2">
+                                    <button type="button" onclick="loadSettingsOllamaModels()" class="shrink-0 px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 text-xs">모델 확인</button>
+                                    <a href="https://raw.githubusercontent.com/shoutjoy/OllamaServer/main/Ollama_Park.exe" download="Ollama_Park.exe"
+                                        class="inline-flex min-w-0 items-center px-2 py-1.5 rounded border border-amber-400 bg-amber-50 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50">
+                                        서버 실행 앱 다운로드
+                                    </a>
+                                </div>
                             </div>
                             <p id="settings-ollama-status" class="text-xs min-h-[1.25rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>
-                            <p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">기본 주소는 <code>http://127.0.0.1:11434</code>입니다. 웹브라우저에서 차단되면 Ollama의 <code>OLLAMA_ORIGINS</code>에 현재 웹 주소를 허용해야 하며, 데스크톱 빌드는 로컬 IPC를 사용합니다.</p>
+                            <div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+                                <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" class="text-amber-700 dark:text-amber-300 hover:underline">Ollama 다운로드</a>
+                                <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer" class="text-amber-700 dark:text-amber-300 hover:underline">Ollama 모델 찾기</a>
+                            </div>
+                            <p class="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">기본 주소: <code>http://127.0.0.1:11434</code>. 브라우저에서 연결이 차단되면 Ollama의 <code>OLLAMA_ORIGINS</code>에 현재 웹 주소를 허용하세요. 데스크톱 앱은 로컬 IPC로 연결합니다.</p>
                         </div>
                         <div id="litertlm-provider-settings" class="pt-3 mt-3 border-t border-blue-300 dark:border-blue-900/70 space-y-3">
                             <div class="flex items-center justify-between gap-2">
@@ -2309,7 +2316,7 @@
                                         <input id="settings-litertlm-cloud-name" type="text" value="cloud" spellcheck="false" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
                                     </label>
                                     <label class="text-xs text-slate-600 dark:text-slate-400">Cloud Base URL
-                                        <input id="settings-litertlm-cloud-url" type="url" value="https://llm1.abci.co.kr/v1" readonly aria-readonly="true" class="mt-1 w-full px-2 py-1.5 border rounded bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                        <input id="settings-litertlm-cloud-url" type="url" value="" oninput="handleLiteRTLMCloudUrlInput(this)" placeholder="자신의 서버 URL 입력 또는 아래에서 보호 URL 인증" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600">
                                     </label>
                                 </div>
                             </div>
@@ -2318,30 +2325,44 @@
                                     <option value="">모델 가져오기를 실행하세요</option>
                                 </select>
                             </label>
-                            <div class="litertlm-parameter-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                                <label class="text-xs text-slate-600 dark:text-slate-400">Context length<input id="settings-litertlm-context-length" type="number" min="1" step="1" value="4096" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
-                                <label class="text-xs text-slate-600 dark:text-slate-400">Max gen<input id="settings-litertlm-max-gen" type="number" min="1" step="1" value="2048" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
-                                <label class="text-xs text-slate-600 dark:text-slate-400">Sampler<select id="settings-litertlm-sampler" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"><option value="greedy">Greedy</option><option value="top_k">Top-K</option><option value="top_p">Top-P</option></select></label>
-                                <label class="text-xs text-slate-600 dark:text-slate-400">Temp<input id="settings-litertlm-temperature" type="number" min="0" max="2" step="0.1" value="0.3" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
-                                <label class="text-xs text-slate-600 dark:text-slate-400">Top-P<input id="settings-litertlm-top-p" type="number" min="0" max="1" step="0.05" value="0.9" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
-                                <label class="text-xs text-slate-600 dark:text-slate-400">Top-K<input id="settings-litertlm-top-k" type="number" min="1" step="1" value="40" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
-                            </div>
-                            <label class="flex items-center justify-center gap-2 rounded-md border border-blue-400 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs font-semibold text-blue-800 dark:text-blue-200 cursor-pointer">
-                                <input id="settings-litertlm-thinking" type="checkbox" checked class="rounded border-blue-400 text-blue-600 focus:ring-blue-500"> Thinking
-                            </label>
-                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border border-blue-200 dark:border-blue-900/70 bg-blue-50/70 dark:bg-blue-950/20 p-3">
-                                <label class="flex items-center gap-2 text-xs font-semibold text-blue-800 dark:text-blue-200 cursor-pointer">
-                                    <input id="settings-litertlm-streaming" type="checkbox" checked class="rounded border-blue-400 text-blue-600 focus:ring-blue-500"> 응답 토큰 실시간 표시
-                                </label>
-                                <label class="text-xs text-slate-600 dark:text-slate-400">화면 갱신 간격
-                                    <select id="settings-litertlm-render-interval" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
-                                        <option value="50">빠름 · 50ms</option>
-                                        <option value="100" selected>모바일 권장 · 100ms</option>
-                                        <option value="200">절전 · 200ms</option>
-                                    </select>
-                                </label>
-                            </div>
-                            <p class="text-[11px] text-slate-500 dark:text-slate-400">LiteRT-LM은 스트리밍을 별도로 활성화합니다. 모바일에서는 여러 토큰을 묶어 100ms 간격으로 그려 배터리와 화면 렌더링 부담을 줄입니다.</p>
+                            <details id="litertlm-input-settings" class="rounded-md border border-slate-200 dark:border-slate-600 bg-white/70 dark:bg-slate-900/30">
+                                <summary class="cursor-pointer px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300">AI 입력 정보 · Context length / 생성 설정</summary>
+                                <div class="space-y-3 border-t border-slate-200 dark:border-slate-700 p-3">
+                                    <div class="litertlm-parameter-grid grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                                        <label class="text-xs text-slate-600 dark:text-slate-400">Context length<input id="settings-litertlm-context-length" type="number" min="1" step="1" value="4096" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                        <label class="text-xs text-slate-600 dark:text-slate-400">Max gen<input id="settings-litertlm-max-gen" type="number" min="1" step="1" value="2048" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                        <label class="text-xs text-slate-600 dark:text-slate-400">Sampler<select id="settings-litertlm-sampler" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"><option value="greedy">Greedy</option><option value="top_k">Top-K</option><option value="top_p">Top-P</option></select></label>
+                                        <label class="text-xs text-slate-600 dark:text-slate-400">Temp<input id="settings-litertlm-temperature" type="number" min="0" max="2" step="0.1" value="0.3" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                        <label class="text-xs text-slate-600 dark:text-slate-400">Top-P<input id="settings-litertlm-top-p" type="number" min="0" max="1" step="0.05" value="0.9" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                        <label class="text-xs text-slate-600 dark:text-slate-400">Top-K<input id="settings-litertlm-top-k" type="number" min="1" step="1" value="40" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600"></label>
+                                    </div>
+                                    <label class="flex items-center justify-center gap-2 rounded-md border border-blue-400 bg-blue-50 dark:bg-blue-950/30 px-3 py-2 text-xs font-semibold text-blue-800 dark:text-blue-200 cursor-pointer">
+                                        <input id="settings-litertlm-thinking" type="checkbox" checked class="rounded border-blue-400 text-blue-600 focus:ring-blue-500"> Thinking
+                                    </label>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 rounded-md border border-blue-200 dark:border-blue-900/70 bg-blue-50/70 dark:bg-blue-950/20 p-3">
+                                        <label class="flex items-center gap-2 text-xs font-semibold text-blue-800 dark:text-blue-200 cursor-pointer">
+                                            <input id="settings-litertlm-streaming" type="checkbox" checked class="rounded border-blue-400 text-blue-600 focus:ring-blue-500"> 응답 토큰 실시간 표시
+                                        </label>
+                                        <label class="text-xs text-slate-600 dark:text-slate-400">화면 갱신 간격
+                                            <select id="settings-litertlm-render-interval" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                                                <option value="50">빠름 · 50ms</option>
+                                                <option value="100" selected>모바일 권장 · 100ms</option>
+                                                <option value="200">절전 · 200ms</option>
+                                            </select>
+                                        </label>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 dark:text-slate-400">LiteRT-LM은 스트리밍을 별도로 활성화합니다. 모바일에서는 여러 토큰을 묶어 100ms 간격으로 그려 배터리와 화면 렌더링 부담을 줄입니다.</p>
+                                    <div class="rounded-md border border-blue-200 dark:border-blue-900/70 bg-blue-50/70 dark:bg-blue-950/20 p-3 space-y-2">
+                                        <label class="block text-xs font-semibold text-blue-800 dark:text-blue-200">Cloud URL 사용 비밀번호
+                                            <div class="mt-1 flex gap-2">
+                                                <input id="settings-litertlm-access-password" type="password" autocomplete="off" oninput="handleLiteRTLMPasswordInput(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();unlockLiteRTLMCloudUrl();}" placeholder="비밀번호 입력" class="min-w-0 flex-1 px-2 py-1.5 border rounded bg-white dark:bg-slate-900 border-blue-200 dark:border-blue-800">
+                                                <button type="button" onclick="unlockLiteRTLMCloudUrl()" class="shrink-0 px-3 py-1.5 rounded bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">확인</button>
+                                            </div>
+                                        </label>
+                                        <p id="settings-litertlm-access-status" class="text-[11px] text-slate-500 dark:text-slate-400" aria-live="polite">지정된 보호 URL만 비밀번호가 필요합니다. 다른 서버 URL은 인증 없이 사용할 수 있습니다.</p>
+                                    </div>
+                                </div>
+                            </details>
                             <div class="litertlm-actions flex flex-wrap items-center gap-2">
                                 <button type="button" onclick="saveLiteRTLMSettings(true)" class="litertlm-save-button px-3 py-2 rounded bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">LiteRT-LM 설정 저장</button>
                                 <button type="button" onclick="applyLiteRTLMMobilePreset()" class="px-2 py-1.5 rounded border border-blue-400 text-blue-700 dark:text-blue-300 text-xs">모바일 경량 설정</button>

@@ -137,7 +137,7 @@ console.log(result.text);
 MD Viewer의 ScholarAI에는 `scholar-ai-provider.js`가 연결되어 있어 `자동: LM Studio → AI Studio`, `LM Studio만 사용`, `AI Studio만 사용` 모드를 선택할 수 있습니다. 공급자 선택값이 없는 경우 자동 모드가 기본값입니다.
 
 1. LM Studio에서 모델을 로드하고 Local Server를 시작합니다.
-2. 앱의 `설정 → AI 연동 설정 → ScholarAI : LM Studio 설정`에서 Base URL, 필요시 API Key와 Temperature/Max tokens/Timeout/Top P를 입력합니다.
+2. 앱의 `설정 → AI 연동 설정 → ScholarAI : LM Studio 설정`에서 Base URL, 필요시 API Key와 Temperature/Max tokens/Limit time/Top P를 입력합니다. Limit time 기본값은 720초이며, 로드 모델이 보고한 context length를 Max tokens 제시값으로 확인하고 입력란에 적용한 뒤 수정할 수 있습니다.
 3. 같은 설정 카드에서 `현재 로드 모델 확인` 또는 `LM 연결 테스트`를 실행합니다. 모델 변경과 Load는 LM Studio에서 수행합니다.
 4. ScholarAI를 열고 `모델선택`을 누릅니다.
 5. AI Studio에서는 Gemini 모델을 선택합니다. LM Studio에서는 현재 로드 모델이 읽기 전용으로 표시되고 그 모델이 자동 사용됩니다.

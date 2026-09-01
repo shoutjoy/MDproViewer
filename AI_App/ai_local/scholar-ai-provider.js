@@ -1,5 +1,5 @@
 /*
- * ScholarAIProvider - AI Studio / LM Studio / Ollama / DeepSeek / OpenAI text provider adapter.
+ * ScholarAIProvider - shared ScholarAI text provider adapter.
  * Requires AI_App/ai_local/local-ai.js when LM Studio is used.
  */
 (function (root, factory) {
@@ -14,6 +14,8 @@
   var DEEPSEEK_MODEL_KEY = 'ss_scholar_ai_deepseek_model';
   var OPENAI_MODEL_KEY = 'ss_scholar_ai_openai_model';
   var OLLAMA_MODEL_KEY = 'ss_scholar_ai_ollama_model';
+  var OPENAI_COMPATIBLE_MODEL_KEY = 'ss_scholar_ai_openai_compatible_model';
+  var LITERTLM_MODEL_KEY = 'ss_scholar_ai_litertlm_model';
   var DEFAULT_PROVIDER = 'auto';
   var DEFAULT_AISTUDIO_MODEL = 'gemini-2.5-pro';
   var DEFAULT_DEEPSEEK_MODEL = 'deepseek-v4-flash';
@@ -29,7 +31,7 @@
 
   function normalizeProvider(value) {
     var provider = String(value || '').toLowerCase();
-    if (provider === 'lmstudio' || provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'openai' || provider === 'auto') return provider;
+    if (provider === 'lmstudio' || provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'openai' || provider === 'openai-compatible' || provider === 'litertlm' || provider === 'auto') return provider;
     return DEFAULT_PROVIDER;
   }
 
@@ -92,6 +94,8 @@
     var callDeepseek = options.callDeepseek;
     var callOpenAI = options.callOpenAI;
     var callOllama = options.callOllama;
+    var callOpenAICompatible = options.callOpenAICompatible;
+    var callLiteRTLM = options.callLiteRTLM;
     var activeController = null;
 
     function getProvider() {
@@ -122,6 +126,8 @@
       if (selectedProvider === 'ollama') return storage.getItem(OLLAMA_MODEL_KEY) || '';
       if (selectedProvider === 'deepseek') return storage.getItem(DEEPSEEK_MODEL_KEY) || DEFAULT_DEEPSEEK_MODEL;
       if (selectedProvider === 'openai') return storage.getItem(OPENAI_MODEL_KEY) || DEFAULT_OPENAI_MODEL;
+      if (selectedProvider === 'openai-compatible') return storage.getItem(OPENAI_COMPATIBLE_MODEL_KEY) || '';
+      if (selectedProvider === 'litertlm') return storage.getItem(LITERTLM_MODEL_KEY) || '';
       return storage.getItem(AISTUDIO_MODEL_KEY) || DEFAULT_AISTUDIO_MODEL;
     }
 
@@ -139,6 +145,10 @@
         storage.setItem(DEEPSEEK_MODEL_KEY, value || DEFAULT_DEEPSEEK_MODEL);
       } else if (selectedProvider === 'openai') {
         storage.setItem(OPENAI_MODEL_KEY, value || DEFAULT_OPENAI_MODEL);
+      } else if (selectedProvider === 'openai-compatible') {
+        storage.setItem(OPENAI_COMPATIBLE_MODEL_KEY, value);
+      } else if (selectedProvider === 'litertlm') {
+        storage.setItem(LITERTLM_MODEL_KEY, value);
       } else {
         storage.setItem(AISTUDIO_MODEL_KEY, value || DEFAULT_AISTUDIO_MODEL);
       }
@@ -275,12 +285,28 @@
         async function runLMStudio() {
           var synced = await syncLMStudioLoadedModel();
           var model = synced.model;
-          var localResult = await makeLMStudioClient({ model: model }).complete({
-            prompt: request.prompt,
+          var client = makeLMStudioClient({ model: model });
+          var localOptions = {
+            input: request.prompt,
             systemInstruction: request.systemInstruction,
             model: model,
-            signal: controller.signal
-          });
+            signal: controller.signal,
+            maxTokens: request.maxTokens || undefined,
+            timeoutMs: request.completeStreaming === true ? 120000 : (request.timeoutMs || undefined),
+            completeStreaming: request.completeStreaming === true,
+            onEvent: typeof request.onStreamEvent === 'function' ? request.onStreamEvent : undefined
+          };
+          var localResult = typeof request.onStreamEvent === 'function' && typeof client.chatStream === 'function'
+            ? await client.chatStream(localOptions)
+            : await client.chat({
+              input: request.prompt,
+              systemInstruction: request.systemInstruction,
+              model: model,
+              signal: controller.signal,
+              maxTokens: request.maxTokens || undefined,
+              timeoutMs: request.completeStreaming === true ? 120000 : (request.timeoutMs || undefined),
+              completeStreaming: request.completeStreaming === true
+            });
           return { provider: 'lmstudio', model: localResult.model || model, text: localResult.text || '' };
         }
 
@@ -292,7 +318,8 @@
             request.systemInstruction,
             !!request.useSearch,
             model,
-            controller.signal
+            controller.signal,
+            request
           );
           return {
             provider: 'aistudio',
@@ -331,7 +358,7 @@
           var model = String(modelOverride || getModel('ollama') || '').trim();
           if (typeof callOllama !== 'function') throw new Error('Ollama 호출 함수를 사용할 수 없습니다.');
           if (!model) throw new Error('Ollama 모델을 선택하세요. 설정에서 모델 확인을 먼저 실행할 수 있습니다.');
-          var result = await callOllama(request.prompt, request.systemInstruction, request.useSearch, model, controller.signal);
+          var result = await callOllama(request.prompt, request.systemInstruction, request.useSearch, model, controller.signal, request);
           return {
             provider: 'ollama',
             model: (result && result.model) || model,
@@ -339,11 +366,27 @@
           };
         }
 
+        async function runOpenAICompatible(modelOverride) {
+          var model = String(modelOverride || getModel('openai-compatible') || '').trim();
+          if (typeof callOpenAICompatible !== 'function') throw new Error('OpenAI 호환 API 호출 함수를 사용할 수 없습니다.');
+          var result = await callOpenAICompatible(request.prompt, request.systemInstruction, request.useSearch, model, controller.signal);
+          return { provider: 'openai-compatible', model: (result && result.model) || model, text: result && result.text != null ? result.text : String(result || '') };
+        }
+
+        async function runLiteRTLM(modelOverride) {
+          var model = String(modelOverride || getModel('litertlm') || '').trim();
+          if (typeof callLiteRTLM !== 'function') throw new Error('LiteRT-LM 호출 함수를 사용할 수 없습니다.');
+          var result = await callLiteRTLM(request.prompt, request.systemInstruction, request.useSearch, model, controller.signal, request);
+          return { provider: 'litertlm', model: (result && result.model) || model, text: result && result.text != null ? result.text : String(result || '') };
+        }
+
         if (provider === 'lmstudio') return await runLMStudio();
         if (provider === 'aistudio') return await runAIStudio(request.model);
         if (provider === 'ollama') return await runOllama(request.model);
         if (provider === 'deepseek') return await runDeepSeek(request.model);
         if (provider === 'openai') return await runOpenAI(request.model);
+        if (provider === 'openai-compatible') return await runOpenAICompatible(request.model);
+        if (provider === 'litertlm') return await runLiteRTLM(request.model);
 
         var lmError = null;
         if (isLMStudioConfigured()) {

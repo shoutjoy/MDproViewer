@@ -773,7 +773,10 @@
       saveHistory();
     });
     document.getElementById('ai-chat-model').addEventListener('change', function (event) {
-      if (state.provider === 'lmstudio') return;
+      if (state.provider === 'lmstudio') {
+        loadSelectedLMStudioModel(event.target.value);
+        return;
+      }
       if (state.provider === 'litertlm') {
         state.litertlmModel = event.target.value || '';
         storageSet(LITERTLM_MODEL_KEY, state.litertlmModel);
@@ -2226,7 +2229,7 @@
         : '질문을 입력하세요. Enter 전송 · Shift+Enter 줄바꿈';
     }
     if (provider) provider.disabled = state.running;
-    if (model) model.disabled = state.running || state.provider === 'lmstudio';
+    if (model) model.disabled = state.running;
     if (writingStyle) writingStyle.disabled = state.running;
     if (answerAppearance) answerAppearance.disabled = state.running;
     if (refresh) refresh.disabled = state.running;
@@ -2385,7 +2388,10 @@
     var provider = document.getElementById('ai-chat-provider');
     if (provider) provider.value = state.provider;
     if (state.provider === 'lmstudio') {
-      setModelOptions(state.lmModel ? [state.lmModel] : [], state.lmModel, true);
+      var cachedLMStudioModels = [];
+      try { cachedLMStudioModels = getBridge().getCachedLMStudioModels(); } catch (_) {}
+      if (!cachedLMStudioModels.length && state.lmModel) cachedLMStudioModels = [state.lmModel];
+      setModelOptions(cachedLMStudioModels, state.lmModel, false);
     } else if (state.provider === 'ollama') {
       var cachedOllamaModels = [];
       try { cachedOllamaModels = getBridge().getCachedOllamaModels(); } catch (ollamaCacheError) {}
@@ -2450,8 +2456,8 @@
         if (state.provider !== requestedProvider) return;
         state.lmModel = lm && lm.model ? lm.model : '';
         state.lmContextLength = Math.max(0, Number(lm && lm.contextLength) || 0);
-        setModelOptions(lm && lm.models ? lm.models : [], state.lmModel, true);
-        setStatus(state.lmModel ? '현재 LM Studio 로드 모델을 자동으로 사용합니다.' : 'LM Studio에 로드된 LLM이 없습니다.', state.lmModel ? 'ok' : 'error');
+        setModelOptions(lm && lm.models ? lm.models : [], state.lmModel, false);
+        setStatus(state.lmModel ? 'LM Studio 모델 목록을 불러왔습니다: ' + state.lmModel : '모델을 선택하면 LM Studio에 로드합니다.', 'ok');
       } else if (state.provider === 'ollama') {
         var ollamaModels = silent ? bridge.getCachedOllamaModels() : await bridge.refreshOllamaModels();
         if (state.provider !== requestedProvider) return;
@@ -2523,7 +2529,7 @@
       if (state.provider === 'lmstudio') {
         state.lmModel = '';
         state.lmContextLength = 0;
-        setModelOptions([], '', true);
+        setModelOptions([], '', false);
       } else if (state.provider === 'ollama') {
         state.ollamaModel = '';
         setModelOptions([], '', false);
@@ -2539,6 +2545,34 @@
       }
       setStatus(error && error.message ? error.message : String(error), 'error');
       updateHeaderModel();
+    }
+  }
+
+  async function loadSelectedLMStudioModel(model) {
+    model = String(model || '').trim();
+    if (!model || state.running || state.provider !== 'lmstudio') return;
+    var select = document.getElementById('ai-chat-model');
+    var refresh = document.getElementById('ai-chat-refresh-model');
+    if (select) select.disabled = true;
+    if (refresh) refresh.disabled = true;
+    setStatus('LM Studio에서 ' + model + ' 모델을 로드하는 중...', 'loading');
+    try {
+      var result = await getBridge().loadLMStudioModel(model);
+      if (state.provider !== 'lmstudio') return;
+      state.lmModel = result && result.model ? result.model : model;
+      state.lmContextLength = Math.max(0, Number(result && result.contextLength) || 0);
+      var models = result && result.models && result.models.length ? result.models : [state.lmModel];
+      setModelOptions(models, state.lmModel, false);
+      setStatus('LM Studio 모델 로드 완료: ' + state.lmModel, 'ok');
+      updateHeaderModel();
+      updateProviderSummary();
+      saveHistory();
+    } catch (error) {
+      setStatus('LM Studio 모델을 로드하지 못했습니다: ' + (error && error.message ? error.message : error), 'error');
+      await refreshModels(true);
+    } finally {
+      if (select && state.provider === 'lmstudio') select.disabled = state.running;
+      if (refresh) refresh.disabled = state.running;
     }
   }
 

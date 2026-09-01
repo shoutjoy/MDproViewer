@@ -1,4 +1,4 @@
-﻿<!--
+<!--
   sidebarAI - ScholarAI & SSPAI HTML Fragments
   Include these fragments inside the right-side AI panel host.
 -->
@@ -38,6 +38,7 @@
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
         </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:7px"><button type="button" id="scholar-ai-pre-prompt-edit" class="sa-btn ghost" onclick="scholarAIEditPrePrompt()">수정</button><button type="button" id="scholar-ai-pre-prompt-save" class="sa-btn" onclick="scholarAISavePrePrompt()">저장</button></div>
       </div>
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
         <label style="font-size:10px;margin-bottom:4px">Model</label>

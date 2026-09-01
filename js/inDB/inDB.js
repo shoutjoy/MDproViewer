@@ -1314,6 +1314,13 @@ function renderInDbStatusDetail(snapshot, storeName, record) {
             + escapeInDbStatusHtml(record.dataUrl) + '" alt="' + title + '" decoding="async"></div>';
     }
     let aiContent = '';
+    if (storeName === 'ai_settings' && String(record.id || '') === 'ai_settings') {
+        const sharedPrompt = String(record.scholarAIPromptPack || localStorage.getItem('ss_scholar_ai_system') || (typeof window.getDefaultScholarAIPrompt === 'function' ? window.getDefaultScholarAIPrompt() : ''));
+        aiContent = '<section class="indb-shared-prompt-editor"><div><strong>ScholarAI 공유 사전 프롬프트</strong><p>문체 변경·학술 번역·슬라이드 생성 규칙을 ScholarAI와 하나의 자료로 공유합니다.</p></div>'
+            + '<textarea id="indb-scholar-ai-prompt-editor" readonly spellcheck="false">' + escapeInDbStatusHtml(sharedPrompt) + '</textarea>'
+            + '<div class="indb-shared-prompt-actions"><button type="button" onclick="editInDbScholarAIPrompt()">수정</button><button type="button" onclick="saveInDbScholarAIPrompt()">저장</button></div>'
+            + '<p id="indb-scholar-ai-prompt-status" aria-live="polite"></p></section>';
+    }
     if (storeName === 'AI_data' && record.recordType === 'conversation') {
         const messages = (Array.isArray(record.messages) ? record.messages : []).filter(function (message) {
             return inDbAiMessageFilter !== 'assistant' || message.role === 'assistant';
@@ -1367,6 +1374,38 @@ function renderInDbStatusDetail(snapshot, storeName, record) {
         + '<p>' + escapeInDbStatusHtml(getInDbStatusSecondaryText(storeName, record)) + '</p></div>' + deleteControl
         + '</header>' + imagePreview + aiContent + '<div class="indb-detail-fields">' + fields + '</div></div>';
 }
+
+function editInDbScholarAIPrompt() {
+    const input = document.getElementById('indb-scholar-ai-prompt-editor');
+    if (!input) return;
+    input.readOnly = false;
+    input.focus();
+}
+
+async function saveInDbScholarAIPrompt() {
+    const input = document.getElementById('indb-scholar-ai-prompt-editor');
+    const status = document.getElementById('indb-scholar-ai-prompt-status');
+    if (!input) return false;
+    const prompt = String(input.value || '').trim();
+    try {
+        if (prompt) localStorage.setItem('ss_scholar_ai_system', prompt);
+        else localStorage.removeItem('ss_scholar_ai_system');
+        if (typeof setAiSettings === 'function') await setAiSettings({ scholarAIPromptPack: prompt });
+        if (typeof notifyAiToolSettingsChanged === 'function') notifyAiToolSettingsChanged();
+        const scholarInput = document.getElementById('scholar-ai-pre-prompt-text');
+        if (scholarInput) scholarInput.value = prompt;
+        input.readOnly = true;
+        if (status) status.textContent = '저장 완료 · ScholarAI 사전 프롬프트와 공유됨';
+        if (inDbStatusSnapshot) await renderInDbStatusModal();
+        return true;
+    } catch (error) {
+        if (status) status.textContent = '저장 실패: ' + (error && error.message ? error.message : error);
+        return false;
+    }
+}
+
+window.editInDbScholarAIPrompt = editInDbScholarAIPrompt;
+window.saveInDbScholarAIPrompt = saveInDbScholarAIPrompt;
 
 function setInDbAiMessageFilter(filter) {
     inDbAiMessageFilter = filter === 'assistant' ? 'assistant' : 'all';

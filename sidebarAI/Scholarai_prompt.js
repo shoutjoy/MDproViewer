@@ -35,6 +35,39 @@
     '- Preserve syntax fidelity for markdown/code blocks'
   ].join('\n');
 
+  var ACADEMIC_IDA_WORKFLOW = [
+    '[QUICK TOOL] 학술적 ~이다/-다 문체 변경',
+    '- 속도를 위해 먼저 정규식 기반 서술어 검색으로 문장 종결 후보를 찾는다.',
+    '- 코드, 수식, 링크, HTML, 인용문과 Markdown 구조는 보호 영역으로 지정하여 변경하지 않는다.',
+    '- 입니다→이다, 합니다→한다, 되었습니다→되었다처럼 문법적으로 확정적인 후보는 로컬에서 즉시 치환한다.',
+    '- 시제, 부정, 가능성, 당위와 의미 강도를 보존하며 모든 문장에 “이다”를 기계적으로 붙이지 않는다.',
+    '- 규칙만으로 확정할 수 없는 애매한 서술어만 AI에 보내 짧은 교체 문자열로 판정한다.',
+    '- AI는 전체 문장을 다시 쓰거나 요약하지 않고 요청된 후보만 JSON으로 반환한다.',
+    '- 로컬 확정 결과를 먼저 표시하고 AI 판정 결과만 합쳐 최종 원문 전체를 반환한다.'
+  ].join('\n');
+
+  var ACADEMIC_TRANSLATION_WORKFLOW = [
+    '[QUICK TOOL] 학술 번역',
+    '- 한국어↔영어 방향에 맞춰 대학원 학위논문 및 학술지 수준으로 정확하고 자연스럽게 번역한다.',
+    '- 주장, 논리 관계, 인과·조건·제한의 강도, 전문용어, 고유명사, 수치, 단위, 인용과 참고문헌을 보존한다.',
+    '- 원문을 요약·추가·삭제하지 않으며 제목, 문단, 목록, 표, 각주, Markdown, 링크, 코드와 수식 구조를 유지한다.',
+    '- [ANSWER]에는 완전한 최종 번역문을, [REASONING]에는 주요 용어 풀이만 Markdown 목록으로 제시한다.',
+    '- 한국어 결과는 전문적인 ~이다/-한다 학술 문체로 작성한다.'
+  ].join('\n');
+
+  var SLIDE_GENERATION_WORKFLOW = [
+    '[QUICK TOOL] 학술 슬라이드 생성',
+    '- 선택 텍스트를 제목, 배경, 핵심 개념, 방법·논리, 근거, 시사점, 결론 흐름의 4~12장으로 구성한다.',
+    '- 한 장에는 하나의 핵심 메시지와 3~5개의 간결한 요점만 두며 원문에 없는 사실·수치·인용을 만들지 않는다.',
+    '- [ANSWER]에는 코드 펜스 없이 하나의 완전한 자체 포함 HTML 문서를 반환한다.',
+    '- 각 슬라이드는 class="slide-container"이며 1600×900 고정 캔버스와 overflow:hidden을 사용한다.',
+    '- 표 글자는 24px 이상, 머리글은 26px 이상으로 유지하고 근거가 있는 데이터만 Canvas 또는 SVG로 시각화한다.',
+    '- 외부 라이브러리·폰트·이미지·네트워크 요청 없이 GenSlide로 바로 전달 가능한 결과를 만든다.',
+    '- 생성 토큰과 완성된 슬라이드를 실시간 표시하며 시작된 생성은 사용자가 중지하거나 완성될 때까지 지속한다.'
+  ].join('\n');
+
+  var QUICK_TOOL_WORKFLOWS = [ACADEMIC_IDA_WORKFLOW, ACADEMIC_TRANSLATION_WORKFLOW, SLIDE_GENERATION_WORKFLOW].join('\n\n');
+
   var ROLE_SLIDE_MAKER = [
     '[ROLE] Professional Slide Architect / HTML Presentation Designer',
     'You convert the supplied source text into a polished, presentation-ready HTML slide deck.',
@@ -87,9 +120,9 @@
 
   var PRESET_MAP = {
     researcher: [ROLE_RESEARCHER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    editor: [ROLE_EDITOR, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    editor: [ROLE_EDITOR, ACADEMIC_IDA_WORKFLOW, ACADEMIC_TRANSLATION_WORKFLOW, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
     developer: [ROLE_DEVELOPER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
-    slide_editor: [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
+    slide_editor: [ROLE_SLIDE_MAKER, SLIDE_GENERATION_WORKFLOW, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
     slide: [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
     'slider-maker': [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n'),
     slider_maker: [ROLE_SLIDE_MAKER, OUTPUT_POLICY, COMMON_POLICY].join('\n\n')
@@ -118,6 +151,8 @@
       '',
       ROLE_SLIDE_MAKER,
       '',
+      QUICK_TOOL_WORKFLOWS,
+      '',
       OUTPUT_POLICY,
       '',
       COMMON_POLICY
@@ -127,4 +162,5 @@
   window.ScholarAIPromptProfiles = PRESET_MAP;
   window.getScholarAIPromptByRole = getScholarAIPromptByRole;
   window.getDefaultScholarAIPrompt = getDefaultScholarAIPrompt;
+  window.getScholarAIQuickToolPromptPack = function () { return QUICK_TOOL_WORKFLOWS; };
 })();

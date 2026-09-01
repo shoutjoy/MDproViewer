@@ -29,8 +29,13 @@ assert.match(markup, /생략한 <code>\/v1<\/code>은 자동으로 추가/);
 assert.match(markup, /id="settings-lmstudio-advanced"/);
 assert.match(markup, /고급 생성 설정 · Temperature \/ 토큰 \/ 추론/);
 assert.match(markup, /id="settings-lmstudio-model-to-load"/);
+assert.match(markup, /id="settings-lmstudio-model-max-tokens"/);
+assert.match(markup, /모델 제시값 적용/);
+assert.match(markup, /id="settings-lmstudio-timeout"[\s\S]*?value="720"/);
 assert.match(app, /loadSelectedSettingsLMStudioModel/);
 assert.match(app, /listLMStudioModels\(config\)/);
+assert.match(app, /firstInstance && firstInstance\.contextLength/);
+assert.match(app, /applySettingsLMStudioModelMaxTokens/);
 assert.match(fs.readFileSync(path.join(root, 'AI_App', 'ai_local', 'local-ai.js'), 'utf8'), /lmstudio_api_request/);
 assert.match(tauriMain, /async fn lmstudio_api_request/);
 assert.match(tauriMain, /Only a local LM Studio HTTP address is allowed/);
@@ -74,5 +79,7 @@ const autoVersioned = LocalAI.saveConfig({
 }, memoryStorage());
 assert.equal(autoVersioned.baseUrlPrimary, 'http://127.0.0.1:5678/v1');
 assert.equal(autoVersioned.baseUrlSecondary, 'https://online.example/v1');
+
+assert.equal(LocalAI.defaults.timeoutMs, 720000);
 
 console.log('LM Studio dual Base URL tests passed');

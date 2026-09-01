@@ -61,6 +61,7 @@
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
         </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:7px"><button type="button" id="scholar-ai-pre-prompt-edit" class="sa-btn ghost" onclick="scholarAIEditPrePrompt()">수정</button><button type="button" id="scholar-ai-pre-prompt-save" class="sa-btn" onclick="scholarAISavePrePrompt()">저장</button></div>
       </div>
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
         <label style="font-size:10px;margin-bottom:4px">Model</label>
@@ -323,6 +324,7 @@
           <button type="button" class="sa-btn ghost" style="font-size:10px" onclick="scholarAIUsePromptRole('slider-maker')">Slider Maker</button>
         </div>
         <textarea id="scholar-ai-pre-prompt-text" class="scholar-ai-pre-prompt-ta" placeholder="Write reusable instructions that should be applied before every request." style="font-size:11px;line-height:1.5;min-height:120px;max-height:400px;resize:vertical;margin:0;padding:8px;background:#1a1e28;border-radius:4px;border:1px solid #2e3447;color:#fff;width:100%;box-sizing:border-box;display:block"></textarea>
+        <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:7px"><button type="button" id="scholar-ai-pre-prompt-edit" class="sa-btn ghost" onclick="scholarAIEditPrePrompt()">수정</button><button type="button" id="scholar-ai-pre-prompt-save" class="sa-btn" onclick="scholarAISavePrePrompt()">저장</button></div>
       </div>
       <div id="scholar-ai-model-panel" class="scholar-ai-collapse-panel" style="display:none;margin-bottom:8px">
         <label style="font-size:10px;margin-bottom:4px">Model</label>
@@ -1563,16 +1565,33 @@
     if (!el) return;
     var txt = invokeSync('getScholarAISystemInstruction') || '';
     el.value = txt || '';
-    if (!el._scholarAISaveOnBlur) {
-      el._scholarAISaveOnBlur = true;
-      el.addEventListener('blur', function () {
-        var setter = getCallback('setScholarAISystemInstruction');
-        if (typeof setter === 'function') setter(el.value || '');
-        scholarAIUpdateToGenSlideButton();
-      });
+    el.readOnly = true;
+    if (!el._scholarAIPromptBound) {
+      el._scholarAIPromptBound = true;
       el.addEventListener('input', scholarAIUpdateToGenSlideButton);
     }
     scholarAIUpdateToGenSlideButton();
+  }
+
+  function scholarAIEditPrePrompt() {
+    var prompt = document.getElementById('scholar-ai-pre-prompt-text');
+    if (!prompt) return;
+    prompt.readOnly = false;
+    prompt.focus();
+    var edit = document.getElementById('scholar-ai-pre-prompt-edit');
+    if (edit) edit.classList.add('active');
+  }
+
+  function scholarAISavePrePrompt() {
+    var prompt = document.getElementById('scholar-ai-pre-prompt-text');
+    if (!prompt) return;
+    var setter = getCallback('setScholarAISystemInstruction');
+    if (typeof setter === 'function') setter(prompt.value || '');
+    prompt.readOnly = true;
+    var edit = document.getElementById('scholar-ai-pre-prompt-edit');
+    if (edit) edit.classList.remove('active');
+    scholarAIUpdateToGenSlideButton();
+    scholarAISetProviderStatus('공유 사전 프롬프트를 ScholarAI와 inDB AI 설정에 저장했습니다.', false);
   }
 
   function scholarAIIsSlideMakerActive() {
@@ -1621,7 +1640,7 @@
     var getter = getCallback('getScholarAIProvider');
     try {
       var provider = getter && getter();
-      return provider === 'aistudio' || provider === 'ollama' || provider === 'deepseek' || provider === 'openai' ? provider : 'lmstudio';
+      return /^(?:lmstudio|aistudio|ollama|deepseek|openai|openai-compatible|litertlm)$/.test(provider) ? provider : 'lmstudio';
     } catch (e) { return 'lmstudio'; }
   }
 
@@ -1666,7 +1685,7 @@
     wrap.innerHTML = ''
       + '<label for="scholar-ai-provider-select" style="font-size:10px;margin-bottom:4px;display:block">AI 공급자</label>'
       + '<select id="scholar-ai-provider-select" class="sa-model-select" style="width:100%;padding:6px 8px;font-size:11px;border:1px solid #2e3447;border-radius:4px;background:#1a1e28;color:#b0bac8;margin-bottom:8px">'
-      + '<option value="lmstudio">LM Studio</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select>'
+      + '<option value="lmstudio">LM Studio</option><option value="litertlm">LiteRT-LM</option><option value="aistudio">AI Studio (Gemini)</option><option value="ollama">Ollama</option><option value="deepseek">DeepSeek (유료)</option><option value="openai-compatible">OrcaRouter / OpenAI 호환</option><option value="openai">OpenAI · ChatGPT 모델 (유료 API)</option></select>'
       + '<div id="scholar-ai-lm-model-actions" style="display:none;gap:6px;margin:0 0 8px">'
       + '<button type="button" id="scholar-ai-lm-model-refresh" class="sa-btn ghost" style="flex:1">새로고침</button>'
       + '<button type="button" id="scholar-ai-lm-model-load" class="sa-btn" style="flex:1">호출</button></div>'
@@ -1928,6 +1947,37 @@
       sel.onchange = function () {
         var setter = getCallback('setScholarAIModelId');
         if (typeof setter === 'function') setter(sel.value, 'ollama');
+      };
+      return;
+    }
+    if (provider === 'litertlm' || provider === 'openai-compatible') {
+      sel.disabled = false;
+      sel.style.cursor = 'pointer';
+      var isLiteRT = provider === 'litertlm';
+      var providerLabel = isLiteRT ? 'LiteRT-LM' : 'OrcaRouter / OpenAI 호환';
+      sel.title = providerLabel + '에서 사용할 모델입니다.';
+      if (sel.previousElementSibling && sel.previousElementSibling.tagName === 'LABEL') {
+        sel.previousElementSibling.textContent = providerLabel + ' 모델 선택';
+      }
+      var specialSelectedModel = '';
+      try { specialSelectedModel = (getter && getter(provider)) || ''; } catch (specialModelError) {}
+      var specialCachedGetter = getCallback(isLiteRT ? 'getCachedScholarAILiteRTLMModels' : 'getCachedScholarAIOpenAICompatibleModels');
+      var specialModels = [];
+      try { specialModels = typeof specialCachedGetter === 'function' ? (specialCachedGetter() || []) : []; } catch (specialCachedError) {}
+      scholarAISetModelOptions(specialModels, specialSelectedModel || specialModels[0] || '');
+      scholarAISetProviderStatus(providerLabel + '에서 사용할 모델을 선택하세요.', false);
+      var specialRefresh = getCallback(isLiteRT ? 'refreshLiteRTLMModels' : 'refreshOpenAICompatibleModels');
+      if (typeof specialRefresh === 'function') {
+        Promise.resolve(specialRefresh()).then(function (models) {
+          scholarAISetModelOptions(models || specialModels, specialSelectedModel || (models && models[0]) || '');
+          scholarAISetProviderStatus(providerLabel + ' 모델 목록을 확인했습니다.', false);
+        }).catch(function (error) {
+          scholarAISetProviderStatus(error && error.message ? error.message : String(error), true);
+        });
+      }
+      sel.onchange = function () {
+        var setter = getCallback('setScholarAIModelId');
+        if (typeof setter === 'function') setter(sel.value, provider);
       };
       return;
     }
@@ -3949,6 +3999,8 @@ function viewerSSPFsUploadImgbb() {
   window.scholarAIShrink = scholarAIShrink;
   window.scholarAIPopupToggle = scholarAIPopupToggle;
   window.toggleScholarAIPrePrompt = toggleScholarAIPrePrompt;
+  window.scholarAIEditPrePrompt = scholarAIEditPrePrompt;
+  window.scholarAISavePrePrompt = scholarAISavePrePrompt;
   window.scholarAIUsePromptRole = scholarAIUsePromptRole;
   window.toggleScholarAIModelSelect = toggleScholarAIModelSelect;
   window.scholarAIFullscreen = scholarAIFullscreen;
@@ -4157,4 +4209,3 @@ function viewerSSPFsUploadImgbb() {
     }
   });
 })();
-

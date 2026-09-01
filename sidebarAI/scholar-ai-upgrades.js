@@ -155,6 +155,27 @@
     if (options.presentation === 'slides') renderSlides(parsed.answer);
     return parsed;
   }
+  function createLiveResultRenderer(options) {
+    var answer = '';
+    var reasoning = '';
+    var scheduled = false;
+    function render() {
+      scheduled = false;
+      var raw = (answer ? '[ANSWER]\n' + answer : '')
+        + (reasoning ? (answer ? '\n\n' : '') + '[REASONING]\n' + reasoning : '');
+      if (raw) applyResult(raw, options);
+    }
+    return function (event) {
+      if (!event || !event.type) return;
+      if (event.type === 'message.delta' && event.content) answer += String(event.content);
+      else if (event.type === 'reasoning.delta' && event.content) reasoning += String(event.content);
+      else return;
+      if (!scheduled) {
+        scheduled = true;
+        setTimeout(render, 60);
+      }
+    };
+  }
   async function runSpecial(options) {
     var selected = el('scholar-ai-selected');
     var passage = selected ? String(selected.value || '').trim() : '';
@@ -173,12 +194,14 @@
     var completed = false;
     try {
       var prompt = passage + '\n\n' + options.prompt;
+      var requestOptions = Object.assign({}, options.requestOptions || {});
+      requestOptions.onStreamEvent = createLiveResultRenderer(options);
       var response = await call(
         prompt,
         options.system,
         false,
         modelId ? modelId() : null,
-        options.requestOptions || {}
+        requestOptions
       );
       var raw = response && response.text != null ? response.text : response;
       var text = typeof raw === 'string' ? raw : JSON.stringify(raw || '');
@@ -334,6 +357,7 @@
     if (!source.trim()) { alert('Selected text에 문체를 변경할 내용을 입력하세요.'); return; }
     setRunning(true, '학술적 ~이다 문체로 변경 중...');
     var local = transformAcademicIda(source);
+    applyResult('[EXPLANATION]\n명확한 서술어를 즉시 변경했으며, 애매한 표현을 확인 중이다.\n\n[RESULT]\n' + local.text, { presentation: 'default' });
     var ai = [];
     var unresolved = local.ambiguous.slice();
     var note = 'AI 호출 없이 명확한 어미만 변경';
@@ -344,7 +368,12 @@
         try {
           var prompt = academicIdaRules() + '\n\n전체 문장을 다시 쓰지 말고 아래 후보 서술어만 판정하세요.\n각 항목의 from을 자연스러운 학술적 -이다/-다 서술형으로 바꾼 짧은 to만 반환하세요.\n반드시 JSON 하나만 반환하세요: {"items":[{"id":0,"from":"원문","to":"교정문"}]}\n후보 목록:\n' + JSON.stringify(local.ambiguous.map(function (item) { return { id: item.id, from: item.original, context: item.context }; }));
           var model = getCallback('getScholarAIModelId');
-          var response = await call(prompt, '당신은 한국어 형태론 교정기이다. 전체 문장을 재작성하지 말고 요청된 서술어 후보의 교체 문자열만 JSON으로 반환한다.', false, model ? model() : null, { mode: 'quick', reasoning: 'off', maxOutputTokens: Math.max(1024, local.ambiguous.length * 48) });
+          var response = await call(prompt, '당신은 한국어 형태론 교정기이다. 전체 문장을 재작성하지 말고 요청된 서술어 후보의 교체 문자열만 JSON으로 반환한다.', false, model ? model() : null, { mode: 'quick', reasoning: 'off', maxOutputTokens: Math.max(1024, local.ambiguous.length * 48), onStreamEvent: function (event) {
+            if (event && event.type === 'message.delta' && event.content) {
+              var result = el('scholar-ai-result');
+              if (result) result.value = '명확한 어미는 변경 완료 · 애매한 서술어를 실시간으로 확인 중...';
+            }
+          } });
           ai = parseTonePatches(response && response.text != null ? response.text : response, local.ambiguous);
           unresolved = local.ambiguous.filter(function (candidate) { return !ai.some(function (patch) { return patch.start === candidate.start && patch.end === candidate.end; }); });
           note = '원문의 다른 글자는 유지';
@@ -461,7 +490,7 @@
       historyLabel: '슬라이드 생성',
       answerFirst: true,
       presentation: 'slides',
-      requestOptions: { mode: responseMode(), maxOutputTokens: 32768 }
+      requestOptions: { mode: responseMode(), maxOutputTokens: 32768, completeStreaming: true, timeoutMs: 0 }
     });
   }
   function slideDocuments(html) {

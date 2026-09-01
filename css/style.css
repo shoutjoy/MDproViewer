@@ -3004,6 +3004,26 @@ html:not(.dark) #app-status-footer button {
     border-color: #1e293b !important;
 }
 
+/* Keep the dark editor sheet distinct from the surrounding dark workspace. */
+#drop-zone.document-dark-mode #editor-doc-wrap {
+    box-sizing: border-box;
+    border: 1px solid rgba(71, 85, 105, .72) !important;
+    border-radius: 10px;
+    box-shadow:
+        0 18px 48px rgba(2, 8, 23, .72),
+        0 0 24px rgba(30, 64, 175, .18),
+        inset 0 1px 0 rgba(148, 163, 184, .05);
+    transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+#drop-zone.document-dark-mode #editor-doc-wrap:focus-within {
+    border-color: rgba(96, 165, 250, .58) !important;
+    box-shadow:
+        0 20px 52px rgba(2, 8, 23, .78),
+        0 0 30px rgba(30, 64, 175, .27),
+        inset 0 1px 0 rgba(191, 219, 254, .08);
+}
+
 #drop-zone.document-dark-mode #viewer-edit-ta {
     color: #e2e8f0 !important;
     -webkit-text-fill-color: #e2e8f0;
@@ -3197,6 +3217,22 @@ html.ai-chat-page-pushed .app-header .app-header-actions {
     justify-content: center;
 }
 
+/* Script-created provider bodies need their own inset inside the clipped rack. */
+#ai-link-settings-block #scholar-lm-settings-body,
+#ai-link-settings-block #scholar-ollama-settings-body {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    margin-top: 0 !important;
+    padding: 4px 18px 18px;
+    overflow-wrap: anywhere;
+}
+
+#ai-link-settings-block #scholar-lm-settings-body > *,
+#ai-link-settings-block #scholar-ollama-settings-body > * {
+    min-width: 0;
+}
+
 #ai-link-settings-block .ai-settings-rack--lmstudio { --ai-rack-rgb: 8 145 178; }
 #ai-link-settings-block .ai-settings-rack--ollama { --ai-rack-rgb: 217 119 6; }
 #ai-link-settings-block .ai-settings-rack--litertlm { --ai-rack-rgb: 37 99 235; }
@@ -3279,4 +3315,14 @@ html.ai-chat-page-pushed .app-header .app-header-actions {
     #ai-link-settings-block #litertlm-settings-body {
         padding: 4px 12px 14px;
     }
+    #ai-link-settings-block #scholar-lm-settings-body,
+    #ai-link-settings-block #scholar-ollama-settings-body {
+        padding: 4px 12px 14px;
+    }
 }
+.indb-shared-prompt-editor{margin:0 0 18px;padding:16px;border:1px solid #c7d2fe;border-radius:14px;background:linear-gradient(135deg,#eef2ff,#f8fafc)}
+.indb-shared-prompt-editor strong{display:block;color:#312e81;font-size:14px}.indb-shared-prompt-editor p{margin:5px 0 10px;color:#64748b;font-size:12px}
+.indb-shared-prompt-editor textarea{display:block;width:100%;min-height:360px;box-sizing:border-box;resize:vertical;border:1px solid #cbd5e1;border-radius:10px;padding:12px;background:#fff;color:#0f172a;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
+.indb-shared-prompt-editor textarea[readonly]{background:#f8fafc;color:#475569}.indb-shared-prompt-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:10px}
+.indb-shared-prompt-actions button{border:1px solid #818cf8;border-radius:8px;padding:6px 14px;background:#fff;color:#4338ca;font-weight:700}.indb-shared-prompt-actions button:last-child{background:#4f46e5;color:#fff}
+.dark .indb-shared-prompt-editor{border-color:#3730a3;background:linear-gradient(135deg,#1e1b4b,#0f172a)}.dark .indb-shared-prompt-editor strong{color:#c7d2fe}.dark .indb-shared-prompt-editor textarea,.dark .indb-shared-prompt-editor textarea[readonly]{border-color:#475569;background:#111827;color:#e2e8f0}

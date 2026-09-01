@@ -50,9 +50,11 @@
       '  </label>',
       '  <label class="text-xs text-slate-600 dark:text-slate-400">Max tokens',
       '    <input id="settings-lmstudio-max-tokens" type="number" min="1" step="1" value="8192" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',
+      '    <span id="settings-lmstudio-model-max-tokens" class="mt-1 block text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">모델 제시값: 확인 전</span>',
+      '    <button id="settings-lmstudio-apply-model-max-tokens" type="button" onclick="applySettingsLMStudioModelMaxTokens()" disabled class="mt-1 text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline disabled:cursor-not-allowed disabled:opacity-50">모델 제시값 적용</button>',
       '  </label>',
-      '  <label class="text-xs text-slate-600 dark:text-slate-400">Timeout (초)',
-      '    <input id="settings-lmstudio-timeout" type="number" min="1" step="1" value="90" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',
+      '  <label class="text-xs text-slate-600 dark:text-slate-400">Limit time (초)',
+      '    <input id="settings-lmstudio-timeout" type="number" min="1" step="1" value="720" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',
       '  </label>',
       '  <label class="text-xs text-slate-600 dark:text-slate-400">Top P',
       '    <input id="settings-lmstudio-top-p" type="number" min="0" max="1" step="0.05" placeholder="기본값" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',
@@ -89,8 +91,6 @@
       '<p id="settings-scholar-ai-provider-status" class="text-xs min-h-[1.25rem] text-slate-500 dark:text-slate-400" aria-live="polite"></p>',
       '<div class="flex flex-wrap gap-x-3 gap-y-1 text-xs">',
       '  <a href="https://lmstudio.ai/download" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">LM Studio 다운로드</a>',
-      '  <a href="https://ollama.com/download" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">Ollama 다운로드</a>',
-      '  <a href="https://ollama.com/search" target="_blank" rel="noopener noreferrer" class="text-indigo-600 dark:text-indigo-400 hover:underline">Ollama 모델 찾기</a>',
       '</div>'
     ].join('\n');
   }

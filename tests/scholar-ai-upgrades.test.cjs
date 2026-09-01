@@ -135,6 +135,33 @@ test('slide generation uses updated 1600x900 GenSlide contract', () => {
   assert.match(prompt, /추가 지시: 강조 색상은 파란색/);
 });
 
+test('quick academic tools render streamed tokens and slides request completion streaming', () => {
+  const upgradeSource = read('sidebarAI/scholar-ai-upgrades.js');
+  const providerSource = read('AI_App/ai_local/scholar-ai-provider.js');
+  const appSource = read('js/app.js');
+  assert.match(upgradeSource, /createLiveResultRenderer/);
+  assert.match(upgradeSource, /event\.type === 'message\.delta'/);
+  assert.match(upgradeSource, /completeStreaming: true, timeoutMs: 0/);
+  assert.match(providerSource, /request\.completeStreaming === true \? 120000/);
+  assert.match(providerSource, /client\.chatStream\(localOptions\)/);
+  assert.match(appSource, /onStreamEvent: special\.onStreamEvent/);
+});
+
+test('ScholarAI shares one editable prompt pack with inDB AI settings', () => {
+  const prompts = read('sidebarAI/Scholarai_prompt.js');
+  const sidebar = read('sidebarAI/sidebar-ai.js');
+  const app = read('js/app.js');
+  const inDb = read('js/inDB/inDB.js');
+  for (const phrase of ['정규식 기반 서술어 검색', '애매한 서술어만 AI', '[QUICK TOOL] 학술 번역', '[QUICK TOOL] 학술 슬라이드 생성']) {
+    assert.match(prompts, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+  assert.match(sidebar, /scholarAIEditPrePrompt/);
+  assert.match(sidebar, /scholarAISavePrePrompt/);
+  assert.match(app, /scholarAIPromptPack/);
+  assert.match(inDb, /id="indb-scholar-ai-prompt-editor"/);
+  assert.match(inDb, /saveInDbScholarAIPrompt/);
+});
+
 test('upgrade runtime is loaded after the existing ScholarAI core', () => {
   const app = read('js/app.js');
   const insert = read('sidebarAI/insert.js');

@@ -58,3 +58,32 @@ test('reports a clear error when OpenAI is selected without an API key', async (
     /OpenAI API Key가 없습니다/
   );
 });
+
+test('persists and routes the settings-only ScholarAI providers', async () => {
+  for (const provider of ['openai-compatible', 'litertlm']) {
+    const storage = createStorage();
+    let received = null;
+    const callback = async (...args) => {
+      received = args;
+      return { model: provider + '-model', text: provider + ' response' };
+    };
+    const runtime = ScholarAIProvider.create({
+      storage,
+      callOpenAICompatible: provider === 'openai-compatible' ? callback : undefined,
+      callLiteRTLM: provider === 'litertlm' ? callback : undefined
+    });
+
+    assert.equal(ScholarAIProvider.normalizeProvider(provider), provider);
+    assert.equal(runtime.setProvider(provider), provider);
+    assert.equal(runtime.setModel(provider + '-model', provider), provider + '-model');
+    assert.equal(runtime.getModel(provider), provider + '-model');
+
+    const result = await runtime.complete({ prompt: '질문', systemInstruction: '한국어로 답변' });
+    assert.equal(result.provider, provider);
+    assert.equal(result.model, provider + '-model');
+    assert.equal(result.text, provider + ' response');
+    assert.equal(received[0], '질문');
+    assert.equal(received[1], '한국어로 답변');
+    assert.equal(received[3], provider + '-model');
+  }
+});

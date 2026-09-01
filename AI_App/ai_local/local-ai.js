@@ -30,7 +30,7 @@
     fastSafetyTimeout: true,
     fastCompleteStreaming: true,
     reasoningLevel: 'auto',
-    timeoutMs: 90000,
+    timeoutMs: 720000,
     topP: null,
     seed: null,
     frequencyPenalty: null,
