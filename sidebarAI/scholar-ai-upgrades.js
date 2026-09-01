@@ -159,6 +159,7 @@
     var answer = '';
     var reasoning = '';
     var scheduled = false;
+    var directAnswer = options.directStream === true;
     function render() {
       scheduled = false;
       var raw = (answer ? '[ANSWER]\n' + answer : '')
@@ -167,7 +168,18 @@
     }
     return function (event) {
       if (!event || !event.type) return;
-      if (event.type === 'message.delta' && event.content) answer += String(event.content);
+      if (event.type === 'message.delta' && event.content) {
+        answer += String(event.content);
+        if (directAnswer) {
+          var answerField = el('scholar-ai-result-insert');
+          if (answerField) {
+            answerField.value = answer;
+            answerField.scrollTop = answerField.scrollHeight;
+          }
+          if (typeof window.scholarAISetResultTab === 'function') window.scholarAISetResultTab('insert');
+          return;
+        }
+      }
       else if (event.type === 'reasoning.delta' && event.content) reasoning += String(event.content);
       else return;
       if (!scheduled) {
@@ -190,10 +202,16 @@
     }
     setRunning(true, options.stage || 'ScholarAI 실행 중...');
     setPresentation(options.presentation);
+    if (options.directStream) {
+      var liveAnswer = el('scholar-ai-result-insert');
+      if (liveAnswer) liveAnswer.value = '';
+    }
     var modelId = getCallback('getScholarAIModelId');
     var completed = false;
     try {
-      var prompt = passage + '\n\n' + options.prompt;
+      var prompt = String(options.prompt || '')
+        + '\n\n중요: 아래 [SOURCE]와 [/SOURCE] 사이의 내용만 작업 대상으로 사용하세요. 이 지시문 자체는 번역·요약·결과에 포함하지 마세요.'
+        + '\n\n[SOURCE]\n' + passage + '\n[/SOURCE]';
       var requestOptions = Object.assign({}, options.requestOptions || {});
       requestOptions.onStreamEvent = createLiveResultRenderer(options);
       var response = await call(
@@ -205,7 +223,10 @@
       );
       var raw = response && response.text != null ? response.text : response;
       var text = typeof raw === 'string' ? raw : JSON.stringify(raw || '');
-      applyResult(text, options);
+      var parsed = applyResult(text, options);
+      if (typeof options.afterComplete === 'function') {
+        await options.afterComplete({ passage: passage, text: text, parsed: parsed, call: call, modelId: modelId ? modelId() : null });
+      }
       completed = true;
       if (typeof window.scholarAIHistoryAdd === 'function') {
         window.scholarAIHistoryAdd(options.historyLabel || 'ScholarAI', text);
@@ -368,7 +389,7 @@
         try {
           var prompt = academicIdaRules() + '\n\n전체 문장을 다시 쓰지 말고 아래 후보 서술어만 판정하세요.\n각 항목의 from을 자연스러운 학술적 -이다/-다 서술형으로 바꾼 짧은 to만 반환하세요.\n반드시 JSON 하나만 반환하세요: {"items":[{"id":0,"from":"원문","to":"교정문"}]}\n후보 목록:\n' + JSON.stringify(local.ambiguous.map(function (item) { return { id: item.id, from: item.original, context: item.context }; }));
           var model = getCallback('getScholarAIModelId');
-          var response = await call(prompt, '당신은 한국어 형태론 교정기이다. 전체 문장을 재작성하지 말고 요청된 서술어 후보의 교체 문자열만 JSON으로 반환한다.', false, model ? model() : null, { mode: 'quick', reasoning: 'off', maxOutputTokens: Math.max(1024, local.ambiguous.length * 48), onStreamEvent: function (event) {
+          var response = await call(prompt, '당신은 한국어 형태론 교정기이다. 전체 문장을 재작성하지 말고 요청된 서술어 후보의 교체 문자열만 JSON으로 반환한다.', false, model ? model() : null, { mode: 'quick', reasoning: 'off', maxOutputTokens: Math.max(1024, local.ambiguous.length * 48), timeoutMs: 900000, onStreamEvent: function (event) {
             if (event && event.type === 'message.delta' && event.content) {
               var result = el('scholar-ai-result');
               if (result) result.value = '명확한 어미는 변경 완료 · 애매한 서술어를 실시간으로 확인 중...';
@@ -406,15 +427,74 @@
     var koEn = direction === 'ko-en';
     var rules = [
       koEn ? '아래 원문 전체를 한국어에서 영어로 번역하세요.' : '아래 원문 전체를 영어에서 한국어로 번역하세요.',
+      '[SOURCE]와 [/SOURCE] 사이의 원문만 번역하고, 태그 밖의 지시문은 절대 번역하지 마세요.',
       koEn ? '대학원생 이상의 연구자가 학위논문 또는 학술지 논문에 바로 사용할 수 있는 정확하고 자연스러운 academic English로 작성하세요.' : '대학원생 이상의 연구자가 학위논문 또는 학술지 논문에 바로 사용할 수 있는 전문적이고 자연스러운 한국어 학술 문체(-이다/-한다)로 작성하세요.',
       '원문의 주장, 논리 관계, 인과·조건·제한의 강도, 전문용어, 고유명사, 수치, 단위, 인용 및 참고문헌 표기를 정확히 보존하세요.',
       '요약하거나 내용을 추가·삭제하지 말고 원문 마지막 글자까지 빠짐없이 번역하세요.',
       '제목, 문단, 목록, 표, 각주, Markdown, 링크, 코드 및 수식 구조를 유지하세요. 코드와 수식 자체는 번역하지 마세요.',
-      mode === 'reasoning' ? '초벌 번역 후 의미 충실도, 누락·오역, 전문용어 일관성, 학술적 어조, 문법 및 번역투를 내부적으로 재검토하고 교정한 최종본을 제시하세요.' : '빠른 번역 모드입니다. 숨은 추론이나 장황한 검증 보고서 없이 최종 번역문과 주요 용어 풀이를 즉시 생성하세요.',
-      '결과 순서를 고정하세요. 먼저 [ANSWER]에 완전한 최종 번역문 전체를 제시하고, 번역문이 끝난 뒤 [REASONING]에 주요 용어 풀이만 Markdown 목록으로 정리하세요.',
-      koEn ? '용어 형식: **한국어 용어 (English term)**: 의미와 용어 선택 이유' : '용어 형식: **English term (한국어 번역어)**: 의미와 용어 선택 이유'
+      mode === 'reasoning'
+        ? '초벌 번역 후 의미 충실도, 누락·오역, 전문용어 일관성, 학술적 어조, 문법 및 번역투를 내부적으로 재검토하고 교정한 최종본을 제시하세요.'
+        : '최우선 목표는 속도입니다. 내부 검토, 재작성, 해설, 용어 풀이, 서문과 후기를 생략하고 첫 문장부터 즉시 번역하세요.',
+      mode === 'reasoning'
+        ? '결과 순서를 고정하세요. 먼저 [ANSWER]에 완전한 최종 번역문 전체를 제시하고, 번역문이 끝난 뒤 [REASONING]에 주요 용어 풀이만 Markdown 목록으로 정리하세요.'
+        : '번역문만 출력하세요. [ANSWER], [RESULT], 코드 펜스, 설명 또는 주요 용어 풀이를 붙이지 마세요.',
+      mode === 'reasoning' ? (koEn ? '용어 형식: **한국어 용어 (English term)**: 의미와 용어 선택 이유' : '용어 형식: **English term (한국어 번역어)**: 의미와 용어 선택 이유') : ''
     ];
-    return rules.join('\n');
+    return rules.filter(Boolean).join('\n');
+  }
+  function buildTranslationTermsPrompt(direction, source, translation) {
+    var koEn = direction === 'ko-en';
+    return [
+      '번역 작업은 이미 완료되었습니다. 아래 원문과 번역문을 바탕으로 학술적으로 중요한 전문용어 5~10개만 골라 별도의 학습용 용어 풀이를 작성하세요.',
+      '번역문 전체를 반복하거나 다시 번역하지 마세요.',
+      '각 용어는 반드시 다음 형식을 사용하세요:',
+      '### 1. 원어 — 번역어',
+      '- 단어 해석: 사전적 뜻을 간결하게 설명',
+      '- 문맥상 의미: 이 글에서 사용된 구체적 의미를 설명',
+      '- 예문: 해당 용어를 사용한 새로운 학술적 문장 1개',
+      '- 예문 해석: 예문을 반대 언어로 정확히 번역',
+      koEn ? '원어는 한국어, 번역어는 영어를 우선 표기하세요.' : '원어는 영어, 번역어는 한국어를 우선 표기하세요.',
+      '서문, 결론, 번역문 복사, [ANSWER], [REASONING] 표시는 넣지 마세요.',
+      '',
+      '[ORIGINAL SOURCE]',
+      source,
+      '[/ORIGINAL SOURCE]',
+      '',
+      '[COMPLETED TRANSLATION]',
+      translation,
+      '[/COMPLETED TRANSLATION]'
+    ].join('\n');
+  }
+  async function createTranslationTermStudy(context, direction) {
+    var explanation = el('scholar-ai-result');
+    if (explanation) explanation.value = '번역 완료 · 주요 용어의 해석과 예문을 생성 중...';
+    var streamed = '';
+    try {
+      var response = await context.call(
+        buildTranslationTermsPrompt(direction, context.passage, context.parsed.answer || context.text),
+        '당신은 학술 전문용어 사전 편찬자이다. 번역문을 반복하지 말고 핵심 용어의 번역, 문맥상 의미, 새 예문과 예문 해석만 작성한다.',
+        false,
+        context.modelId,
+        {
+          mode: 'quick', reasoning: 'off', fastMode: true, completeStreaming: true,
+          maxOutputTokens: 3072, timeoutMs: 900000,
+          onStreamEvent: function (event) {
+            if (event && event.type === 'message.delta' && event.content) {
+              streamed += String(event.content);
+              if (explanation) {
+                explanation.value = streamed;
+                explanation.scrollTop = explanation.scrollHeight;
+              }
+            }
+          }
+        }
+      );
+      var raw = response && response.text != null ? response.text : response;
+      var finalTerms = normalizeCodeFence(typeof raw === 'string' ? raw : JSON.stringify(raw || ''));
+      if (explanation) explanation.value = finalTerms || streamed || '주요 용어를 찾지 못했습니다.';
+    } catch (error) {
+      if (explanation) explanation.value = streamed || ('주요 용어 풀이 생성 실패: ' + (error && error.message ? error.message : error));
+    }
   }
   function translateAcademic() {
     var direction = translationDirection();
@@ -427,7 +507,9 @@
       historyLabel: '학술번역 ' + (direction === 'ko-en' ? 'KO→EN' : 'EN→KO'),
       answerFirst: true,
       presentation: 'translation',
-      requestOptions: { mode: mode, reasoning: mode === 'reasoning' ? undefined : 'off' }
+      directStream: mode === 'quick',
+      afterComplete: mode === 'quick' ? function (context) { return createTranslationTermStudy(context, direction); } : null,
+      requestOptions: { mode: mode, reasoning: mode === 'reasoning' ? undefined : 'off', fastMode: mode === 'quick', completeStreaming: mode === 'quick', timeoutMs: 900000 }
     });
   }
   function parseTerms(reasoning) {
@@ -490,7 +572,7 @@
       historyLabel: '슬라이드 생성',
       answerFirst: true,
       presentation: 'slides',
-      requestOptions: { mode: responseMode(), maxOutputTokens: 32768, completeStreaming: true, timeoutMs: 0 }
+      requestOptions: { mode: responseMode(), maxOutputTokens: 32768, completeStreaming: true, timeoutMs: 900000 }
     });
   }
   function slideDocuments(html) {
@@ -590,7 +672,7 @@
     window.scholarAIQuickAction = runQuickAction;
     window.scholarAIStop = stopUpgradedRun;
     window.ScholarAcademicTone = { transformLocal: transformAcademicIda, applyPatches: applyPatches, parsePatchResponse: parseTonePatches };
-    window.ScholarAcademicTranslation = { buildPrompt: buildTranslationPrompt, parseMajorTerms: parseTerms, buildFootnotedTranslation: footnotedTranslation, setPresentation: setPresentation };
+    window.ScholarAcademicTranslation = { buildPrompt: buildTranslationPrompt, buildTermsPrompt: buildTranslationTermsPrompt, parseMajorTerms: parseTerms, buildFootnotedTranslation: footnotedTranslation, setPresentation: setPresentation };
     window.ScholarSlideGeneration = { buildPrompt: buildSlidePrompt, renderPreview: renderSlides };
     window.scholarAIUpgradeInit = init;
     init();

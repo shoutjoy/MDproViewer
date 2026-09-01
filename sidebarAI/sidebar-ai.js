@@ -131,6 +131,7 @@
           <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
       </div>
+      <button type="button" id="scholar-ai-insert-at-cursor-btn" class="sa-btn ghost" onclick="scholarAIInsertDoc(0)" title="현재 편집기 커서 위치에 결과 삽입" aria-label="커서 위치에 삽입">←</button>
       <button type="button" id="scholar-ai-to-genslide-btn" class="sa-btn" style="display:none;background:#f59e0b;color:#111827;border:none" onclick="scholarAIToGenSlide()" title="Send slide HTML to GenSlide">ToGenslide</button>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
       <span class="sa-font">font</span>
@@ -393,6 +394,7 @@
           <button type="button" onclick="scholarAIInsertDoc(4); closeScholarAIInsertMenu()">Mermaid(ME)</button>
         </div>
       </div>
+      <button type="button" id="scholar-ai-insert-at-cursor-btn" class="sa-btn ghost" onclick="scholarAIInsertDoc(0)" title="현재 편집기 커서 위치에 결과 삽입" aria-label="커서 위치에 삽입">←</button>
       <button type="button" id="scholar-ai-to-genslide-btn" class="sa-btn" style="display:none;background:#f59e0b;color:#111827;border:none" onclick="scholarAIToGenSlide()" title="Send slide HTML to GenSlide">ToGenslide</button>
       <button type="button" class="sa-btn ghost" onclick="scholarAIResultZoomOpen()" title="Open result in a larger editor">Zoom result</button>
       <span class="sa-font">font</span>

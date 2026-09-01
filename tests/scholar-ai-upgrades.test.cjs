@@ -67,6 +67,9 @@ test('academic translation supports both directions and Markdown term footnotes'
   const upgrade = loadUpgrade(elements);
   const translation = upgrade.ScholarAcademicTranslation;
   assert.match(translation.buildPrompt('en-ko', 'quick'), /영어에서 한국어로 번역/);
+  assert.match(translation.buildPrompt('en-ko', 'quick'), /최우선 목표는 속도/);
+  assert.match(translation.buildPrompt('en-ko', 'quick'), /번역문만 출력/);
+  assert.doesNotMatch(translation.buildPrompt('en-ko', 'quick'), /용어 형식/);
   assert.match(translation.buildPrompt('ko-en', 'reasoning'), /한국어에서 영어로 번역/);
   assert.match(translation.buildPrompt('ko-en', 'reasoning'), /academic English/);
   translation.setPresentation('translation');
@@ -78,6 +81,7 @@ test('academic translation supports both directions and Markdown term footnotes'
 
 test('quick academic translation button invokes the configured provider and fills both result tabs', async () => {
   let calls = 0;
+  let receivedPrompt = '';
   const progressWrap = {
     style: {},
     classList: { toggle(name, enabled) { this[name] = enabled; } },
@@ -103,8 +107,12 @@ test('quick academic translation button invokes the configured provider and fill
   const upgrade = loadUpgrade(elements, {
     SidebarAIConfig: {
       callbacks: {
-        callScholarAI: async () => {
+        callScholarAI: async (prompt) => {
           calls += 1;
+          receivedPrompt = prompt;
+          if (/번역 작업은 이미 완료되었습니다/.test(prompt)) {
+            return { text: '### 1. scalability — 확장성\n- 단어 해석: 규모를 확장할 수 있는 성질\n- 문맥상 의미: 부하 증가에 대응하는 능력\n- 예문: The architecture improves scalability.\n- 예문 해석: 이 아키텍처는 확장성을 향상한다.' };
+          }
           return { text: '[ANSWER]\n운영 효율성은 확장성을 향상한다.\n[REASONING]\n**scalability (확장성)**: 부하 증가에 대응하는 능력이다.' };
         },
         getScholarAIModelId: () => 'test-model'
@@ -113,9 +121,12 @@ test('quick academic translation button invokes the configured provider and fill
   });
 
   await upgrade.scholarAIQuickAction('translate');
-  assert.equal(calls, 1);
+  assert.equal(calls, 2);
+  assert.match(elements['scholar-ai-result'].value, /단어 해석/);
+  assert.match(elements['scholar-ai-result'].value, /문맥상 의미/);
+  assert.match(elements['scholar-ai-result'].value, /예문 해석/);
   assert.equal(elements['scholar-ai-result-insert'].value, '운영 효율성은 확장성을 향상한다.');
-  assert.match(elements['scholar-ai-result'].value, /scalability \(확장성\)/);
+  assert.match(elements['scholar-ai-result'].value, /scalability — 확장성/);
   assert.equal(elements['scholar-ai-progress-pct'].textContent, '100%');
   assert.equal(elements['scholar-ai-progress-fill'].style.width, '100%');
   assert.equal(progressWrap.style.display, 'flex');
@@ -141,10 +152,15 @@ test('quick academic tools render streamed tokens and slides request completion 
   const appSource = read('js/app.js');
   assert.match(upgradeSource, /createLiveResultRenderer/);
   assert.match(upgradeSource, /event\.type === 'message\.delta'/);
-  assert.match(upgradeSource, /completeStreaming: true, timeoutMs: 0/);
-  assert.match(providerSource, /request\.completeStreaming === true \? 120000/);
+  assert.match(upgradeSource, /completeStreaming: true, timeoutMs: 900000/);
+  assert.match(providerSource, /request\.completeStreaming === true \? \(request\.timeoutMs \|\| 120000\)/);
   assert.match(providerSource, /client\.chatStream\(localOptions\)/);
+  assert.match(providerSource, /controller\.abort\(new DOMException\('ScholarAI 요청 제한시간을 초과했습니다\.'/);
   assert.match(appSource, /onStreamEvent: special\.onStreamEvent/);
+  assert.match(upgradeSource, /directStream: mode === 'quick'/);
+  assert.match(upgradeSource, /fastMode: mode === 'quick'/);
+  assert.match(appSource, /fastMode: special\.fastMode === true/);
+  assert.ok((upgradeSource.match(/timeoutMs: 900000/g) || []).length >= 3);
 });
 
 test('ScholarAI shares one editable prompt pack with inDB AI settings', () => {
@@ -160,6 +176,17 @@ test('ScholarAI shares one editable prompt pack with inDB AI settings', () => {
   assert.match(app, /scholarAIPromptPack/);
   assert.match(inDb, /id="indb-scholar-ai-prompt-editor"/);
   assert.match(inDb, /saveInDbScholarAIPrompt/);
+});
+
+test('academic translation prompt clearly separates completed translation from term study', () => {
+  const upgrade = loadUpgrade();
+  const prompt = upgrade.ScholarAcademicTranslation.buildTermsPrompt('ko-en', '원문', 'translation');
+  assert.match(prompt, /번역 작업은 이미 완료/);
+  assert.match(prompt, /번역문 전체를 반복하거나 다시 번역하지 마세요/);
+  assert.match(prompt, /단어 해석/);
+  assert.match(prompt, /문맥상 의미/);
+  assert.match(prompt, /예문 해석/);
+  assert.match(read('sidebarAI/Scholarai_prompt.js'), /주요 용어 풀이에는 번역문 전체를 복사하거나 반복하지 않는다/);
 });
 
 test('legacy and every role prompt visibly include all quick-tool rules', () => {
@@ -189,6 +216,14 @@ test('pre-prompt toolbar exposes the three new prompt presets', () => {
   assert.match(promptSource, /'academic-ida': \[ACADEMIC_IDA_WORKFLOW/);
   assert.match(promptSource, /'academic-translation': \[ACADEMIC_TRANSLATION_WORKFLOW/);
   assert.match(promptSource, /'academic-slides': \[SLIDE_GENERATION_WORKFLOW/);
+});
+
+test('ScholarAI footer has a direct cursor-position insert arrow', () => {
+  for (const relative of ['index.html', 'sidebarAI/sidebar-ai.html', 'sidebarAI/sidebar-ai.js']) {
+    const source = read(relative);
+    assert.match(source, /id="scholar-ai-insert-at-cursor-btn"[^>]*onclick="scholarAIInsertDoc\(0\)"[^>]*>←<\/button>/);
+  }
+  assert.match(read('sidebarAI/insert.js'), /function scholarAIInsertDoc\(mode\)/);
 });
 
 test('upgrade runtime is loaded after the existing ScholarAI core', () => {

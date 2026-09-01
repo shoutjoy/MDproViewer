@@ -280,6 +280,11 @@
       var provider = normalizeProvider(request.provider || getProvider());
       if (activeController) activeController.abort();
       var controller = new AbortController();
+      var configuredRequestTimeoutMs = Number(request.timeoutMs) || 0;
+      var requestTimeoutMs = configuredRequestTimeoutMs > 0 ? Math.max(1000, configuredRequestTimeoutMs) : 0;
+      var requestTimeoutId = requestTimeoutMs ? setTimeout(function () {
+        controller.abort(new DOMException('ScholarAI 요청 제한시간을 초과했습니다.', 'TimeoutError'));
+      }, requestTimeoutMs) : null;
       activeController = controller;
       try {
         async function runLMStudio() {
@@ -290,9 +295,10 @@
             input: request.prompt,
             systemInstruction: request.systemInstruction,
             model: model,
+            reasoning: request.reasoning === 'off' || request.responseMode === 'quick' ? 'off' : undefined,
             signal: controller.signal,
             maxTokens: request.maxTokens || undefined,
-            timeoutMs: request.completeStreaming === true ? 120000 : (request.timeoutMs || undefined),
+            timeoutMs: request.completeStreaming === true ? (request.timeoutMs || 120000) : (request.timeoutMs || undefined),
             completeStreaming: request.completeStreaming === true,
             onEvent: typeof request.onStreamEvent === 'function' ? request.onStreamEvent : undefined
           };
@@ -302,9 +308,10 @@
               input: request.prompt,
               systemInstruction: request.systemInstruction,
               model: model,
+              reasoning: request.reasoning === 'off' || request.responseMode === 'quick' ? 'off' : undefined,
               signal: controller.signal,
               maxTokens: request.maxTokens || undefined,
-              timeoutMs: request.completeStreaming === true ? 120000 : (request.timeoutMs || undefined),
+              timeoutMs: request.completeStreaming === true ? (request.timeoutMs || 120000) : (request.timeoutMs || undefined),
               completeStreaming: request.completeStreaming === true
             });
           return { provider: 'lmstudio', model: localResult.model || model, text: localResult.text || '' };
@@ -419,6 +426,7 @@
       } catch (error) {
         throw friendlyError(error, provider);
       } finally {
+        if (requestTimeoutId) clearTimeout(requestTimeoutId);
         if (activeController === controller) activeController = null;
       }
     }

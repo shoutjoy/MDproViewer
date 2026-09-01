@@ -15017,6 +15017,106 @@ function insertAIChatTextIntoDocument(text, mode) {
     return true;
 }
 
+function beginAIChatDocumentWrite(mode, selectionSnapshot) {
+    if (!editorTextarea) throw new Error('문서 편집기를 찾지 못했습니다.');
+    if (!isEditMode) toggleMode('edit');
+    const insertMode = mode === 'replace-selection' ? 'replace-selection' : (mode === 'document-end' ? 'document-end' : 'cursor');
+    const raw = String(editorTextarea.value || '');
+    let start;
+    let end;
+    if (insertMode === 'replace-selection') {
+        const expected = String(selectionSnapshot && selectionSnapshot.text || '');
+        start = Math.max(0, Math.min(Number(selectionSnapshot && selectionSnapshot.start) || 0, raw.length));
+        end = Math.max(start, Math.min(Number(selectionSnapshot && selectionSnapshot.end) || start, raw.length));
+        if (!expected || raw.slice(start, end) !== expected) {
+            throw new Error('선택 이후 문서가 변경되어 원래 영역을 안전하게 수정할 수 없습니다. 영역을 다시 선택해 주세요.');
+        }
+    } else {
+        start = insertMode === 'document-end'
+            ? raw.length
+            : Math.max(0, Math.min(Number(editorTextarea.selectionStart) || 0, raw.length));
+        end = start;
+    }
+    let prefix = '';
+    if (insertMode !== 'replace-selection' && raw.slice(0, start) && !/\n\s*\n$/.test(raw.slice(0, start))) {
+        prefix = raw.slice(0, start).endsWith('\n') ? '\n' : '\n\n';
+    }
+    if (prefix) editorTextarea.setRangeText(prefix, start, start, 'end');
+    start += prefix.length;
+    end = insertMode === 'replace-selection' ? end + prefix.length : start;
+    editorTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+    return {
+        start: start,
+        end: end,
+        text: insertMode === 'replace-selection' ? String(selectionSnapshot.text || '') : '',
+        active: true,
+        replacedSelection: insertMode === 'replace-selection',
+        originalText: insertMode === 'replace-selection' ? String(selectionSnapshot.text || '') : ''
+    };
+}
+
+let aiChatDocumentFollowFrame = 0;
+function followAIChatDocumentWrite(session) {
+    if (!editorTextarea || !session || !session.active) return;
+    if (aiChatDocumentFollowFrame) cancelAnimationFrame(aiChatDocumentFollowFrame);
+    aiChatDocumentFollowFrame = requestAnimationFrame(function () {
+        aiChatDocumentFollowFrame = 0;
+        if (!editorTextarea || !session) return;
+        const value = String(editorTextarea.value || '');
+        const caret = Math.max(0, Math.min(Number(session.end) || 0, value.length));
+        const style = getComputedStyle(editorTextarea);
+        const mirror = document.createElement('div');
+        const marker = document.createElement('span');
+        mirror.setAttribute('aria-hidden', 'true');
+        Object.assign(mirror.style, {
+            position: 'fixed', left: '-100000px', top: '0', visibility: 'hidden',
+            boxSizing: style.boxSizing, width: editorTextarea.clientWidth + 'px',
+            padding: style.padding, border: style.border, font: style.font,
+            letterSpacing: style.letterSpacing, lineHeight: style.lineHeight,
+            whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: style.wordBreak
+        });
+        mirror.textContent = value.slice(0, caret);
+        marker.textContent = '\u200b';
+        mirror.appendChild(marker);
+        document.body.appendChild(mirror);
+        const caretTop = marker.offsetTop;
+        mirror.remove();
+        const visibleTop = editorTextarea.scrollTop;
+        const visibleBottom = visibleTop + editorTextarea.clientHeight;
+        const lineHeight = parseFloat(style.lineHeight) || 28;
+        if (caretTop > visibleBottom - lineHeight * 2 || caretTop < visibleTop + lineHeight) {
+            editorTextarea.scrollTop = Math.max(0, caretTop - editorTextarea.clientHeight * 0.72);
+        }
+    });
+}
+
+function updateAIChatDocumentWrite(session, text) {
+    if (!editorTextarea || !session || !session.active) return false;
+    const value = String(text || '');
+    const raw = String(editorTextarea.value || '');
+    const start = Math.max(0, Math.min(Number(session.start) || 0, raw.length));
+    const end = Math.max(start, Math.min(Number(session.end) || start, raw.length));
+    editorTextarea.setRangeText(value, start, end, 'end');
+    session.start = start;
+    session.end = start + value.length;
+    session.text = value;
+    currentMarkdown = String(editorTextarea.value || '');
+    lastEditCaretPos = session.end;
+    editorTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+    followAIChatDocumentWrite(session);
+    return true;
+}
+
+function finishAIChatDocumentWrite(session, text, status) {
+    if (!session || !session.active) return false;
+    const finalText = status === 'error' && session.replacedSelection ? session.originalText : text;
+    updateAIChatDocumentWrite(session, finalText);
+    session.active = false;
+    performAutoSave();
+    if (activeSidebarTab === 'toc') renderTOC();
+    return true;
+}
+
 function getAIChatGeneratedImageDataUrl(image) {
     if (!image || !image.data) throw new Error('생성 이미지 데이터가 없습니다.');
     const mimeType = String(image.mimeType || 'image/png');
@@ -15157,6 +15257,14 @@ window.AIChatBridge = Object.freeze({
         const end = Math.max(start, Math.min(Number(editorTextarea.selectionEnd) || start, raw.length));
         return raw.slice(start, end);
     },
+    captureDocumentSelection: function () {
+        if (!editorTextarea) return null;
+        const raw = String(editorTextarea.value || '');
+        const start = Math.max(0, Math.min(Number(editorTextarea.selectionStart) || 0, raw.length));
+        const end = Math.max(start, Math.min(Number(editorTextarea.selectionEnd) || start, raw.length));
+        if (end <= start) return null;
+        return { text: raw.slice(start, end), start: start, end: end };
+    },
     getCachedGeminiModels: function () {
         return mergeAIChatGeminiModels(readStoredModelList(AI_CHAT_GEMINI_MODELS_KEY));
     },
@@ -15250,6 +15358,15 @@ window.AIChatBridge = Object.freeze({
             ? insertOptions.html
             : text;
         return insertAIChatTextIntoDocument(value, mode);
+    },
+    beginDocumentWrite: function (mode, selectionSnapshot) {
+        return beginAIChatDocumentWrite(mode, selectionSnapshot);
+    },
+    updateDocumentWrite: function (session, text) {
+        return updateAIChatDocumentWrite(session, text);
+    },
+    finishDocumentWrite: function (session, text, status) {
+        return finishAIChatDocumentWrite(session, text, status);
     },
     saveImageForDocument: function (image, index) {
         return saveAIChatGeneratedImageForDocument(image, index);
@@ -15563,6 +15680,7 @@ function ensureSidebarAILoaded() {
                     model: modelOverride,
                     responseMode: special.mode,
                     reasoning: special.reasoning,
+                    fastMode: special.fastMode === true,
                     maxTokens: special.maxOutputTokens,
                     timeoutMs: special.timeoutMs,
                     completeStreaming: special.completeStreaming === true,

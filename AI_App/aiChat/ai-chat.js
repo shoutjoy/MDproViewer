@@ -16,6 +16,8 @@
   var ANSWER_APPEARANCE_DEFAULT_REVISION_KEY = 'ss_ai_chat_answer_appearance_default_revision';
   var WRITING_STYLE_DEFAULT_REVISION_KEY = 'ss_ai_chat_writing_style_default_revision';
   var INSERT_EXPAND_KEY = 'ss_ai_chat_insert_actions_expanded';
+  var DOCUMENT_WRITE_KEY = 'ss_ai_chat_document_write_enabled';
+  var DOCUMENT_WRITE_MODE_KEY = 'ss_ai_chat_document_write_mode';
   var DOCUMENT_INSERT_OPTIONS = [
     { mode: 'replace', label: '대체 삽입', shortLabel: '대체', title: '선택한 내용을 AI 답변(Markdown 원문)으로 대체합니다.' },
     { mode: 'cursor', label: '커서 위치에 삽입 · Ctrl+I', shortLabel: '커서', title: '현재 커서 위치에 Markdown 원문을 삽입합니다.' },
@@ -107,6 +109,8 @@
     answerAppearance: 'plain-light',
     answerFontSize: 14,
     insertActionsExpanded: false,
+    documentWriteEnabled: false,
+    documentWriteMode: 'cursor',
     responseMode: 'quick',
     fastMode: false,
     showReasoning: false,
@@ -148,6 +152,7 @@
   var academicAbortController = null;
   var internetAbortController = null;
   var documentSelectionBuffer = '';
+  var documentSelectionSnapshot = null;
   var suppressLauncherClick = false;
   var topLayerObserver = null;
   var topLayerPromotionTimer = null;
@@ -156,6 +161,7 @@
   var conversationStoreReadyPromise = null;
   var MAX_ATTACHMENTS = 8;
   var attachmentLoading = false;
+  var documentWriteSession = null;
 
   function storageGet(key, fallback) {
     try {
@@ -626,6 +632,10 @@
       + '        <label class="ai-chat-reasoning-toggle" title="추론내용 표시"><input type="checkbox" id="ai-chat-show-reasoning" aria-label="추론내용 표시"></label>'
       + '        <button type="button" id="ai-chat-academic-toggle" class="ai-chat-academic-toggle" aria-pressed="false">🔎 학술검색</button>'
       + '        <button type="button" id="ai-chat-internet-toggle" class="ai-chat-internet-toggle" aria-pressed="false">🌐 검색</button>'
+      + '        <div class="ai-chat-document-write-row">'
+      + '          <label class="ai-chat-document-write-toggle" title="AI의 최종 답변을 채팅 기록에 저장하면서 문서에도 실시간으로 작성합니다."><input type="checkbox" id="ai-chat-document-write"><span>✍ 문서에 작성</span></label>'
+      + '          <select id="ai-chat-document-write-mode" aria-label="실시간 문서 작성 위치" title="AI 답변을 작성할 위치"><option value="selection" hidden>↔ 선택 영역</option><option value="cursor">← 현재 커서</option><option value="document-end">↓ 맨 아래</option></select>'
+      + '        </div>'
       + '        <label id="ai-chat-academic-count-wrap" class="ai-chat-academic-count-wrap" title="목록에서 선택하거나 더블클릭하여 1~50 사이 숫자를 직접 입력하세요.">결과 <select id="ai-chat-academic-count" aria-label="검색 결과 수"><option value="5">5개</option><option value="10">10개</option><option value="20">20개</option><option value="30">30개</option><option value="50">50개</option></select><input id="ai-chat-academic-count-input" type="number" min="1" max="50" step="1" inputmode="numeric" aria-label="검색 결과 수 직접 입력" hidden></label>'
       + '      </div>'
       + '      <div class="ai-chat-compose-actions">'
@@ -676,9 +686,19 @@
     });
     document.getElementById('ai-chat-send').addEventListener('click', requestSendMessage);
     document.getElementById('ai-chat-stop').addEventListener('click', stopMessage);
+    document.getElementById('ai-chat-document-write').addEventListener('change', function (event) {
+      state.documentWriteEnabled = !!event.target.checked;
+      storageSet(DOCUMENT_WRITE_KEY, state.documentWriteEnabled ? '1' : '0');
+      setStatus(state.documentWriteEnabled ? '다음 답변부터 문서에 실시간으로 작성합니다.' : '문서 실시간 작성을 껐습니다.', 'ok');
+    });
+    document.getElementById('ai-chat-document-write-mode').addEventListener('change', function (event) {
+      state.documentWriteMode = event.target.value === 'document-end' ? 'document-end' : 'cursor';
+      storageSet(DOCUMENT_WRITE_MODE_KEY, state.documentWriteMode);
+    });
     var importSelectionButton = document.getElementById('ai-chat-import-selection');
     importSelectionButton.addEventListener('mousedown', function (event) {
-      documentSelectionBuffer = readDocumentSelectionText();
+      documentSelectionSnapshot = captureDocumentSelection();
+      documentSelectionBuffer = documentSelectionSnapshot ? documentSelectionSnapshot.text : readDocumentSelectionText();
       event.preventDefault();
     });
     importSelectionButton.addEventListener('click', importDocumentSelectionToChat);
@@ -1649,6 +1669,7 @@
       liveStream.phase = 'generating';
       liveStream.stage = '최종 답변을 실시간 생성하는 중';
       liveStream.answer += String(event.content || '');
+      updateDocumentWriteFromStream();
     } else if (type === 'message.end') {
       liveStream.stage = '답변 생성 완료 · 통계를 확인하는 중';
     } else if (type === 'chat.end') {
@@ -1669,6 +1690,53 @@
       liveStream.stage = providerLabel + ' 스트리밍 오류 확인 중';
     }
     scheduleLiveStreamRender(type !== 'reasoning.delta' && type !== 'message.delta');
+  }
+
+  function visibleDocumentStreamAnswer(raw) {
+    var value = String(raw || '');
+    if (!value) return '';
+    if (!state.fastMode && !state.academicSearchEnabled) {
+      var answerOpen = value.search(/\[ANSWER\]/i);
+      if (answerOpen < 0) return '';
+      value = value.slice(answerOpen + '[ANSWER]'.length);
+    }
+    return cleanAssistantProtocolArtifacts(value, true);
+  }
+
+  function beginDocumentWrite(selectionSnapshot, replaceImportedSelection) {
+    if (!state.documentWriteEnabled || documentWriteSession) return;
+    var bridge = getBridge();
+    if (typeof bridge.beginDocumentWrite !== 'function') {
+      setStatus('문서 실시간 작성 모듈이 준비되지 않아 채팅에만 답변합니다.', 'error');
+      return;
+    }
+    try {
+      snapshotEditorSelectionForInsert();
+      var replaceSelection = replaceImportedSelection && selectionSnapshot;
+      documentWriteSession = bridge.beginDocumentWrite(replaceSelection ? 'replace-selection' : state.documentWriteMode, replaceSelection || null);
+      if (replaceSelection) showSelectionWriteMode(false);
+    } catch (error) {
+      documentWriteSession = null;
+      setStatus(error && error.message ? error.message : '문서 실시간 작성을 시작하지 못했습니다.', 'error');
+    }
+  }
+
+  function updateDocumentWriteFromStream() {
+    if (!documentWriteSession || !liveStream) return;
+    var bridge = getBridge();
+    if (typeof bridge.updateDocumentWrite !== 'function') return;
+    var visibleAnswer = visibleDocumentStreamAnswer(liveStream.answer);
+    if (!visibleAnswer) return;
+    bridge.updateDocumentWrite(documentWriteSession, visibleAnswer);
+  }
+
+  function finishDocumentWrite(answer, status) {
+    if (!documentWriteSession) return;
+    var session = documentWriteSession;
+    documentWriteSession = null;
+    var bridge = getBridge();
+    if (typeof bridge.finishDocumentWrite !== 'function') return;
+    bridge.finishDocumentWrite(session, String(answer || ''), status || 'completed');
   }
 
   function updateThinkingProgress() {
@@ -1961,7 +2029,8 @@
 
   function moveDocumentSelectionToChat(event) {
     if (!state.enabled) return;
-    var selected = readDocumentSelectionText();
+    documentSelectionSnapshot = captureDocumentSelection();
+    var selected = documentSelectionSnapshot ? documentSelectionSnapshot.text : readDocumentSelectionText();
     event.preventDefault();
     openAtStartLayout();
     putDocumentSelectionInComposer(selected);
@@ -1982,6 +2051,32 @@
     return selected;
   }
 
+  function captureDocumentSelection() {
+    try {
+      var bridge = getBridge();
+      if (typeof bridge.captureDocumentSelection !== 'function') return null;
+      var snapshot = bridge.captureDocumentSelection();
+      if (!snapshot || !String(snapshot.text || '').trim()) return null;
+      return snapshot;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function showSelectionWriteMode(visible) {
+    var select = document.getElementById('ai-chat-document-write-mode');
+    if (!select) return;
+    var option = select.querySelector('option[value="selection"]');
+    if (option) option.hidden = !visible;
+    if (visible) select.value = 'selection';
+    else if (select.value === 'selection') select.value = state.documentWriteMode;
+  }
+
+  function selectionWriteModeActive() {
+    var select = document.getElementById('ai-chat-document-write-mode');
+    return !!(select && select.value === 'selection' && documentSelectionSnapshot);
+  }
+
   function putDocumentSelectionInComposer(selected) {
     if (!selected.trim()) {
       setStatus('문서에서 AI Jena로 보낼 영역을 먼저 선택하세요.', 'error');
@@ -1993,7 +2088,10 @@
       input.value = selected.trim();
       input.focus();
       input.setSelectionRange(input.value.length, input.value.length);
-      setStatus('선택한 문서 내용을 AI Jena 입력창으로 가져왔습니다.', 'ok');
+      showSelectionWriteMode(!!documentSelectionSnapshot);
+      setStatus(documentSelectionSnapshot
+        ? '선택 내용을 가져왔습니다. “문서에 작성”으로 전송하면 원래 선택 영역을 수정합니다.'
+        : '선택한 문서 내용을 AI Jena 입력창으로 가져왔습니다.', 'ok');
     }, 0);
   }
 
@@ -3435,7 +3533,7 @@
         splitAcademicResponse: splitAcademic,
         previousResponseId: null,
         messages: continuationMessages,
-        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' || state.provider === 'aistudio' ? handleStreamEvent : undefined,
         systemInstruction: academicSearch
           ? academicContinuationInstruction(evidence, splitAcademic ? requestedPart : 0, continuationEvidenceProfile)
           : [
@@ -4252,7 +4350,19 @@
                 : (message.isContinuation ? '추가 답변' : '최종 답변'));
           item.appendChild(answerLabel);
         }
-        if (String(message.content || '').trim()) item.appendChild(content);
+        if (String(message.content || '').trim()) {
+          if (message.role === 'assistant' && message.outputTarget === 'document') {
+            var documentAnswer = document.createElement('details');
+            documentAnswer.className = 'ai-chat-document-answer-record';
+            var documentAnswerSummary = document.createElement('summary');
+            documentAnswerSummary.textContent = '문서에 작성된 답변 · 기록 펼쳐보기';
+            documentAnswer.appendChild(documentAnswerSummary);
+            documentAnswer.appendChild(content);
+            item.appendChild(documentAnswer);
+          } else {
+            item.appendChild(content);
+          }
+        }
         if (message.role === 'assistant' && (message.provider === 'lmstudio' || message.provider === 'ollama' || message.provider === 'aistudio') && message.usage) {
           var usage = message.usage || {};
           var responseStatsParts = [];
@@ -4960,7 +5070,14 @@
     var text = input ? String(input.value || '').trim() : '';
     if (!text && !pendingAttachments.length) return;
     if (!text) text = '첨부 파일의 내용을 분석해 주세요.';
-    queuedRequests.push({ text: text, attachments: pendingAttachments.slice() });
+    queuedRequests.push({
+      text: text,
+      attachments: pendingAttachments.slice(),
+      selectionSnapshot: documentSelectionSnapshot,
+      replaceSelection: selectionWriteModeActive()
+    });
+    documentSelectionSnapshot = null;
+    showSelectionWriteMode(false);
     if (input) input.value = '';
     pendingAttachments = [];
     renderPendingAttachments();
@@ -4993,6 +5110,8 @@
     var sendingAttachments = queuedRequest && Array.isArray(queuedRequest.attachments)
       ? queuedRequest.attachments.slice()
       : pendingAttachments.slice();
+    var sendingSelectionSnapshot = queuedRequest ? (queuedRequest.selectionSnapshot || null) : documentSelectionSnapshot;
+    var replaceSendingSelection = queuedRequest ? queuedRequest.replaceSelection === true : selectionWriteModeActive();
     if (!text && !sendingAttachments.length) return;
     if (!text) text = '첨부 파일의 내용을 분석해 주세요.';
     var pendingUser = { role: 'user', content: text, attachments: sendingAttachments, createdAt: Date.now(), failed: false };
@@ -5002,11 +5121,14 @@
     if (!queuedRequest) {
       if (input) input.value = '';
       pendingAttachments = [];
+      documentSelectionSnapshot = null;
+      showSelectionWriteMode(false);
       renderPendingAttachments();
     }
     saveHistory();
     setRunning(true);
     startThinkingProgress();
+    beginDocumentWrite(sendingSelectionSnapshot, replaceSendingSelection);
     renderMessages();
     renderMessages();
     try {
@@ -5126,7 +5248,7 @@
         messages: academicSearchActive
           ? [{ role: 'user', content: academicModelInput(text, pendingUser.academicQuery, splitAcademicResponse ? 1 : 0, !!reusableAcademic, academicProfile) }]
           : contextMessages(),
-        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' ? handleStreamEvent : undefined,
+        onStreamEvent: state.provider === 'lmstudio' || state.provider === 'ollama' || state.provider === 'litertlm' || state.provider === 'aistudio' ? handleStreamEvent : undefined,
         systemInstruction: academicSearchActive
           ? academicSystemInstruction(academicEvidence, splitAcademicResponse ? 1 : 0, academicProfile)
           : internetSearchActive
@@ -5197,6 +5319,7 @@
         contextLength: result.contextLength || null,
         maxOutputTokens: result.maxOutputTokens || null,
         responseId: result.responseId || null,
+        outputTarget: documentWriteSession ? 'document' : 'chat',
         academicPart: splitAcademicResponse ? 1 : null,
         academicTotalParts: splitAcademicResponse ? 3 : null,
         academicPartComplete: splitAcademicResponse
@@ -5207,6 +5330,7 @@
         ? true
         : shouldOfferContinuation(assistantMessage, result, academicSearchActive);
       state.messages.push(assistantMessage);
+      finishDocumentWrite(assistantMessage.content, 'completed');
       if (Array.isArray(assistantMessage.images)) {
         assistantMessage.images.forEach(function (image, imageIndex) {
           if (!image || !image.data) return;
@@ -5238,9 +5362,11 @@
       var message = error && error.message ? error.message : String(error);
       if ((error && error.name === 'AbortError') || /abort|중지/i.test(message)) {
         pendingUser.failed = true;
+        finishDocumentWrite(visibleDocumentStreamAnswer(liveStream && liveStream.answer), 'stopped');
         setStatus('응답 생성을 중지했습니다.', '');
       } else {
         pendingUser.failed = true;
+        finishDocumentWrite('', 'error');
         state.messages.push({ role: 'assistant', content: '오류: ' + message, createdAt: Date.now(), error: true });
         setStatus(message, 'error');
       }
@@ -5274,6 +5400,10 @@
     } catch (_) {}
     createUI();
     bindPreserveEditorSelectionOnPanel();
+    state.documentWriteEnabled = storageGet(DOCUMENT_WRITE_KEY, '0') === '1';
+    state.documentWriteMode = storageGet(DOCUMENT_WRITE_MODE_KEY, 'cursor') === 'document-end' ? 'document-end' : 'cursor';
+    document.getElementById('ai-chat-document-write').checked = state.documentWriteEnabled;
+    document.getElementById('ai-chat-document-write-mode').value = state.documentWriteMode;
     var savedProvider = storageGet(PROVIDER_KEY, 'lmstudio');
     state.provider = savedProvider === 'aistudio' || savedProvider === 'ollama' || savedProvider === 'litertlm' || savedProvider === 'deepseek' || savedProvider === 'openai-compatible' || savedProvider === 'openai'
       ? savedProvider
