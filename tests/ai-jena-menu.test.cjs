@@ -7,10 +7,14 @@ const app = fs.readFileSync('js/app.js', 'utf8');
 const chat = fs.readFileSync('AI_App/aiChat/ai-chat.js', 'utf8');
 const css = fs.readFileSync('css/style.css', 'utf8');
 
-test('AI Jena has independent floating and menu settings', () => {
+test('AI Jena floating and menu settings are mutually exclusive', () => {
   assert.match(html, /AI Jena 사용 \(플로팅\)/);
   assert.match(html, /id="ai-chat-menu-enabled"[\s\S]*AI Jena 사용 \(메뉴\)/);
+  assert.match(html, /id="ai-chat-enabled" name="ai-jena-entry-mode" value="floating"/);
+  assert.match(html, /id="ai-chat-menu-enabled" name="ai-jena-entry-mode" value="menu"/);
   assert.match(app, /ss_ai_chat_menu_enabled/);
+  assert.match(app, /localStorage\.setItem\(menuEnabledKey, '0'\)/);
+  assert.match(app, /localStorage\.setItem\(enabledKey, '0'\)/);
 });
 
 test('AI Jena menu is a black button with a deep-blue teal inset after sspimgAI and opens without enabling floating', () => {

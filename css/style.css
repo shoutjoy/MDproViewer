@@ -2666,6 +2666,12 @@ html:not(.dark) #google-calendar-internal-panel {
         0 38px 80px rgba(15, 23, 42, .16) !important;
 }
 
+#toolbar {
+    position: relative;
+    z-index: 50;
+    overflow: visible;
+}
+
 html:not(.dark) #toolbar {
     border-color: #7b8ca2 !important;
     background: #607187 !important;
@@ -2681,6 +2687,95 @@ html:not(.dark) #toolbar {
     align-items: center;
     justify-content: center;
     line-height: 1.2;
+}
+
+/* Compact format popovers stay on one row, even when toolbar sizing rules change. */
+.format-quick-panel {
+    width: max-content;
+    max-width: calc(100vw - 16px);
+}
+
+.format-quick-row {
+    display: flex;
+    flex-flow: row nowrap;
+    align-items: center;
+    gap: 4px;
+}
+
+.format-quick-item {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 42px;
+    height: 36px;
+    white-space: nowrap;
+}
+
+/* Paint every edit-toolbar dropdown as one complete layer above the document. */
+.toolbar-popover:not(.hidden) {
+    z-index: 100 !important;
+    overflow: visible;
+    visibility: visible !important;
+    opacity: 1 !important;
+    isolation: isolate;
+    transform: translateZ(0);
+}
+
+.toolbar-popover button:not(.hidden),
+.toolbar-popover [role="menuitem"]:not(.hidden) {
+    position: relative;
+    z-index: 1;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+/* Keep hovered and keyboard-focused choices readable in every toolbar menu. */
+html:not(.dark) .toolbar-popover button:not(.hidden):hover,
+html:not(.dark) .toolbar-popover button:not(.hidden):focus-visible,
+html:not(.dark) .toolbar-popover [role="menuitem"]:not(.hidden):hover,
+html:not(.dark) .toolbar-popover [role="menuitem"]:not(.hidden):focus-visible {
+    background-color: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+.dark .toolbar-popover button:not(.hidden):hover,
+.dark .toolbar-popover button:not(.hidden):focus-visible,
+.dark .toolbar-popover [role="menuitem"]:not(.hidden):hover,
+.dark .toolbar-popover [role="menuitem"]:not(.hidden):focus-visible {
+    background-color: #334155 !important;
+    color: #f8fafc !important;
+}
+
+.toolbar-popover button:hover svg,
+.toolbar-popover button:focus-visible svg,
+.toolbar-popover [role="menuitem"]:hover svg,
+.toolbar-popover [role="menuitem"]:focus-visible svg {
+    color: currentColor !important;
+}
+
+/* List choices must remain visible below the toolbar/document boundary. */
+#list-quick-panel:not(.hidden) {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+}
+
+#list-quick-panel > button {
+    display: flex !important;
+    min-height: 36px;
+    visibility: visible !important;
+    opacity: 1 !important;
+}
+
+html:not(.dark) #list-quick-panel > button {
+    background: #fff;
+    color: #334155;
+}
+
+html:not(.dark) #list-quick-panel > button:hover,
+html:not(.dark) #list-quick-panel > button:focus-visible {
+    background: #f1f5f9;
+    color: #0f172a;
 }
 
 /* Optional Photoshop-style right-side editor toolbar. */

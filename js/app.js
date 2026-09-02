@@ -235,6 +235,11 @@ function initializeLazyAiChatEntry() {
     const checkbox = document.getElementById('ai-chat-enabled');
     const menuCheckbox = document.getElementById('ai-chat-menu-enabled');
     const menuButton = document.getElementById('btn-ai-jena-menu');
+    // 이전 버전에서는 두 진입 방식을 동시에 켤 수 있었다. 겹친 저장값은
+    // 메뉴 방식을 우선하여 한 번만 정리한다.
+    if (localStorage.getItem(enabledKey) === '1' && localStorage.getItem(menuEnabledKey) === '1') {
+        localStorage.setItem(enabledKey, '0');
+    }
     const syncMenuButton = function () {
         const enabled = localStorage.getItem(menuEnabledKey) === '1';
         if (menuCheckbox) menuCheckbox.checked = enabled;
@@ -364,7 +369,11 @@ function initializeLazyAiChatEntry() {
         checkbox.dataset.lazyAiChatBound = '1';
         checkbox.checked = localStorage.getItem(enabledKey) === '1';
         checkbox.addEventListener('change', function () {
+            if (!checkbox.checked) return;
+            if (menuCheckbox) menuCheckbox.checked = false;
+            localStorage.setItem(menuEnabledKey, '0');
             localStorage.setItem(enabledKey, checkbox.checked ? '1' : '0');
+            syncMenuButton();
             window.dispatchEvent(new CustomEvent('ai-jena-enabled-change', {
                 detail: { enabled: checkbox.checked }
             }));
@@ -375,9 +384,19 @@ function initializeLazyAiChatEntry() {
     if (menuCheckbox && !menuCheckbox.dataset.aiChatMenuBound) {
         menuCheckbox.dataset.aiChatMenuBound = '1';
         menuCheckbox.addEventListener('change', function () {
+            if (!menuCheckbox.checked) return;
+            if (checkbox) checkbox.checked = false;
+            localStorage.setItem(enabledKey, '0');
             localStorage.setItem(menuEnabledKey, menuCheckbox.checked ? '1' : '0');
+            removeLauncher();
+            if (window.AIChat && typeof window.AIChat.setEnabled === 'function') {
+                window.AIChat.setEnabled(false);
+            }
+            window.dispatchEvent(new CustomEvent('ai-jena-enabled-change', {
+                detail: { enabled: false }
+            }));
             syncMenuButton();
-            if (!menuCheckbox.checked && typeof applyAiFeatureVisibility === 'function') applyAiFeatureVisibility();
+            if (typeof applyAiFeatureVisibility === 'function') applyAiFeatureVisibility();
         });
     }
     syncMenuButton();
@@ -10403,8 +10422,8 @@ async function togglePdfMergeVisibilitySection() {
 
 function applyNoteCoverInsertVisibility(settings) {
     const enabled = getNoteCoverInsertVisibleFromSettings(settings || {});
-    const button = document.getElementById('btn-note-cover-insert');
-    if (button) button.classList.toggle('hidden', !enabled);
+    const wrap = document.getElementById('note-cover-menu-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !enabled);
 }
 
 async function toggleNoteCoverInsertSection() {
@@ -10414,16 +10433,102 @@ async function toggleNoteCoverInsertSection() {
     try { await setAiSettings({ noteCoverInsertVisible: enabled }); } catch (e) { console.error(e); }
 }
 
-function insertDefaultNoteCover() {
+function closeNoteCoverMenu() {
+    const panel = document.getElementById('note-cover-menu-panel');
+    const button = document.getElementById('btn-note-cover-menu');
+    if (panel) panel.classList.add('hidden');
+    if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function toggleNoteCoverMenu(event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById('note-cover-menu-panel');
+    const button = document.getElementById('btn-note-cover-menu');
+    if (!panel) return;
+    const willOpen = panel.classList.contains('hidden');
+    closeNoteCoverMenu();
+    if (willOpen) {
+        panel.classList.remove('hidden');
+        if (button) button.setAttribute('aria-expanded', 'true');
+    }
+}
+
+function localIsoDate() {
+    const now = new Date();
+    const pad = value => String(value).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function openNoteCoverInsertDialog(event) {
+    if (event) event.stopPropagation();
+    closeNoteCoverMenu();
+    const existing = window.NoteCoverRenderer && typeof window.NoteCoverRenderer.findFirstCoverBlock === 'function'
+        ? window.NoteCoverRenderer.findFirstCoverBlock(getNoteCoverMarkdownSource()) : null;
+    if (existing) {
+        if (!isEditMode) toggleMode('edit');
+        if (editorTextarea) {
+            editorTextarea.focus();
+            editorTextarea.setSelectionRange(existing.start, existing.end);
+            editorTextarea.scrollTop = 0;
+        }
+        showToast('이미 표지가 있습니다. 삭제하려면 표지 메뉴의 “표지 지우기”를 선택하세요.');
+        return false;
+    }
+    const modal = document.getElementById('note-cover-insert-modal');
+    const titleInput = document.getElementById('note-cover-field-title');
+    const dateInput = document.getElementById('note-cover-field-date');
+    const feedback = document.getElementById('note-cover-insert-feedback');
+    const fileTitle = String(currentFileName || '').replace(/\.md$/i, '').trim();
+    if (titleInput) titleInput.value = !fileTitle || /^untitled$/i.test(fileTitle) ? '' : fileTitle;
+    if (dateInput) dateInput.value = localIsoDate();
+    if (feedback) feedback.textContent = '';
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        window.setTimeout(() => { if (titleInput) { titleInput.focus(); titleInput.select(); } }, 0);
+    }
+    return true;
+}
+
+function closeNoteCoverInsertDialog() {
+    const modal = document.getElementById('note-cover-insert-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+    if (editorTextarea) editorTextarea.focus();
+}
+
+function confirmNoteCoverInsert(event) {
+    if (event) event.preventDefault();
+    const value = id => String((document.getElementById(id) || {}).value || '').trim();
+    const title = value('note-cover-field-title');
+    const feedback = document.getElementById('note-cover-insert-feedback');
+    if (!title) {
+        if (feedback) feedback.textContent = '제목을 입력하세요.';
+        const input = document.getElementById('note-cover-field-title');
+        if (input) input.focus();
+        return false;
+    }
+    const inserted = insertDefaultNoteCover({
+        title: title,
+        subtitle: value('note-cover-field-subtitle'),
+        author: value('note-cover-field-author'),
+        date: value('note-cover-field-date')
+    });
+    if (inserted) closeNoteCoverInsertDialog();
+    return inserted;
+}
+
+function insertDefaultNoteCover(fields) {
     if (!isEditMode) toggleMode('edit');
     if (!editorTextarea || !window.NoteCoverRenderer ||
         typeof window.NoteCoverRenderer.insertDefaultCover !== 'function') {
         showToast('표지 삽입 기능을 불러오지 못했습니다.');
         return false;
     }
-    const fileTitle = String(currentFileName || '').replace(/\.md$/i, '').trim();
-    const title = !fileTitle || /^untitled$/i.test(fileTitle) ? '문서 제목' : fileTitle;
-    const updated = window.NoteCoverRenderer.insertDefaultCover(getNoteCoverMarkdownSource(), { title: title });
+    const input = fields && typeof fields === 'object' ? fields : {};
+    const updated = window.NoteCoverRenderer.insertDefaultCover(getNoteCoverMarkdownSource(), input);
     if (!updated.changed) {
         editorTextarea.focus();
         editorTextarea.setSelectionRange(updated.selectionStart || 0, updated.selectionEnd || 0);
@@ -10445,6 +10550,35 @@ function insertDefaultNoteCover() {
     showToast('문서 최상단에 표지를 삽입했습니다. 보기에서 텍스트를 직접 수정할 수 있습니다.');
     return true;
 }
+
+function removeDocumentNoteCover(event) {
+    if (event) event.stopPropagation();
+    closeNoteCoverMenu();
+    if (!window.NoteCoverRenderer || typeof window.NoteCoverRenderer.findFirstCoverBlock !== 'function') {
+        showToast('표지 삭제 기능을 불러오지 못했습니다.');
+        return false;
+    }
+    const source = getNoteCoverMarkdownSource();
+    const cover = window.NoteCoverRenderer.findFirstCoverBlock(source);
+    if (!cover) {
+        showToast('지울 표지가 없습니다.');
+        return false;
+    }
+    if (!window.confirm('표지를 지울까요?')) return false;
+    let next = source.slice(0, cover.start) + source.slice(cover.end);
+    if (cover.start === 0) next = next.replace(/^\r?\n/, '');
+    const applied = applyNoteCoverMarkdownUpdate(
+        { changed: true, markdown: next },
+        'input.noteCoverRemove',
+        { historyKey: 'remove-cover', coverIndex: 0, clearSelection: true, renderAfter: true }
+    );
+    if (applied) showToast('표지를 지웠습니다.');
+    return applied;
+}
+
+document.addEventListener('click', function (event) {
+    if (!event.target.closest || !event.target.closest('#note-cover-menu-wrap')) closeNoteCoverMenu();
+});
 
 function getHtml2pptVisibleFromSettings(settings) {
     if (!settings || typeof settings.html2pptVisible !== 'boolean') return false;
@@ -17512,6 +17646,11 @@ window.insertSelectedTemplateAsNewFile = insertSelectedTemplateAsNewFile;
 window.toggleTemplateSection = toggleTemplateSection;
 window.toggleNoteCoverInsertSection = toggleNoteCoverInsertSection;
 window.insertDefaultNoteCover = insertDefaultNoteCover;
+window.openNoteCoverInsertDialog = openNoteCoverInsertDialog;
+window.closeNoteCoverInsertDialog = closeNoteCoverInsertDialog;
+window.confirmNoteCoverInsert = confirmNoteCoverInsert;
+window.toggleNoteCoverMenu = toggleNoteCoverMenu;
+window.removeDocumentNoteCover = removeDocumentNoteCover;
 window.toggleHtml2pptPanel = toggleHtml2pptPanel;
 window.openHtml2pptPanel = openHtml2pptPanel;
 window.closeHtml2pptPanel = closeHtml2pptPanel;

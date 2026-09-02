@@ -35,7 +35,7 @@
     <script src="./js/md_notebooklm_equals_hr.js" charset="utf-8"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link rel="stylesheet" href="./css/style.css?v=20260823-document-viewport-3&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;docxTableContrast=20260817-1&amp;tidyUi=20260811-1&amp;inline2refCss=20260822-2&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260815-supsub-1&amp;sidebarControls=20260812-4&amp;miniToc=20260815-responsive-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1&amp;lightChrome=20260823-6&amp;verticalEditToolbar=20260823-5&amp;aiHeaderButtons=20260823-1&amp;featureKeyStyle=20260823-1&amp;documentTheme=20260825-1&amp;formatGutter=20260828-1&amp;printLight=20260831-2" charset="utf-8">
+    <link rel="stylesheet" href="./css/style.css?v=20260823-document-viewport-3&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;docxTableContrast=20260817-1&amp;tidyUi=20260811-1&amp;inline2refCss=20260822-2&amp;indbUi=20260812-3&amp;mermaidDisplay=20260810-1&amp;mermaidResize=20260810-1&amp;comment=20260810-3&amp;textStyle=20260815-subsup-1&amp;sidebarControls=20260812-4&amp;miniToc=20260815-responsive-1&amp;crossrefResults=20260812-1&amp;mainHeaderBackground=20260815-1&amp;lightChrome=20260823-6&amp;verticalEditToolbar=20260823-5&amp;aiHeaderButtons=20260823-1&amp;featureKeyStyle=20260823-1&amp;documentTheme=20260825-1&amp;formatGutter=20260828-1&amp;printLight=20260831-2&amp;formatQuick=20260902-2" charset="utf-8">
     <link rel="stylesheet" href="./MobileUI/mobile-ui.css?v=20260817-5" charset="utf-8">
     <link rel="stylesheet" href="./js/inDB/inDB.css?v=20260823-ai-audit-3" charset="utf-8">
     <link rel="stylesheet" href="./sidebar_left/sidebar-resize.css?v=20260812-1" charset="utf-8">
@@ -822,10 +822,10 @@
                             <span>BI</span><i data-lucide="chevron-down" class="w-3 h-3"></i>
                         </button>
                         <div id="text-emphasis-quick-panel" role="menu"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[108px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
-                            <div class="grid grid-cols-2 gap-1">
-                                <button type="button" role="menuitem" onclick="insertAtCursor('bold'); closeTextEmphasisQuickMenu()" class="px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white" title="굵게">B</button>
-                                <button type="button" role="menuitem" onclick="insertAtCursor('italic'); closeTextEmphasisQuickMenu()" class="px-3 py-2 rounded-md text-center text-xs font-bold italic text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white" title="기울임꼴">I</button>
+                            class="toolbar-popover format-quick-panel hidden absolute z-[70] top-[calc(100%+6px)] left-0 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            <div class="format-quick-row">
+                                <button type="button" role="menuitem" onclick="insertAtCursor('bold'); closeTextEmphasisQuickMenu()" class="format-quick-item px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white" title="굵게">B</button>
+                                <button type="button" role="menuitem" onclick="insertAtCursor('italic'); closeTextEmphasisQuickMenu()" class="format-quick-item px-3 py-2 rounded-md text-center text-xs font-bold italic text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white" title="기울임꼴">I</button>
                             </div>
                         </div>
                     </div>
@@ -840,6 +840,12 @@
                         <button onclick="applyHeading(3)"
                             class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
                             title="제목 3 (H3)">H3</button>
+                        <button onclick="applyHeading(4)"
+                            class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                            title="제목 4 (H4)">H4</button>
+                        <button onclick="applyHeading(5)"
+                            class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm"
+                            title="제목 5 (H5)">H5</button>
                     </div>
                     <div id="heading-tools-collapsed" class="relative inline-flex items-center">
                         <button type="button" id="btn-heading-quick" onclick="toggleHeadingQuickMenu()"
@@ -848,11 +854,13 @@
                             <span>H</span><i data-lucide="chevron-down" class="w-3 h-3"></i>
                         </button>
                         <div id="heading-quick-panel" role="menu"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[168px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
-                            <div class="grid grid-cols-3 gap-1">
-                                <button type="button" role="menuitem" onclick="applyHeading(1); closeHeadingQuickMenu()" class="px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H1</button>
-                                <button type="button" role="menuitem" onclick="applyHeading(2); closeHeadingQuickMenu()" class="px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H2</button>
-                                <button type="button" role="menuitem" onclick="applyHeading(3); closeHeadingQuickMenu()" class="px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H3</button>
+                            class="toolbar-popover format-quick-panel hidden absolute z-[70] top-[calc(100%+6px)] left-0 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            <div class="format-quick-row">
+                                <button type="button" role="menuitem" onclick="applyHeading(1); closeHeadingQuickMenu()" class="format-quick-item px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H1</button>
+                                <button type="button" role="menuitem" onclick="applyHeading(2); closeHeadingQuickMenu()" class="format-quick-item px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H2</button>
+                                <button type="button" role="menuitem" onclick="applyHeading(3); closeHeadingQuickMenu()" class="format-quick-item px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H3</button>
+                                <button type="button" role="menuitem" onclick="applyHeading(4); closeHeadingQuickMenu()" class="format-quick-item px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H4</button>
+                                <button type="button" role="menuitem" onclick="applyHeading(5); closeHeadingQuickMenu()" class="format-quick-item px-3 py-2 rounded-md text-center text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white">H5</button>
                             </div>
                         </div>
                     </div>
@@ -863,12 +871,12 @@
                             <span>[LIST]</span><i data-lucide="chevron-down" class="w-3 h-3"></i>
                         </button>
                         <div id="list-quick-panel" role="menu"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 min-w-[220px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover hidden absolute z-[70] top-[calc(100%+6px)] left-0 min-w-[220px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <button type="button" role="menuitem" onclick="insertListAtSelection('bullet'); closeListQuickMenu()"
-                                class="w-full px-3 py-2 rounded-md flex items-center gap-3 whitespace-nowrap text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white transition-colors"
+                                class="w-full px-3 py-2 rounded-md flex items-center gap-3 whitespace-nowrap text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                 title="Alt+5"><span class="min-w-[58px] shrink-0 font-bold">[-list]</span><span>항목 목록</span></button>
                             <button type="button" role="menuitem" onclick="insertListAtSelection('number'); closeListQuickMenu()"
-                                class="w-full px-3 py-2 rounded-md flex items-center gap-3 whitespace-nowrap text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white transition-colors"
+                                class="w-full px-3 py-2 rounded-md flex items-center gap-3 whitespace-nowrap text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
                                 title="Alt+6"><span class="min-w-[58px] shrink-0 font-bold">[1.list]</span><span>번호 목록</span></button>
                         </div>
                     </div>
@@ -879,7 +887,7 @@
                             <span>CODE</span><i data-lucide="chevron-down" class="w-3 h-3"></i>
                         </button>
                         <div id="code-quote-quick-panel" role="menu"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 min-w-[190px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover hidden absolute z-[70] top-[calc(100%+6px)] left-0 min-w-[190px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <button type="button" role="menuitem" onclick="insertAtCursor('code'); closeCodeQuoteQuickMenu()"
                                 class="w-full px-3 py-2 rounded-md flex items-center gap-3 whitespace-nowrap text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white"
                                 title="Alt+C"><span class="min-w-[46px] font-mono font-bold">```</span><span>줄 코드</span></button>
@@ -896,7 +904,7 @@
                             class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
                             title="Mermaid 메뉴">ME</button>
                         <div id="mermaid-quick-panel"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[180px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[180px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <div class="grid grid-cols-1 gap-2">
                                 <button type="button" onclick="insertAtCursor('mermaid'); closeMermaidQuickMenu()"
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">Mermaid 코드 입력</button>
@@ -911,7 +919,7 @@
                             class="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm text-slate-600 dark:text-slate-300"
                             title="표 삽입"><i data-lucide="table" class="w-3.5 h-3.5"></i></button>
                         <div id="table-insert-picker"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[320px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[320px] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <div id="table-insert-size-label" class="text-[11px] font-semibold text-slate-700 dark:text-slate-200 mb-2">표 삽입</div>
                             <div id="table-insert-grid" class="grid grid-cols-10 gap-1"></div>
                             <button type="button" onclick="toggleCaptionInsertPanel('table', true)"
@@ -958,7 +966,7 @@
                             <span>Link</span><i data-lucide="chevron-down" class="w-3 h-3"></i>
                         </button>
                         <div id="image-insert-quick-panel" role="menu"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[220px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[220px] p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <div class="grid grid-cols-1 gap-1">
                                 <button type="button" role="menuitem" onclick="openLinkFromQuickMenu(event)"
                                     class="px-3 py-2 rounded-md flex items-center gap-2 text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white">
@@ -975,9 +983,19 @@
                             </div>
                         </div>
                     </div>
-                    <button id="btn-note-cover-insert" type="button" onclick="insertDefaultNoteCover()"
-                        class="hidden px-2 py-1 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded text-[10px] font-bold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 shadow-sm"
-                        title="문서 최상단에 note-cover 표지 삽입">[표지]</button>
+                    <div id="note-cover-menu-wrap" class="relative hidden inline-flex items-center">
+                        <button id="btn-note-cover-insert" type="button" onclick="openNoteCoverInsertDialog(event)"
+                            class="px-2 py-1 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-l text-[10px] font-bold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 shadow-sm"
+                            title="표지 작성 항목 입력">[표지]</button>
+                        <button id="btn-note-cover-menu" type="button" onclick="toggleNoteCoverMenu(event)"
+                            class="px-1.5 py-1 bg-white dark:bg-slate-800 border-y border-r border-violet-300 dark:border-violet-700 rounded-r text-[10px] font-bold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-900/20 shadow-sm"
+                            title="표지 메뉴" aria-haspopup="menu" aria-expanded="false">▼</button>
+                        <div id="note-cover-menu-panel" role="menu" style="min-width:132px"
+                            class="toolbar-popover hidden absolute z-[80] top-[calc(100%+6px)] left-0 min-w-[132px] p-1 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            <button type="button" role="menuitem" onclick="removeDocumentNoteCover(event)"
+                                class="w-full px-3 py-2 rounded text-left text-xs font-semibold text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40">표지 지우기</button>
+                        </div>
+                    </div>
                     <div id="macro-toolbar-wrap" class="relative inline-flex items-center gap-1 hidden">
                         <button type="button" id="btn-macro-run" onclick="runCheckedMacroActions()"
                             class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
@@ -1020,7 +1038,7 @@
                             class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
                             title="수식 빠른 입력">MATH</button>
                         <div id="math-quick-panel"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[min(320px,92vw)] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover hidden absolute z-[70] top-[calc(100%+6px)] left-0 w-[min(320px,92vw)] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <div class="grid grid-cols-2 gap-2">
                                 <button type="button" onclick="insertInlineMathTemplate()"
                                     class="px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">인라인 수식</button>
@@ -1038,7 +1056,7 @@
                             class="px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-[10px] font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 shadow-sm uppercase"
                             title="Tidy options">Tidy</button>
                         <div id="tidy-quick-panel"
-                            class="tidy-quick-panel hidden absolute z-[70] top-[calc(100%+6px)] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover tidy-quick-panel hidden absolute z-[70] top-[calc(100%+6px)] p-2 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <div class="tidy-action-grid">
                                 <button type="button" onclick="applyEnterTidyInEditor()"
                                     class="tidy-action-button px-2 py-1 rounded border border-slate-300 dark:border-slate-600 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700">엔터정리</button>
@@ -1086,7 +1104,7 @@
                         </button>
                         <div id="footnote-quick-panel"
                             style="width:240px;min-width:240px"
-                            class="hidden absolute z-[70] top-[calc(100%+6px)] left-0 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
+                            class="toolbar-popover hidden absolute z-[70] top-[calc(100%+6px)] left-0 p-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-xl">
                             <div class="grid grid-cols-1 gap-1">
                                 <button type="button" onclick="insertFootnoteTemplate(); closeFootnoteQuickMenu()"
                                     class="w-full px-3 py-2 rounded-md flex items-center justify-between gap-3 whitespace-nowrap text-left text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-indigo-600 hover:text-white dark:hover:bg-indigo-600 dark:hover:text-white"><span class="whitespace-nowrap">각주 삽입</span><span class="shrink-0 opacity-60">[^1]</span></button>
@@ -1275,6 +1293,23 @@
     </div>
 
     <!-- Modals -->
+    <div id="note-cover-insert-modal" class="fixed inset-0 bg-black/50 hidden items-center justify-center z-[85] no-print" style="z-index:85"
+        role="dialog" aria-modal="true" aria-labelledby="note-cover-insert-title" onclick="if(event.target===this) closeNoteCoverInsertDialog()">
+        <form class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onsubmit="confirmNoteCoverInsert(event)">
+            <div class="flex items-start justify-between gap-3 mb-4">
+                <div><h3 id="note-cover-insert-title" class="text-lg font-bold text-slate-800 dark:text-slate-100">표지를 추가할까요?</h3><p class="mt-1 text-xs text-slate-500 dark:text-slate-400">표지에 표시할 작성 항목을 먼저 입력하세요.</p></div>
+                <button type="button" onclick="closeNoteCoverInsertDialog()" class="w-8 h-8 shrink-0 inline-flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700" aria-label="닫기"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="grid gap-3">
+                <label class="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">제목 <span class="text-rose-600">필수</span><input id="note-cover-field-title" type="text" required placeholder="문서 제목" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"></label>
+                <label class="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">부제<input id="note-cover-field-subtitle" type="text" placeholder="문서 부제" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"></label>
+                <label class="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">작성자<input id="note-cover-field-author" type="text" placeholder="작성자" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"></label>
+                <label class="grid gap-1 text-xs font-semibold text-slate-600 dark:text-slate-300">작성일<input id="note-cover-field-date" type="date" class="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"></label>
+            </div>
+            <p id="note-cover-insert-feedback" class="mt-3 min-h-[1rem] text-xs text-rose-600 dark:text-rose-400" aria-live="polite"></p>
+            <div class="flex gap-2 mt-4"><button type="button" onclick="closeNoteCoverInsertDialog()" class="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-md text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">취소</button><button type="submit" class="flex-1 px-4 py-2 bg-violet-600 rounded-md text-sm font-semibold text-white hover:bg-violet-700">표지 추가</button></div>
+        </form>
+    </div>
     <!-- User Info floating window: the document remains interactive behind it. -->
     <div id="user-info-prompt-modal" class="fixed inset-0 hidden z-[75] no-print pointer-events-none"
         role="dialog" aria-modal="false" aria-labelledby="user-info-prompt-title">
@@ -2387,13 +2422,13 @@
                             </div>
                             <div id="ai-chat-settings-body" class="hidden">
                                 <label class="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                                    <input type="checkbox" id="ai-chat-enabled"
+                                    <input type="radio" id="ai-chat-enabled" name="ai-jena-entry-mode" value="floating"
                                         class="rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500">
                                     <span>AI Jena 사용 (플로팅)</span>
                                 </label>
                                 <p class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">켜면 모든 화면의 우측 하단에 AI Jena 버튼이 표시됩니다. 팝업·우측 Dock·전체화면을 지원하고 대화 기록은 IndexedDB에 저장됩니다. ScholarAI와 별도의 일반 멀티턴 대화이며, 아래의 LM Studio 연결 설정과 AI Studio API Key를 공유합니다.</p>
                                 <label class="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-                                    <input type="checkbox" id="ai-chat-menu-enabled" class="rounded border-slate-300 dark:border-slate-600 text-violet-600 focus:ring-violet-500">
+                                    <input type="radio" id="ai-chat-menu-enabled" name="ai-jena-entry-mode" value="menu" class="rounded border-slate-300 dark:border-slate-600 text-violet-600 focus:ring-violet-500">
                                     <span>AI Jena 사용 (메뉴)</span>
                                 </label>
                                 <div class="mt-2 flex flex-wrap items-center gap-3 rounded-md border border-violet-200 dark:border-violet-900/70 bg-violet-50/70 dark:bg-violet-950/20 px-3 py-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -3418,7 +3453,7 @@
 
 <!-- Markdown 내장 A4 표지(note-cover) 렌더링 -->
 <script
-    src="./js/note-cover/note-cover.js?v=20260811-editor-14"
+    src="./js/note-cover/note-cover.js?v=20260811-editor-14&amp;coverFields=20260902-1"
     charset="utf-8"
     defer>
 </script>
@@ -3474,7 +3509,7 @@
     defer>
 </script>
 <script
-    src="./js/app.js?v=20260902-lmstudio-default-16384-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260825-link-1&amp;verticalEditToolbar=20260823-2&amp;headerHeadingDisplay=20260825-1&amp;documentTheme=20260825-1&amp;fastSafetyTimeout=20260825-1&amp;fastCompleteStreaming=20260825-1&amp;fastLimitsUi=20260825-2&amp;aiDetailsToggle=20260825-1&amp;splitTab=20260825-1&amp;docxExport=20260902-mermaid-image-4"
+    src="./js/app.js?v=20260902-lmstudio-default-16384-1&amp;storageSafety=20260815-1&amp;localWriteback=20260815-1&amp;localFileRefresh=20260817-1&amp;docxImport=20260817-dark-table-contrast-1&amp;viewModeTextInput=20260815-2&amp;viewImageResize=20260811-2&amp;viewTableResize=20260817-row-column-1&amp;indbImages=20260812-3&amp;indbToggle=20260816-1&amp;tidyCustomJs=20260811-1&amp;html2md=20260817-1&amp;inline2ref=20260822-4&amp;saveDropdown=20260822-1&amp;aiJenaAttachments=20260822-2&amp;aiDataCenter=20260823-1&amp;settingsDrag=20260811-1&amp;copyFab=20260810-ai-jena-bottom-1&amp;mobileAiJena=20260817-1&amp;feature=templates-new-file-menu-2&amp;storageVisibility=20260810-1&amp;settingsResetConfirm=1&amp;toolbarNames=20260807-1&amp;templateFullscreen=20260807-1&amp;settingsFold=20260807-1&amp;mermaidDisplay=20260810-3&amp;comment=20260812-html-comment-1&amp;perf=20260810-10&amp;pdfExport=20260812-edit-merge-1&amp;pvExport=20260813-modal-2&amp;pdfMergeTool=20260815-pdfm-project-15&amp;imageSizeHint=20260811-1&amp;textStyle=20260815-supsub-1&amp;localDefault=20260812-1&amp;folderTree=20260812-1&amp;documentMeta=20260812-1&amp;documentDrop=20260812-1&amp;sliderMaker=20260812-1&amp;scholarUpgrades=20260817-2&amp;pvHeaderSettings=20260815-1&amp;mainHeaderBackground=20260815-1&amp;mainHeaderScale=20260815-1&amp;headerFileActions=20260823-1&amp;listQuickMenu=20260823-1&amp;footnoteAnchorMenu=20260823-1&amp;imageInsertMenu=20260825-link-1&amp;verticalEditToolbar=20260823-2&amp;headerHeadingDisplay=20260825-1&amp;documentTheme=20260825-1&amp;fastSafetyTimeout=20260825-1&amp;fastCompleteStreaming=20260825-1&amp;fastLimitsUi=20260825-2&amp;aiDetailsToggle=20260825-1&amp;splitTab=20260825-1&amp;docxExport=20260902-mermaid-image-4&amp;noteCoverForm=20260902-1&amp;aiJenaEntryMode=20260902-1"
     charset="utf-8"
     defer>
 </script>

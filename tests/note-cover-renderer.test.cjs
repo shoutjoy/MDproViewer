@@ -301,8 +301,8 @@ test('index loads note-cover before the main app and app preprocesses it', () =>
   assert.match(app, /updateTextElementInMarkdown/);
   assert.match(app, /ImageDB\.saveBlob/);
   assert.match(index, /note-cover\.js\?v=20260811-editor-14/);
-  assert.match(index, /app\.js\?v=20260811-note-cover-insert-1/);
-  assert.match(index, /style\.css\?v=20260811-note-cover-editor-12/);
+  assert.match(index, /noteCoverForm=20260902-1/);
+  assert.match(index, /\.\/css\/style\.css\?v=/);
   assert.match(stylesheet, /note-cover-text\[data-note-cover-text-editable="1"\]:focus/);
   assert.match(stylesheet, /note-cover-resize-handle/);
   assert.match(stylesheet, /note-cover-move-handle/);
@@ -337,8 +337,20 @@ test('index loads note-cover before the main app and app preprocesses it', () =>
   assert.match(renderer, /parseJsonWithCommonRepairs/);
   assert.match(index, /id="note-cover-insert-visible"/);
   assert.match(index, /id="btn-note-cover-insert"/);
+  assert.match(index, /id="note-cover-insert-modal"/);
+  assert.match(index, /표지를 추가할까요\?/);
+  assert.match(index, /표지 지우기/);
   assert.match(app, /noteCoverInsertVisible/);
   assert.match(app, /insertDefaultNoteCover/);
+  assert.match(app, /removeDocumentNoteCover/);
+});
+
+test('default cover accepts the writing fields collected before insertion', () => {
+  const config = NoteCoverRenderer.createDefaultConfig({ title: '연구 보고서', subtitle: '요약', author: '홍길동', date: '2026-09-02' });
+  assert.equal(config.elements.find((item) => item.id === 'title').text, '연구 보고서');
+  assert.equal(config.elements.find((item) => item.id === 'subtitle').text, '요약');
+  assert.equal(config.elements.find((item) => item.id === 'author').text, '홍길동');
+  assert.equal(config.elements.find((item) => item.id === 'date').text, '2026-09-02');
 });
 
 test('note-cover insertion visibility is allowed by all persistent settings policies', () => {

@@ -150,6 +150,9 @@
     function createDefaultConfig(options) {
         var input = options && typeof options === 'object' ? options : {};
         var title = String(input.title || '문서 제목').trim() || '문서 제목';
+        var subtitle = String(input.subtitle || '문서 부제').trim() || '문서 부제';
+        var author = String(input.author || '작성자').trim() || '작성자';
+        var date = String(input.date || '작성일').trim() || '작성일';
         return {
             v: 2,
             enabled: true,
@@ -166,17 +169,17 @@
                 },
                 {
                     id: 'subtitle', type: 'text', x: 15, y: 47, w: 70, h: 7,
-                    text: '문서 부제', fontSize: 24, fontFamily: 'Arial', color: '#475569',
+                    text: subtitle, fontSize: 24, fontFamily: 'Arial', color: '#475569',
                     fontWeight: 400, textAlign: 'center'
                 },
                 {
                     id: 'author', type: 'text', x: 20, y: 72, w: 60, h: 6,
-                    text: '작성자', fontSize: 18, fontFamily: 'Arial', color: '#334155',
+                    text: author, fontSize: 18, fontFamily: 'Arial', color: '#334155',
                     fontWeight: 400, textAlign: 'center'
                 },
                 {
                     id: 'date', type: 'text', x: 20, y: 80, w: 60, h: 5,
-                    text: '작성일', fontSize: 16, fontFamily: 'Arial', color: '#64748b',
+                    text: date, fontSize: 16, fontFamily: 'Arial', color: '#64748b',
                     fontWeight: 400, textAlign: 'center'
                 }
             ]
