@@ -106,15 +106,15 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     docxImport: './js/extendFiles/docx-import.js?v=20260817-dark-table-contrast-1',
     pdfJs: './js/extendFiles/pdfjs-loader.mjs?v=20260815-editable-2',
     pdfOpen: './js/extendFiles/pdf-open.js?v=20260815-editable-1',
-    docxExport: './js/extendFiles/docx-export.js?v=20260816-merge-cover-toc-2',
-    htmlExport: './js/export/html-export.js?v=20260805-image-1',
+    docxExport: './js/extendFiles/docx-export.js?v=20260902-mermaid-image-4',
+    htmlExport: './js/export/html-export.js?v=20260902-light-theme-1',
     pdfExport: './js/export/pdf-export.js?v=20260813-merge-tool-1',
     html2canvas: './vendor/html2canvas/html2canvas.min.js?v=1.4.1',
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
-    aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260902-web-search-recovery-1',
-    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260902-history-export-actions-1',
+    aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260902-web-search-recovery-2',
+    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260902-new-window-links-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260902-search-max-tokens-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -12886,6 +12886,7 @@ let sidebarAILoaded = false;
 let scholarAIProviderRuntime = null;
 const SCHOLAR_AI_GEMINI_MODELS_KEY = 'ss_scholar_ai_gemini_models_v1';
 const SCHOLAR_AI_LM_MODELS_KEY = 'ss_scholar_ai_lmstudio_models_v1';
+const LMSTUDIO_MAX_TOKENS_DEFAULT_REVISION_KEY = 'ss_lmstudio_max_tokens_default_revision';
 
 function readStoredModelList(key) {
     try {
@@ -12929,7 +12930,7 @@ function readScholarAIProviderSettingsForm() {
         activeBaseUrlSlot: activeBaseUrlSlot,
         apiKey: value('settings-lmstudio-api-key'),
         temperature: Number(value('settings-lmstudio-temperature') || 0.4),
-        maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
+        maxTokens: Number(value('settings-lmstudio-max-tokens') || 16384),
         quickMaxTokens: Number(value('settings-aichat-quick-max-tokens') || 4096),
         reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
         fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 4000),
@@ -13147,6 +13148,12 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     migrateLegacyScholarAIProviderSettings(legacySettings);
     let config;
     try { config = window.LocalAI.loadConfig(localStorage); } catch (_) { config = window.LocalAI.defaults || {}; }
+    if (localStorage.getItem(LMSTUDIO_MAX_TOKENS_DEFAULT_REVISION_KEY) !== '16384-v1') {
+        if (!Number(config.maxTokens) || Number(config.maxTokens) === 8192) {
+            config = getScholarAIProviderRuntime().saveLMStudioConfig(Object.assign({}, config, { maxTokens: 16384 }));
+        }
+        localStorage.setItem(LMSTUDIO_MAX_TOKENS_DEFAULT_REVISION_KEY, '16384-v1');
+    }
     const setValue = function (id, value) { const el = document.getElementById(id); if (el) el.value = value == null ? '' : value; };
     setValue('settings-lmstudio-base-url', config.baseUrlPrimary || config.baseUrl || 'http://127.0.0.1:5678/v1');
     setValue('settings-lmstudio-base-url-secondary', config.baseUrlSecondary || '');
@@ -13154,7 +13161,7 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     if (activeUrlSlot) activeUrlSlot.checked = true;
     setValue('settings-lmstudio-api-key', config.apiKey || '');
     setValue('settings-lmstudio-temperature', config.temperature == null ? 0.4 : config.temperature);
-    setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
+    setValue('settings-lmstudio-max-tokens', config.maxTokens || 16384);
     setValue('settings-aichat-quick-max-tokens', config.quickMaxTokens || 4096);
     setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
     setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 4000);
@@ -15560,11 +15567,13 @@ window.AIChatBridge = Object.freeze({
             const messages = normalizeAIChatMessages(request.messages);
             const lastUserIndex = messages.map(function (message) { return message.role; }).lastIndexOf('user');
             if (lastUserIndex < 0) throw new Error('전송할 사용자 질문이 없습니다.');
-            const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true;
+            const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true && request.internetSearch !== true;
             const continuationMode = request.continuation === true;
             const splitAcademicMode = request.splitAcademicResponse === true;
             const modeInstruction = request.academicSearch
                 ? ''
+                : request.internetSearch
+                ? '수집된 인터넷 검색 근거를 중복 없이 주제별로 통합하고, 시스템 지시의 네 섹션을 모두 완결하세요. 출처 목록을 그대로 반복하거나 계획·추론을 출력하지 마세요.'
                 : continuationMode
                 ? '이전 응답에서 아직 작성하지 않은 본문만 이어서 작성하세요. 질문·체크리스트·계획·작업 지시·모델의 생각·이미 작성한 문장은 출력하지 마세요.'
                 : splitAcademicMode
@@ -15576,9 +15585,11 @@ window.AIChatBridge = Object.freeze({
                 : (reasoningMode
                     ? '설정된 추론 강도로 충분히 검토한 뒤 완성도 높은 최종 답변을 작성하세요. 사용자가 요청한 모든 항목·코드·설명을 누락하지 말고, 내부 계획이나 추론은 최종 답변에 섞지 마세요.'
                     : '핵심부터 바로 답하되 사용자가 요청한 코드, 설명, 형식과 분량을 완전하게 충족하세요. 인위적인 문장 수 제한을 두지 마세요.');
-            const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 8192);
+            const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 16384);
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
             const fastMode = request.fastMode === true;
+            const maximizeSearchOutput = request.academicSearch === true || request.internetSearch === true;
+            const searchTimeoutMs = 15 * 60 * 1000;
             const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 4000);
             const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 580000);
             const fastSafetyTimeoutMs = config.fastSafetyTimeout === false
@@ -15591,7 +15602,7 @@ window.AIChatBridge = Object.freeze({
             const historyTokenBudget = contextLength
                 ? Math.max(0, contextLength - fixedInputTokens - historyOutputReserve - 256)
                 : Number.POSITIVE_INFINITY;
-            const historyCandidates = request.academicSearch ? [] : messages.slice(0, lastUserIndex);
+            const historyCandidates = request.academicSearch || request.internetSearch ? [] : messages.slice(0, lastUserIndex);
             const historyMessages = retainAIChatHistory(historyCandidates, historyTokenBudget);
             const history = historyMessages.map(function (message) {
                 return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
@@ -15602,11 +15613,15 @@ window.AIChatBridge = Object.freeze({
             const contextOutputBudget = contextLength
                 ? Math.max(1, contextLength - estimatedInputTokens - 256)
                 : configuredMaxTokens;
-            const requestMaxTokens = Math.max(1, Math.min(contextOutputBudget, fastMode ? configuredFastMaxTokens : contextOutputBudget));
+            const requestMaxTokens = maximizeSearchOutput
+                ? Math.max(1, contextOutputBudget)
+                : Math.max(1, Math.min(contextOutputBudget, fastMode ? configuredFastMaxTokens : contextOutputBudget));
             const minimumTimeout = continuationMode
                 ? 600000
-                : (fastMode ? fastSafetyTimeoutMs : (reasoningMode ? 300000 : (request.academicSearch ? 240000 : 60000)));
-            const requestTimeoutMs = fastMode
+                : (fastMode ? fastSafetyTimeoutMs : (reasoningMode ? 300000 : (request.academicSearch || request.internetSearch ? 240000 : 60000)));
+            const requestTimeoutMs = maximizeSearchOutput
+                ? searchTimeoutMs
+                : fastMode
                 ? minimumTimeout
                 : Math.max(
                     minimumTimeout,
@@ -15623,7 +15638,7 @@ window.AIChatBridge = Object.freeze({
                     max_output_tokens: requestMaxTokens,
                     estimated_input_tokens: estimatedInputTokens,
                     retained_history_tokens: retainedHistoryTokens,
-                    reasoning: request.academicSearch || continuationMode || splitAcademicMode
+                    reasoning: request.academicSearch || request.internetSearch || continuationMode || splitAcademicMode
                         ? 'off'
                         : (reasoningMode ? configuredReasoning : 'off')
                 });
@@ -15632,7 +15647,7 @@ window.AIChatBridge = Object.freeze({
                 input: messages[lastUserIndex].content,
                 systemInstruction: systemPrompt,
                 model: synced.model,
-                reasoning: request.academicSearch || continuationMode || splitAcademicMode
+                reasoning: request.academicSearch || request.internetSearch || continuationMode || splitAcademicMode
                     ? 'off'
                     : (reasoningMode ? (configuredReasoning === 'auto' ? undefined : configuredReasoning) : 'off'),
                 contextLength: contextLength || undefined,
@@ -16599,6 +16614,7 @@ const DEFAULT_AI_WRITING_STYLE_PROMPT = [
     '역할·기능은 “역할을 수행한다”, “기능을 수행한다”, 의미·가치는 “의미를 갖는다”, “중요성을 지닌다”, “핵심적 기반이 된다”로 표현할 수 있다.',
     '영향·효과는 “기여한다”, “영향을 미친다”, “효과를 나타낸다”를 사용하고, 지위·평가는 “자리매김한다”, “위상을 갖는다”, “전략적 자산으로 간주된다”, “핵심적 요소로 평가된다” 등으로 다양화한다.',
     '동일한 종결 표현을 가까운 문장 안에서 반복하지 않으며, 의미에 가장 정확한 서술어를 선택한다. 표현을 억지로 치환하거나 지나치게 장식하지 않는다.',
+    '모든 글이나 문단의 결론을 관행적으로 “기대된다”로 마무리하지 않는다. 구체적인 근거를 바탕으로 향후 효과나 변화를 전망할 필요가 있는 경우에만 “기대된다”를 사용한다.',
     '객관적이고 논리적인 학술 문체를 유지하고, 주장·근거·해석을 구분한다. 근거보다 강한 단정, 과장, 구어체, 불필요한 존댓말을 피한다.',
     '수식은 한글(HWP) 수식 입력을 고려하여 별도 요청이 없으면 복사 가능한 텍스트 형태로 제시한다.',
     '사용자가 특정 언어, 문체, 시제 또는 형식을 명시한 경우에는 해당 요청을 우선한다.'

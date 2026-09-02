@@ -51,7 +51,15 @@
     var md = restoreTablePipes(markdown);
     if (!md.trim()) return '';
     if (!ensureMarked()) return md.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\r\n?|\n/g, '<br>');
-    return root.marked.parse(md, { breaks: true, gfm: true });
+    var html = root.marked.parse(md, { breaks: true, gfm: true });
+    if (!root.document || typeof root.document.createElement !== 'function') return html;
+    var template = root.document.createElement('template');
+    template.innerHTML = html;
+    template.content.querySelectorAll('a[href]').forEach(function (link) {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    });
+    return template.innerHTML;
   }
 
   function toPlainText(markdown) {

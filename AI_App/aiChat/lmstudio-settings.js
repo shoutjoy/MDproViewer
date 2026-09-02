@@ -49,7 +49,7 @@
       '    <input id="settings-lmstudio-temperature" type="number" min="0" max="2" step="0.1" value="0.4" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',
       '  </label>',
       '  <label class="text-xs text-slate-600 dark:text-slate-400">Max tokens',
-      '    <input id="settings-lmstudio-max-tokens" type="number" min="1" step="1" value="8192" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',
+      '    <input id="settings-lmstudio-max-tokens" type="number" min="1" step="1" value="16384" class="mt-1 w-full px-2 py-1.5 border rounded bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600">',
       '    <span id="settings-lmstudio-model-max-tokens" class="mt-1 block text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">모델 제시값: 확인 전</span>',
       '    <button id="settings-lmstudio-apply-model-max-tokens" type="button" onclick="applySettingsLMStudioModelMaxTokens()" disabled class="mt-1 text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline disabled:cursor-not-allowed disabled:opacity-50">모델 제시값 적용</button>',
       '  </label>',

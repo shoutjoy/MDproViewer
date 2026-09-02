@@ -22,7 +22,7 @@
     model: 'google/gemma-4-e4b',
     apiKey: '',
     temperature: 0.4,
-    maxTokens: 8192,
+    maxTokens: 16384,
     quickMaxTokens: 4096,
     reasoningMaxTokens: 8192,
     fastMaxTokens: 4000,

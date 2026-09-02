@@ -97,8 +97,22 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
+        origin = str(self.headers.get("Origin") or "").strip()
+        if self.path.split("?", 1)[0] in SEARCH_PATHS and self._is_local_web_origin(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.end_headers()
         self.wfile.write(payload)
+
+    @staticmethod
+    def _is_local_web_origin(origin):
+        if origin == "null":
+            return True
+        try:
+            parsed = urllib.parse.urlsplit(origin)
+            return parsed.scheme in {"http", "https"} and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        except ValueError:
+            return False
 
     def _web_search(self, query_string):
         if self.client_address[0] not in {"127.0.0.1", "::1"}:

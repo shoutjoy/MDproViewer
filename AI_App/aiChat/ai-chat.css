@@ -672,6 +672,7 @@ body.ai-chat-history-resizing { cursor: ew-resize !important; user-select: none 
 .ai-chat-document-write-toggle input { width: 15px; height: 15px; margin: 0; accent-color: #14b8a6; cursor: pointer; }
 .ai-chat-document-write-toggle:has(input:checked) { border-color: #2dd4bf; background: #0f766e; color: #fff; box-shadow: 0 0 0 2px rgba(45,212,191,.15); }
 .ai-chat-document-write-row select { width: 48px; min-height: 30px; padding: 4px 5px; border: 1px solid #47647b; border-radius: 7px; background: #172b3b; color: #d9edf3; font-size: 16px; font-weight: 800; text-align: center; cursor: pointer; }
+.ai-chat-sentence-only { width: 17px; height: 17px; margin: 0; accent-color: #14b8a6; cursor: pointer; }
 body.theme-light .ai-chat-document-write-toggle { border-color: #48484a; background: #2c2c2e; color: #d1d1d6; box-shadow: none; }
 body.theme-light .ai-chat-document-write-toggle:hover { background: #3a3a3c; }
 body.theme-light .ai-chat-document-write-toggle:has(input:checked) { border-color: #2dd4bf; background: #0f766e; color: #fff; box-shadow: 0 0 0 2px rgba(45,212,191,.18); }

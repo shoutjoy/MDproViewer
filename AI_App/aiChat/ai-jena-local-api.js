@@ -4,6 +4,15 @@
 
   var INTEGRATED_BASE = 'http://127.0.0.1:8765/api';
 
+  function sameOriginSearchUrl(params) {
+    try {
+      if (root.location && /^https?:$/.test(root.location.protocol)) {
+        return new URL('/api/web-search/?' + params, root.location.href).href;
+      }
+    } catch (_) {}
+    return '';
+  }
+
   async function readJson(response) {
     var payload = await response.json().catch(function () { return {}; });
     if (!response.ok || payload.ok === false) {
@@ -20,20 +29,20 @@
     var params = new URLSearchParams({ q: value, count: String(limit), mode: searchMode });
     var request = { cache: 'no-store', signal: options && options.signal };
     var primaryError = null;
+    var sameOriginUrl = sameOriginSearchUrl(params);
+    if (sameOriginUrl) {
+      try {
+        return await readJson(await fetch(sameOriginUrl, request));
+      } catch (error) {
+        if (error && error.name === 'AbortError') throw error;
+        primaryError = error;
+      }
+    }
     try {
       return await readJson(await fetch(INTEGRATED_BASE + '/web-search/?' + params, request));
     } catch (error) {
       if (error && error.name === 'AbortError') throw error;
-      primaryError = error;
-    }
-    try {
-      var payload = await readJson(await fetch('/api/web-search/?' + params, request));
-      payload.fallbackUsed = true;
-      if (!payload.fallbackMessage) payload.fallbackMessage = '통합 검색 서비스 대신 앱 검색을 사용했습니다.';
-      return payload;
-    } catch (fallbackError) {
-      if (fallbackError && fallbackError.name === 'AbortError') throw fallbackError;
-      throw new Error((fallbackError && fallbackError.message) || (primaryError && primaryError.message) || '인터넷 검색 서비스를 사용할 수 없습니다.');
+      throw new Error((error && error.message) || (primaryError && primaryError.message) || '인터넷 검색 서비스를 사용할 수 없습니다.');
     }
   }
 
