@@ -311,6 +311,12 @@ header button.active {
     background: rgba(65, 165, 225, .1);
 }
 
+.external-app-button.gemini-app {
+    color: #f4dcff;
+    border-color: rgba(218, 139, 255, .36);
+    background: rgba(181, 86, 235, .12);
+}
+
 html[data-theme="light"] .external-app-buttons {
     border-color: rgba(26, 42, 64, .16);
     background: rgba(247, 249, 252, .9);

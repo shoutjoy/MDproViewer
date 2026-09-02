@@ -7,8 +7,15 @@ const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(root, 'css', 'style.css'), 'utf8');
 
-test('BI and H1-H5 quick format choices remain on a single row', () => {
-  assert.match(html, /id="text-emphasis-quick-panel"[\s\S]*?format-quick-row[\s\S]*?>B<[\s\S]*?>I</);
+test('BI applies bold directly and its arrow opens the italic menu', () => {
+  assert.match(html, /id="btn-text-emphasis-bold" onclick="insertAtCursor\('bold'\)"[\s\S]*?<span>BI<\/span>/);
+  assert.match(html, /id="btn-text-emphasis-quick" onclick="toggleTextEmphasisQuickMenu\(\)"/);
+  assert.match(html, /id="text-emphasis-quick-panel"[\s\S]*?format-quick-row[\s\S]*?insertAtCursor\('italic'\)[\s\S]*?>I</);
+  const emphasisPanel = html.slice(html.indexOf('id="text-emphasis-quick-panel"'), html.indexOf('id="heading-tools-expanded"'));
+  assert.doesNotMatch(emphasisPanel, /insertAtCursor\('bold'\)/);
+});
+
+test('H1-H5 quick format choices remain on a single row', () => {
   assert.match(html, /id="heading-quick-panel"[\s\S]*?applyHeading\(1\)[\s\S]*?applyHeading\(2\)[\s\S]*?applyHeading\(3\)[\s\S]*?applyHeading\(4\)[\s\S]*?applyHeading\(5\)/);
   assert.match(css, /\.format-quick-row\s*\{[\s\S]*?flex-flow:\s*row nowrap;/);
 });

@@ -242,7 +242,7 @@
         const tabsWrap = document.getElementById('storage-source-tabs');
         if (tabsWrap) {
             const hasVisibleTab = Object.keys(saved).some(function (key) { return saved[key] !== false; });
-            const shouldShow = !isSidebarCollapsed && hasVisibleTab;
+            const shouldShow = hasVisibleTab;
             tabsWrap.classList.toggle('hidden', !shouldShow);
             tabsWrap.classList.toggle('flex', shouldShow);
         }
@@ -324,7 +324,7 @@
         const hasVisibleTab = Object.keys(sidebarVisibility).some(function (key) {
             return sidebarVisibility[key] !== false;
         });
-        const shouldShow = !isSidebarCollapsed && hasVisibleTab;
+        const shouldShow = hasVisibleTab;
         tabsWrap.classList.toggle('hidden', !shouldShow);
         tabsWrap.classList.toggle('flex', shouldShow);
     }

@@ -31,6 +31,7 @@
             padding: var(--md-view-padding, 24px);
         }
         #viewer-edit-ta,
+        #viewer-edit-image-data-folded,
         #viewer-edit-highlight {
             box-sizing: border-box;
             padding: var(--md-view-padding, 24px);
@@ -1231,9 +1232,9 @@
             top: 0;
             right: calc(100% + 8px);
             z-index: 3;
-            width: 48px;
+            width: 140px;
             height: 100%;
-            overflow: hidden;
+            overflow: visible;
             pointer-events: none;
         }
         .editor-format-marker {
@@ -1252,6 +1253,58 @@
             box-shadow: 0 1px 3px rgba(15, 23, 42, .14);
             pointer-events: auto;
             cursor: pointer;
+        }
+        .editor-format-image-data {
+            right: auto;
+            left: 38px;
+            min-width: 72px;
+            border-left: 3px solid #ec4899;
+            color: #be185d;
+            letter-spacing: -.04em;
+        }
+        #editor-image-data-fold {
+            position: absolute;
+            top: 0;
+            right: 0;
+            z-index: 6;
+            width: 24px;
+            height: 20px;
+            padding: 0;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: #64748b;
+            font: 700 15px/20px ui-monospace, SFMono-Regular, Consolas, monospace;
+            text-align: center;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        #editor-image-data-fold:hover,
+        #editor-image-data-fold:focus-visible {
+            background: #e2e8f0;
+            color: #be185d;
+            outline: none;
+        }
+        #editor-image-data-fold[hidden] { display: none; }
+        #viewer-edit-image-data-folded {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            box-sizing: border-box;
+            margin: 0;
+            background: #0f172a;
+            color: #e2e8f0;
+            resize: none;
+        }
+        #viewer-edit-image-data-folded[hidden] { display: none; }
+        #editor-doc-wrap.image-data-fold-active #viewer-edit-ta,
+        #editor-doc-wrap.image-data-fold-active #viewer-edit-highlight {
+            visibility: hidden;
+        }
+        #content-viewport.editor-light-mode #viewer-edit-image-data-folded,
+        html:not(.dark) #viewer-edit-image-data-folded {
+            background: #ffffff;
+            color: #1e293b;
         }
         .editor-format-marker:hover,
         .editor-format-marker:focus-visible {
@@ -1278,6 +1331,15 @@
             background: #312e81;
             color: #eef2ff;
         }
+        .dark #editor-image-data-fold {
+            background: transparent;
+            color: #e2e8f0;
+        }
+        .dark #editor-image-data-fold:hover,
+        .dark #editor-image-data-fold:focus-visible {
+            background: #334155;
+            color: #f9a8d4;
+        }
         #editor-format-measure {
             position: fixed;
             left: -100000px;
@@ -1296,6 +1358,7 @@
             display: inline-block;
             width: 0;
             height: 1px;
+            overflow: hidden;
             vertical-align: top;
             padding: 0;
             margin: 0;
@@ -1578,6 +1641,33 @@
             gap: 0.5rem;
         }
 
+        .sidebar-collapsed #storage-source-tabs {
+            width: 100%;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .sidebar-collapsed #storage-source-tabs > button,
+        .sidebar-collapsed #storage-source-tabs > a {
+            width: 34px;
+            min-width: 34px;
+            height: 34px;
+            padding: 0;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .sidebar-collapsed #storage-source-tabs .storage-tab-label {
+            display: none;
+        }
+
+        .sidebar-collapsed #storage-source-tabs .storage-tab-icon {
+            width: 17px;
+            height: 17px;
+            flex: 0 0 17px;
+        }
+
         .sidebar-collapsed .doc-action-btns {
             display: none !important;
         }
@@ -1591,6 +1681,10 @@
         #sidebar:not(.sidebar-collapsed) .doc-action-btns {
             visibility: visible;
             opacity: 1;
+        }
+
+        #sidebar.sidebar-doc-actions-hidden .doc-action-btns {
+            display: none !important;
         }
 
         #sidebar:not(.sidebar-collapsed) .doc-action-btns button {

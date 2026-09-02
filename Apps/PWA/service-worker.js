@@ -1,7 +1,7 @@
 'use strict';
 
 const CACHE_PREFIX = 'md-viewer-pwa-';
-const CACHE_VERSION = '20260816-1';
+const CACHE_VERSION = '20260902-mermaid-ref-visible-1';
 const STATIC_CACHE = CACHE_PREFIX + CACHE_VERSION;
 const CORE_ASSETS = [
   './',

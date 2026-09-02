@@ -3,6 +3,27 @@
 
     let activeTab = 'files';
     let lastTocItems = [];
+    const DOCUMENT_ACTIONS_HIDDEN_KEY = 'mdpro_sidebar_document_actions_hidden';
+
+    function areDocumentActionsHidden() {
+        try { return localStorage.getItem(DOCUMENT_ACTIONS_HIDDEN_KEY) === '1'; }
+        catch (_) { return false; }
+    }
+
+    function applyDocumentActionsVisibility(hidden) {
+        const shouldHide = !!hidden;
+        const sidebar = document.getElementById('sidebar');
+        const checkbox = document.getElementById('hide-document-actions-toggle');
+        if (sidebar) sidebar.classList.toggle('sidebar-doc-actions-hidden', shouldHide);
+        if (checkbox) checkbox.checked = shouldHide;
+    }
+
+    function toggleDocumentActionsVisibility(checkbox) {
+        const shouldHide = !!(checkbox && checkbox.checked);
+        try { localStorage.setItem(DOCUMENT_ACTIONS_HIDDEN_KEY, shouldHide ? '1' : '0'); }
+        catch (_) {}
+        applyDocumentActionsVisibility(shouldHide);
+    }
 
     function esc(value) {
         return String(value || '')
@@ -176,16 +197,22 @@
             '    </div>',
             '  </div>',
             '  <div id="storage-source-tabs" class="hidden items-center gap-1">',
-            '    <button type="button" id="tab-storage-local" onclick="switchStorageSourceTab(\'local\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="로컬 폴더를 탐색기처럼 열기"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i><span>Local</span></button>',
-            '    <button type="button" id="tab-storage-indb" onclick="switchStorageSourceTab(\'indb\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">inDB</button>',
-            '    <button type="button" id="tab-storage-sqlite" onclick="switchStorageSourceTab(\'sqlite\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="로컬 SQLite 저장소">SQLite</button>',
-            '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">github</button>',
+            '    <button type="button" id="tab-storage-local" onclick="switchStorageSourceTab(\'local\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="Local · 로컬 폴더"><i data-lucide="folder-open" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">Local</span></button>',
+            '    <button type="button" id="tab-storage-indb" onclick="switchStorageSourceTab(\'indb\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="inDB · 내부 저장소"><i data-lucide="database" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">inDB</span></button>',
+            '    <button type="button" id="tab-storage-sqlite" onclick="switchStorageSourceTab(\'sqlite\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="SQLite · 로컬 SQLite 저장소"><i data-lucide="hard-drive" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">SQLite</span></button>',
+            '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="Github · 원격 저장소"><i data-lucide="github" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">github</span></button>',
             '    <a id="tab-storage-github-link" href="#" target="_blank" rel="noopener noreferrer" onclick="return openGithubRepositoryLink(event)" class="hidden px-1.5 py-1 text-[10px] font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" title="GitHub 로그인 후 저장소 열기">↗</a>',
             '  </div>',
             '  <div id="storage-sync-status" class="hidden text-[10px] px-2 py-1 rounded border" role="status" aria-live="polite"></div>',
-            '  <div class="relative search-container" id="search-container">',
-            '    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 search-icon-only"></i>',
-            '    <input type="text" id="db-search" oninput="scheduleStorageSearch()" placeholder="문서 제목·본문 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
+            '  <div class="flex items-center gap-2 search-container" id="search-container">',
+            '    <div class="relative min-w-0 flex-1">',
+            '      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 search-icon-only"></i>',
+            '      <input type="text" id="db-search" oninput="scheduleStorageSearch()" placeholder="문서 제목·본문 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
+            '    </div>',
+            '    <label class="document-actions-toggle shrink-0 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 dark:text-slate-300 cursor-pointer" title="문서 카드의 열기, 이동, github, 삭제 버튼 숨기기">',
+            '      <input type="checkbox" id="hide-document-actions-toggle" onchange="toggleDocumentActionsVisibility(this)" class="w-4 h-4 accent-indigo-600">',
+            '      <span>메뉴 숨김</span>',
+            '    </label>',
             '  </div>',
             '</div>',
             '<div id="db-list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>',
@@ -216,10 +243,13 @@
             else sidebar.insertAdjacentHTML('afterbegin', getSidebarShellHtml());
         }
         sidebar.dataset.sidebarLeftReady = '1';
+        applyDocumentActionsVisibility(areDocumentActionsHidden());
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSidebarShell);
     else installSidebarShell();
+
+    window.toggleDocumentActionsVisibility = toggleDocumentActionsVisibility;
 
     function switchSidebarTab(tab, ctx) {
         activeTab = tab === 'toc' ? 'toc' : 'files';

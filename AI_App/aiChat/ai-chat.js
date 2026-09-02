@@ -4018,6 +4018,18 @@
     }
     var list = document.createElement('div');
     list.className = 'ai-chat-academic-list';
+
+    function openPdfSourceInPv(source, event) {
+      if (event) event.preventDefault();
+      var url = safeWebUrl(source && (source.pdfUrl || source.url));
+      if (!url) return setStatus('열 수 있는 PDF 주소가 없습니다.', 'error');
+      if (typeof root.openRemotePdfInPreviewPopup !== 'function') {
+        return setStatus('PV PDF 열기 기능을 사용할 수 없습니다.', 'error');
+      }
+      var name = String(source && source.title || 'search-result').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120) + '.pdf';
+      if (!root.openRemotePdfInPreviewPopup(url, name)) setStatus('PV 창을 열지 못했습니다. 팝업 허용 설정을 확인하세요.', 'error');
+    }
+
     results.forEach(function (source, index) {
       var item = document.createElement('article');
       var sourceTitle = document.createElement(source.url ? 'a' : 'strong');
@@ -4036,6 +4048,14 @@
       meta.textContent = [authorAndYear, source.journal, source.doi ? 'DOI ' + source.doi : '', (source.sources || []).join(' + ')]
         .filter(Boolean).join(' · ');
       item.appendChild(meta);
+      if (source.pdfUrl) {
+        var pdfButton = document.createElement('button');
+        pdfButton.type = 'button';
+        pdfButton.textContent = 'PDF · PV에서 열기';
+        pdfButton.title = '공개 원문 PDF를 PV에서 열기';
+        pdfButton.addEventListener('click', function (event) { openPdfSourceInPv(source, event); });
+        item.appendChild(pdfButton);
+      }
       var abstractDetails = document.createElement('details');
       var abstractSummary = document.createElement('summary');
       abstractSummary.textContent = source.abstract ? '초록 보기' : '초록 제공 안 됨';
@@ -4074,6 +4094,13 @@
       var url = new URL(String(value || ''));
       return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : '';
     } catch (_) { return ''; }
+  }
+
+  function isDirectPdfUrl(value) {
+    var url = safeWebUrl(value);
+    if (!url) return false;
+    try { return /\.pdf$/i.test(new URL(url).pathname); }
+    catch (_) { return false; }
   }
 
   function normalizeInternetSources(results) {
@@ -4174,6 +4201,19 @@
       link.href = source.url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
+      if (isDirectPdfUrl(source.url)) {
+        link.title = 'PDF를 PV에서 열기';
+        link.addEventListener('click', function (event) {
+          event.preventDefault();
+          if (typeof root.openRemotePdfInPreviewPopup !== 'function') {
+            return setStatus('PV PDF 열기 기능을 사용할 수 없습니다.', 'error');
+          }
+          var name = String(source.title || 'search-result').replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120) + '.pdf';
+          if (!root.openRemotePdfInPreviewPopup(source.url, name)) {
+            setStatus('PV 창을 열지 못했습니다. 팝업 허용 설정을 확인하세요.', 'error');
+          }
+        });
+      }
       item.appendChild(link);
       var meta = document.createElement('span');
       meta.textContent = [source.source, source.date, source.engine, source.channel].filter(Boolean).join(' · ');

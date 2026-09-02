@@ -594,7 +594,7 @@ AI 결과 완성 후 `갤러리로 보내기`를 누릅니다.
 
 ### Story Gemini
 
-공유 Gemini Story 앱을 새 탭으로 엽니다. FMA Viewer의 AI Studio API 키를 별도로 사용하지 않습니다.
+공유 Gemini Story 앱을 독립된 새 창으로 엽니다. FMA Viewer의 AI Studio API 키를 별도로 사용하지 않습니다.
 
 ### Aura Image
 
@@ -618,11 +618,15 @@ AI 결과 완성 후 `갤러리로 보내기`를 누릅니다.
 
 ### Aura Gemini
 
-공유 Gemini Aura 앱을 새 탭에서 실행합니다. FMA Viewer 공용 API 키를 별도로 적용하지 않습니다.
+공유 Gemini Aura 앱을 독립된 새 창에서 실행합니다. FMA Viewer 공용 API 키를 별도로 적용하지 않습니다.
 
 ### 배경생성 Gemini
 
-공유 Gemini 배경 생성 앱을 새 탭에서 실행합니다.
+공유 Gemini 배경 생성 앱을 독립된 새 창에서 실행합니다.
+
+### Gemini 인포그래픽 만화
+
+설정에서 버튼 표시를 켜면 등록된 공유 Gemini 앱을 독립된 새 창에서 실행합니다.
 
 ### BG Remover App
 

@@ -32,7 +32,8 @@
         { name: 'Napkin', url: 'https://app.napkin.ai/' },
         { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
         { name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' },
-        { name: 'colab.new', url: 'http://colab.new' }
+        { name: 'colab.new', url: 'http://colab.new' },
+        { name: '인포그래픽 만화', url: 'https://gemini.google.com/share/bbaf65f86ad2?skid=93184a42-374a-45ef-a33e-46657407c892', visible: false }
     ];
 
     async function loadHtmlFragment(path) {
@@ -173,7 +174,7 @@
             .map(function (item) {
                 const name = String(item && item.name ? item.name : '').trim();
                 const url = String(item && item.url ? item.url : '').trim();
-                return { name: name, url: url };
+                return { name: name, url: url, visible: item && item.visible !== false };
             })
             .filter(function (item) { return !!item.url; });
 
@@ -226,6 +227,11 @@
             return u === 'https://www.photopea.com' || u === 'https://photopea.com';
         });
         if (!hasPhotopea) base.push({ name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' });
+        const infographicComicUrl = 'https://gemini.google.com/share/bbaf65f86ad2?skid=93184a42-374a-45ef-a33e-46657407c892';
+        const hasInfographicComic = base.some(function (item) {
+            return normalizeUrl(item && item.url ? item.url : '') === normalizeUrl(infographicComicUrl);
+        });
+        if (!hasInfographicComic) base.push({ name: '인포그래픽 만화', url: infographicComicUrl, visible: false });
         return base;
     }
 
@@ -233,7 +239,7 @@
         const listEl = document.getElementById('sites-list');
         if (listEl) {
             listEl.innerHTML = '';
-            sitesList.forEach(function (site) {
+            sitesList.filter(function (site) { return site.visible !== false; }).forEach(function (site) {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 if (sitesPanelCompact) {
@@ -296,6 +302,18 @@
             del.onclick = function () { removeSiteAt(idx); };
             row.appendChild(del);
 
+            const visibleLabel = document.createElement('label');
+            visibleLabel.className = 'shrink-0 inline-flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer select-none';
+            const visible = document.createElement('input');
+            visible.type = 'checkbox';
+            visible.checked = site.visible !== false;
+            visible.className = 'rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500';
+            visible.setAttribute('aria-label', (site.name || site.url) + ' 보이기');
+            visible.onchange = function () { setSiteVisibility(idx, visible.checked); };
+            visibleLabel.appendChild(visible);
+            visibleLabel.appendChild(document.createTextNode('보이기'));
+            row.appendChild(visibleLabel);
+
             listEl.appendChild(row);
         });
     }
@@ -327,6 +345,14 @@
             del.textContent = 'Delete';
             del.onclick = function () { removeSiteAt(idx); };
             row.appendChild(del);
+
+            const visible = document.createElement('input');
+            visible.type = 'checkbox';
+            visible.checked = site.visible !== false;
+            visible.title = 'Show site';
+            visible.setAttribute('aria-label', (site.name || site.url) + ' 보이기');
+            visible.onchange = function () { setSiteVisibility(idx, visible.checked); };
+            row.appendChild(visible);
 
             listEl.appendChild(row);
         });
@@ -557,6 +583,13 @@
         await setAiSettings({ sitesList: sitesList.slice() });
     }
 
+    async function setSiteVisibility(index, visible) {
+        if (index < 0 || index >= sitesList.length) return;
+        sitesList[index] = Object.assign({}, sitesList[index], { visible: !!visible });
+        await saveSitesListToSettings();
+        renderSitesPanel();
+    }
+
     function normalizeUrlForCompare(url) {
         return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
     }
@@ -661,9 +694,9 @@
         const displayName = String(nameInput && nameInput.value ? nameInput.value : '').trim()
             || buildSiteNameFromUrl(normalized);
         if (editing) {
-            sitesList[editingPreferencesSiteIndex] = { name: displayName, url: normalized };
+            sitesList[editingPreferencesSiteIndex] = { name: displayName, url: normalized, visible: sitesList[editingPreferencesSiteIndex].visible !== false };
         } else {
-            sitesList.push({ name: displayName, url: normalized });
+            sitesList.push({ name: displayName, url: normalized, visible: true });
         }
         await saveSitesListToSettings();
         renderSitesPanel();
@@ -700,9 +733,9 @@
         }
         const displayName = String(nameInput && nameInput.value ? nameInput.value : '').trim() || buildSiteNameFromUrl(normalized);
         if (editing) {
-            sitesList[editingSiteIndex] = { name: displayName, url: normalized };
+            sitesList[editingSiteIndex] = { name: displayName, url: normalized, visible: sitesList[editingSiteIndex].visible !== false };
         } else {
-            sitesList.push({ name: displayName, url: normalized });
+            sitesList.push({ name: displayName, url: normalized, visible: true });
         }
         await saveSitesListToSettings();
         renderSitesPanel();

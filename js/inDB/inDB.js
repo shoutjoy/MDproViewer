@@ -1,8 +1,8 @@
 // MarkdownProDB(inDB) initialization, saving, feature synchronization, and storage UI.
 // Loaded after app.js so editor globals remain available while this concern stays isolated.
 const DB_NAME = "MarkdownProDB";
-const DB_VERSION = 8;
-const FEATURE_DATA_STORE_NAMES = ['fonts', 'ai_chat', 'scholar_ai', 'ssp_image_ai', 'highlights', 'genslides'];
+const DB_VERSION = 9;
+const FEATURE_DATA_STORE_NAMES = ['fonts', 'ai_chat', 'scholar_ai', 'ssp_image_ai', 'mermaid_refs', 'highlights', 'genslides'];
 const INDB_ENABLED_SETTING_KEY = 'md_viewer_indb_enabled';
 
 function isInDbStorageEnabled() {
@@ -155,6 +155,7 @@ const INDB_STATUS_STORE_ORDER = [
     'ai_chat',
     'scholar_ai',
     'ssp_image_ai',
+    'mermaid_refs',
     'highlights',
     'genslides'
 ];
@@ -170,6 +171,7 @@ const INDB_STATUS_STORE_LABELS = Object.freeze({
     ai_chat: 'AI 대화',
     scholar_ai: 'ScholarAI',
     ssp_image_ai: '이미지 AI',
+    mermaid_refs: 'Mermaid 생성 기록',
     highlights: '하이라이트',
     genslides: 'GenSlide'
 });
