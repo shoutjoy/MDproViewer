@@ -157,14 +157,26 @@
                 return;
             }
             var nested = [];
+            var taskPrefix = '';
             var body = Array.prototype.map.call(item.childNodes || [], function (child) {
                 if (child.nodeType === 1 && /^(ul|ol)$/i.test(child.tagName || '')) {
                     nested.push(listNode(child, context, (depth || 0) + 1));
                     return '';
                 }
+                if (child.nodeType === 1 && /^p$/i.test(child.tagName || '')) {
+                    return inlineChildren(child, context);
+                }
+                if (child.nodeType === 1 && /^input$/i.test(child.tagName || '') && String(child.getAttribute('type') || '').toLowerCase() === 'checkbox') {
+                    taskPrefix = child.hasAttribute('checked') ? '[x] ' : '[ ] ';
+                    context.convertedCount += 1;
+                    return '';
+                }
+                if (child.nodeType === 1 && RAW_BLOCK_TAGS[String(child.tagName || '').toLowerCase()]) {
+                    return blockNode(child, context, (depth || 0) + 1);
+                }
                 return inlineNode(child, context);
             }).join('').trim();
-            lines.push('  '.repeat(Math.max(0, depth || 0)) + (ordered ? number++ + '. ' : '- ') + body);
+            lines.push('  '.repeat(Math.max(0, depth || 0)) + (ordered ? number++ + '. ' : '- ') + taskPrefix + body);
             Array.prototype.push.apply(lines, nested.filter(Boolean));
             context.convertedCount += 1;
         });
@@ -180,8 +192,16 @@
         var rows = Array.prototype.map.call(node.querySelectorAll('tr'), function (row) {
             if (unsupportedAttributes(row, []).length) return null;
             return Array.prototype.map.call(row.querySelectorAll(':scope > th, :scope > td'), function (cell) {
-                if (unsupportedAttributes(cell, []).length) return null;
-                return inlineChildren(cell, context).trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+                var extras = unsupportedAttributes(cell, ['align', 'style']);
+                var style = String(cell.getAttribute('style') || '');
+                if (extras.length || (style && !/^\s*text-align\s*:\s*(?:left|center|right)\s*;?\s*$/i.test(style))) return null;
+                var alignment = String(cell.getAttribute('align') || '').toLowerCase();
+                var styleAlignment = style.match(/text-align\s*:\s*(left|center|right)/i);
+                if (styleAlignment) alignment = styleAlignment[1].toLowerCase();
+                return {
+                    value: inlineChildren(cell, context).trim().replace(/\|/g, '\\|').replace(/\n/g, '<br>'),
+                    alignment: /^(left|center|right)$/.test(alignment) ? alignment : ''
+                };
             });
         });
         if (!rows.length || rows.some(function (row) { return !row || row.some(function (cell) { return cell === null; }); })) {
@@ -189,13 +209,39 @@
         }
         var width = Math.max.apply(Math, rows.map(function (row) { return row.length; }));
         if (!width) return '';
-        var normalized = rows.map(function (row) { return row.concat(Array(Math.max(0, width - row.length)).fill('')); });
-        var output = ['| ' + normalized[0].join(' | ') + ' |'];
-        output.push('| ' + normalized[0].map(function () { return '---'; }).join(' | ') + ' |');
-        normalized.slice(1).forEach(function (row) { output.push('| ' + row.join(' | ') + ' |'); });
+        var emptyCell = { value: '', alignment: '' };
+        var normalized = rows.map(function (row) { return row.concat(Array(Math.max(0, width - row.length)).fill(emptyCell)); });
+        var alignments = normalized[0].map(function (cell, index) {
+            var aligned = cell.alignment;
+            if (!aligned) {
+                for (var rowIndex = 1; rowIndex < normalized.length && !aligned; rowIndex += 1) aligned = normalized[rowIndex][index].alignment;
+            }
+            return aligned === 'center' ? ':---:' : aligned === 'right' ? '---:' : aligned === 'left' ? ':---' : '---';
+        });
+        var output = ['| ' + normalized[0].map(function (cell) { return cell.value; }).join(' | ') + ' |'];
+        output.push('| ' + alignments.join(' | ') + ' |');
+        normalized.slice(1).forEach(function (row) { output.push('| ' + row.map(function (cell) { return cell.value; }).join(' | ') + ' |'); });
         if (!node.querySelector('th')) addIssue(context, 'table', '헤더가 없어 첫 행을 Markdown 표 헤더로 사용');
         context.convertedCount += 1;
         return output.join('\n');
+    }
+
+    function descriptionListNode(node, context) {
+        var lines = [];
+        Array.prototype.forEach.call(node.children || [], function (child) {
+            var tag = String(child.tagName || '').toLowerCase();
+            if (tag === 'dt') {
+                lines.push('**' + inlineChildren(child, context).trim() + '**');
+                context.convertedCount += 1;
+            } else if (tag === 'dd') {
+                lines.push(': ' + blockChildren(child, context, 0));
+                context.convertedCount += 1;
+            } else {
+                lines.push(preserveRaw(child, context, '설명 목록에서 지원하지 않는 자식 태그'));
+            }
+        });
+        addIssue(context, 'dl', '설명 목록을 호환성 높은 굵은 용어와 문단 형식으로 변환');
+        return lines.join('\n\n');
     }
 
     function blockChildren(node, context, depth) {
@@ -210,7 +256,7 @@
         if (node.nodeType === 8) return '<!--' + String(node.nodeValue || '') + '-->';
         if (node.nodeType !== 1) return '';
         var tag = String(node.tagName || '').toLowerCase();
-        var supportedBlock = /^(?:a|article|b|blockquote|br|code|del|div|em|figure|h[1-6]|hr|i|img|main|mark|ol|p|pre|s|section|span|strike|strong|sub|sup|table|ul)$/;
+        var supportedBlock = /^(?:a|address|article|aside|b|blockquote|br|code|del|div|dl|em|figcaption|figure|footer|h[1-6]|header|hr|i|img|main|mark|nav|ol|p|pre|s|section|span|strike|strong|sub|sup|table|ul)$/;
         if (!supportedBlock.test(tag)) return preserveRaw(node, context, '지원하지 않는 HTML 태그');
         var extra = unsupportedAttributes(node, tag === 'ol' ? ['start'] : []);
         if (extra.length && tag !== 'table') {
@@ -243,8 +289,13 @@
         }
         if (tag === 'hr') { context.convertedCount += 1; return '---'; }
         if (tag === 'ul' || tag === 'ol') return listNode(node, context, depth || 0);
+        if (tag === 'dl') return descriptionListNode(node, context);
         if (tag === 'table') return tableNode(node, context);
-        if (tag === 'div' || tag === 'section' || tag === 'article' || tag === 'main' || tag === 'figure') {
+        if (tag === 'figcaption') {
+            context.convertedCount += 1;
+            return '*' + inlineChildren(node, context).trim() + '*';
+        }
+        if (/^(?:address|article|aside|div|figure|footer|header|main|nav|section)$/.test(tag)) {
             addIssue(context, tag, '컨테이너 태그는 제거하고 내부 내용만 변환');
             context.convertedCount += 1;
             return blockChildren(node, context, (depth || 0) + 1);

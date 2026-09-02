@@ -759,6 +759,9 @@ let math99PopupStartX = 0;
 let math99PopupStartY = 0;
 let math99PopupStartW = 0;
 let math99PopupStartH = 0;
+let img2MathImage = null;
+let img2MathBound = false;
+let img2MathSelection = { start: 0, end: 0 };
 
 function loadFolderCollapseState() {
     try {
@@ -4985,7 +4988,7 @@ async function readFile(file, options) {
         return;
     }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         const raw = decodeOpenedTextBytes(e.target.result).text;
         const parsed = (formatApi && typeof formatApi.parseFileText === 'function')
             ? formatApi.parseFileText(name, raw)
@@ -5011,14 +5014,17 @@ async function readFile(file, options) {
                     ? parser.detectPayloadKind(data)
                     : '';
                 if (kind === 'mpv' || (data && data.format === MPV_FORMAT && Array.isArray(data.folders) && Array.isArray(data.documents))) {
-                    restoreFromMpv(data);
+                    await restoreFromMpv(data);
                     return;
                 }
                 if (kind === 'mpp') {
                     showToast('MPP file detected. Open it in GenSlide editor.');
                     return;
                 }
-            } catch (_) {}
+            } catch (err) {
+                showToast('MPV 파일을 열 수 없습니다: ' + (err && err.message ? err.message : err));
+                return;
+            }
         }
         if (kind === 'mpp') {
             showToast('MPP file detected. Open it in GenSlide editor.');
@@ -5119,7 +5125,10 @@ async function importZipDocumentFile(file) {
 }
 
 async function restoreFromMpv(data) {
-    if (!db) return;
+    if (!db) throw new Error('데이터베이스가 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요.');
+    if (!data || !Array.isArray(data.folders) || !Array.isArray(data.documents)) {
+        throw new Error('올바른 MPV 백업 파일이 아닙니다.');
+    }
     const tx = db.transaction(['folders', 'documents'], 'readwrite');
     const storeFolders = tx.objectStore('folders');
     const storeDocs = tx.objectStore('documents');
@@ -5153,6 +5162,20 @@ function openBackupModal() {
 function closeBackupModal() {
     document.getElementById('backup-modal').classList.add('hidden');
     document.getElementById('backup-modal').classList.remove('flex');
+}
+
+function openMpvFilePicker(event) {
+    if (event) event.preventDefault();
+    const input = document.getElementById('file-input');
+    if (!input) {
+        showToast('파일 선택기를 열 수 없습니다.');
+        return false;
+    }
+    // Reset first so choosing the same backup twice still fires `change`.
+    input.value = '';
+    closeBackupModal();
+    input.click();
+    return true;
 }
 
 function callSidebarLeftMergeApi(method, args) {
@@ -8059,9 +8082,9 @@ function openMermaidEditorModal() {
     const modal = document.getElementById('mermaid-editor-modal');
     if (!modal) return;
     const frame = document.getElementById('mermaid-editor-frame');
-    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260902-collapsed-samples-9';
+    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-prompt-resize-12';
     if (frame && frame.dataset) frame.dataset.src = requiredSource;
-    if (frame && String(frame.getAttribute('src') || '').indexOf('20260902-collapsed-samples-9') < 0) frame.setAttribute('src', requiredSource);
+    if (frame && String(frame.getAttribute('src') || '').indexOf('20260903-prompt-resize-12') < 0) frame.setAttribute('src', requiredSource);
     else ensureLazyFrameLoaded(frame);
     modal.classList.remove('hidden');
     bindMermaidEditorModalDrag();
@@ -8226,6 +8249,7 @@ window.addEventListener('message', function (event) {
     if (data.type === 'mdv-insert-mermaid') {
         if (!fromMermaidEditor) return;
         insertMermaidBlockFromExternal(data.code || '');
+        if (data.closeEditor === true) closeMermaidEditorModal();
         return;
     }
     if (data.type === 'mdv-open-mermaid-svg-in-image-insert') {
@@ -10295,6 +10319,156 @@ function closeMath99Popup() {
     wrap.classList.add('hidden');
 }
 
+function cleanImg2MathLatex(value) {
+    let text = String(value || '').trim().replace(/^```(?:latex|tex|math)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    try {
+        const parsed = JSON.parse(text);
+        text = String(parsed.latex || parsed.formula || parsed.tex || '').trim();
+    } catch (_error) { }
+    const wrapped = text.match(/^\$\$([\s\S]*)\$\$$|^\\\[([\s\S]*)\\\]$|^\\\(([\s\S]*)\\\)$|^\$([^$]+)\$$/);
+    if (wrapped) text = wrapped.slice(1).find(Boolean) || text;
+    return text.replace(/^\s*(?:latex|tex)\s*:\s*/i, '').trim();
+}
+
+function setImg2MathImage(file) {
+    if (!file || !String(file.type || '').startsWith('image/')) {
+        showToast('이미지 파일을 선택해 주세요.');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function () {
+        img2MathImage = { name: file.name || 'formula.png', type: file.type || 'image/png', size: file.size || 0, dataUrl: String(reader.result || '') };
+        const preview = document.getElementById('img2math-image-preview');
+        const label = document.getElementById('img2math-drop-label');
+        if (preview) { preview.src = img2MathImage.dataUrl; preview.classList.remove('hidden'); }
+        if (label) label.textContent = img2MathImage.name;
+        const status = document.getElementById('img2math-status');
+        if (status) status.textContent = '이미지를 불러왔습니다.';
+    };
+    reader.onerror = function () { showToast('이미지를 읽지 못했습니다.'); };
+    reader.readAsDataURL(file);
+}
+
+async function pasteImg2MathImage() {
+    const status = document.getElementById('img2math-status');
+    try {
+        if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') throw new Error('이 환경에서는 Ctrl+V를 사용해 주세요.');
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+            const type = item.types.find(function (candidate) { return candidate.startsWith('image/'); });
+            if (type) { setImg2MathImage(new File([await item.getType(type)], '붙여넣은 수식 이미지', { type: type })); return; }
+        }
+        throw new Error('클립보드에 이미지가 없습니다.');
+    } catch (error) {
+        if (status) status.textContent = error.message;
+    }
+}
+
+async function renderImg2MathPreview() {
+    const target = document.getElementById('img2math-render');
+    const result = document.getElementById('img2math-result');
+    if (!target || !result) return;
+    const latex = cleanImg2MathLatex(result.value);
+    target.textContent = latex ? '\\[' + latex + '\\]' : '인식된 수식이 여기에 렌더링됩니다.';
+    if (!latex) return;
+    try {
+        await ensureMdMathEngineLoaded();
+        if (window.MathJax.typesetClear) window.MathJax.typesetClear([target]);
+        await window.MathJax.typesetPromise([target]);
+    } catch (error) {
+        target.textContent = '수식 렌더링 오류: ' + error.message;
+    }
+}
+
+async function generateImg2Math() {
+    const status = document.getElementById('img2math-status');
+    const button = document.getElementById('img2math-generate');
+    const prompt = document.getElementById('img2math-prompt');
+    const output = document.getElementById('img2math-result');
+    if (!img2MathImage) { if (status) status.textContent = '먼저 수식 이미지를 추가해 주세요.'; return; }
+    try {
+        if (!window.AIChatBridge || typeof window.AIChatBridge.complete !== 'function') throw new Error('AI Jena 연결 모듈이 준비되지 않았습니다.');
+        const selected = getMermaidVisionProviderSelection();
+        button.disabled = true;
+        button.textContent = '수식을 인식하고 있습니다…';
+        if (status) status.textContent = 'AI가 이미지의 기호와 수식 구조를 분석하고 있습니다.';
+        const response = await window.AIChatBridge.complete({
+            provider: selected.provider,
+            model: selected.model,
+            mode: 'quick',
+            messages: [{ role: 'user', content: String(prompt.value || '').trim(), attachments: [{ kind: 'image', name: img2MathImage.name, type: img2MathImage.type, size: img2MathImage.size, dataUrl: img2MathImage.dataUrl }] }],
+            systemInstruction: 'You are a mathematical OCR engine. Read every visible formula precisely. Return only the raw LaTeX body, without dollar signs, code fences, JSON, prose, or explanation. Preserve fractions, roots, matrices, cases, accents, Greek letters, superscripts, subscripts, and delimiters.'
+        });
+        const latex = cleanImg2MathLatex(response && response.text);
+        if (!latex) throw new Error('AI 응답에서 수식을 찾지 못했습니다.');
+        output.value = latex;
+        await renderImg2MathPreview();
+        if (status) status.textContent = '수식 인식이 완료되었습니다. 결과를 수정하거나 문서에 삽입할 수 있습니다.';
+    } catch (error) {
+        if (status) status.textContent = '수식 인식 실패: ' + (error && error.message ? error.message : String(error));
+    } finally {
+        button.disabled = false;
+        button.textContent = '✦ 이미지 속 수식 TeX 생성';
+    }
+}
+
+function insertImg2MathResult() {
+    if (!isEditMode || !editorTextarea) { showToast('편집 모드에서 사용해 주세요.'); return; }
+    const output = document.getElementById('img2math-result');
+    const latex = cleanImg2MathLatex(output && output.value);
+    if (!latex) { showToast('삽입할 수식이 없습니다.'); return; }
+    const raw = String(editorTextarea.value || '');
+    const start = Math.max(0, Math.min(img2MathSelection.start, raw.length));
+    const end = Math.max(start, Math.min(img2MathSelection.end, raw.length));
+    const block = '$$\n' + latex + '\n$$';
+    editorTextarea.value = raw.slice(0, start) + block + raw.slice(end);
+    currentMarkdown = editorTextarea.value;
+    closeImg2MathPopup();
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start + block.length, start + block.length);
+    renderMarkdown();
+    performAutoSave();
+    showToast('인식한 수식을 문서에 삽입했습니다.');
+}
+
+function bindImg2MathPopup() {
+    if (img2MathBound) return;
+    const wrap = document.getElementById('img2math-popup');
+    const drop = document.getElementById('img2math-drop');
+    const file = document.getElementById('img2math-file');
+    const result = document.getElementById('img2math-result');
+    if (!wrap || !drop || !file || !result) return;
+    img2MathBound = true;
+    document.getElementById('img2math-select').onclick = function (event) { event.stopPropagation(); file.click(); };
+    document.getElementById('img2math-paste').onclick = function (event) { event.stopPropagation(); pasteImg2MathImage(); };
+    document.getElementById('img2math-generate').onclick = generateImg2Math;
+    document.getElementById('img2math-insert').onclick = insertImg2MathResult;
+    file.onchange = function () { setImg2MathImage(file.files && file.files[0]); file.value = ''; };
+    drop.onclick = function (event) { if (!event.target.closest('button')) file.click(); };
+    ['dragenter', 'dragover'].forEach(function (name) { drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.add('border-teal-400'); }); });
+    ['dragleave', 'drop'].forEach(function (name) { drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.remove('border-teal-400'); }); });
+    drop.addEventListener('drop', function (event) { setImg2MathImage(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]); });
+    wrap.addEventListener('paste', function (event) { const image = Array.from(event.clipboardData && event.clipboardData.files || []).find(function (item) { return item.type.startsWith('image/'); }); if (image) { event.preventDefault(); setImg2MathImage(image); } });
+    wrap.addEventListener('mousedown', function (event) { if (event.target === wrap) closeImg2MathPopup(); });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !wrap.classList.contains('hidden')) closeImg2MathPopup();
+    });
+    result.addEventListener('input', renderImg2MathPreview);
+}
+
+function openImg2MathPopup() {
+    if (!isEditMode || !editorTextarea) { showToast('편집 모드에서 사용해 주세요.'); return; }
+    img2MathSelection = { start: editorTextarea.selectionStart || 0, end: editorTextarea.selectionEnd || editorTextarea.selectionStart || 0 };
+    bindImg2MathPopup();
+    document.getElementById('math-quick-panel')?.classList.add('hidden');
+    document.getElementById('img2math-popup')?.classList.remove('hidden');
+    document.getElementById('img2math-drop')?.focus();
+}
+
+function closeImg2MathPopup() {
+    document.getElementById('img2math-popup')?.classList.add('hidden');
+}
+
 function ensureTableInsertPickerBuilt() {
     if (tableInsertPickerBuilt) return;
     const grid = document.getElementById('table-insert-grid');
@@ -10306,9 +10480,10 @@ function ensureTableInsertPickerBuilt() {
         for (let c = 1; c <= maxCols; c += 1) {
             const cell = document.createElement('button');
             cell.type = 'button';
-            cell.className = 'w-4 h-4 rounded-[2px] border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 hover:border-indigo-500';
+            cell.className = 'table-insert-grid-cell w-4 h-4 rounded-[2px] border';
             cell.dataset.rows = String(r);
             cell.dataset.cols = String(c);
+            cell.setAttribute('aria-label', r + 'x' + c + ' table');
             cell.onmouseenter = function () { previewTableInsertSize(r, c); };
             cell.onclick = function () { selectTableInsertSize(r, c); };
             grid.appendChild(cell);
@@ -10334,10 +10509,8 @@ function previewTableInsertSize(rows, cols) {
         const r = Number(cell.dataset.rows || 0);
         const c = Number(cell.dataset.cols || 0);
         const on = rows > 0 && cols > 0 && r <= rows && c <= cols;
-        cell.classList.toggle('bg-amber-300', on);
-        cell.classList.toggle('border-amber-500', on);
-        cell.classList.toggle('bg-slate-100', !on);
-        cell.classList.toggle('dark:bg-slate-800', !on);
+        cell.classList.toggle('is-selected', on);
+        cell.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
 }
 
@@ -10410,6 +10583,141 @@ function insertMarkdownTableBySize(rowsInput, colsInput) {
 function selectTableInsertSize(rows, cols) {
     insertMarkdownTableBySize(rows, cols);
     closeTableInsertPicker();
+}
+
+function splitMarkdownTableRow(line) {
+    const source = String(line || '').trim();
+    const body = source.replace(/^\|/, '').replace(/\|$/, '');
+    const cells = [];
+    let value = '';
+    let escaped = false;
+    for (let i = 0; i < body.length; i += 1) {
+        const char = body[i];
+        if (char === '|' && !escaped) {
+            cells.push(value.trim());
+            value = '';
+        } else {
+            value += char;
+        }
+        if (char === '\\' && !escaped) escaped = true;
+        else escaped = false;
+    }
+    cells.push(value.trim());
+    return cells;
+}
+
+function serializeMarkdownTableRow(cells) {
+    return '| ' + cells.join(' | ') + ' |';
+}
+
+function getMarkdownTableEditContext(text, cursor) {
+    const source = String(text || '');
+    const safeCursor = Math.max(0, Math.min(source.length, Number(cursor) || 0));
+    const lineStart = source.lastIndexOf('\n', Math.max(0, safeCursor - 1)) + 1;
+    let lineEnd = source.indexOf('\n', safeCursor);
+    if (lineEnd < 0) lineEnd = source.length;
+    const currentLine = source.substring(lineStart, lineEnd);
+    if (currentLine.indexOf('|') < 0) return null;
+
+    let blockStart = lineStart;
+    while (blockStart > 0) {
+        const previousEnd = blockStart - 1;
+        const previousStart = source.lastIndexOf('\n', Math.max(0, previousEnd - 1)) + 1;
+        if (source.substring(previousStart, previousEnd).indexOf('|') < 0) break;
+        blockStart = previousStart;
+    }
+    let blockEnd = lineEnd;
+    while (blockEnd < source.length) {
+        const nextStart = blockEnd + 1;
+        let nextEnd = source.indexOf('\n', nextStart);
+        if (nextEnd < 0) nextEnd = source.length;
+        if (source.substring(nextStart, nextEnd).indexOf('|') < 0) break;
+        blockEnd = nextEnd;
+    }
+
+    const lines = source.substring(blockStart, blockEnd).split('\n');
+    const separatorIndex = lines.findIndex(function (line) {
+        const cells = splitMarkdownTableRow(line);
+        return cells.length > 0 && cells.every(function (cell) { return /^:?-{3,}:?$/.test(cell); });
+    });
+    if (separatorIndex !== 1 || lines.length < 2) return null;
+    const rowIndex = source.substring(blockStart, lineStart).split('\n').length - 1;
+    const cells = splitMarkdownTableRow(lines[rowIndex]);
+    if (!cells.length) return null;
+
+    const beforeCursor = currentLine.substring(0, Math.max(0, safeCursor - lineStart));
+    let pipeCount = 0;
+    let escaped = false;
+    for (let i = 0; i < beforeCursor.length; i += 1) {
+        const char = beforeCursor[i];
+        if (char === '|' && !escaped) pipeCount += 1;
+        if (char === '\\' && !escaped) escaped = true;
+        else escaped = false;
+    }
+    const hasLeadingPipe = /^\s*\|/.test(currentLine);
+    const columnIndex = Math.max(0, Math.min(cells.length - 1, pipeCount - (hasLeadingPipe ? 1 : 0)));
+    return { blockStart, blockEnd, lines, rowIndex, columnIndex };
+}
+
+function editMarkdownTable(action) {
+    if (!isEditMode || !editorTextarea) {
+        showToast('편집 모드에서 사용해 주세요.');
+        return false;
+    }
+    const text = editorTextarea.value;
+    const cursor = editorTextarea.selectionStart;
+    const context = getMarkdownTableEditContext(text, cursor);
+    if (!context) {
+        showToast('Markdown 표 안에 커서를 두고 다시 눌러주세요.');
+        editorTextarea.focus();
+        return false;
+    }
+
+    const lines = context.lines.slice();
+    const columnCount = Math.max.apply(null, lines.map(function (line) { return splitMarkdownTableRow(line).length; }));
+    if (action === 'add-row') {
+        const insertAt = context.rowIndex <= 1 ? 2 : context.rowIndex + 1;
+        lines.splice(insertAt, 0, serializeMarkdownTableRow(Array(columnCount).fill('')));
+    } else if (action === 'delete-row') {
+        if (context.rowIndex <= 1) {
+            showToast('머리글과 구분선은 삭제할 수 없습니다.');
+            editorTextarea.focus();
+            return false;
+        }
+        lines.splice(context.rowIndex, 1);
+    } else if (action === 'add-column' || action === 'delete-column') {
+        if (action === 'delete-column' && columnCount <= 1) {
+            showToast('표에는 열이 하나 이상 있어야 합니다.');
+            editorTextarea.focus();
+            return false;
+        }
+        for (let row = 0; row < lines.length; row += 1) {
+            const cells = splitMarkdownTableRow(lines[row]);
+            while (cells.length < columnCount) cells.push(row === 1 ? '---' : '');
+            if (action === 'add-column') cells.splice(context.columnIndex + 1, 0, row === 1 ? '---' : '');
+            else cells.splice(context.columnIndex, 1);
+            lines[row] = serializeMarkdownTableRow(cells);
+        }
+    } else {
+        return false;
+    }
+
+    const replacement = lines.join('\n');
+    const nextText = text.substring(0, context.blockStart) + replacement + text.substring(context.blockEnd);
+    const historyBefore = beginEditorHistoryTransaction();
+    editorTextarea.value = nextText;
+    currentMarkdown = nextText;
+    editorTextarea.focus();
+    const nextCursor = Math.min(context.blockStart + replacement.length, cursor + (replacement.length - (context.blockEnd - context.blockStart)));
+    editorTextarea.setSelectionRange(nextCursor, nextCursor);
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'table-edit');
+    showToast(action === 'add-row' ? '표에 행을 추가했습니다.'
+        : action === 'add-column' ? '표에 열을 추가했습니다.'
+            : action === 'delete-row' ? '표의 행을 삭제했습니다.' : '표의 열을 삭제했습니다.');
+    return true;
 }
 
 function insertInlineMathTemplate() {
@@ -17834,6 +18142,7 @@ window.scrollToDocumentBottom = scrollToDocumentBottom;
 window.closeSaveModal = closeSaveModal;
 window.confirmSaveModal = confirmSaveModal;
 window.openBackupModal = openBackupModal;
+window.openMpvFilePicker = openMpvFilePicker;
 window.closeBackupModal = closeBackupModal;
 window.openMergeModal = openMergeModal;
 window.closeMergeModal = closeMergeModal;
@@ -17950,6 +18259,7 @@ window.applyHeading = applyHeading;
 window.insertListAtSelection = insertListAtSelection;
 window.handleTableInsertion = handleTableInsertion;
 window.toggleTableInsertPicker = toggleTableInsertPicker;
+window.editMarkdownTable = editMarkdownTable;
 window.closeTableInsertPicker = closeTableInsertPicker;
 window.prepareCaptionPanel = prepareCaptionPanel;
 window.toggleCaptionInsertPanel = toggleCaptionInsertPanel;

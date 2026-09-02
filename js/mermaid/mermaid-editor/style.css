@@ -96,34 +96,33 @@ body {
 #top-bar.toolbar-floating.toolbar-collapsed { width:auto !important; height:auto !important; min-width:0; min-height:0; resize:none; overflow:visible; }
 @media (max-width:900px) { #top-bar.toolbar-floating ~ #main { padding-left:16px; } }
 
-#image-to-mermaid { position:relative; display:grid; grid-template-columns:minmax(190px,.8fr) minmax(230px,1fr) minmax(320px,1.8fr) auto auto; align-items:stretch; gap:10px; padding:10px 116px 10px 16px; border-bottom:1px solid var(--border); background:#eef3f8; }
-#mermaid-ai-collapse-btn { position:absolute; top:8px; right:10px; z-index:3; padding:6px 10px; border:1px solid #94a3b8; border-radius:7px; background:#fff; color:#334155; font-size:11px; font-weight:800; cursor:pointer; }
-#image-to-mermaid.ai-collapsed { display:flex; align-items:center; min-height:46px; padding:7px 110px 7px 16px; }
-#image-to-mermaid.ai-collapsed .ai-ref-copy span,
+#image-to-mermaid { position:relative; display:grid; grid-template-columns:minmax(180px,.8fr) minmax(260px,1.7fr) repeat(4,max-content); align-items:center; gap:8px; padding:8px 16px; border-bottom:1px solid var(--border); background:#eef3f8; }
+#mermaid-ai-collapse-btn { align-self:center; justify-self:start; min-height:36px; padding:6px 10px; border:1px solid #94a3b8; border-radius:7px; background:#fff; color:#334155; font-size:11px; font-weight:800; line-height:1; white-space:nowrap; cursor:pointer; }
+#image-to-mermaid.ai-collapsed { display:flex; align-items:center; justify-content:flex-end; min-height:46px; padding:7px 16px; }
 #image-to-mermaid.ai-collapsed #mermaid-image-dropzone,
 #image-to-mermaid.ai-collapsed .ai-prompt-field,
 #image-to-mermaid.ai-collapsed #mermaid-image-generate,
 #image-to-mermaid.ai-collapsed #mermaid-history-open,
+#image-to-mermaid.ai-collapsed #mermaid-document-insert,
 #image-to-mermaid.ai-collapsed #mermaid-image-status { display:none; }
-.ai-ref-copy { display:flex; flex-direction:column; justify-content:center; gap:3px; }
-.ai-ref-copy strong { font-size:14px; }
-.ai-ref-copy span { color:var(--muted); font-size:11px; line-height:1.35; }
-#mermaid-image-dropzone { position:relative; min-height:62px; border:2px dashed #9aa9bc; border-radius:9px; background:#fff; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; outline:none; }
+#mermaid-image-dropzone { position:relative; min-height:52px; border:2px dashed #9aa9bc; border-radius:9px; background:#fff; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:pointer; outline:none; }
 #mermaid-image-dropzone:hover, #mermaid-image-dropzone.dragover, #mermaid-image-dropzone:focus { border-color:var(--accent); background:#eff6ff; }
 #mermaid-image-empty { display:flex; flex-direction:column; align-items:center; gap:3px; font-size:12px; }
 #mermaid-image-empty span { color:var(--muted); font-size:11px; }
 #mermaid-image-preview { width:100%; height:72px; object-fit:contain; background:#fff; }
 .ref-remove { position:absolute; top:3px; right:4px; width:22px; height:22px; padding:0; border:0; border-radius:999px; background:rgba(15,23,42,.78); color:#fff; font-size:17px; cursor:pointer; }
-.ai-prompt-field { display:flex; flex-direction:column; gap:4px; color:var(--muted); font-size:11px; font-weight:700; }
-.ai-prompt-field textarea { flex:1; min-height:54px; resize:vertical; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font:12px/1.4 "Malgun Gothic",sans-serif; color:var(--text); }
-.btn.ref-generate { align-self:center; min-height:48px; padding:10px 18px; border:1px solid #1d4ed8; background:#2563eb; color:#fff; box-shadow:0 4px 10px rgba(37,99,235,.25); font-weight:800; white-space:nowrap; }
+.ai-prompt-field { display:flex; align-self:stretch; flex-direction:column; gap:4px; min-width:0; color:var(--muted); font-size:11px; font-weight:700; }
+.ai-prompt-field textarea { flex:0 0 auto; width:100%; height:52px; min-height:44px; max-height:320px; resize:vertical; overflow:auto; border:1px solid var(--border); border-radius:8px; padding:6px 9px; font:12px/1.35 "Malgun Gothic",sans-serif; color:var(--text); }
+.btn.ref-generate { align-self:center; min-height:36px; padding:7px 12px; border:1px solid #1d4ed8; background:#2563eb; color:#fff; box-shadow:0 3px 8px rgba(37,99,235,.2); font-size:11px; font-weight:800; white-space:nowrap; }
 .btn.ref-generate:hover:not(:disabled) { background:#1d4ed8; border-color:#1e40af; }
 .btn.ref-generate:disabled { border-color:#94a3b8; background:#cbd5e1; color:#64748b; box-shadow:none; opacity:1; cursor:not-allowed; }
 .run-icon { display:inline-block; margin-right:5px; font-size:11px; }
-#mermaid-image-status { grid-column:2 / -1; min-height:14px; margin-top:-6px; color:var(--muted); font-size:11px; }
+#mermaid-image-status { grid-column:1 / -1; min-height:14px; margin-top:-6px; color:var(--muted); font-size:11px; }
 #mermaid-image-status.error { color:var(--error-text); }
-.btn.ref-history-btn { align-self:center; min-height:48px; border:1px solid #64748b; background:#fff; color:#334155; font-weight:800; white-space:nowrap; }
+.btn.ref-history-btn { align-self:center; min-height:36px; padding:6px 10px; border:1px solid #64748b; background:#fff; color:#334155; font-size:11px; font-weight:800; white-space:nowrap; }
 .btn.ref-history-btn:hover { background:#f1f5f9; }
+.btn.ref-insert-btn { align-self:center; justify-self:start; min-height:36px; padding:6px 10px; border:1px solid #047857; background:#059669; color:#fff; font-size:11px; font-weight:800; white-space:nowrap; }
+.btn.ref-insert-btn:hover { background:#047857; }
 #mermaid-history-panel { position:fixed; z-index:60; top:86px; right:18px; width:min(430px,calc(100vw - 36px)); height:min(680px,calc(100vh - 110px)); padding:14px; overflow:auto; border:1px solid #94a3b8; border-radius:12px; background:#fff; color:#1e293b; box-shadow:0 20px 55px rgba(15,23,42,.3); }
 #mermaid-history-panel[hidden] { display:none; }
 .history-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
@@ -137,7 +136,8 @@ body {
 .history-actions button { flex:1; padding:6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; cursor:pointer; }
 .history-actions .danger { color:#b91c1c; }
 .history-empty { color:#64748b; text-align:center; padding:30px 5px; font-size:12px; }
-@media (max-width:920px) { #image-to-mermaid { grid-template-columns:1fr 1fr; } .ai-prompt-field,#mermaid-image-status { grid-column:1 / -1; } }
+@media (max-width:1250px) { #image-to-mermaid { grid-template-columns:minmax(155px,.7fr) minmax(230px,1.5fr) repeat(4,max-content); gap:6px; padding-inline:10px; } }
+@media (max-width:920px) { #image-to-mermaid { grid-template-columns:1fr 1fr; } .ai-prompt-field,#mermaid-image-status { grid-column:1 / -1; } #mermaid-image-generate,#mermaid-history-open,#mermaid-document-insert,#mermaid-ai-collapse-btn { width:100%; } }
 
 #editor-pane,
 #preview-pane {

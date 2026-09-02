@@ -90,4 +90,7 @@ test('converter preserves unsupported HTML and reports concrete limitations', ()
   assert.match(converter, /Markdown으로 옮길 수 없는 속성/);
   assert.match(converter, /id = 'tidy-html2md-report'/);
   assert.match(converter, /100% 표현할 수 없는 항목/);
+  assert.match(converter, /taskPrefix = child\.hasAttribute\('checked'\)/);
+  assert.match(converter, /function descriptionListNode/);
+  assert.match(converter, /aligned === 'center' \? ':---:'/);
 });

@@ -1288,6 +1288,17 @@ function insertIntoDocument() {
   }
 }
 
+function insertIntoDocumentAndClose() {
+  const code = String(editor.value || '').trim();
+  if (!code) {
+    alert('문서에 삽입할 Mermaid 코드가 없습니다.');
+    return;
+  }
+  if (window.parent && window.parent !== window) {
+    window.parent.postMessage({ type: 'mdv-insert-mermaid', code: code, closeEditor: true }, '*');
+  }
+}
+
 function setMermaidImageStatus(message, isError) {
   if (!mermaidImageStatus) return;
   mermaidImageStatus.textContent = String(message || '');
