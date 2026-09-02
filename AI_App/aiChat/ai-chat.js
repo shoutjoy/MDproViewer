@@ -561,12 +561,6 @@
       + '    <button type="button" id="ai-chat-new" class="ai-chat-icon-action" title="새 대화" aria-label="새 대화">'
       + '      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="ai-chat-action-label">새 대화</span>'
       + '    </button>'
-      + '    <button type="button" id="ai-chat-copy-all" class="ai-chat-icon-action" aria-label="대화 전체 복사">'
-      + '      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg><span class="ai-chat-action-label">복사</span>'
-      + '    </button>'
-      + '    <button type="button" id="ai-chat-save-all" class="ai-chat-icon-action" aria-label="대화 전체 Markdown 저장">'
-      + '      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 20h14"/></svg><span class="ai-chat-action-label">저장</span>'
-      + '    </button>'
       + '    <button type="button" id="ai-chat-data-center-open" class="ai-chat-icon-action" title="AI 데이터 센터" aria-label="AI 데이터 센터">🗂<span class="ai-chat-action-label">데이터</span></button>'
       + '    <div class="ai-chat-layout-menu-wrap">'
       + '      <button type="button" id="ai-chat-layout-menu-button" class="ai-chat-icon-action" title="창 배치 변경" aria-label="창 배치 변경" aria-expanded="false">'
@@ -678,8 +672,6 @@
       storageSet(HISTORY_SORT_KEY, state.historySort);
       renderConversationHistory();
     });
-    document.getElementById('ai-chat-copy-all').addEventListener('click', copyConversation);
-    document.getElementById('ai-chat-save-all').addEventListener('click', saveConversationMarkdown);
     document.getElementById('ai-chat-data-center-open').addEventListener('click', openAIDataCenter);
     document.getElementById('ai-chat-writing-style-settings').addEventListener('click', function () {
       if (typeof root.openAIWritingStyleSettings === 'function') root.openAIWritingStyleSettings();
@@ -2777,6 +2769,8 @@
         + '<span class="ai-chat-history-actions">'
         + '<button type="button" class="ai-chat-history-action ai-chat-history-pin" aria-label="상단 고정" title="상단 고정"></button>'
         + '<button type="button" class="ai-chat-history-action ai-chat-history-rename" aria-label="이름 바꾸기" title="이름 바꾸기">✎</button>'
+        + '<button type="button" class="ai-chat-history-action ai-chat-history-copy" aria-label="대화 전체 복사" title="대화 전체 복사"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/></svg></button>'
+        + '<button type="button" class="ai-chat-history-action ai-chat-history-download" aria-label="대화 Markdown 다운로드" title="대화 Markdown 다운로드"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 20h14"/></svg></button>'
         + '<button type="button" class="ai-chat-history-action ai-chat-history-delete" aria-label="대화 삭제" title="대화 삭제">×</button>'
         + '</span>';
       item.querySelector('.ai-chat-history-title').textContent = conversation.title || '새 대화';
@@ -2794,6 +2788,14 @@
       item.querySelector('.ai-chat-history-rename').addEventListener('click', function (event) {
         event.stopPropagation();
         renameConversation(conversation.id);
+      });
+      item.querySelector('.ai-chat-history-copy').addEventListener('click', function (event) {
+        event.stopPropagation();
+        copyConversation(conversation);
+      });
+      item.querySelector('.ai-chat-history-download').addEventListener('click', function (event) {
+        event.stopPropagation();
+        saveConversationMarkdown(conversation);
       });
       item.querySelector('.ai-chat-history-delete').addEventListener('click', function (event) {
         event.stopPropagation();
@@ -4542,10 +4544,12 @@
     }).catch(legacyCopy);
   }
 
-  function copyConversation() {
-    if (!state.messages.length) return setStatus('복사할 대화가 없습니다.', 'error');
-    copyText(state.messages.map(function (message) {
-      var reasoning = state.showReasoning && message.reasoning ? '\n\n[모델의 생각/추론]\n' + message.reasoning : '';
+  function copyConversation(conversation) {
+    var messages = conversation && Array.isArray(conversation.messages) ? conversation.messages : state.messages;
+    var showReasoning = conversation && typeof conversation.showReasoning === 'boolean' ? conversation.showReasoning : state.showReasoning;
+    if (!messages.length) return setStatus('복사할 대화가 없습니다.', 'error');
+    copyText(messages.map(function (message) {
+      var reasoning = showReasoning && message.reasoning ? '\n\n[모델의 생각/추론]\n' + message.reasoning : '';
       var explanation = message.explanation ? '\n\n[Jena\'s Thought]\n' + message.explanation : '';
       var checklist = message.checklist ? '\n\n[답변 체크리스트]\n' + message.checklist : '';
       var images = Array.isArray(message.images) && message.images.length ? '\n\n[생성 이미지 ' + message.images.length + '개]' : '';
@@ -4553,30 +4557,35 @@
     }).join('\n\n'));
   }
 
-  function conversationMarkdown() {
-    var currentTitle = titleFromMessages(state.messages);
-    var providerLabel = state.provider === 'lmstudio'
+  function conversationMarkdown(conversation) {
+    var messages = conversation && Array.isArray(conversation.messages) ? conversation.messages : state.messages;
+    var provider = conversation && conversation.provider ? conversation.provider : state.provider;
+    var responseMode = conversation && conversation.responseMode ? conversation.responseMode : state.responseMode;
+    var showReasoning = conversation && typeof conversation.showReasoning === 'boolean' ? conversation.showReasoning : state.showReasoning;
+    var currentTitle = conversation && conversation.title ? conversation.title : titleFromMessages(messages);
+    var providerLabel = provider === 'lmstudio'
       ? 'LM Studio'
-      : state.provider === 'ollama'
+      : provider === 'ollama'
       ? 'Ollama'
-      : state.provider === 'deepseek'
+      : provider === 'deepseek'
       ? 'DeepSeek'
-      : state.provider === 'openai'
+      : provider === 'openai'
       ? 'OpenAI'
-      : state.provider === 'openai-compatible'
+      : provider === 'openai-compatible'
       ? 'OrcaRouter / OpenAI 호환'
       : 'AI Studio (Gemini)';
-    var modelLabel = state.provider === 'lmstudio'
-      ? (state.lmModel || '확인되지 않음')
-      : state.provider === 'ollama'
-      ? (state.ollamaModel || '확인되지 않음')
-      : state.provider === 'deepseek'
-      ? (state.deepseekModel || '확인되지 않음')
-      : state.provider === 'openai'
-      ? (state.openaiModel || '확인되지 않음')
-      : state.provider === 'openai-compatible'
-      ? (state.openaiCompatibleModel || '확인되지 않음')
-      : state.geminiModel;
+    var source = conversation || state;
+    var modelLabel = provider === 'lmstudio'
+      ? (source.lmModel || state.lmModel || '확인되지 않음')
+      : provider === 'ollama'
+      ? (source.ollamaModel || '확인되지 않음')
+      : provider === 'deepseek'
+      ? (source.deepseekModel || '확인되지 않음')
+      : provider === 'openai'
+      ? (source.openaiModel || '확인되지 않음')
+      : provider === 'openai-compatible'
+      ? (source.openaiCompatibleModel || '확인되지 않음')
+      : (source.geminiModel || '확인되지 않음');
     var lines = [
       '# AI Jena 대화',
       '',
@@ -4584,14 +4593,14 @@
       '- 저장 시각: ' + new Date().toLocaleString('ko-KR'),
       '- AI 공급자: ' + providerLabel,
       '- 모델: ' + modelLabel,
-      '- 답변 문체: ' + writingStyleLabel(state.writingStyle),
-      '- 응답 모드: ' + (state.responseMode === 'reasoning' ? '추론' : '즉시응답'),
-      '- 추론 내용 표시: ' + (state.showReasoning ? '함' : '안 함'),
+      '- 답변 문체: ' + writingStyleLabel(source.writingStyle || state.writingStyle),
+      '- 응답 모드: ' + (responseMode === 'reasoning' ? '추론' : '즉시응답'),
+      '- 추론 내용 표시: ' + (showReasoning ? '함' : '안 함'),
       ''
     ];
     var questionNumber = 0;
     var answerNumber = 0;
-    state.messages.forEach(function (message) {
+    messages.forEach(function (message) {
       if (!message) return;
       if (message.role === 'user') {
         questionNumber += 1;
@@ -4606,7 +4615,7 @@
       lines.push('## 답변 ' + answerNumber, '');
       if (message.explanation) lines.push('### Jena\'s Thought', '', String(message.explanation).trim(), '');
       if (message.checklist) lines.push('### 답변 체크리스트', '', String(message.checklist).trim(), '');
-      if (state.showReasoning && message.reasoning) lines.push('### 모델의 생각/추론', '', String(message.reasoning).trim(), '');
+      if (showReasoning && message.reasoning) lines.push('### 모델의 생각/추론', '', String(message.reasoning).trim(), '');
       lines.push('### 최종 답변', '', String(message.content || '').trim(), '');
       if (Array.isArray(message.images) && message.images.length) {
         lines.push('> 생성 이미지 ' + message.images.length + '개는 AI Jena 대화 저장소에 보관되어 있습니다.', '');
@@ -4615,11 +4624,12 @@
     return lines.join('\n').replace(/\n{4,}/g, '\n\n\n').trim() + '\n';
   }
 
-  function saveConversationMarkdown() {
-    if (!state.messages.length) return setStatus('저장할 대화가 없습니다.', 'error');
+  function saveConversationMarkdown(conversation) {
+    var messages = conversation && Array.isArray(conversation.messages) ? conversation.messages : state.messages;
+    if (!messages.length) return setStatus('저장할 대화가 없습니다.', 'error');
     try {
-      var markdown = conversationMarkdown();
-      var title = String(titleFromMessages(state.messages) || 'AI-Chat')
+      var markdown = conversationMarkdown(conversation);
+      var title = String((conversation && conversation.title) || titleFromMessages(messages) || 'AI-Chat')
         .replace(/[\\/:*?"<>|]+/g, '_')
         .replace(/\s+/g, ' ')
         .trim()

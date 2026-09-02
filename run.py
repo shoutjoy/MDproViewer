@@ -10,6 +10,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import json
+import xml.etree.ElementTree as ET
+
+from web_search import SEARCH_PATHS, web_search
 
 from LocalSave_sqlite.server.api import SqliteApiRouter
 from LocalSave_sqlite.server.database import DatabaseManager
@@ -88,6 +91,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_json(self, status, value):
+        payload = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _web_search(self, query_string):
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            self._send_json(403, {"ok": False, "error": "검색 API는 이 컴퓨터에서만 사용할 수 있습니다."})
+            return
+        try:
+            self._send_json(200, web_search(query_string))
+        except ValueError as error:
+            self._send_json(400, {"ok": False, "error": str(error)})
+        except LookupError as error:
+            self._send_json(404, {"ok": False, "error": str(error)})
+        except (OSError, urllib.error.URLError, ET.ParseError) as error:
+            self.log_error("web search failed: %s", error)
+            self._send_json(502, {"ok": False, "error": "인터넷 검색 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."})
+
     def _proxy_image(self, raw_url):
         if self.client_address[0] not in {"127.0.0.1", "::1"}:
             self._send_proxy_error(403, "Image proxy is available only from this computer")
@@ -131,6 +157,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if SQLITE_API.handle(self, "GET"):
             return
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path in SEARCH_PATHS:
+            self._web_search(parsed.query)
+            return
         if parsed.path == self.IMAGE_PROXY_PATH:
             query = urllib.parse.parse_qs(parsed.query)
             self._proxy_image((query.get("url") or [""])[0])

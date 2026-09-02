@@ -240,6 +240,7 @@ html.ai-chat-page-pushed .ai-chat-panel.layout-popup {
 .ai-chat-history-actions { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
 .ai-chat-history-action { min-width: 25px; height: 24px; padding: 0 6px; border: 0; border-radius: 5px; background: transparent; color: #b7c6db; cursor: pointer; }
 .ai-chat-history-action:hover { background: #344b69; color: #fff; }
+.ai-chat-history-action svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; vertical-align: middle; }
 .ai-chat-history-delete { margin-left: 0; color: #ffb0b7; font: normal 16px/1 sans-serif; }
 .ai-chat-history-delete:hover { background: #b42336; color: #fff; }
 .ai-chat-history-rename-form { display: grid; gap: 7px; margin-top: 6px; padding-top: 8px; border-top: 1px solid #49617f; cursor: default; }
@@ -282,7 +283,6 @@ html.ai-chat-page-pushed .ai-chat-panel.layout-popup {
 .ai-chat-panel.layout-fullscreen .ai-chat-header .ai-chat-icon-action { width: auto; min-width: 34px; padding: 4px 9px; }
 .ai-chat-panel.layout-fullscreen .ai-chat-action-label,
 .ai-chat-panel.layout-fullscreen .ai-chat-menu-caret { display: inline; }
-.ai-chat-header #ai-chat-copy-all .ai-chat-action-label { display: none; }
 .ai-chat-layout-menu-wrap { position: relative; }
 .ai-chat-layout-menu {
   position: absolute;
