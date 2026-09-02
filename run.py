@@ -184,14 +184,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 response = error
             with response:
                 self.send_response(response.status)
-                self.send_header("Content-Type", response.headers.get("Content-Type") or "application/json; charset=utf-8")
+                content_type = response.headers.get("Content-Type") or "application/json; charset=utf-8"
+                self.send_header("Content-Type", content_type)
+                if "text/event-stream" in content_type.lower():
+                    self.send_header("X-Accel-Buffering", "no")
                 self.end_headers()
-                while True:
-                    chunk = response.read(64 * 1024)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-                    self.wfile.flush()
+                if "text/event-stream" in content_type.lower():
+                    # HTTPResponse.read(size) tries to fill the requested buffer.
+                    # That can hold LM Studio tokens until 64 KiB accumulates or
+                    # generation finishes. SSE is line framed, so forward each
+                    # line as soon as LM Studio produces it.
+                    while True:
+                        line = response.readline()
+                        if not line:
+                            break
+                        self.wfile.write(line)
+                        self.wfile.flush()
+                else:
+                    while True:
+                        chunk = response.read(64 * 1024)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
         except (ValueError, OSError, urllib.error.URLError) as error:
             self._send_proxy_error(502, error)
 
