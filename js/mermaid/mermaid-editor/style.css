@@ -315,13 +315,6 @@ body {
 .document-selection-import:disabled { opacity: .65; cursor: wait; }
 .document-selection-import.is-error { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }
 
-.converter-launch-btn {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  text-decoration: none;
-}
-
 .btn:hover { background: rgba(255,255,255,0.16); }
 #top-bar .btn:hover:not(:disabled) {
   background: rgba(255,255,255,0.18);

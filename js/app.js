@@ -8316,7 +8316,7 @@ function openMermaidEditorModal() {
     const modal = document.getElementById('mermaid-editor-modal');
     if (!modal) return;
     const frame = document.getElementById('mermaid-editor-frame');
-    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-manual-selection-button-18';
+    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-svg-popup-19';
     if (frame && frame.dataset) frame.dataset.src = requiredSource;
     if (frame && String(frame.getAttribute('src') || '') !== requiredSource) frame.setAttribute('src', requiredSource);
     else ensureLazyFrameLoaded(frame);

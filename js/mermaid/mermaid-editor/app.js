@@ -1476,6 +1476,43 @@ async function sendRenderedPngToImageInsert() {
   }
 }
 
+function openSvgToPngConverterWindow() {
+  const converterUrl = new URL('../../../Apps/svg2png/lossless_svg_to_png_converter.html', window.location.href);
+  const availableWidth = Number(window.screen && window.screen.availWidth) || 1440;
+  const availableHeight = Number(window.screen && window.screen.availHeight) || 900;
+  const width = Math.min(1440, Math.max(960, Math.round(availableWidth * 0.82)));
+  const height = Math.min(960, Math.max(700, Math.round(availableHeight * 0.86)));
+  const left = Math.max(0, Math.round((availableWidth - width) / 2));
+  const top = Math.max(0, Math.round((availableHeight - height) / 2));
+  const features = [
+    'popup=yes',
+    'width=' + width,
+    'height=' + height,
+    'left=' + left,
+    'top=' + top,
+    'resizable=yes',
+    'scrollbars=yes',
+    'toolbar=no',
+    'menubar=no',
+    'location=no',
+    'status=no'
+  ].join(',');
+
+  // Create the window synchronously from the click so it opens as a popup,
+  // then reuse and focus the same independent converter window next time.
+  const converterWindow = window.open('', 'mdv_svg_to_png_converter_window', features);
+  if (!converterWindow) {
+    alert('SVG→PNG 변환기 창을 열지 못했습니다. 팝업 허용 여부를 확인해 주세요.');
+    return;
+  }
+  try {
+    if (converterWindow.location.href !== converterUrl.href) converterWindow.location.replace(converterUrl.href);
+    converterWindow.focus();
+  } catch (error) {
+    converterWindow.location.href = converterUrl.href;
+  }
+}
+
 if (mermaidImageDropzone) {
   mermaidImageDropzone.addEventListener('click', function (event) { if (event.target !== mermaidImageRemove) mermaidImageFile.click(); });
   mermaidImageDropzone.addEventListener('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); mermaidImageFile.click(); } });

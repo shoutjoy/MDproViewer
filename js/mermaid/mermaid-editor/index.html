@@ -179,7 +179,7 @@
         <button onclick="insertIntoDocument()" class="btn">코드로 문서삽입</button>
         <button onclick="sendRenderedSvgToImageInsert()" class="btn">SVG로 이미지 넣기</button>
         <button onclick="sendRenderedPngToImageInsert()" class="btn">PNG로 이미지 넣기</button>
-        <a href="../../../Apps/svg2png/lossless_svg_to_png_converter.html" target="_blank" rel="noopener" class="btn converter-launch-btn" title="SVG→PNG 변환기를 별도 창으로 엽니다">SVG→PNG 변환기</a>
+        <button type="button" onclick="openSvgToPngConverterWindow()" class="btn" title="SVG→PNG 변환기를 독립 창으로 엽니다">SVG→PNG 변환기</button>
       </div>
 
       <!-- <div class="toolbar-row"> -->
@@ -258,6 +258,6 @@
   </main>
 
   <script src="../mermaid-label-sanitizer.js?v=20260729-2"></script>
-  <script src="app.js?v=20260903-manual-selection-button-17"></script>
+  <script src="app.js?v=20260903-svg-popup-18"></script>
 </body>
 </html>
