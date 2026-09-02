@@ -8273,9 +8273,9 @@ function openMermaidEditorModal() {
     const modal = document.getElementById('mermaid-editor-modal');
     if (!modal) return;
     const frame = document.getElementById('mermaid-editor-frame');
-    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-prompt-resize-12';
+    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-svg-converter-layout-16';
     if (frame && frame.dataset) frame.dataset.src = requiredSource;
-    if (frame && String(frame.getAttribute('src') || '').indexOf('20260903-prompt-resize-12') < 0) frame.setAttribute('src', requiredSource);
+    if (frame && String(frame.getAttribute('src') || '') !== requiredSource) frame.setAttribute('src', requiredSource);
     else ensureLazyFrameLoaded(frame);
     modal.classList.remove('hidden');
     bindMermaidEditorModalDrag();
@@ -8453,6 +8453,18 @@ window.addEventListener('message', function (event) {
         window.openImageInsertModal();
         window.applyImageInsertDataUrl(data.dataUrl || '', data.fileName || 'mermaid-diagram.svg');
         showToast('SVG를 이미지 넣기로 옮겼습니다. 문서 저장 또는 imgBB를 선택하세요.');
+        return;
+    }
+    if (data.type === 'mdv-open-mermaid-png-in-image-insert') {
+        if (!fromMermaidEditor) return;
+        if (typeof window.openImageInsertModal !== 'function' || typeof window.applyImageInsertDataUrl !== 'function') {
+            showToast('이미지 넣기 모듈을 불러오지 못했습니다.');
+            return;
+        }
+        closeMermaidEditorModal();
+        window.openImageInsertModal();
+        window.applyImageInsertDataUrl(data.dataUrl || '', data.fileName || 'mermaid-diagram.png');
+        showToast('PNG를 이미지 넣기로 옮겼습니다. 문서 저장 또는 imgBB를 선택하세요.');
         return;
     }
     if (data.type === 'mdv-mermaid-history-save' && fromMermaidEditor) {

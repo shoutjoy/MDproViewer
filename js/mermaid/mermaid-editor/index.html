@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Mermaid Editor Pro</title>
-  <link rel="stylesheet" href="style.css?v=20260903-prompt-resize-13" />
+  <link rel="stylesheet" href="style.css?v=20260903-compact-toolbar-16" />
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11.14.0/dist/mermaid.min.js"></script>
 </head>
 
@@ -178,6 +178,8 @@
            <button onclick="downloadPNG()" class="btn">PNG</button>
         <button onclick="insertIntoDocument()" class="btn">코드로 문서삽입</button>
         <button onclick="sendRenderedSvgToImageInsert()" class="btn">SVG로 이미지 넣기</button>
+        <button onclick="sendRenderedPngToImageInsert()" class="btn">PNG로 이미지 넣기</button>
+        <a href="../../../Apps/svg2png/lossless_svg_to_png_converter.html" target="_blank" rel="noopener" class="btn converter-launch-btn" title="SVG→PNG 변환기를 별도 창으로 엽니다">SVG→PNG 변환기</a>
       </div>
 
       <!-- <div class="toolbar-row"> -->
@@ -253,6 +255,6 @@
   </main>
 
   <script src="../mermaid-label-sanitizer.js?v=20260729-2"></script>
-  <script src="app.js?v=20260903-ai-layout-11"></script>
+  <script src="app.js?v=20260903-svg-converter-15"></script>
 </body>
 </html>

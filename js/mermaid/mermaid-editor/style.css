@@ -14,6 +14,13 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+button,
+select,
+input,
+textarea,
+[role="button"] {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
 body {
   margin: 0;
   display: flex;
@@ -26,10 +33,11 @@ body {
 
 #top-bar {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 12px 16px;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
   background: #1f2937;
   color: #fff;
   border-bottom: 1px solid #111827;
@@ -57,6 +65,21 @@ body {
   gap: 8px;
   flex-wrap: wrap;
   width: 100%;
+}
+
+/* Fill each regular toolbar line from the left before wrapping. */
+#top-bar:not(.toolbar-floating):not(.toolbar-collapsed) .toolbar-right,
+#top-bar:not(.toolbar-floating):not(.toolbar-collapsed) .toolbar-row {
+  display: contents;
+}
+
+#top-bar:not(.toolbar-floating):not(.toolbar-collapsed) .toolbar-left {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+#top-bar:not(.toolbar-floating):not(.toolbar-collapsed) .toolbar-left strong {
+  white-space: nowrap;
 }
 
 #main {
@@ -272,11 +295,32 @@ body {
   font-size: 13px;
 }
 
+.converter-launch-btn {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
 .btn:hover { background: rgba(255,255,255,0.16); }
+#top-bar .btn:hover:not(:disabled) {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(147,197,253,.9);
+  box-shadow: 0 5px 14px rgba(15,23,42,.22);
+  transform: translateY(-1px);
+}
+.btn:focus-visible,
+.select-like-btn:focus-visible,
+.input-like:focus-visible,
+.check-pill:focus-within {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
 .btn.active {
   background: var(--accent);
   border-color: var(--accent);
 }
+#top-bar .btn.active:hover:not(:disabled) { background:#1d4ed8; border-color:#93c5fd; }
 
 .node-mode-wrap {
   display: inline-flex;
@@ -295,6 +339,13 @@ body {
   border-radius: 8px;
   font-size: 12px;
   cursor: pointer;
+}
+
+.check-pill:hover {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(147,197,253,.9);
+  box-shadow: 0 5px 14px rgba(15,23,42,.2);
+  transform: translateY(-1px);
 }
 
 .check-pill input[type="checkbox"] {
@@ -319,7 +370,12 @@ body {
   font-size: 13px;
   min-width: 132px;
 }
-.select-like-btn:hover { background: rgba(255,255,255,0.16); }
+.select-like-btn:hover {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(147,197,253,.9);
+  box-shadow: 0 5px 14px rgba(15,23,42,.2);
+  transform: translateY(-1px);
+}
 .select-like-btn option {
   color: #111827;
   background: #fff;
@@ -336,6 +392,11 @@ body {
 }
 
 .input-like::placeholder { color: rgba(255,255,255,0.7); }
+.input-like:hover {
+  background: rgba(255,255,255,0.13);
+  border-color: rgba(147,197,253,.9);
+  box-shadow: 0 4px 12px rgba(15,23,42,.16);
+}
 
 @media (max-width: 980px) {
   #main { flex-direction: column; gap: 12px; }

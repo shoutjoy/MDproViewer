@@ -1440,6 +1440,23 @@ function sendRenderedSvgToImageInsert() {
   window.parent.postMessage({ type: 'mdv-open-mermaid-svg-in-image-insert', dataUrl: dataUrl, fileName: 'mermaid-diagram-' + Date.now() + '.svg' }, '*');
 }
 
+async function sendRenderedPngToImageInsert() {
+  const svg = renderDiv.querySelector('svg');
+  if (!svg) return alert('먼저 Mermaid 코드를 정상적으로 렌더링해 주세요.');
+  try {
+    const pngBlob = await createRenderedPngBlob(svg);
+    const dataUrl = await blobToDataUrl(pngBlob);
+    window.parent.postMessage({
+      type: 'mdv-open-mermaid-png-in-image-insert',
+      dataUrl: dataUrl,
+      fileName: 'mermaid-diagram-' + Date.now() + '.png'
+    }, '*');
+  } catch (error) {
+    console.error('PNG image insert failed:', error);
+    alert('PNG 이미지를 만들지 못했습니다.');
+  }
+}
+
 if (mermaidImageDropzone) {
   mermaidImageDropzone.addEventListener('click', function (event) { if (event.target !== mermaidImageRemove) mermaidImageFile.click(); });
   mermaidImageDropzone.addEventListener('keydown', function (event) { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); mermaidImageFile.click(); } });
@@ -1496,50 +1513,156 @@ function downloadSVG() {
   }
   const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'diagram.svg';
-  a.click();
-  URL.revokeObjectURL(url);
+  triggerDownload(url, 'diagram.svg', true);
 }
 
-function downloadPNG() {
+function triggerDownload(url, fileName, revokeObjectUrl) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  if (revokeObjectUrl) {
+    // Keep the Blob URL alive until the browser has accepted the download.
+    window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+}
+
+function getSvgExportSize(svgEl) {
+  const rect = svgEl.getBoundingClientRect();
+  const viewBox = svgEl.viewBox && svgEl.viewBox.baseVal;
+  let width = rect.width;
+  let height = rect.height;
+
+  if (!(width > 0) && viewBox && viewBox.width > 0) width = viewBox.width;
+  if (!(height > 0) && viewBox && viewBox.height > 0) height = viewBox.height;
+  if (!(width > 0)) width = 1200;
+  if (!(height > 0)) height = 800;
+
+  return { width: Math.ceil(width), height: Math.ceil(height) };
+}
+
+function replaceForeignObjectsWithSvgText(sourceSvg, exportSvg) {
+  const sourceObjects = sourceSvg.querySelectorAll('foreignObject');
+  const exportObjects = exportSvg.querySelectorAll('foreignObject');
+
+  for (let i = 0; i < exportObjects.length; i++) {
+    const sourceObject = sourceObjects[i];
+    const exportObject = exportObjects[i];
+    const rawText = String(sourceObject && sourceObject.textContent || '').trim();
+    if (!rawText) {
+      exportObject.remove();
+      continue;
+    }
+
+    const paragraphs = sourceObject.querySelectorAll('p');
+    const lines = paragraphs.length
+      ? Array.from(paragraphs).map(function (paragraph) { return String(paragraph.textContent || '').trim(); })
+      : rawText.split(/\r?\n/).map(function (line) { return line.trim(); });
+    const visibleLines = lines.filter(Boolean);
+    if (!visibleLines.length) {
+      exportObject.remove();
+      continue;
+    }
+
+    const labelElement = sourceObject.querySelector('.nodeLabel,.edgeLabel,div,span,p') || sourceObject;
+    const labelStyle = window.getComputedStyle(labelElement);
+    const width = parseFloat(exportObject.getAttribute('width')) || 0;
+    const height = parseFloat(exportObject.getAttribute('height')) || 0;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', String(centerX));
+    text.setAttribute('y', String(centerY));
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', labelStyle.color || '#172033');
+    text.setAttribute('font-family', labelStyle.fontFamily || 'sans-serif');
+    text.setAttribute('font-size', labelStyle.fontSize || '15px');
+    text.setAttribute('font-weight', labelStyle.fontWeight || '600');
+    text.setAttribute('xml:space', 'preserve');
+
+    visibleLines.forEach(function (line, lineIndex) {
+      const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
+      tspan.setAttribute('x', String(centerX));
+      tspan.setAttribute('dy', lineIndex === 0 ? String(0.35 - ((visibleLines.length - 1) * 0.6)) + 'em' : '1.2em');
+      tspan.textContent = line;
+      text.appendChild(tspan);
+    });
+    exportObject.replaceWith(text);
+  }
+}
+
+async function createRenderedPngBlob(svgEl) {
+  let svgUrl = '';
+  try {
+    const size = getSvgExportSize(svgEl);
+    const svgClone = svgEl.cloneNode(true);
+    svgClone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    svgClone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    svgClone.setAttribute('width', String(size.width));
+    svgClone.setAttribute('height', String(size.height));
+    if (!svgClone.getAttribute('viewBox')) {
+      svgClone.setAttribute('viewBox', '0 0 ' + size.width + ' ' + size.height);
+    }
+    // Chromium taints canvases that draw SVGs containing HTML foreignObject labels.
+    // Convert Mermaid's HTML labels to native SVG text in the export-only clone.
+    replaceForeignObjectsWithSvgText(svgEl, svgClone);
+
+    const svgText = new XMLSerializer().serializeToString(svgClone);
+    const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
+    svgUrl = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = svgUrl;
+    if (typeof img.decode === 'function') await img.decode();
+    else await new Promise(function (resolve, reject) { img.onload = resolve; img.onerror = reject; });
+
+    // Export at 2x for crisp text while capping the longest side to a safe canvas size.
+    const exportScale = Math.min(2, 8192 / Math.max(size.width, size.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(size.width * exportScale));
+    canvas.height = Math.max(1, Math.round(size.height * exportScale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context is unavailable.');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    return await new Promise(function (resolve, reject) {
+      canvas.toBlob(function (blob) {
+        if (blob) resolve(blob);
+        else reject(new Error('Canvas could not create a PNG Blob.'));
+      }, 'image/png');
+    });
+  } finally {
+    if (svgUrl) URL.revokeObjectURL(svgUrl);
+  }
+}
+
+function blobToDataUrl(blob) {
+  return new Promise(function (resolve, reject) {
+    const reader = new FileReader();
+    reader.onload = function () { resolve(String(reader.result || '')); };
+    reader.onerror = function () { reject(reader.error || new Error('Blob data URL conversion failed.')); };
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function downloadPNG() {
   const svgEl = renderDiv.querySelector('svg');
   if (!svgEl) {
     alert('\uB80C\uB354\uB9C1\uB41C \uB2E4\uC774\uC5B4\uADF8\uB7A8\uC774 \uC5C6\uC2B5\uB2C8\uB2E4.');
     return;
   }
-  const svgText = new XMLSerializer().serializeToString(svgEl);
-  const svgBlob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
-  const img = new Image();
-  img.onload = function () {
-    const w = Math.max(1, Math.ceil(img.width || 1200));
-    const h = Math.max(1, Math.ceil(img.height || 800));
-    const canvas = document.createElement('canvas');
-    canvas.width = w * 2;
-    canvas.height = h * 2;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      URL.revokeObjectURL(url);
-      alert('PNG \uBCC0\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
-      return;
-    }
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    const pngUrl = canvas.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = pngUrl;
-    a.download = 'diagram.png';
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-  img.onerror = function () {
-    URL.revokeObjectURL(url);
+  try {
+    const pngBlob = await createRenderedPngBlob(svgEl);
+    triggerDownload(URL.createObjectURL(pngBlob), 'diagram.png', true);
+  } catch (error) {
+    console.error('PNG export failed:', error);
     alert('PNG \uBCC0\uD658\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.');
-  };
-  img.src = url;
+  }
 }
 
 function getCurrentLineContext(ed) {
