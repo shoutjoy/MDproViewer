@@ -51,6 +51,23 @@
         };
     }
 
+    function syncGithubSettingsFields(settings) {
+        const cfg = getGithubConfigFromSettings(settings || {});
+        const enabledEl = document.getElementById('ai-github-enabled');
+        const tokenEl = document.getElementById('github-token-input');
+        const repoEl = document.getElementById('github-repo-input');
+        const branchEl = document.getElementById('github-branch-input');
+        const pullMaxEl = document.getElementById('github-pull-max-files-input');
+        const defaultPushPathEl = document.getElementById('github-default-push-path-input');
+        if (enabledEl) enabledEl.checked = cfg.enabled;
+        if (tokenEl) tokenEl.value = cfg.token;
+        if (repoEl) repoEl.value = cfg.repoInput;
+        if (branchEl) branchEl.value = cfg.branch;
+        if (pullMaxEl) pullMaxEl.value = String(cfg.pullMaxFiles);
+        if (defaultPushPathEl) defaultPushPathEl.value = cfg.defaultPushPath;
+        return cfg;
+    }
+
     function getGithubLinkPathFromConfig(cfg) {
         const rawInput = String(cfg && cfg.repoInput ? cfg.repoInput : '').trim();
         const normalized = rawInput
@@ -331,7 +348,7 @@
 
     async function applyGithubUiState(settingsInput) {
         const settings = settingsInput || await getAiSettings() || {};
-        const cfg = getGithubConfigFromSettings(settings);
+        const cfg = syncGithubSettingsFields(settings);
         const githubConfigured = !!(cfg.enabled && cfg.token);
         const repoLink = document.getElementById('tab-storage-github-link');
         const syncBtn = document.getElementById('btn-github-sync');
@@ -380,8 +397,14 @@
         const requested = String(tab || '').toLowerCase();
         const next = requested === 'github' || requested === 'sqlite' || requested === 'local' ? requested : 'indb';
         const featureFlags = getStorageFeatureFlags();
-        const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
-        const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
+        const savedSettings = next === 'github' ? (await getAiSettings() || {}) : null;
+        const savedGithubConfig = savedSettings ? getGithubConfigFromSettings(savedSettings) : null;
+        const githubEnabled = savedGithubConfig
+            ? savedGithubConfig.enabled
+            : !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
+        const githubToken = savedGithubConfig
+            ? savedGithubConfig.token
+            : String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
         const githubConfigured = !!(githubEnabled && githubToken);
         if (next === 'github' && !githubConfigured) {
             currentStorageSourceTab = 'indb';
@@ -414,6 +437,9 @@
         } else if (next !== 'github') {
             if (!window.MDPStorage || typeof window.MDPStorage.requestMode !== 'function') return;
             try {
+                if (typeof window.ensureStorageServiceReady === 'function') {
+                    await window.ensureStorageServiceReady();
+                }
                 const state = await window.MDPStorage.requestMode(next);
                 currentStorageSourceTab = state.activeMode === 'sqlite' ? 'sqlite' : 'indb';
             } catch (error) {
@@ -1380,7 +1406,8 @@
             const isCollapsedFolder = !searchTerm && isFolderCollapsed(folderId);
 
             const folderDiv = document.createElement('div');
-            folderDiv.className = 'mb-2';
+            folderDiv.className = 'sidebar-folder-node mb-2';
+            folderDiv.dataset.folderId = folderId;
             const folderHeader = document.createElement('div');
             folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
             folderHeader.innerHTML = ''
@@ -1447,6 +1474,7 @@
     window.GithubApp = {
         parseGithubRepoInput: parseGithubRepoInput,
         getGithubConfigFromSettings: getGithubConfigFromSettings,
+        syncGithubSettingsFields: syncGithubSettingsFields,
         getGithubLinkPathFromConfig: getGithubLinkPathFromConfig,
         getGithubLoginUrlForRepoPath: getGithubLoginUrlForRepoPath,
         openGithubRepositoryLink: openGithubRepositoryLink,
@@ -1491,6 +1519,7 @@
 
     window.parseGithubRepoInput = parseGithubRepoInput;
     window.getGithubConfigFromSettings = getGithubConfigFromSettings;
+    window.syncGithubSettingsFields = syncGithubSettingsFields;
     window.getGithubLinkPathFromConfig = getGithubLinkPathFromConfig;
     window.getGithubLoginUrlForRepoPath = getGithubLoginUrlForRepoPath;
     window.openGithubRepositoryLink = openGithubRepositoryLink;

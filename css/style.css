@@ -1648,7 +1648,47 @@
 
         #editor-shift-float {
             position: fixed;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
         }
+
+        #editor-shift-float.is-horizontal {
+            flex-direction: row !important;
+            padding: 0.25rem 0.5rem;
+        }
+
+        #editor-shift-float.is-dragging {
+            cursor: grabbing;
+            transition: none;
+        }
+
+        #editor-shift-float .editor-shift-drag-handle,
+        #editor-shift-float .editor-shift-orientation-toggle {
+            display: inline-flex;
+            width: 30px;
+            min-height: 24px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.25rem;
+            border: 1px solid rgb(203 213 225);
+            color: rgb(71 85 105);
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        #editor-shift-float .editor-shift-drag-handle { cursor: grab; }
+        #editor-shift-float .editor-shift-drag-handle:active { cursor: grabbing; }
+        #editor-shift-float .editor-shift-drag-handle:hover,
+        #editor-shift-float .editor-shift-orientation-toggle:hover { background: rgb(241 245 249); }
+        .dark #editor-shift-float .editor-shift-drag-handle,
+        .dark #editor-shift-float .editor-shift-orientation-toggle {
+            border-color: rgb(71 85 105);
+            color: rgb(226 232 240);
+        }
+        .dark #editor-shift-float .editor-shift-drag-handle:hover,
+        .dark #editor-shift-float .editor-shift-orientation-toggle:hover { background: rgb(51 65 85); }
 
         #sidebar {
             transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);

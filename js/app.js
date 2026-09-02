@@ -1,5 +1,53 @@
 // js/inDB/inDB.js opens MarkdownProDB; app.js keeps the shared connection for editor integrations.
 let db;
+let mainDatabaseReadyPromise = null;
+let storageServiceReadyPromise = null;
+
+function ensureMainDatabaseReady() {
+    if (db) return Promise.resolve(db);
+    if (mainDatabaseReadyPromise) return mainDatabaseReadyPromise;
+    if (typeof initDB !== 'function') {
+        return Promise.reject(new Error('데이터베이스 초기화 모듈을 불러오지 못했습니다.'));
+    }
+    mainDatabaseReadyPromise = Promise.resolve()
+        .then(function () { return initDB(); })
+        .then(function (openedDb) {
+            db = openedDb || db;
+            if (!db) throw new Error('데이터베이스 연결을 만들지 못했습니다.');
+            return db;
+        })
+        .catch(function (error) {
+            mainDatabaseReadyPromise = null;
+            throw error;
+        });
+    return mainDatabaseReadyPromise;
+}
+
+function ensureStorageServiceReady() {
+    if (!window.MDPStorage || typeof window.MDPStorage.initialize !== 'function') {
+        return Promise.reject(new Error('저장소 초기화 모듈을 불러오지 못했습니다.'));
+    }
+    const currentState = typeof window.MDPStorage.getStatus === 'function'
+        ? window.MDPStorage.getStatus()
+        : null;
+    if (currentState && currentState.initialized) return Promise.resolve(currentState);
+    if (storageServiceReadyPromise) return storageServiceReadyPromise;
+
+    storageServiceReadyPromise = ensureMainDatabaseReady()
+        .then(function () {
+            const latestState = typeof window.MDPStorage.getStatus === 'function'
+                ? window.MDPStorage.getStatus()
+                : null;
+            if (latestState && latestState.initialized) return latestState;
+            return window.MDPStorage.initialize({ getIndexedDb: function () { return db; } });
+        })
+        .catch(function (error) {
+            storageServiceReadyPromise = null;
+            throw error;
+        });
+    return storageServiceReadyPromise;
+}
+window.ensureStorageServiceReady = ensureStorageServiceReady;
 const AI_SETTINGS_KEY = 'ai_settings';
 const AI_SETTINGS_FALLBACK_KEY = 'md_viewer_ai_settings_fallback';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
@@ -460,6 +508,8 @@ function enableTouchModalDrag(panel, handle, options) {
 }
 const GITHUB_SETTINGS_FOLD_KEY = 'md_viewer_github_settings_folded';
 const EDITOR_HORIZONTAL_SHIFT_KEY = 'md_viewer_editor_horizontal_shift_px';
+const EDITOR_SHIFT_FLOAT_POSITION_KEY = 'md_viewer_editor_shift_float_position';
+const EDITOR_SHIFT_FLOAT_ORIENTATION_KEY = 'md_viewer_editor_shift_float_orientation';
 
 // State
 let currentMarkdown = "";
@@ -531,6 +581,7 @@ let highlightPopupDragBound = false;
 let highlightPopupDragging = false;
 let highlightPopupDragOffsetX = 0;
 let highlightPopupDragOffsetY = 0;
+let highlightPopupDockLeft = 12;
 let highlightPopupDockTop = 80;
 let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
@@ -794,8 +845,36 @@ function toggleFolderCollapse(folderId) {
     if (!key) return;
     folderCollapseState[key] = !isFolderCollapsed(key);
     saveFolderCollapseState();
-    renderDBList();
+    Promise.resolve(renderDBList()).finally(syncToggleAllSidebarFoldersButton);
 }
+
+function syncToggleAllSidebarFoldersButton() {
+    const button = document.getElementById('toggle-all-sidebar-folders');
+    const folderNodes = document.querySelectorAll('#db-list .sidebar-folder-node[data-folder-id]');
+    const allCollapsed = folderNodes.length > 0 && Array.from(folderNodes).every(function (node) {
+        return isFolderCollapsed(node.dataset.folderId);
+    });
+    if (!button) return allCollapsed;
+    const label = allCollapsed ? '모든 폴더 펼치기' : '모든 폴더 접기';
+    button.textContent = allCollapsed ? '▲' : '▼';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(allCollapsed));
+    return allCollapsed;
+}
+
+function toggleAllSidebarFolders() {
+    const folderNodes = document.querySelectorAll('#db-list .sidebar-folder-node[data-folder-id]');
+    const shouldCollapse = !syncToggleAllSidebarFoldersButton();
+    folderNodes.forEach(function (node) {
+        const folderId = String(node.dataset.folderId || '');
+        if (folderId) folderCollapseState[folderId] = shouldCollapse;
+    });
+    saveFolderCollapseState();
+    Promise.resolve(renderDBList()).finally(syncToggleAllSidebarFoldersButton);
+}
+
+window.toggleAllSidebarFolders = toggleAllSidebarFolders;
 
 function getStorageSourceTabFromLocal() {
     try {
@@ -2110,7 +2189,7 @@ window.onload = async () => {
 
         // Open native files even if optional storage initialization later fails.
         await tauriFileOpenReady;
-        await initDB();
+        await ensureMainDatabaseReady();
         if (window.TextStyleTool && typeof window.TextStyleTool.setDatabase === 'function') {
             try {
                 await window.TextStyleTool.setDatabase(db);
@@ -2120,7 +2199,7 @@ window.onload = async () => {
             }
         }
         if (window.MDPStorage && typeof window.MDPStorage.initialize === 'function') {
-            const storageState = await window.MDPStorage.initialize({ getIndexedDb: function () { return db; } });
+            const storageState = await ensureStorageServiceReady();
             if (window.TextStyleTool && typeof window.TextStyleTool.setSqliteStorage === 'function') {
                 const fontSync = await window.TextStyleTool.setSqliteStorage(window.MDPStorage);
                 if (fontSync && fontSync.pending) {
@@ -2196,6 +2275,13 @@ window.onload = async () => {
                 showToast: showToast
             });
         }
+        const startupSettings = await getAiSettings();
+        if (window.GithubDataSettings && typeof window.GithubDataSettings.ensureUiReady === 'function') {
+            await window.GithubDataSettings.ensureUiReady();
+        }
+        if (typeof window.syncGithubSettingsFields === 'function') {
+            window.syncGithubSettingsFields(startupSettings || {});
+        }
         loadFolderCollapseState();
         currentStorageSourceTab = getStorageSourceTabFromLocal();
         updateStorageSourceTabsUI();
@@ -2256,7 +2342,7 @@ window.onload = async () => {
             refreshLucideIcons(sidebar);
         }
 
-        initAiVisibility();
+        await initAiVisibility();
 
     window.addEventListener('electron-open-file', async function (ev) {
         const detail = ev && ev.detail ? ev.detail : null;
@@ -5105,6 +5191,13 @@ async function importMddDocumentFile(file, options) {
 }
 
 async function importZipDocumentFile(file) {
+    if (typeof JSZip !== 'undefined') {
+        const inspectedZip = await JSZip.loadAsync(await file.arrayBuffer());
+        if (inspectedZip.file('_mdpro_backup.json')) {
+            await restoreFromZipBackup(inspectedZip);
+            return;
+        }
+    }
     if (!db) {
         showToast('Database is not ready yet. Please try again.');
         return;
@@ -5125,7 +5218,7 @@ async function importZipDocumentFile(file) {
 }
 
 async function restoreFromMpv(data) {
-    if (!db) throw new Error('데이터베이스가 아직 준비되지 않았습니다. 잠시 후 다시 시도하세요.');
+    await ensureMainDatabaseReady();
     if (!data || !Array.isArray(data.folders) || !Array.isArray(data.documents)) {
         throw new Error('올바른 MPV 백업 파일이 아닙니다.');
     }
@@ -5178,6 +5271,88 @@ function openMpvFilePicker(event) {
     return true;
 }
 
+function openZipBackupFilePicker(event) {
+    if (event) event.preventDefault();
+    const input = document.getElementById('zip-backup-input');
+    if (!input) {
+        showToast('ZIP 파일 선택기를 열 수 없습니다.');
+        return false;
+    }
+    input.value = '';
+    closeBackupModal();
+    input.click();
+    return true;
+}
+
+async function handleZipBackupFileSelect(event) {
+    const input = event && event.target;
+    const file = input && input.files && input.files[0];
+    if (!file) return false;
+    try {
+        if (typeof JSZip === 'undefined') throw new Error('ZIP 모듈을 불러오지 못했습니다.');
+        const zip = await JSZip.loadAsync(await file.arrayBuffer());
+        await restoreFromZipBackup(zip);
+        return true;
+    } catch (error) {
+        showToast('ZIP 백업을 열 수 없습니다: ' + (error && error.message ? error.message : error));
+        return false;
+    } finally {
+        if (input) input.value = '';
+    }
+}
+
+async function restoreFromZipBackup(zip) {
+    const manifestEntry = zip && zip.file('_mdpro_backup.json');
+    if (manifestEntry) {
+        const manifest = JSON.parse(await manifestEntry.async('string'));
+        if (!manifest || manifest.format !== 'mdpro-zip-backup' || !Array.isArray(manifest.documents)) {
+            throw new Error('올바른 MDPro ZIP 백업 파일이 아닙니다.');
+        }
+        await restoreFromMpv({ folders: manifest.folders || [], documents: manifest.documents });
+        showToast('ZIP 백업의 모든 문서를 복원했습니다.');
+        return;
+    }
+
+    const markdownEntries = Object.keys((zip && zip.files) || {}).filter(function (path) {
+        const entry = zip.files[path];
+        return entry && !entry.dir && /\.md$/i.test(path) && !path.includes('__MACOSX/');
+    });
+    if (!markdownEntries.length) throw new Error('ZIP 안에서 Markdown 문서를 찾지 못했습니다.');
+    if (markdownEntries.length > 2000) throw new Error('ZIP 문서 수가 너무 많습니다 (최대 2,000개).');
+    const totalBytes = markdownEntries.reduce(function (sum, path) {
+        const data = zip.files[path] && zip.files[path]._data;
+        return sum + Number(data && data.uncompressedSize || 0);
+    }, 0);
+    if (totalBytes > 100 * 1024 * 1024) throw new Error('압축 해제할 문서가 너무 큽니다 (최대 100MB).');
+
+    const now = Date.now();
+    const folderIds = new Map();
+    const folders = [];
+    const documents = [];
+    for (let index = 0; index < markdownEntries.length; index++) {
+        const path = markdownEntries[index].replace(/\\/g, '/').replace(/^\/+/, '');
+        const parts = path.split('/').filter(Boolean);
+        const folderName = parts.length > 1 ? parts.slice(0, -1).join(' / ') : 'root';
+        let folderId = 'root';
+        if (folderName.toLowerCase() !== 'root') {
+            if (!folderIds.has(folderName)) {
+                folderIds.set(folderName, 'zip_folder_' + now + '_' + folderIds.size);
+                folders.push({ id: folderIds.get(folderName), name: folderName, parentId: 'root' });
+            }
+            folderId = folderIds.get(folderName);
+        }
+        documents.push({
+            id: 'zip_doc_' + now + '_' + index,
+            title: (parts[parts.length - 1] || 'untitled.md').replace(/\.md$/i, ''),
+            content: await zip.files[markdownEntries[index]].async('string'),
+            folderId: folderId,
+            updatedAt: new Date(now).toISOString()
+        });
+    }
+    await restoreFromMpv({ folders: folders, documents: documents });
+    showToast('ZIP 백업에서 ' + documents.length + '개 문서를 복원했습니다.');
+}
+
 function callSidebarLeftMergeApi(method, args) {
     const api = window.__sidebarLeftMergeApi;
     if (!api || typeof api[method] !== 'function') {
@@ -5218,6 +5393,21 @@ async function exportZip() {
         const path = safeDir + '/' + (doc.title || 'untitled').replace(/[/\\?*:|\"]/g, '_') + '.md';
         zip.file(path, doc.content || '');
     }
+    zip.file('_mdpro_backup.json', JSON.stringify({
+        format: 'mdpro-zip-backup',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        folders: folders || [],
+        documents: (documents || []).map(function (doc) {
+            return {
+                id: doc.id,
+                title: doc.title,
+                content: doc.content || '',
+                folderId: doc.folderId || 'root',
+                updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : (doc.updatedAt || null)
+            };
+        })
+    }, null, 2));
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -6161,6 +6351,7 @@ async function renderDBList() {
     if (generation !== renderDBListGeneration) return;
     listEl.replaceChildren(...Array.from(nextList.childNodes));
     refreshLucideIcons(listEl);
+    syncToggleAllSidebarFoldersButton();
 }
 
 function scheduleStorageSearch() {
@@ -8531,21 +8722,112 @@ function applyEditorHorizontalShift() {
 }
 
 let editorShiftFloatPositionTrackingInstalled = false;
+let editorShiftFloatDragInstalled = false;
+
+function clampEditorShiftFloatPosition(left, top) {
+    const control = document.getElementById('editor-shift-float');
+    const gap = 8;
+    const maxLeft = Math.max(gap, window.innerWidth - (control ? control.offsetWidth : 0) - gap);
+    const maxTop = Math.max(gap, window.innerHeight - (control ? control.offsetHeight : 0) - gap);
+    return {
+        left: Math.round(Math.max(gap, Math.min(maxLeft, Number(left) || gap))),
+        top: Math.round(Math.max(gap, Math.min(maxTop, Number(top) || gap)))
+    };
+}
+
+function saveEditorShiftFloatPosition() {
+    const control = document.getElementById('editor-shift-float');
+    if (!control || !control.classList.contains('is-positioned')) return;
+    const rect = control.getBoundingClientRect();
+    try { localStorage.setItem(EDITOR_SHIFT_FLOAT_POSITION_KEY, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) })); } catch (_) {}
+}
+
+function applyEditorShiftFloatOrientation(orientation, persist) {
+    const control = document.getElementById('editor-shift-float');
+    if (!control) return;
+    const horizontal = orientation === 'horizontal';
+    control.classList.toggle('is-horizontal', horizontal);
+    const button = control.querySelector('.editor-shift-orientation-toggle');
+    if (button) {
+        button.textContent = horizontal ? '↕' : '↔';
+        button.title = horizontal ? '세로 배치로 전환' : '가로 배치로 전환';
+        button.setAttribute('aria-label', button.title);
+        button.setAttribute('aria-pressed', String(horizontal));
+    }
+    if (persist !== false) {
+        try { localStorage.setItem(EDITOR_SHIFT_FLOAT_ORIENTATION_KEY, horizontal ? 'horizontal' : 'vertical'); } catch (_) {}
+    }
+    requestAnimationFrame(syncEditorShiftFloatPosition);
+}
+
+function toggleEditorShiftFloatOrientation() {
+    const control = document.getElementById('editor-shift-float');
+    if (!control) return;
+    applyEditorShiftFloatOrientation(control.classList.contains('is-horizontal') ? 'vertical' : 'horizontal', true);
+}
+
+function bindEditorShiftFloatDrag() {
+    const control = document.getElementById('editor-shift-float');
+    const handle = control && control.querySelector('.editor-shift-drag-handle');
+    if (!control || !handle || editorShiftFloatDragInstalled) return;
+    editorShiftFloatDragInstalled = true;
+    handle.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0) return;
+        const rect = control.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startLeft = rect.left;
+        const startTop = rect.top;
+        control.classList.add('is-positioned', 'is-dragging');
+        control.style.left = startLeft + 'px';
+        control.style.top = startTop + 'px';
+        control.style.right = 'auto';
+        control.style.bottom = 'auto';
+        try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+        const move = function (moveEvent) {
+            const next = clampEditorShiftFloatPosition(startLeft + moveEvent.clientX - startX, startTop + moveEvent.clientY - startY);
+            control.style.left = next.left + 'px';
+            control.style.top = next.top + 'px';
+            syncToastPosition();
+            moveEvent.preventDefault();
+        };
+        const finish = function () {
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', finish);
+            document.removeEventListener('pointercancel', finish);
+            control.classList.remove('is-dragging');
+            saveEditorShiftFloatPosition();
+        };
+        document.addEventListener('pointermove', move, { passive: false });
+        document.addEventListener('pointerup', finish);
+        document.addEventListener('pointercancel', finish);
+        event.preventDefault();
+    });
+}
 
 function syncEditorShiftFloatPosition() {
     const control = document.getElementById('editor-shift-float');
     const viewport = document.getElementById('content-viewport');
+    const sidebarEl = document.getElementById('sidebar');
     if (!control || !viewport) return;
 
-    const viewportRect = viewport.getBoundingClientRect();
-    const sidebarEl = document.getElementById('sidebar');
-    const sidebarVisible = !!(sidebarEl && getComputedStyle(sidebarEl).display !== 'none');
-    const sidebarRect = sidebarVisible ? sidebarEl.getBoundingClientRect() : null;
-    const outsideSidebarLeft = sidebarRect && sidebarRect.width > 0 ? sidebarRect.right + 8 : viewportRect.left + 8;
-
-    control.style.left = `${Math.max(viewportRect.left + 8, outsideSidebarLeft)}px`;
-    control.style.bottom = `${Math.max(8, window.innerHeight - viewportRect.bottom + 8)}px`;
-    syncToastPosition();
+    if (control.classList.contains('is-positioned')) {
+        const rect = control.getBoundingClientRect();
+        const next = clampEditorShiftFloatPosition(rect.left, rect.top);
+        control.style.left = next.left + 'px';
+        control.style.top = next.top + 'px';
+        control.style.right = 'auto';
+        control.style.bottom = 'auto';
+        syncToastPosition();
+    } else {
+        const viewportRect = viewport.getBoundingClientRect();
+        const sidebarVisible = !!(sidebarEl && getComputedStyle(sidebarEl).display !== 'none');
+        const sidebarRect = sidebarVisible ? sidebarEl.getBoundingClientRect() : null;
+        const outsideSidebarLeft = sidebarRect && sidebarRect.width > 0 ? sidebarRect.right + 8 : viewportRect.left + 8;
+        control.style.left = `${Math.max(viewportRect.left + 8, outsideSidebarLeft)}px`;
+        control.style.bottom = `${Math.max(8, window.innerHeight - viewportRect.bottom + 8)}px`;
+        syncToastPosition();
+    }
 
     if (editorShiftFloatPositionTrackingInstalled) return;
     editorShiftFloatPositionTrackingInstalled = true;
@@ -8733,6 +9015,24 @@ function initSettings() {
     editorHorizontalShiftPx = Number.isFinite(savedShift) ? Math.round(savedShift) : 0;
     applyDocumentWidthScale();
     applyEditorHorizontalShift();
+    const editorShiftFloat = document.getElementById('editor-shift-float');
+    let savedFloatOrientation = 'vertical';
+    try { savedFloatOrientation = localStorage.getItem(EDITOR_SHIFT_FLOAT_ORIENTATION_KEY) || 'vertical'; } catch (_) {}
+    applyEditorShiftFloatOrientation(savedFloatOrientation === 'horizontal' ? 'horizontal' : 'vertical', false);
+    if (editorShiftFloat) {
+        try {
+            const savedFloatPosition = JSON.parse(localStorage.getItem(EDITOR_SHIFT_FLOAT_POSITION_KEY) || 'null');
+            if (savedFloatPosition && Number.isFinite(savedFloatPosition.left) && Number.isFinite(savedFloatPosition.top)) {
+                editorShiftFloat.classList.add('is-positioned');
+                editorShiftFloat.style.left = savedFloatPosition.left + 'px';
+                editorShiftFloat.style.top = savedFloatPosition.top + 'px';
+                editorShiftFloat.style.right = 'auto';
+                editorShiftFloat.style.bottom = 'auto';
+            }
+        } catch (_) {}
+    }
+    bindEditorShiftFloatDrag();
+    syncEditorShiftFloatPosition();
     if (!editorShiftResizeBound) {
         editorShiftResizeBound = true;
         window.addEventListener('resize', applyEditorHorizontalShift);
@@ -12195,7 +12495,7 @@ function applyHighlightPopupLayout() {
         modal.classList.add('items-start', 'justify-start');
         panel.style.position = 'fixed';
         panel.style.top = `${highlightPopupDockTop}px`;
-        panel.style.left = '12px';
+        panel.style.left = `${highlightPopupDockLeft}px`;
         panel.style.right = 'auto';
         panel.style.margin = '0';
     } else {
@@ -12250,13 +12550,13 @@ function bindHighlightPopupDrag() {
     if (!header || !panel) return;
     enableTouchModalDrag(panel, header, {
         onStart: function (e, panelEl, rect) {
-            if (!highlightPopupDockRight) highlightPopupDragOffsetX = e.clientX - rect.left;
+            highlightPopupDragOffsetX = e.clientX - rect.left;
             highlightPopupDragOffsetY = e.clientY - rect.top;
         },
         onMove: function (e, panelEl, nextLeft, nextTop) {
             if (highlightPopupDockRight) {
+                highlightPopupDockLeft = nextLeft;
                 highlightPopupDockTop = nextTop;
-                panelEl.style.left = '12px';
             }
         }
     });
@@ -12267,9 +12567,7 @@ function bindHighlightPopupDrag() {
         if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('textarea')) return;
         highlightPopupDragging = true;
         const rect = panel.getBoundingClientRect();
-        if (!highlightPopupDockRight) {
-            highlightPopupDragOffsetX = e.clientX - rect.left;
-        }
+        highlightPopupDragOffsetX = e.clientX - rect.left;
         highlightPopupDragOffsetY = e.clientY - rect.top;
         panel.style.position = 'fixed';
         panel.style.margin = '0';
@@ -12284,12 +12582,11 @@ function bindHighlightPopupDrag() {
         const panelEl = document.getElementById('highlight-popup-panel');
         if (!panelEl) return;
         const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - highlightPopupDragOffsetY));
-        if (!highlightPopupDockRight) {
-            const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - highlightPopupDragOffsetX));
-            panelEl.style.left = nextLeft + 'px';
-        } else {
+        const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - highlightPopupDragOffsetX));
+        panelEl.style.left = nextLeft + 'px';
+        if (highlightPopupDockRight) {
+            highlightPopupDockLeft = nextLeft;
             highlightPopupDockTop = nextTop;
-            panelEl.style.left = '12px';
         }
         panelEl.style.top = nextTop + 'px';
         panelEl.style.right = 'auto';
@@ -12302,7 +12599,11 @@ function bindHighlightPopupDrag() {
 
 function toggleHighlightPopupDockRight() {
     highlightPopupDockRight = !highlightPopupDockRight;
-    if (!highlightPopupDockRight) highlightPopupShrink = false;
+    if (!highlightPopupDockRight) {
+        highlightPopupShrink = false;
+    } else {
+        highlightPopupDockLeft = 12;
+    }
     applyHighlightPopupLayout();
 }
 
@@ -17112,6 +17413,11 @@ async function initAiVisibility() {
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
     const localStorageEl = document.getElementById('local-storage-enabled');
+    const githubTokenEl = document.getElementById('github-token-input');
+    const githubRepoEl = document.getElementById('github-repo-input');
+    const githubBranchEl = document.getElementById('github-branch-input');
+    const githubPullMaxEl = document.getElementById('github-pull-max-files-input');
+    const githubDefaultPushPathEl = document.getElementById('github-default-push-path-input');
     const verified = isAiAccessVerified(settings);
     if (settings) {
         if (useCheck) {
@@ -17122,11 +17428,25 @@ async function initAiVisibility() {
         if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
         if (githubEl) githubEl.checked = !!settings.githubEnabled;
         if (localStorageEl) localStorageEl.checked = getLocalStorageFeatureEnabledFromSettings(settings);
+        if (githubTokenEl) githubTokenEl.value = settings.githubToken || '';
+        if (githubRepoEl) githubRepoEl.value = settings.githubRepo || '';
+        if (githubBranchEl) githubBranchEl.value = settings.githubBranch || 'main';
+        if (githubDefaultPushPathEl) githubDefaultPushPathEl.value = settings.githubDefaultPushPath || '';
+        if (githubPullMaxEl) {
+            const rawMax = Number(settings.githubPullMaxFiles);
+            const maxFiles = Number.isFinite(rawMax) ? Math.max(1, Math.min(10000, Math.floor(rawMax))) : 10000;
+            githubPullMaxEl.value = String(maxFiles);
+        }
     } else {
         if (scholarEl) scholarEl.checked = false;
         if (sspimgEl) sspimgEl.checked = false;
         if (githubEl) githubEl.checked = false;
         if (localStorageEl) localStorageEl.checked = true;
+        if (githubTokenEl) githubTokenEl.value = '';
+        if (githubRepoEl) githubRepoEl.value = '';
+        if (githubBranchEl) githubBranchEl.value = 'main';
+        if (githubDefaultPushPathEl) githubDefaultPushPathEl.value = '';
+        if (githubPullMaxEl) githubPullMaxEl.value = '10000';
     }
     enterButtonInsertBr = !!((settings && settings.enterButtonInsertBr === true) || getEnterButtonInsertBrFromLocal());
     selectionWrapEnabled = settings && typeof settings.selectionWrapEnabled === 'boolean'
@@ -17805,6 +18125,7 @@ function askStorageSaveLocation(origin, targetSource) {
 async function ensureDatabaseStorageMode(storageMode) {
     const requestedMode = storageMode === 'sqlite' ? 'sqlite' : 'indb';
     if (!window.MDPStorage || typeof window.MDPStorage.requestMode !== 'function') return false;
+    await ensureStorageServiceReady();
     if (getActiveStorageMode() !== requestedMode) {
         const state = await window.MDPStorage.requestMode(requestedMode);
         const actualMode = state && state.activeMode === 'sqlite' ? 'sqlite' : 'indb';
@@ -18090,6 +18411,7 @@ window.adjustHeaderScale = adjustHeaderScale;
 window.setMainHeaderBackgroundRemoved = setMainHeaderBackgroundRemoved;
 window.adjustEditorHorizontalShift = adjustEditorHorizontalShift;
 window.resetEditorHorizontalShift = resetEditorHorizontalShift;
+window.toggleEditorShiftFloatOrientation = toggleEditorShiftFloatOrientation;
 if (window.ScholarSearchApp && typeof window.ScholarSearchApp.connectHost === 'function') {
     window.ScholarSearchApp.connectHost({
         dbGetter: function () { return db; },
@@ -18143,6 +18465,8 @@ window.closeSaveModal = closeSaveModal;
 window.confirmSaveModal = confirmSaveModal;
 window.openBackupModal = openBackupModal;
 window.openMpvFilePicker = openMpvFilePicker;
+window.openZipBackupFilePicker = openZipBackupFilePicker;
+window.handleZipBackupFileSelect = handleZipBackupFileSelect;
 window.closeBackupModal = closeBackupModal;
 window.openMergeModal = openMergeModal;
 window.closeMergeModal = closeMergeModal;

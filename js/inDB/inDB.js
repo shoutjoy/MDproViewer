@@ -479,6 +479,9 @@ function getInDbStatusSecondaryText(storeName, item) {
     if (storeName === 'ssp_image_ai') {
         return 'id=' + String(rec.id || '') + ' | image bytes≈' + Math.round(String(rec.dataURL || '').length * 0.75);
     }
+    if (storeName === 'mermaid_refs') {
+        return 'id=' + String(rec.id || '') + ' | code chars=' + String(rec.code || '').length;
+    }
     if (storeName === 'highlights') {
         return 'id=' + String(rec.id || '') + ' | type=' + String(rec.recordType || 'highlight');
     }
@@ -1297,6 +1300,41 @@ function renderInDbStatusDetailValue(key, value) {
     return '<pre class="indb-detail-value">' + escapeInDbStatusHtml(clipped) + '</pre>';
 }
 
+function renderInDbMermaidPreviewSection(record) {
+    const code = String(record && record.code || '').trim();
+    if (!code) {
+        return '<section class="indb-mermaid-preview"><div class="indb-mermaid-preview-head"><strong>Mermaid 렌더링 미리보기</strong>'
+            + '<span class="is-error">저장된 코드가 없습니다.</span></div></section>';
+    }
+    return '<section class="indb-mermaid-preview" data-indb-mermaid-preview>'
+        + '<div class="indb-mermaid-preview-head"><strong>Mermaid 렌더링 미리보기</strong>'
+        + '<span data-indb-mermaid-status>다이어그램을 그리는 중…</span></div>'
+        + '<div class="indb-mermaid-preview-stage"><pre><code class="language-mermaid">'
+        + escapeInDbStatusHtml(code) + '</code></pre></div></section>';
+}
+
+function renderSelectedInDbMermaidPreview() {
+    const preview = document.querySelector('#indb-status-list [data-indb-mermaid-preview]');
+    if (!preview) return;
+    const status = preview.querySelector('[data-indb-mermaid-status]');
+    if (!window.MermaidTRT || typeof window.MermaidTRT.renderIn !== 'function') {
+        if (status) {
+            status.textContent = 'Mermaid 렌더러를 불러오지 못했습니다.';
+            status.classList.add('is-error');
+        }
+        return;
+    }
+    window.MermaidTRT.renderIn(preview).then(function (result) {
+        if (!preview.isConnected) return;
+        if (result && result.errorCount) throw (result.error || new Error('Mermaid 렌더링 오류'));
+        if (status) status.textContent = '렌더링 완료';
+    }).catch(function (error) {
+        if (!preview.isConnected || !status) return;
+        status.textContent = '렌더링 실패 · ' + String(error && error.message || error || '코드를 확인하세요.');
+        status.classList.add('is-error');
+    });
+}
+
 function renderInDbStatusDetail(snapshot, storeName, record) {
     if (!record) {
         return '<div class="indb-detail-placeholder"><span class="indb-detail-placeholder-icon">↖</span>'
@@ -1315,6 +1353,7 @@ function renderInDbStatusDetail(snapshot, storeName, record) {
         imagePreview = '<div class="indb-detail-image indb-ai-image-preview"><img src="'
             + escapeInDbStatusHtml(record.dataUrl) + '" alt="' + title + '" decoding="async"></div>';
     }
+    const mermaidPreview = storeName === 'mermaid_refs' ? renderInDbMermaidPreviewSection(record) : '';
     let aiContent = '';
     if (storeName === 'ai_settings' && String(record.id || '') === 'ai_settings') {
         const sharedPrompt = String(record.scholarAIPromptPack || localStorage.getItem('ss_scholar_ai_system') || (typeof window.getDefaultScholarAIPrompt === 'function' ? window.getDefaultScholarAIPrompt() : ''));
@@ -1374,7 +1413,7 @@ function renderInDbStatusDetail(snapshot, storeName, record) {
     return '<div class="indb-detail-content"><header class="indb-detail-header"><div class="indb-detail-heading">'
         + '<span class="indb-detail-store">' + escapeInDbStatusHtml(storeName) + '</span><h3>' + title + '</h3>'
         + '<p>' + escapeInDbStatusHtml(getInDbStatusSecondaryText(storeName, record)) + '</p></div>' + deleteControl
-        + '</header>' + imagePreview + aiContent + '<div class="indb-detail-fields">' + fields + '</div></div>';
+        + '</header>' + imagePreview + mermaidPreview + aiContent + '<div class="indb-detail-fields">' + fields + '</div></div>';
 }
 
 function editInDbScholarAIPrompt() {
@@ -1509,6 +1548,7 @@ function renderInDbStatusBrowser(snapshot) {
         + '<aside class="indb-detail-pane" aria-label="선택한 inDB 항목 세부내용"><div class="indb-pane-title"><strong>세부내용</strong><span>항목 선택</span></div>'
         + '<div class="indb-detail-scroll">' + renderInDbStatusDetail(snapshot, activeStore, activeRecord) + '</div></aside>'
         + '</div>';
+    if (activeStore === 'mermaid_refs' && activeRecord) renderSelectedInDbMermaidPreview();
 }
 
 function selectInDbStatusStore(storeName) {

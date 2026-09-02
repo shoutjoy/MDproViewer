@@ -23,8 +23,14 @@ assert.doesNotMatch(app, /const DB_NAME = "MarkdownProDB"/);
 assert.doesNotMatch(app, /function initDB\(\)/);
 assert.doesNotMatch(app, /const INDB_STATUS_STORE_ORDER/);
 assert.doesNotMatch(app, /function ensureInDbStatusUi\(\)/);
-assert.match(app, /await initDB\(\)/, 'app은 inDB 모듈 초기화 함수를 호출해야 합니다.');
+assert.match(app, /function ensureMainDatabaseReady\(\)[\s\S]*?return initDB\(\)/, 'app은 중복 실행을 막는 준비 함수를 통해 inDB 모듈을 초기화해야 합니다.');
+assert.match(app, /await ensureMainDatabaseReady\(\)/, '앱 시작은 inDB 준비가 완료될 때까지 기다려야 합니다.');
 assert.match(app, /if \(action === 'indb'\) return await saveCurrentToInDbAuto\(\)/);
+assert.match(
+    app,
+    /function syncEditorShiftFloatPosition\(\) \{[\s\S]*?const sidebarEl = document\.getElementById\('sidebar'\);[\s\S]*?if \(typeof ResizeObserver === 'function'\)[\s\S]*?if \(sidebarEl\) observer\.observe\(sidebarEl\);/,
+    '초기 설정 중 사이드바 관찰 대상은 블록 밖에서도 접근 가능해야 합니다.'
+);
 
 assert.match(inDb, /const DB_NAME = "MarkdownProDB"/);
 assert.match(inDb, /const DB_VERSION = 9/);

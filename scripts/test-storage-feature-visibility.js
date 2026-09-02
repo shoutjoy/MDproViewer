@@ -72,6 +72,16 @@ assert.match(app, /SETTINGS_EXPORT_LOCAL_KEYS[\s\S]*mdpro_storage_sidebar_auto_r
 assert.match(github, /currentStorageSourceTab = 'indb'/);
 assert.match(github, /next === 'local' && !featureFlags\.local/);
 assert.match(github, /next === 'sqlite' && !featureFlags\.sqlite/);
+assert.match(github, /const savedSettings = next === 'github' \? \(await getAiSettings\(\) \|\| \{\}\) : null/);
+assert.match(github, /savedGithubConfig\.token/);
+assert.match(github, /function syncGithubSettingsFields\(settings\)/);
+assert.match(github, /const cfg = syncGithubSettingsFields\(settings\)/);
+const startupVisibility = app.slice(app.indexOf('async function initAiVisibility'), app.indexOf('function openSettingsModal'));
+assert.match(startupVisibility, /githubTokenEl\.value = settings\.githubToken \|\| ''/);
+assert.match(startupVisibility, /githubRepoEl\.value = settings\.githubRepo \|\| ''/);
+assert.match(startupVisibility, /githubBranchEl\.value = settings\.githubBranch \|\| 'main'/);
+assert.match(app, /await initAiVisibility\(\)/);
+assert.ok(app.indexOf('window.syncGithubSettingsFields(startupSettings || {})') < app.indexOf('currentStorageSourceTab = getStorageSourceTabFromLocal()'));
 assert.match(settings, /notifyStorageFeatureVisibility\(\)/);
 assert.match(githubSettings, /function toggleGithubSettingsSection\(params\)[\s\S]*body\.classList\.toggle\('hidden', folded\)/);
 assert.doesNotMatch(
