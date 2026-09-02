@@ -813,6 +813,11 @@ let math99PopupStartH = 0;
 let img2MathImage = null;
 let img2MathBound = false;
 let img2MathSelection = { start: 0, end: 0 };
+const IMG2MATH_MODEL_SELECTION_KEY = 'mdv_img2math_model_selection_v1';
+let img2MathAiSelection = null;
+let img2MathFloatingBound = false;
+let img2MathFloatingPositioned = false;
+let img2MathLastDocumentSelection = '';
 
 function loadFolderCollapseState() {
     try {
@@ -8269,16 +8274,55 @@ function closeTextStyleModal() {
     return window.TextStyleTool.close({ textarea: editorTextarea });
 }
 
+let lastMermaidDocumentSelection = '';
+
+function getSelectedDocumentTextForMermaidEditor() {
+    const editorIsVisible = !!(editorTextarea && editorTextarea.offsetParent !== null);
+    if ((isEditMode || editorIsVisible) && editorTextarea) {
+        const start = Math.max(0, Number(editorTextarea.selectionStart) || 0);
+        const end = Math.max(start, Number(editorTextarea.selectionEnd) || start);
+        const selected = String(editorTextarea.value || '').slice(start, end).trim();
+        if (selected) {
+            lastMermaidDocumentSelection = selected;
+            return selected;
+        }
+    }
+
+    const selection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (selection && selection.rangeCount > 0 && String(selection.toString() || '').trim()) {
+        const range = selection.getRangeAt(0);
+        const commonNode = range.commonAncestorContainer;
+        const commonElement = commonNode && commonNode.nodeType === Node.ELEMENT_NODE ? commonNode : commonNode && commonNode.parentElement;
+        if (viewer && commonElement && viewer.contains(commonElement)) {
+            lastMermaidDocumentSelection = String(selection.toString() || '').trim();
+            return lastMermaidDocumentSelection;
+        }
+    }
+    return lastMermaidDocumentSelection;
+}
+
+function rememberSelectedDocumentTextForMermaidEditor() {
+    getSelectedDocumentTextForMermaidEditor();
+}
+
+if (editorTextarea) {
+    editorTextarea.addEventListener('select', rememberSelectedDocumentTextForMermaidEditor);
+    editorTextarea.addEventListener('mouseup', rememberSelectedDocumentTextForMermaidEditor);
+    editorTextarea.addEventListener('keyup', rememberSelectedDocumentTextForMermaidEditor);
+}
+if (viewer) viewer.addEventListener('mouseup', rememberSelectedDocumentTextForMermaidEditor);
+
 function openMermaidEditorModal() {
     const modal = document.getElementById('mermaid-editor-modal');
     if (!modal) return;
     const frame = document.getElementById('mermaid-editor-frame');
-    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-svg-converter-layout-16';
+    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-manual-selection-button-18';
     if (frame && frame.dataset) frame.dataset.src = requiredSource;
     if (frame && String(frame.getAttribute('src') || '') !== requiredSource) frame.setAttribute('src', requiredSource);
     else ensureLazyFrameLoaded(frame);
     modal.classList.remove('hidden');
     bindMermaidEditorModalDrag();
+    bindMermaidEditorSideResize();
 }
 
 function closeMermaidEditorModal() {
@@ -8288,6 +8332,7 @@ function closeMermaidEditorModal() {
 }
 
 let mermaidEditorModalDragBound = false;
+let mermaidEditorModalResizeBound = false;
 let mermaidEditorModalFullscreen = false;
 let mermaidEditorModalDockRight = false;
 
@@ -8296,19 +8341,24 @@ function applyMermaidEditorDockRight(docked) {
     const dockBtn = document.getElementById('mermaid-editor-dock-right-btn');
     if (!panel) return;
     mermaidEditorModalDockRight = !!docked;
-    if (dockBtn) dockBtn.textContent = mermaidEditorModalDockRight ? '<<' : '>>';
+    if (dockBtn) {
+        dockBtn.textContent = mermaidEditorModalDockRight ? 'Dock 해제' : 'Dock';
+        dockBtn.title = mermaidEditorModalDockRight ? '우측 도킹 해제' : '창을 화면 오른쪽에 도킹';
+        dockBtn.setAttribute('aria-pressed', String(mermaidEditorModalDockRight));
+    }
+    panel.classList.toggle('is-docked-right', mermaidEditorModalDockRight);
     if (mermaidEditorModalDockRight) {
         mermaidEditorModalFullscreen = false;
         panel.style.transform = 'none';
         panel.style.left = 'auto';
-        panel.style.top = '8px';
-        panel.style.right = '8px';
-        panel.style.bottom = '8px';
+        panel.style.top = '0';
+        panel.style.right = '0';
+        panel.style.bottom = '0';
         panel.style.width = 'min(960px, 48vw)';
-        panel.style.height = 'calc(100vh - 16px)';
+        panel.style.height = '100vh';
         panel.style.maxWidth = '98vw';
-        panel.style.maxHeight = 'calc(100vh - 16px)';
-        panel.style.resize = 'both';
+        panel.style.maxHeight = '100vh';
+        panel.style.resize = 'none';
         return;
     }
     panel.style.left = '50%';
@@ -8325,6 +8375,103 @@ function applyMermaidEditorDockRight(docked) {
 
 function toggleMermaidEditorDockRight() {
     applyMermaidEditorDockRight(!mermaidEditorModalDockRight);
+}
+
+function bindMermaidEditorSideResize() {
+    if (mermaidEditorModalResizeBound) return;
+    const panel = document.getElementById('mermaid-editor-modal-panel');
+    const frame = document.getElementById('mermaid-editor-frame');
+    const handles = [
+        { element: document.getElementById('mermaid-editor-resize-left'), side: 'left' },
+        { element: document.getElementById('mermaid-editor-resize-right'), side: 'right' }
+    ];
+    if (!panel || handles.some(function (item) { return !item.element; })) return;
+
+    handles.forEach(function (item) {
+        item.element.addEventListener('keydown', function (event) {
+            if (mermaidEditorModalFullscreen || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+            const rect = panel.getBoundingClientRect();
+            const edgeDirection = event.key === 'ArrowRight' ? 1 : -1;
+            const widthDelta = item.side === 'left' ? -edgeDirection * 24 : edgeDirection * 24;
+            const viewportMaxWidth = Math.max(320, window.innerWidth - 8);
+            const computedMin = parseFloat(window.getComputedStyle(panel).minWidth) || 520;
+            const minWidth = Math.min(computedMin, viewportMaxWidth);
+            const fixedLeft = Math.max(4, Math.min(rect.left, window.innerWidth - minWidth - 4));
+            const fixedRight = Math.max(minWidth + 4, Math.min(rect.right, window.innerWidth - 4));
+            const maxWidth = mermaidEditorModalDockRight
+                ? viewportMaxWidth
+                : (item.side === 'left' ? fixedRight - 4 : window.innerWidth - fixedLeft - 4);
+            const nextWidth = Math.max(minWidth, Math.min(maxWidth, rect.width + widthDelta));
+            panel.style.width = Math.round(nextWidth) + 'px';
+            panel.style.transform = 'none';
+            if (mermaidEditorModalDockRight) {
+                panel.style.left = 'auto';
+                panel.style.right = '0';
+            } else {
+                panel.style.right = 'auto';
+                panel.style.left = (item.side === 'left' ? fixedRight - nextWidth : fixedLeft) + 'px';
+            }
+            item.element.setAttribute('aria-valuenow', String(Math.round(nextWidth)));
+            event.preventDefault();
+        });
+        item.element.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0 || mermaidEditorModalFullscreen) return;
+            const handle = item.element;
+            const rect = panel.getBoundingClientRect();
+            const startX = event.clientX;
+            const startWidth = rect.width;
+            const viewportMaxWidth = Math.max(320, window.innerWidth - 8);
+            const computedMin = parseFloat(window.getComputedStyle(panel).minWidth) || 520;
+            const minWidth = Math.min(computedMin, viewportMaxWidth);
+            const fixedLeft = Math.max(4, Math.min(rect.left, window.innerWidth - minWidth - 4));
+            const fixedRight = Math.max(minWidth + 4, Math.min(rect.right, window.innerWidth - 4));
+            const maxWidth = mermaidEditorModalDockRight
+                ? viewportMaxWidth
+                : (item.side === 'left' ? fixedRight - 4 : window.innerWidth - fixedLeft - 4);
+
+            if (!mermaidEditorModalDockRight) {
+                panel.style.left = fixedLeft + 'px';
+                panel.style.right = 'auto';
+                panel.style.transform = 'none';
+            }
+            panel.style.resize = 'none';
+            panel.classList.add('is-side-resizing');
+            if (frame) frame.style.pointerEvents = 'none';
+            handle.setPointerCapture(event.pointerId);
+
+            function move(moveEvent) {
+                let nextWidth = item.side === 'left'
+                    ? startWidth + (startX - moveEvent.clientX)
+                    : startWidth + (moveEvent.clientX - startX);
+                nextWidth = Math.max(minWidth, Math.min(maxWidth, nextWidth));
+                panel.style.width = Math.round(nextWidth) + 'px';
+                handle.setAttribute('aria-valuenow', String(Math.round(nextWidth)));
+                if (mermaidEditorModalDockRight) {
+                    panel.style.left = 'auto';
+                    panel.style.right = '0';
+                } else if (item.side === 'left') {
+                    panel.style.left = (fixedRight - nextWidth) + 'px';
+                } else {
+                    panel.style.left = fixedLeft + 'px';
+                }
+            }
+
+            function stop() {
+                handle.removeEventListener('pointermove', move);
+                handle.removeEventListener('pointerup', stop);
+                handle.removeEventListener('pointercancel', stop);
+                panel.classList.remove('is-side-resizing');
+                if (frame) frame.style.pointerEvents = '';
+                if (!mermaidEditorModalDockRight) panel.style.resize = 'both';
+            }
+
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', stop);
+            handle.addEventListener('pointercancel', stop);
+            event.preventDefault();
+        });
+    });
+    mermaidEditorModalResizeBound = true;
 }
 
 function bindMermaidEditorModalDrag() {
@@ -8437,6 +8584,16 @@ window.addEventListener('message', function (event) {
     if (!data) return;
     const mermaidFrame = document.getElementById('mermaid-editor-frame');
     const fromMermaidEditor = !!(mermaidFrame && mermaidFrame.contentWindow === event.source);
+    if (data.type === 'mdv-request-document-selection') {
+        if (!fromMermaidEditor) return;
+        const selectedText = getSelectedDocumentTextForMermaidEditor();
+        if (!selectedText) {
+            event.source.postMessage({ type: 'mdv-document-selection-unavailable' }, '*');
+            return;
+        }
+        event.source.postMessage({ type: 'mdv-load-document-selection', code: selectedText }, '*');
+        return;
+    }
     if (data.type === 'mdv-insert-mermaid') {
         if (!fromMermaidEditor) return;
         insertMermaidBlockFromExternal(data.code || '');
@@ -10652,13 +10809,39 @@ function setImg2MathImage(file) {
         img2MathImage = { name: file.name || 'formula.png', type: file.type || 'image/png', size: file.size || 0, dataUrl: String(reader.result || '') };
         const preview = document.getElementById('img2math-image-preview');
         const label = document.getElementById('img2math-drop-label');
+        const clearButton = document.getElementById('img2math-clear');
+        const result = document.getElementById('img2math-result');
         if (preview) { preview.src = img2MathImage.dataUrl; preview.classList.remove('hidden'); }
         if (label) label.textContent = img2MathImage.name;
+        if (clearButton) clearButton.classList.remove('hidden');
+        if (result) result.value = '';
+        renderImg2MathPreview();
         const status = document.getElementById('img2math-status');
         if (status) status.textContent = '이미지를 불러왔습니다.';
     };
     reader.onerror = function () { showToast('이미지를 읽지 못했습니다.'); };
     reader.readAsDataURL(file);
+}
+
+function clearImg2MathImage() {
+    img2MathImage = null;
+    const preview = document.getElementById('img2math-image-preview');
+    const label = document.getElementById('img2math-drop-label');
+    const file = document.getElementById('img2math-file');
+    const clearButton = document.getElementById('img2math-clear');
+    const result = document.getElementById('img2math-result');
+    const status = document.getElementById('img2math-status');
+    if (preview) {
+        preview.removeAttribute('src');
+        preview.classList.add('hidden');
+    }
+    if (label) label.textContent = '이미지를 끌어 놓거나 붙여넣으세요';
+    if (file) file.value = '';
+    if (clearButton) clearButton.classList.add('hidden');
+    if (result) result.value = '';
+    renderImg2MathPreview();
+    if (status) status.textContent = '기존 이미지를 지웠습니다. 새 이미지를 추가해 주세요.';
+    document.getElementById('img2math-drop')?.focus();
 }
 
 async function pasteImg2MathImage() {
@@ -10699,11 +10882,13 @@ async function generateImg2Math() {
     const output = document.getElementById('img2math-result');
     if (!img2MathImage) { if (status) status.textContent = '먼저 수식 이미지를 추가해 주세요.'; return; }
     try {
-        if (!window.AIChatBridge || typeof window.AIChatBridge.complete !== 'function') throw new Error('AI Jena 연결 모듈이 준비되지 않았습니다.');
-        const selected = getMermaidVisionProviderSelection();
         button.disabled = true;
-        button.textContent = '수식을 인식하고 있습니다…';
-        if (status) status.textContent = 'AI가 이미지의 기호와 수식 구조를 분석하고 있습니다.';
+        button.textContent = 'AI Jena가 수식을 인식하고 있습니다…';
+        if (status) status.textContent = 'AI Jena 연결과 이미지 인식 모델을 확인하고 있습니다.';
+        if (!window.AIChatBridge || typeof window.AIChatBridge.complete !== 'function') throw new Error('AI Jena 연결 모듈이 준비되지 않았습니다.');
+        const selected = getImg2MathProviderSelection();
+        updateImg2MathAiModelStatus(selected);
+        if (status) status.textContent = formatImg2MathAiModel(selected) + ' 모델이 이미지의 기호와 수식 구조를 분석하고 있습니다.';
         const response = await window.AIChatBridge.complete({
             provider: selected.provider,
             model: selected.model,
@@ -10715,13 +10900,134 @@ async function generateImg2Math() {
         if (!latex) throw new Error('AI 응답에서 수식을 찾지 못했습니다.');
         output.value = latex;
         await renderImg2MathPreview();
-        if (status) status.textContent = '수식 인식이 완료되었습니다. 결과를 수정하거나 문서에 삽입할 수 있습니다.';
+        if (status) status.textContent = formatImg2MathAiModel(response || selected) + ' 인식이 완료되었습니다. 결과를 수정하거나 문서에 삽입할 수 있습니다.';
     } catch (error) {
         if (status) status.textContent = '수식 인식 실패: ' + (error && error.message ? error.message : String(error));
     } finally {
         button.disabled = false;
-        button.textContent = '✦ 이미지 속 수식 TeX 생성';
+        button.textContent = '✦ AI Jena로 수식 인식 실행';
     }
+}
+
+function formatImg2MathAiModel(selection) {
+    const providerNames = {
+        aistudio: 'Google AI Studio',
+        openai: 'OpenAI',
+        lmstudio: 'LM Studio',
+        ollama: 'Ollama',
+        deepseek: 'DeepSeek',
+        litertlm: 'LiteRTLM',
+        'openai-compatible': 'OpenAI 호환 API'
+    };
+    const provider = String(selection && selection.provider || '').trim();
+    const model = String(selection && selection.model || '').trim();
+    return [providerNames[provider] || provider || 'AI Jena', model].filter(Boolean).join(' · ');
+}
+
+function getImg2MathProviderSelection() {
+    const configured = getMermaidVisionProviderSelection();
+    if (!img2MathAiSelection) {
+        try {
+            const saved = JSON.parse(localStorage.getItem(IMG2MATH_MODEL_SELECTION_KEY) || 'null');
+            if (saved && typeof saved === 'object') {
+                img2MathAiSelection = { provider: String(saved.provider || ''), model: String(saved.model || '') };
+            }
+        } catch (_error) { }
+    }
+    if (img2MathAiSelection && img2MathAiSelection.provider === configured.provider && img2MathAiSelection.model) {
+        return { provider: configured.provider, model: img2MathAiSelection.model };
+    }
+    img2MathAiSelection = { provider: configured.provider, model: configured.model };
+    return img2MathAiSelection;
+}
+
+function updateImg2MathAiModelStatus(selection) {
+    const target = document.getElementById('img2math-ai-provider');
+    if (!target) return;
+    try {
+        const current = selection || getImg2MathProviderSelection();
+        const parts = formatImg2MathAiModel(current).split(' · ');
+        target.textContent = 'AI Jena · ' + (parts[0] || '이미지 인식');
+        target.classList.remove('is-error');
+    } catch (error) {
+        target.textContent = 'AI Jena 이미지 모델 설정 필요';
+        target.classList.add('is-error');
+    }
+}
+
+async function populateImg2MathModelSelect() {
+    const select = document.getElementById('img2math-model-select');
+    if (!select) return;
+    select.disabled = true;
+    select.innerHTML = '<option>모델 불러오는 중…</option>';
+    try {
+        const selected = getImg2MathProviderSelection();
+        let models = [selected.model].filter(Boolean);
+        const cachedModelMethods = {
+            aistudio: 'getCachedGeminiModels',
+            openai: 'getCachedOpenAIModels'
+        };
+        const method = cachedModelMethods[selected.provider];
+        if (method && window.AIChatBridge && typeof window.AIChatBridge[method] === 'function') {
+            const result = await Promise.resolve(window.AIChatBridge[method]());
+            models = models.concat(Array.isArray(result) ? result : (Array.isArray(result && result.models) ? result.models : []));
+        }
+        models = Array.from(new Set(models.map(function (model) { return String(model || '').trim(); }).filter(Boolean)));
+        if (!models.length) throw new Error('선택 가능한 이미지 인식 모델이 없습니다.');
+        select.replaceChildren();
+        models.forEach(function (model) {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            select.appendChild(option);
+        });
+        select.value = models.includes(selected.model) ? selected.model : models[0];
+        img2MathAiSelection = { provider: selected.provider, model: select.value };
+        select.disabled = false;
+        updateImg2MathAiModelStatus(img2MathAiSelection);
+    } catch (error) {
+        select.innerHTML = '<option>모델 설정 필요</option>';
+        select.disabled = true;
+        updateImg2MathAiModelStatus();
+    }
+}
+
+function getImg2MathSelectedDocumentText() {
+    const selection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (selection && selection.rangeCount > 0 && String(selection.toString() || '').trim()) {
+        const range = selection.getRangeAt(0);
+        const commonNode = range.commonAncestorContainer;
+        const commonElement = commonNode && commonNode.nodeType === Node.ELEMENT_NODE ? commonNode : commonNode && commonNode.parentElement;
+        if (viewer && commonElement && viewer.contains(commonElement)) return String(selection.toString() || '').trim();
+    }
+    if (editorTextarea) {
+        const start = Math.max(0, Number(editorTextarea.selectionStart) || 0);
+        const end = Math.max(start, Number(editorTextarea.selectionEnd) || start);
+        const selected = String(editorTextarea.value || '').slice(start, end).trim();
+        if (selected) return selected;
+    }
+    return img2MathLastDocumentSelection;
+}
+
+function captureImg2MathDocumentSelection() {
+    const popup = document.getElementById('img2math-popup');
+    if (!popup || popup.classList.contains('hidden')) return;
+    const selected = getImg2MathSelectedDocumentText();
+    if (selected) img2MathLastDocumentSelection = selected;
+}
+
+function importSelectedTextIntoImg2Math() {
+    const result = document.getElementById('img2math-result');
+    const status = document.getElementById('img2math-status');
+    const selected = getImg2MathSelectedDocumentText();
+    if (!selected) {
+        if (status) status.textContent = '배경 문서에서 가져올 텍스트를 먼저 선택해 주세요.';
+        return;
+    }
+    img2MathLastDocumentSelection = selected;
+    if (result) result.value = selected;
+    renderImg2MathPreview();
+    if (status) status.textContent = '선택한 텍스트를 인식된 LaTeX 입력창으로 가져왔습니다.';
 }
 
 function insertImg2MathResult() {
@@ -10743,6 +11049,103 @@ function insertImg2MathResult() {
     showToast('인식한 수식을 문서에 삽입했습니다.');
 }
 
+function constrainImg2MathFloatingWindow(initialize) {
+    const dialog = document.querySelector('#img2math-popup .img2math-dialog');
+    if (!dialog || dialog.offsetParent === null) return;
+    const viewportWidth = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
+    const viewportHeight = Math.max(360, window.innerHeight || document.documentElement.clientHeight || 720);
+    const gap = viewportWidth <= 520 ? 6 : 12;
+    const minWidth = Math.min(560, viewportWidth - gap * 2);
+    const minHeight = Math.min(420, viewportHeight - gap * 2);
+    const maxWidth = Math.max(minWidth, viewportWidth - gap * 2);
+    const maxHeight = Math.max(minHeight, viewportHeight - gap * 2);
+    let rect = dialog.getBoundingClientRect();
+    let width = Math.min(maxWidth, Math.max(minWidth, rect.width || Math.min(940, maxWidth)));
+    let height = Math.min(maxHeight, Math.max(minHeight, rect.height || Math.min(640, maxHeight)));
+    let left = rect.left;
+    let top = rect.top;
+    if (initialize || !img2MathFloatingPositioned || !Number.isFinite(left) || !Number.isFinite(top)) {
+        width = Math.min(940, maxWidth);
+        height = Math.min(640, maxHeight);
+        left = Math.round((viewportWidth - width) / 2);
+        top = Math.round((viewportHeight - height) / 2);
+        img2MathFloatingPositioned = true;
+    }
+    left = Math.min(viewportWidth - gap - width, Math.max(gap, left));
+    top = Math.min(viewportHeight - gap - height, Math.max(gap, top));
+    dialog.style.left = left + 'px';
+    dialog.style.top = top + 'px';
+    dialog.style.width = width + 'px';
+    dialog.style.height = height + 'px';
+}
+
+function bindImg2MathFloatingWindow() {
+    if (img2MathFloatingBound) return;
+    const dialog = document.querySelector('#img2math-popup .img2math-dialog');
+    const header = dialog && dialog.querySelector('.img2math-header');
+    if (!dialog || !header) return;
+    img2MathFloatingBound = true;
+    let action = null;
+
+    const finish = function () {
+        if (!action) return;
+        action = null;
+        document.body.classList.remove('img2math-window-moving');
+    };
+    const move = function (event) {
+        if (!action) return;
+        const viewportWidth = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
+        const viewportHeight = Math.max(360, window.innerHeight || document.documentElement.clientHeight || 720);
+        const gap = viewportWidth <= 520 ? 6 : 12;
+        const dx = event.clientX - action.startX;
+        const dy = event.clientY - action.startY;
+        if (action.type === 'move') {
+            const left = Math.min(viewportWidth - gap - action.width, Math.max(gap, action.left + dx));
+            const top = Math.min(viewportHeight - gap - action.height, Math.max(gap, action.top + dy));
+            dialog.style.left = left + 'px';
+            dialog.style.top = top + 'px';
+            return;
+        }
+        const direction = action.direction;
+        const minWidth = Math.min(560, viewportWidth - gap * 2);
+        const minHeight = Math.min(420, viewportHeight - gap * 2);
+        let left = action.left;
+        let top = action.top;
+        let right = action.left + action.width;
+        let bottom = action.top + action.height;
+        if (direction.includes('e')) right = Math.min(viewportWidth - gap, Math.max(left + minWidth, right + dx));
+        if (direction.includes('s')) bottom = Math.min(viewportHeight - gap, Math.max(top + minHeight, bottom + dy));
+        if (direction.includes('w')) left = Math.max(gap, Math.min(right - minWidth, left + dx));
+        if (direction.includes('n')) top = Math.max(gap, Math.min(bottom - minHeight, top + dy));
+        dialog.style.left = left + 'px';
+        dialog.style.top = top + 'px';
+        dialog.style.width = (right - left) + 'px';
+        dialog.style.height = (bottom - top) + 'px';
+    };
+
+    header.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0 || event.target.closest('button, select, input, textarea, a')) return;
+        const rect = dialog.getBoundingClientRect();
+        action = { type: 'move', startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+        document.body.classList.add('img2math-window-moving');
+        event.preventDefault();
+    });
+    dialog.querySelectorAll('[data-img2math-resize]').forEach(function (handle) {
+        handle.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0) return;
+            const rect = dialog.getBoundingClientRect();
+            action = { type: 'resize', direction: handle.dataset.img2mathResize || 'se', startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+            document.body.classList.add('img2math-window-moving');
+            event.preventDefault();
+            event.stopPropagation();
+        });
+    });
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', finish);
+    document.addEventListener('pointercancel', finish);
+    window.addEventListener('resize', function () { constrainImg2MathFloatingWindow(false); });
+}
+
 function bindImg2MathPopup() {
     if (img2MathBound) return;
     const wrap = document.getElementById('img2math-popup');
@@ -10751,10 +11154,19 @@ function bindImg2MathPopup() {
     const result = document.getElementById('img2math-result');
     if (!wrap || !drop || !file || !result) return;
     img2MathBound = true;
+    bindImg2MathFloatingWindow();
     document.getElementById('img2math-select').onclick = function (event) { event.stopPropagation(); file.click(); };
     document.getElementById('img2math-paste').onclick = function (event) { event.stopPropagation(); pasteImg2MathImage(); };
+    document.getElementById('img2math-clear').onclick = function (event) { event.stopPropagation(); clearImg2MathImage(); };
     document.getElementById('img2math-generate').onclick = generateImg2Math;
     document.getElementById('img2math-insert').onclick = insertImg2MathResult;
+    document.getElementById('img2math-import-selection').onclick = importSelectedTextIntoImg2Math;
+    document.getElementById('img2math-model-select').onchange = function (event) {
+        const configured = getMermaidVisionProviderSelection();
+        img2MathAiSelection = { provider: configured.provider, model: String(event.target.value || '').trim() };
+        localStorage.setItem(IMG2MATH_MODEL_SELECTION_KEY, JSON.stringify(img2MathAiSelection));
+        updateImg2MathAiModelStatus(img2MathAiSelection);
+    };
     file.onchange = function () { setImg2MathImage(file.files && file.files[0]); file.value = ''; };
     drop.onclick = function (event) { if (!event.target.closest('button')) file.click(); };
     ['dragenter', 'dragover'].forEach(function (name) { drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.add('border-teal-400'); }); });
@@ -10765,6 +11177,9 @@ function bindImg2MathPopup() {
     document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape' && !wrap.classList.contains('hidden')) closeImg2MathPopup();
     });
+    document.addEventListener('selectionchange', captureImg2MathDocumentSelection);
+    document.addEventListener('mouseup', function () { window.setTimeout(captureImg2MathDocumentSelection, 0); });
+    document.addEventListener('keyup', function () { window.setTimeout(captureImg2MathDocumentSelection, 0); });
     result.addEventListener('input', renderImg2MathPreview);
 }
 
@@ -10772,8 +11187,13 @@ function openImg2MathPopup() {
     if (!isEditMode || !editorTextarea) { showToast('편집 모드에서 사용해 주세요.'); return; }
     img2MathSelection = { start: editorTextarea.selectionStart || 0, end: editorTextarea.selectionEnd || editorTextarea.selectionStart || 0 };
     bindImg2MathPopup();
+    const initialSelection = String(editorTextarea.value || '').slice(img2MathSelection.start, img2MathSelection.end).trim();
+    if (initialSelection) img2MathLastDocumentSelection = initialSelection;
     document.getElementById('math-quick-panel')?.classList.add('hidden');
     document.getElementById('img2math-popup')?.classList.remove('hidden');
+    constrainImg2MathFloatingWindow(!img2MathFloatingPositioned);
+    updateImg2MathAiModelStatus();
+    populateImg2MathModelSelect();
     document.getElementById('img2math-drop')?.focus();
 }
 

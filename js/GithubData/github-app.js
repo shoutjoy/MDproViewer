@@ -1437,10 +1437,10 @@
             items.forEach(function (doc) {
                 const path = String(doc && doc.path ? doc.path : '');
                 const title = String(doc && doc.title ? doc.title : getGithubDocTitleFromPath(path));
-                const shortTitle = Array.from(title).slice(0, 3).join('');
+                const shortTitle = Array.from(title.trim()).slice(0, 1).join('') || '#';
                 const docItem = document.createElement('div');
                 docItem.className = isSidebarCollapsed
-                    ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
+                    ? 'sidebar-compact-item group mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer'
                     : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
                 docItem.title = path || title;
                 docItem.onclick = function () { loadFromGithubCache(path); };
@@ -1448,7 +1448,7 @@
                     + '<div class="flex flex-col gap-1 doc-item-inner">'
                     + '<div class="sidebar-doc-title-row flex items-start gap-2">'
                     + '<i data-lucide="file-code-2" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>'
-                    + '<span class="sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
+                    + '<span class="sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? 'sidebar-compact-initial' : 'sidebar-text') + '">'
                     + escapeHtmlText(isSidebarCollapsed ? shortTitle : title)
                     + '</span>'
                     + '</div>'

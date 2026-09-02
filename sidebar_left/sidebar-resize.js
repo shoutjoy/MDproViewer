@@ -3,9 +3,10 @@
 
     const STORAGE_KEY = 'md_viewer_sidebar_width';
     const DEFAULT_WIDTH = 320;
-    const MIN_WIDTH = 240;
+    const MIN_WIDTH = 64;
     const MAX_WIDTH = 640;
     const MIN_CONTENT_WIDTH = 320;
+    const NARROW_WIDTH = 188;
     const KEY_STEP = 16;
     let preferredWidth = DEFAULT_WIDTH;
 
@@ -34,6 +35,7 @@
     function applyWidth(sidebar, handle, width, options) {
         const nextWidth = clampWidth(sidebar, width);
         sidebar.style.width = nextWidth + 'px';
+        sidebar.classList.toggle('sidebar-narrow', nextWidth <= NARROW_WIDTH);
         updateHandleValue(handle, nextWidth, getMaxWidth(sidebar));
         if (!options || options.remember !== false) preferredWidth = nextWidth;
         if (options && options.persist) {
@@ -140,7 +142,8 @@
         storageKey: STORAGE_KEY,
         defaultWidth: DEFAULT_WIDTH,
         minWidth: MIN_WIDTH,
-        maxWidth: MAX_WIDTH
+        maxWidth: MAX_WIDTH,
+        narrowWidth: NARROW_WIDTH
     };
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSidebarResize);

@@ -92,6 +92,7 @@ const mermaidHistorySearch = document.getElementById('mermaid-history-search');
 const mermaidHistoryList = document.getElementById('mermaid-history-list');
 const mermaidAiPanel = document.getElementById('image-to-mermaid');
 const mermaidAiCollapseBtn = document.getElementById('mermaid-ai-collapse-btn');
+const documentSelectionImportBtn = document.getElementById('document-selection-import-btn');
 
 let renderTimer = null;
 let renderSeq = 0;
@@ -112,6 +113,24 @@ let mermaidImageTypingTimer = null;
 let mermaidHistoryRecords = [];
 const TOOLBAR_LAYOUT_KEY = 'mdv_mermaid_toolbar_layout_v1';
 const MERMAID_AI_COLLAPSED_KEY = 'mdv_mermaid_ai_panel_collapsed_v1';
+
+function setDocumentSelectionImportButton(message, isError) {
+  if (!documentSelectionImportBtn) return;
+  documentSelectionImportBtn.disabled = false;
+  documentSelectionImportBtn.textContent = String(message || '선택한 텍스트 가져오기');
+  documentSelectionImportBtn.classList.toggle('is-error', !!isError);
+  if (message) window.setTimeout(function () {
+    documentSelectionImportBtn.textContent = '선택한 텍스트 가져오기';
+    documentSelectionImportBtn.classList.remove('is-error');
+  }, 1800);
+}
+
+function requestSelectedDocumentText() {
+  if (!window.parent || window.parent === window) return setDocumentSelectionImportButton('문서 창에서만 사용 가능', true);
+  documentSelectionImportBtn.disabled = true;
+  documentSelectionImportBtn.textContent = '가져오는 중…';
+  window.parent.postMessage({ type: 'mdv-request-document-selection' }, '*');
+}
 
 function applyMermaidAiPanelState(collapsed) {
   if (!mermaidAiPanel) return;
@@ -1473,6 +1492,22 @@ document.addEventListener('paste', function (event) {
 });
 window.addEventListener('message', function (event) {
   const data = event && event.data || {};
+  if (data.type === 'mdv-load-document-selection' && event.source === window.parent) {
+    const selectedCode = extractMermaidCodeFromAI(data.code) || String(data.code || '').trim();
+    if (!selectedCode) return;
+    pushEditorUndoState();
+    editor.value = selectedCode;
+    editor.focus();
+    editor.setSelectionRange(0, editor.value.length);
+    render();
+    setDocumentSelectionImportButton('가져오기 완료', false);
+    setMermaidImageStatus('문서에서 선택한 영역을 코드 편집기로 가져왔습니다.');
+    return;
+  }
+  if (data.type === 'mdv-document-selection-unavailable' && event.source === window.parent) {
+    setDocumentSelectionImportButton('텍스트를 먼저 선택하세요', true);
+    return;
+  }
   if (data.type === 'mdv-mermaid-history-records') {
     mermaidHistoryRecords = Array.isArray(data.records) ? data.records.slice().sort(function (a, b) { return Number(b.createdAt) - Number(a.createdAt); }) : [];
     renderMermaidHistory();

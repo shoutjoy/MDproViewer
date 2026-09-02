@@ -38,6 +38,10 @@
         return Array.from(String(text || '').trim()).slice(0, n).join('');
     }
 
+    function compactInitial(text, fallback) {
+        return shortText(text, 1) || String(fallback || '#');
+    }
+
     function buildFolderPath(folders, folderId) {
         const rows = Array.isArray(folders) ? folders : [];
         const byId = new Map(rows.map(function (folder) {
@@ -199,7 +203,7 @@
             '    <button type="button" id="tab-storage-local" onclick="switchStorageSourceTab(\'local\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="Local · 로컬 폴더"><i data-lucide="folder-open" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">Local</span></button>',
             '    <button type="button" id="tab-storage-indb" onclick="switchStorageSourceTab(\'indb\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="inDB · 내부 저장소"><i data-lucide="database" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">inDB</span></button>',
             '    <button type="button" id="tab-storage-sqlite" onclick="switchStorageSourceTab(\'sqlite\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="SQLite · 로컬 SQLite 저장소"><i data-lucide="hard-drive" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">SQLite</span></button>',
-            '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="Github · 원격 저장소"><i data-lucide="github" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">github</span></button>',
+            '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="GitHub · 원격 저장소" aria-label="GitHub 저장소"><i data-lucide="github" class="storage-tab-icon w-3.5 h-3.5" aria-hidden="true"></i><span class="storage-tab-label">github</span></button>',
             '    <a id="tab-storage-github-link" href="#" target="_blank" rel="noopener noreferrer" onclick="return openGithubRepositoryLink(event)" class="hidden px-1.5 py-1 text-[10px] font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" title="GitHub 로그인 후 저장소 열기">↗</a>',
             '  </div>',
             '  <div id="storage-sync-status" class="hidden text-[10px] px-2 py-1 rounded border" role="status" aria-live="polite"></div>',
@@ -337,13 +341,13 @@
 
         if (isCollapsed) {
             if (!tocItems.length) {
-                tocList.innerHTML = '<div class="p-2 flex justify-center"><button type="button" class="w-12 h-6 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600 text-[10px] font-bold cursor-not-allowed flex items-center justify-center" disabled aria-label="No headings found">-</button></div>';
+                tocList.innerHTML = '<div class="p-2 flex justify-center"><button type="button" class="sidebar-compact-item border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed" disabled aria-label="No headings found"><span class="sidebar-compact-initial">-</span></button></div>';
                 return lastTocItems;
             }
-            let compactHtml = '<div class="space-y-1 p-1 flex flex-col items-center">';
+            let compactHtml = '<div class="sidebar-compact-list">';
             tocItems.forEach((item) => {
-                const label = shortText(item.text, 3) || '#';
-                compactHtml += '<button type="button" class="w-12 h-6 rounded-md border text-[10px] font-bold transition-colors flex items-center justify-center ' + levelToneClass(item.level) + '" title="' + esc(item.text) + '" aria-label="' + esc(item.text) + '" onclick="scrollToLine(' + item.lineIndex + ')"><span class="truncate" style="max-width:2.4rem;display:inline-block">' + esc(label) + '</span></button>';
+                const label = compactInitial(item.text, '#');
+                compactHtml += '<button type="button" class="sidebar-compact-item border transition-colors ' + levelToneClass(item.level) + '" title="' + esc(item.text) + '" aria-label="' + esc(item.text) + '" onclick="scrollToLine(' + item.lineIndex + ')"><span class="sidebar-compact-initial">' + esc(label) + '</span></button>';
             });
             tocList.innerHTML = compactHtml + '</div>';
             return lastTocItems;
@@ -498,7 +502,7 @@
             docItem.dataset.storageMode = storageMode;
             if (storageMode === 'indb') docItem.dataset.indbDocId = String(doc.id || '');
             docItem.className = isSidebarCollapsed
-                ? 'sidebar-folder-document group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
+                ? 'sidebar-folder-document sidebar-compact-item group mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer'
                 : 'sidebar-folder-document group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
             docItem.title = String(doc.title || '');
 
@@ -508,8 +512,8 @@
             titleRow.className = 'sidebar-doc-title-row flex items-start gap-2';
             titleRow.innerHTML = '<i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>';
             const titleSpan = document.createElement('span');
-            titleSpan.className = 'sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? '' : 'sidebar-text');
-            titleSpan.textContent = isSidebarCollapsed ? shortText(doc.title, 3) : String(doc.title || '');
+            titleSpan.className = 'sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? 'sidebar-compact-initial' : 'sidebar-text');
+            titleSpan.textContent = isSidebarCollapsed ? compactInitial(doc.title, '#') : String(doc.title || '');
             titleSpan.title = String(doc.title || '') + (isSidebarCollapsed ? '' : ' · 더블클릭하여 이름 수정');
             if (!isSidebarCollapsed) titleSpan.dataset.inlineRename = '1';
             titleRow.appendChild(titleSpan);

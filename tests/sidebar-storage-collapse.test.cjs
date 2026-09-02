@@ -16,6 +16,8 @@ test('collapsed sidebar keeps storage sources as icon buttons', () => {
   assert.doesNotMatch(githubApp, /shouldShow\s*=\s*!isSidebarCollapsed\s*&&\s*hasVisibleTab/);
   assert.match(css, /\.sidebar-collapsed #storage-source-tabs\s*\{[\s\S]*?flex-direction:\s*column;/);
   assert.match(css, /\.sidebar-collapsed #storage-source-tabs \.storage-tab-label\s*\{\s*display:\s*none;/);
+  assert.match(css, /#sidebar\.sidebar-narrow #storage-source-tabs \.storage-tab-label\s*\{\s*display:\s*none !important;/);
+  assert.match(sidebar, /id="tab-storage-github"[\s\S]{0,420}aria-label="GitHub 저장소"[\s\S]{0,180}data-lucide="github"/);
 });
 
 test('SQLite feature defaults to disabled when no preference exists', () => {
