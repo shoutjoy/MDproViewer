@@ -403,6 +403,8 @@
                         class="w-full px-3 py-2 rounded-md flex items-center gap-2 whitespace-nowrap text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
                         <i data-lucide="file-plus" class="w-4 h-4 shrink-0"></i><span class="whitespace-nowrap">빈 새파일</span>
                     </button>
+                    <button type="button" role="menuitem" onclick="A4Pages.create('portrait')" class="w-full px-3 py-2 rounded-md text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">빈 새파일 · A4 세로</button>
+                    <button type="button" role="menuitem" onclick="A4Pages.create('landscape')" class="w-full px-3 py-2 rounded-md text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">빈 새파일 · A4 가로</button>
                     <button type="button" role="menuitem" id="new-template-menu-item" onclick="openTemplateForNewFile(event)"
                         class="hidden w-full px-3 py-2 rounded-md items-center gap-2 whitespace-nowrap text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-700 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300">
                         <i data-lucide="notebook-tabs" class="w-4 h-4 shrink-0"></i><span class="whitespace-nowrap">양식으로 새파일</span>
@@ -3620,6 +3622,8 @@
     charset="utf-8"
     defer>
 </script>
+<link rel="stylesheet" href="./css/a4-pages.css?v=20260908-2-theme">
+<script src="./js/a4-pages.js?v=20260908-1" charset="utf-8" defer></script>
 <script src="./js/ai-jena-embedded-bridge.js?v=20260825-cursor-fix" charset="utf-8" defer></script>
 <link rel="stylesheet" href="./trt/macro-menu.css?v=20260908-1">
 <link rel="stylesheet" href="./trt/macro-jena.css?v=20260908-7">

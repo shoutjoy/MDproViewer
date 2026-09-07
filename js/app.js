@@ -162,7 +162,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1-pdf-to-pv-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260902-web-search-recovery-2',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260902-new-window-links-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260902-search-max-tokens-1-pdf-to-pv-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260902-search-max-tokens-1-pdf-to-pv-1-search-actions-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -2728,6 +2728,7 @@ function updateContent(md) {
     notebookLmEqualsHrPreprocess = false;
     currentMarkdown = md;
     if (editorTextarea) editorTextarea.value = md;
+    if (window.A4Pages) window.A4Pages.sync(md);
     resetEditorDocumentHistory();
     updateCurrentDocumentMetadataDisplay();
     mainRenderDirty = true;
@@ -3601,6 +3602,7 @@ window.renderHtmlDocumentFrame = renderHtmlDocumentFrame;
 window.setHtmlDocumentMode = setHtmlDocumentMode;
 
 async function renderMarkdown(options) {
+    if (window.A4Pages) window.A4Pages.sync(currentMarkdown);
     if (!viewer) return;
     const renderToken = ++mainRenderToken;
     const opts = options || {};
@@ -3694,6 +3696,12 @@ async function renderMarkdown(options) {
     revokeObjectUrls(viewerInternalImageObjectUrls);
 
     try {
+        if (window.A4Pages && window.A4Pages.parse(raw)) {
+            setHtmlDocumentMode(viewer, false);
+            await window.A4Pages.render(viewer, raw, isCurrentRender);
+            runPostRenderHooks();
+            return;
+        }
         const htmlDocument = getRenderableHtmlDocument(renderRaw);
         if (htmlDocument !== null) {
             if (!isCurrentRender()) return;
@@ -4106,6 +4114,7 @@ function toggleMode(mode) {
     if (typeof window.refreshEditorFormatGutter === 'function') {
         requestAnimationFrame(window.refreshEditorFormatGutter);
     }
+    if (window.A4Pages) window.A4Pages.modeChanged();
     if (mode === 'edit' && syncLine != null) {
         const sourceAtSwitch = syncContext.getMarkdown();
         requestAnimationFrame(function () {
@@ -12495,8 +12504,8 @@ function applyTemplateVisibility(settings) {
         menuItem.classList.toggle('flex', newFileEnabled);
     }
     if (menuToggle) {
-        menuToggle.classList.toggle('hidden', !newFileEnabled);
-        menuToggle.classList.toggle('flex', newFileEnabled);
+        menuToggle.classList.remove('hidden');
+        menuToggle.classList.add('flex');
     }
     if (newFileButton) {
         newFileButton.classList.toggle('rounded-md', !newFileEnabled);

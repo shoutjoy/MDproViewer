@@ -3991,6 +3991,40 @@
     }
   }
 
+  function appendSearchPreviewAction(head, message, markdown) {
+    var preview = document.createElement('button');
+    preview.type = 'button';
+    preview.textContent = '새창에서 보기';
+    preview.title = '검색결과 전체 MD/PV 미리보기 · 문서에 넣기';
+    preview.addEventListener('click', function () {
+      openAnswerPreviewWindow(state.messages.indexOf(message), { content: markdown() });
+    });
+    head.appendChild(preview);
+  }
+
+  function internetResultsMarkdown(message) {
+    var results = normalizeInternetSources(message && message.internetSources);
+    if (!results.length) return '';
+    return '# 인터넷 검색결과\n\n검색어: ' + escapeInternetReferenceText(message.content || '')
+      + '\n\n' + results.map(function (source, index) {
+        var meta = [source.source, source.date, source.engine, source.channel]
+          .filter(Boolean).map(escapeInternetReferenceText).join(' · ');
+        return '## ' + (index + 1) + '. [' + escapeInternetReferenceText(source.title) + '](<' + source.url.replace(/>/g, '%3E') + '>)'
+          + (meta ? '\n\n' + meta : '') + '\n\n' + escapeInternetReferenceText(source.snippet || '검색 결과 요약 없음');
+      }).join('\n\n');
+  }
+
+  async function insertInternetResults(message, mode) {
+    try {
+      var markdown = internetResultsMarkdown(message);
+      if (!markdown.trim()) throw new Error('문서에 삽입할 인터넷 검색결과가 없습니다.');
+      await insertIntoCurrentDocument(markdown, mode || 'cursor');
+      setStatus('인터넷 검색결과를 ' + insertModeLabel(mode) + '했습니다.', 'ok');
+    } catch (error) {
+      setStatus(error && error.message ? error.message : '인터넷 검색결과를 문서에 삽입하지 못했습니다.', 'error');
+    }
+  }
+
   function renderAcademicSources(message) {
     var results = Array.isArray(message && message.academicSources) ? message.academicSources : [];
     if (!results.length) return null;
@@ -4006,6 +4040,7 @@
     copy.textContent = '검색결과 복사';
     copy.addEventListener('click', function () { copyText(academicResultsMarkdown(message)); });
     head.appendChild(copy);
+    appendSearchPreviewAction(head, message, function () { return academicResultsMarkdown(message); });
     section.appendChild(head);
     var note = document.createElement('p');
     note.textContent = 'OpenAlex/Crossref 초록을 AI 답변보다 먼저 수집했습니다. AI는 아래 근거만 사용해 주장 중심으로 종합합니다.';
@@ -4182,6 +4217,12 @@
     var title = document.createElement('strong');
     title.textContent = '인터넷 검색 근거 ' + results.length + '건';
     head.appendChild(title);
+    var copy = document.createElement('button');
+    copy.type = 'button';
+    copy.textContent = '검색결과 복사';
+    copy.addEventListener('click', function () { copyText(internetResultsMarkdown(message)); });
+    head.appendChild(copy);
+    appendSearchPreviewAction(head, message, function () { return internetResultsMarkdown(message); });
     section.appendChild(head);
     var note = document.createElement('p');
     note.textContent = (message.internetSearchEngine || 'web') + (message.internetFallbackUsed ? ' · 앱 폴백 사용' : '') + ' · AI 답변 전에 수집한 출처입니다.';
@@ -4231,6 +4272,25 @@
       list.appendChild(item);
     });
     section.appendChild(list);
+    var footer = document.createElement('div');
+    footer.className = 'ai-chat-academic-footer';
+    var footerLabel = document.createElement('span');
+    footerLabel.textContent = '문서에 삽입';
+    footer.appendChild(footerLabel);
+    [
+      { mode: 'replace', label: '대체 삽입' },
+      { mode: 'cursor', label: '커서 위치' },
+      { mode: 'line-below', label: '한 줄 아래' },
+      { mode: 'document-end', label: '문서 맨 아래' }
+    ].forEach(function (option) {
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = option.label;
+      button.title = '인터넷 검색결과 전체를 ' + option.label + ' 방식으로 문서에 삽입';
+      button.addEventListener('click', function () { insertInternetResults(message, option.mode); });
+      footer.appendChild(button);
+    });
+    section.appendChild(footer);
     return section;
   }
 
