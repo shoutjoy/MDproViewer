@@ -2515,6 +2515,7 @@ window.onload = async () => {
 
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
+        if (e.defaultPrevented) return;
         const isAltGraph = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
         if (window.EditorRule && typeof window.EditorRule.handleSelectionWrapByTypedPair === 'function') {
             const wrapped = window.EditorRule.handleSelectionWrapByTypedPair(e, {
@@ -3629,6 +3630,7 @@ async function renderMarkdown(options) {
                 && window.NoteCoverRenderer
                 && typeof window.NoteCoverRenderer.hydrate === 'function') {
                 window.NoteCoverRenderer.hydrate(viewer, {
+                    documentKey: currentDbDocId || currentFilePath || currentDocumentVirtualPath || currentFileName,
                     onTextChange: applyNoteCoverTextChange,
                     onGeometryChange: applyNoteCoverGeometryChange,
                     onStyleChange: applyNoteCoverTextStyleChange,
@@ -4000,6 +4002,16 @@ function toggleMode(mode) {
         console.warn('toggleMode: viewer-container or content-viewport not found.', { vc: !!vc, ec: !!ec });
         return;
     }
+    const modeChanged = isEditMode !== (mode === 'edit');
+    const syncContext = {
+        getEditor: function () { return editorTextarea; },
+        getViewer: function () { return viewer; },
+        getMarkdown: function () { return editorTextarea ? editorTextarea.value : currentMarkdown; },
+        isEditMode: function () { return isEditMode; },
+        instant: true
+    };
+    const syncLine = modeChanged && window.SidebarLeft && typeof window.SidebarLeft.getModeSyncLine === 'function'
+        ? window.SidebarLeft.getModeSyncLine(syncContext) : null;
     document.body.classList.toggle('viewer-view-mode', mode !== 'edit');
 
     if (mode === 'edit') {
@@ -4029,6 +4041,10 @@ function toggleMode(mode) {
         }
         viewClickMappedCaretPos = null;
         applyMiniPreviewVisibility();
+        if (syncLine != null) {
+            window.SidebarLeft.scrollToLine(syncLine, syncContext);
+            lastEditCaretPos = editorTextarea.selectionStart;
+        }
     } else {
         if (editorTextarea) {
             lastEditCaretPos = Math.max(0, editorTextarea.selectionStart || 0);
@@ -4078,7 +4094,8 @@ function toggleMode(mode) {
             const ratioFromCaret = getMarkdownRatioFromCharPos(lastEditCaretPos);
             requestAnimationFrame(function () {
                 if (isEditMode) return;
-                setScrollRatio(vc, ratioFromCaret);
+                if (syncLine != null) window.SidebarLeft.scrollToLine(syncLine, syncContext);
+                else setScrollRatio(vc, ratioFromCaret);
             });
         });
         applyMiniPreviewVisibility();
@@ -4088,6 +4105,16 @@ function toggleMode(mode) {
     }
     if (typeof window.refreshEditorFormatGutter === 'function') {
         requestAnimationFrame(window.refreshEditorFormatGutter);
+    }
+    if (mode === 'edit' && syncLine != null) {
+        const sourceAtSwitch = syncContext.getMarkdown();
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                if (!isEditMode || syncContext.getMarkdown() !== sourceAtSwitch) return;
+                window.SidebarLeft.scrollToLine(syncLine, syncContext);
+                lastEditCaretPos = editorTextarea.selectionStart;
+            });
+        });
     }
 }
 
@@ -5907,6 +5934,17 @@ async function copyViewFormattedToClipboard() {
 function toggleSidebarVisibility() {
     isSidebarHidden = !isSidebarHidden;
     sidebar.style.display = isSidebarHidden ? 'none' : 'flex';
+    if (!isSidebarHidden) {
+        if (!sidebar.style.width || parseInt(sidebar.style.width, 10) < 188) {
+            if (window.SidebarResize && typeof window.SidebarResize.reset === 'function') {
+                window.SidebarResize.reset();
+            } else {
+                sidebar.style.width = '320px';
+                sidebar.classList.remove('sidebar-narrow');
+                sidebar.classList.remove('sidebar-collapsed');
+            }
+        }
+    }
     requestAnimationFrame(syncEditorShiftFloatPosition);
 }
 
@@ -5916,10 +5954,17 @@ function toggleSidebarCollapse() {
 
     if (isSidebarCollapsed) {
         sidebar.classList.add('sidebar-collapsed');
-        collapseIcon.setAttribute('data-lucide', 'chevron-right');
+        sidebar.classList.remove('sidebar-narrow');
+        sidebar.style.width = '3.5rem';
+        if (collapseIcon) collapseIcon.setAttribute('data-lucide', 'chevron-right');
     } else {
         sidebar.classList.remove('sidebar-collapsed');
-        collapseIcon.setAttribute('data-lucide', 'chevron-left');
+        sidebar.classList.remove('sidebar-narrow');
+        const restoredWidth = (window.SidebarResize && typeof window.SidebarResize.loadWidth === 'function')
+            ? window.SidebarResize.loadWidth()
+            : 320;
+        sidebar.style.width = Math.max(280, restoredWidth) + 'px';
+        if (collapseIcon) collapseIcon.setAttribute('data-lucide', 'chevron-left');
     }
     try {
         const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);

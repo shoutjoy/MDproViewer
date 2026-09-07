@@ -18,13 +18,8 @@
 
     let macroMenuDragBound = false;
     let macroMenuDragging = false;
-    let macroMenuResizing = false;
     let macroMenuDragOffsetX = 0;
     let macroMenuDragOffsetY = 0;
-    let macroMenuStartX = 0;
-    let macroMenuStartY = 0;
-    let macroMenuStartW = 0;
-    let macroMenuStartH = 0;
 
     function getMacroCatalog() {
         return [
@@ -279,6 +274,7 @@
         return {
             entryId: String(item.entryId || ''),
             actionId: actionId,
+            name: String(item.name || ''),
             enabled: item.enabled !== false,
             hotkey: normalizeShortcutText(item.hotkey || ''),
             script: String(item.script || buildScriptForAction(actionId, actionArgs)),
@@ -390,7 +386,7 @@
         }
         body.innerHTML = macroEntries.map(function (entry) {
             const meta = getMacroActionById(entry.actionId);
-            const label = meta ? meta.label : entry.actionId;
+            const label = entry.name || (meta ? meta.label : entry.actionId);
             const hotkey = entry.hotkey || '-';
             const modeBadge = entry.targetMode === 'absolute' ? 'ABS' : 'REL';
             return ''
@@ -548,6 +544,7 @@
     function openMacroScriptEditor(entryId) {
         const target = findEntryById(entryId);
         if (!target) return;
+        if (window.MacroJena) { window.MacroJena.open(target); return; }
         ensureMacroScriptEditorUi();
         const modal = document.getElementById('macro-script-editor-modal');
         const metaEl = document.getElementById('macro-script-editor-meta');
@@ -696,6 +693,7 @@
         const entry = ensureMacroEntryShape({
             entryId: 'M' + String(macroSeq).padStart(3, '0'),
             actionId: meta.id,
+            name: String(options.name || ''),
             enabled: true,
             hotkey: '',
             targetMode: targetMode,
@@ -707,6 +705,7 @@
         macroEntries.push(entry);
         saveMacroEntriesToLocal();
         renderMacroList();
+        return entry;
     }
 
     function getMacroActionIdFromOnclickAttr(onclickValue) {
@@ -1047,7 +1046,6 @@
         macroMenuDragBound = true;
         const panel = getMacroMenuPanel();
         const header = document.getElementById('macro-menu-header');
-        const resize = document.getElementById('macro-menu-resize-handle');
         if (!panel) return;
 
         if (header) {
@@ -1062,18 +1060,55 @@
             });
         }
 
-        if (resize) {
-            resize.addEventListener('mousedown', function (e) {
-                const cur = clampMacroMenuLayout(getMacroMenuLayoutFromLocal() || getDefaultMacroMenuLayout());
-                macroMenuResizing = true;
-                macroMenuStartX = e.clientX;
-                macroMenuStartY = e.clientY;
-                macroMenuStartW = cur.width;
-                macroMenuStartH = cur.height;
-                e.preventDefault();
-                e.stopPropagation();
+        ['n', 's', 'w', 'e', 'se'].forEach(function (direction) {
+            const labels = { n: '위', s: '아래', w: '왼쪽', e: '오른쪽', se: '우측 하단' };
+            let handle = direction === 'se' ? document.getElementById('macro-menu-resize-handle') : null;
+            if (!handle) { handle = document.createElement('div'); panel.appendChild(handle); }
+            handle.className = 'macro-menu-edge macro-menu-edge-' + direction;
+            handle.tabIndex = 0;
+            handle.setAttribute('role', 'button');
+            handle.setAttribute('aria-label', '매크로 창 ' + labels[direction] + ' 크기 조절');
+            handle.title = labels[direction] + ' 크기 조절 · 드래그 또는 방향키';
+            function resizeFrom(start, dx, dy) {
+                const next = Object.assign({}, start);
+                const vp = getMacroMenuViewport();
+                if (direction.indexOf('e') >= 0) next.width = Math.max(360, Math.min(start.width + dx, vp.width - start.left - 8));
+                if (direction.indexOf('s') >= 0) next.height = Math.max(220, Math.min(start.height + dy, vp.height - start.top - 8));
+                if (direction === 'w') {
+                    next.left = Math.max(8, Math.min(start.left + dx, start.left + start.width - 360));
+                    next.width = start.left + start.width - next.left;
+                }
+                if (direction === 'n') {
+                    next.top = Math.max(8, Math.min(start.top + dy, start.top + start.height - 220));
+                    next.height = start.top + start.height - next.top;
+                }
+                applyMacroMenuLayout(next);
+            }
+            handle.addEventListener('pointerdown', function (event) {
+                if (event.button !== 0) return;
+                event.preventDefault(); event.stopPropagation();
+                const start = clampMacroMenuLayout(getMacroMenuLayoutFromLocal() || getDefaultMacroMenuLayout());
+                const x = event.clientX, y = event.clientY;
+                handle.setPointerCapture(event.pointerId);
+                function move(e) { resizeFrom(start, e.clientX - x, e.clientY - y); }
+                function stop() {
+                    handle.removeEventListener('pointermove', move);
+                    handle.removeEventListener('pointerup', stop);
+                    handle.removeEventListener('pointercancel', stop);
+                    handle.removeEventListener('lostpointercapture', stop);
+                }
+                handle.addEventListener('pointermove', move);
+                handle.addEventListener('pointerup', stop);
+                handle.addEventListener('pointercancel', stop);
+                handle.addEventListener('lostpointercapture', stop);
             });
-        }
+            handle.addEventListener('keydown', function (event) {
+                const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key];
+                if (!delta) return;
+                event.preventDefault(); event.stopPropagation();
+                resizeFrom(clampMacroMenuLayout(getMacroMenuLayoutFromLocal() || getDefaultMacroMenuLayout()), delta[0], delta[1]);
+            });
+        });
 
         document.addEventListener('mousemove', function (e) {
             const panelEl = getMacroMenuPanel();
@@ -1088,20 +1123,10 @@
                 });
                 return;
             }
-            if (macroMenuResizing) {
-                const cur = clampMacroMenuLayout(getMacroMenuLayoutFromLocal() || getDefaultMacroMenuLayout());
-                applyMacroMenuLayout({
-                    left: cur.left,
-                    top: cur.top,
-                    width: macroMenuStartW + (e.clientX - macroMenuStartX),
-                    height: macroMenuStartH + (e.clientY - macroMenuStartY)
-                });
-            }
         });
 
         document.addEventListener('mouseup', function () {
             macroMenuDragging = false;
-            macroMenuResizing = false;
         });
 
         window.addEventListener('resize', function () {
@@ -1112,6 +1137,7 @@
     }
 
     function toggleMacroEntryEnabled(entryId, enabled) {
+        if (!enabled && window.MacroRuntime) window.MacroRuntime.stop(entryId);
         updateMacroEntry(entryId, function (entry) {
             return Object.assign({}, entry, { enabled: !!enabled });
         });
@@ -1220,6 +1246,7 @@
     }
 
     function clearMacroEntries() {
+        if (window.MacroRuntime) window.MacroRuntime.stopAll();
         macroEntries = [];
         macroSeq = 1;
         macroHotkeyCaptureEntryId = '';
@@ -1241,6 +1268,30 @@
     }
 
     window.TRTMacro = {
+        getCatalog: function () { return getMacroCatalog().map(function (item) { return { id: item.id, label: item.label }; }); },
+        saveScript: function (input) {
+            const existing = findEntryById(input.entryId);
+            const target = existing || appendMacroEntry('script_macro', input);
+            const script = typeof input.source === 'string'
+                ? 'return window.TRTMacro.executeScript(' + JSON.stringify(input.source) + ', ' + JSON.stringify(target.entryId) + ');'
+                : String(input.script);
+            updateMacroEntry(target.entryId, function (entry) {
+                return Object.assign({}, entry, { script: script, name: String(input.name || '') });
+            });
+            return findEntryById(target.entryId);
+        },
+        executeScript: async function (code, scopeId) {
+            macroReplayDepth += 1;
+            const id = scopeId || 'macro-preview';
+            try {
+                const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+                const api = window.MacroRuntime ? window.MacroRuntime.create(id, window.MacroJena.api) : window.MacroJena.api;
+                return await new AsyncFunction('mdpro', String(code)).call(window, api);
+            } catch (error) {
+                if (window.MacroRuntime) window.MacroRuntime.stop(id);
+                throw error;
+            } finally { macroReplayDepth = Math.max(0, macroReplayDepth - 1); }
+        },
         init: init,
         toggleMacroMenu: toggleMacroMenu,
         toggleMacroRecord: toggleMacroRecord,

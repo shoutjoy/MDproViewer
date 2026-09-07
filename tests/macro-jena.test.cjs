@@ -1,0 +1,161 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const path = require('node:path');
+const root = path.join(__dirname, '..');
+const storage = new Map();
+const ta = { value: 'hello world', selectionStart: 6, selectionEnd: 11,
+  setSelectionRange(a,b) { this.selectionStart=a; this.selectionEnd=b; },
+  dispatchEvent() { this.events=(this.events || 0)+1; } };
+const context = vm.createContext({ console, Event, localStorage: {
+  setItem(k,v) { storage.set(k,v); }, getItem(k) { return storage.get(k); }
+}, document: { getElementById(id) { return id === 'viewer-edit-ta' ? ta : null; } } });
+vm.runInContext('window = globalThis', context);
+for (const file of ['trt/macro.js','trt/macro-jena.js']) vm.runInContext(fs.readFileSync(path.join(root,file),'utf8'), context);
+(async () => {
+  const { TRTMacro: macros, MacroJena: jena } = context;
+  assert.equal(jena.api.getSelection(), 'world');
+  await macros.executeScript('await Promise.resolve(); mdpro.replaceSelection("JENA");');
+  assert.equal(ta.value, 'hello JENA');
+  assert.equal(ta.events, 1);
+  await assert.rejects(macros.executeScript('throw new Error("expected");'), /expected/);
+  await assert.rejects(jena.api.run('unknown-action'), /알 수 없는 기능/);
+  await assert.rejects(macros.executeScript('const = broken'), /Unexpected/);
+  const script = 'return window.TRTMacro.executeScript(' + JSON.stringify('mdpro.insert("!");') + ');';
+  const first = macros.saveScript({ name: '내 매크로', script });
+  assert.equal(first.name, '내 매크로');
+  const updated = macros.saveScript({ entryId: first.entryId, name: '수정됨', script });
+  assert.equal(updated.entryId, first.entryId);
+  const saved = JSON.parse(storage.get('md_viewer_macro_entries_v1'));
+  assert.equal(saved.entries.length, 1);
+  assert.equal(saved.entries[0].name, '수정됨');
+  await vm.runInContext('(async function(){' + saved.entries[0].script + '})()', context);
+  assert.equal(ta.value, 'hello JENA!');
+  // Drive the real workspace controller with a minimal DOM and a deferred AI response.
+  const elements = new Map();
+  function element() { return { value:'', dataset:{}, style:{}, children:[], setAttribute() {}, appendChild(child) { this.children.push(child); },
+    append(...children) { this.children.push(...children); }, replaceChildren() { this.children=[]; },
+    addEventListener() {}, focus() {}, scrollIntoView() {}, remove() {}, show() { this.open=true; },
+    querySelector(selector) { if (!elements.has(selector)) elements.set(selector, element()); return elements.get(selector); }
+  }; }
+  context.document.createElement = element;
+  context.document.body = element();
+  context.confirm = () => true;
+  context.innerWidth = 1280; context.innerHeight = 800; context.addEventListener = () => {};
+  const conversations = new Map();
+  context.AIDataCenter = {
+    save: async record => { conversations.set(record.id, JSON.parse(JSON.stringify(record))); return true; },
+    readAll: async () => [...conversations.values()]
+  };
+  jena.open();
+  const code = elements.get('#mj-code');
+  const prompt = elements.get('#mj-prompt');
+  let resolveAI, request;
+  context.AIChat = { completeTask(input) { request=input; return new Promise(resolve => { resolveAI=resolve; }); } };
+  elements.get('#mj-provider').value = 'openai';
+  elements.get('#mj-model').value = 'test-code-model';
+  prompt.value = '느낌표를 삽입해줘';
+  const pending = elements.get('#mj-send').onclick();
+  assert.equal(elements.get('#mj-send').disabled, true);
+  code.value = '// user typing while AI works';
+  resolveAI({ text: '수정했습니다.\n```javascript\nmdpro.insert("!");\n```' });
+  await pending;
+  assert.equal(code.value, '// user typing while AI works');
+  assert.ok(request.prompt.includes('느낌표를 삽입해줘'));
+  assert.equal(request.provider, 'openai');
+  assert.equal(request.model, 'test-code-model');
+  assert.deepEqual(JSON.parse(storage.get('mdpro_macro_jena_model_v1')), { provider:'openai', model:'test-code-model' });
+  const response = elements.get('#mj-chat').children.at(-1);
+  response.children.at(-1).onclick();
+  assert.equal(code.value, 'mdpro.insert("!");');
+  response.children.at(-1).onclick();
+  assert.equal(code.value, '// user typing while AI works');
+  const apply = response.children.find(child => child.textContent === '매크로 적용하기');
+  await apply.onclick();
+  const registered = JSON.parse(storage.get('md_viewer_macro_entries_v1'));
+  assert.equal(registered.entries.length, 2);
+  assert.equal(code.value, 'mdpro.insert("!");');
+  assert.match(registered.entries[1].script, /mdpro.insert/);
+  await apply.onclick();
+  assert.equal(JSON.parse(storage.get('md_viewer_macro_entries_v1')).entries.length, 2);
+  code.value = 'mdpro.insert("updated");';
+  await elements.get('#mj-save').onclick();
+  assert.match(JSON.parse(storage.get('md_viewer_macro_entries_v1')).entries[1].script, /updated/);
+  code.value = 'const = invalid';
+  await elements.get('#mj-save').onclick();
+  assert.match(elements.get('#mj-status').textContent, /적용 실패/);
+  assert.match(JSON.parse(storage.get('md_viewer_macro_entries_v1')).entries[1].script, /updated/);
+  context.AIChat.completeTask = async () => { throw new Error('offline'); };
+  prompt.value = '다시 시도';
+  await elements.get('#mj-send').onclick();
+  assert.equal(elements.get('#mj-send').disabled, false);
+  assert.match(elements.get('#mj-chat').children.at(-1).children[1].textContent, /offline/);
+  const failedActions = elements.get('#mj-chat').children.at(-1).children[2];
+  let copied;
+  context.isSecureContext = true;
+  context.navigator = { clipboard: { writeText: async text => { copied=text; } } };
+  await failedActions.children[0].onclick();
+  assert.match(copied, /offline/);
+  assert.equal(failedActions.children[0].textContent, '복사됨');
+  failedActions.children[2].onclick();
+  assert.equal(prompt.value, '다시 시도');
+  prompt.value = '작성 중인 새 요청';
+  context.AIChat.completeTask = async input => { request=input; return { text:'재요청 성공' }; };
+  await failedActions.children[1].onclick();
+  assert.equal(JSON.parse(request.prompt).request, '다시 시도');
+  assert.equal(prompt.value, '작성 중인 새 요청');
+  assert.equal(elements.get('#mj-chat').children.at(-1).children[1].textContent, '재요청 성공');
+  const persisted = JSON.parse(storage.get('mdpro_macro_jena_draft_v1'));
+  assert.equal(persisted.history.at(-1).requestText, '다시 시도');
+  context.AIChat.getTaskModels = async (provider, refresh) => {
+    assert.equal(provider, 'openai'); assert.equal(refresh, true);
+    return { provider, model:'default-model', models:['default-model','other-model'] };
+  };
+  await elements.get('#mj-model-refresh').onclick();
+  assert.equal(elements.get('#mj-model').value, 'test-code-model');
+  assert.equal(elements.get('#mj-models').children.length, 3);
+  context.AIChat.getTaskModels = async () => { throw new Error('model server offline'); };
+  await elements.get('#mj-model-refresh').onclick();
+  assert.equal(elements.get('#mj-model-refresh').disabled, false);
+  assert.equal(elements.get('#mj-model').value, 'test-code-model');
+  assert.match(elements.get('#mj-model-status').textContent, /model server offline/);
+  const beforeAutomatic = code.value;
+  const documentBeforeAutomatic = ta.value;
+  context.AIChat.completeTask = async () => ({text:'```javascript\nmdpro.insert("auto generated");\n```'});
+  prompt.value = '자동 입력 테스트';
+  await elements.get('#mj-send').onclick();
+  assert.equal(code.value, 'mdpro.insert("auto generated");');
+  assert.equal(ta.value, documentBeforeAutomatic, 'generated code is not executed automatically');
+  const automaticResponse = elements.get('#mj-chat').children.at(-1);
+  assert.equal(automaticResponse.children.at(-1).textContent, '편집기 입력 되돌리기');
+  automaticResponse.children.at(-1).onclick();
+  assert.equal(code.value, beforeAutomatic);
+  context.AIChat.completeTask = async () => ({text:'```js\nconst = invalid;\n```'});
+  prompt.value = '잘못된 코드 테스트';
+  await elements.get('#mj-send').onclick();
+  assert.equal(code.value, beforeAutomatic, 'invalid generated code preserves editor contents');
+  assert.equal(conversations.size, 1, 'responses update the same conversation');
+  const archived = [...conversations.values()][0];
+  assert.equal(archived.source, 'macro-jena');
+  assert.equal(archived.recordType, 'conversation');
+  assert.ok(archived.messages.some(item => item.content.includes('느낌표')));
+  code.value = 'mdpro.log("history search marker");';
+  await elements.get('#mj-conversation-save').onclick();
+  elements.get('#mj-history-search').value = 'history search marker';
+  await elements.get('#mj-history-open').onclick();
+  assert.equal(elements.get('#mj-history-list').children.length, 1);
+  const record = [...conversations.values()][0];
+  record.id = 'macro-jena:restore-test';
+  record.messages = Array.from({length:30}, (_,i) => ({role:i%2 ? 'assistant':'user', content:'message '+i}));
+  record.macroJena.code = 'mdpro.log("restored");';
+  await jena.restoreConversation(record);
+  assert.equal(code.value, 'mdpro.log("restored");');
+  assert.equal(elements.get('#mj-chat').children.length, 30);
+  await elements.get('#mj-conversation-save').onclick();
+  assert.equal(conversations.get(record.id).messages.length, 30, 'history is not truncated to the draft limit');
+  context.AIDataCenter.save = async () => false;
+  assert.equal(await elements.get('#mj-conversation-save').onclick(), false);
+  assert.match(elements.get('#mj-history-status').textContent, /저장 실패/);
+  console.log('Macro JENA: async execution, editing, errors, registration, update and persisted replay passed.');
+  console.log('Macro JENA: AI context, proposal application/undo, concurrent editing and failure recovery passed.');
+})().catch(error => { console.error(error); process.exitCode=1; });

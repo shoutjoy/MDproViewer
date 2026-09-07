@@ -146,11 +146,13 @@
         <button id="btnOpenStoryApp" class="external-app-button story" type="button"
             style="display:none;" title="공유 Gemini Story 앱을 새 창에서 열기"><span class="app-icon">S</span><span class="app-label">Story Gemini ↗</span></button>
         <button id="btnOpenAuraGeminiApp" class="external-app-button aura-gemini" type="button"
-            style="display:none;" title="공유 Gemini Aura 앱을 새 창에서 열기"><span class="app-icon">G</span><span class="app-label">Aura Gemini ↗</span></button>
+            style="display:none;" title="공유 Gemini Aura 앱을 새 창에서 열기"><span class="app-icon">AG</span><span class="app-label">Aura Gemini ↗</span></button>
         <button id="btnOpenBackgroundGeminiApp" class="external-app-button background-gemini" type="button"
             style="display:none;" title="공유 Gemini 배경생성 앱을 새 창에서 열기"><span class="app-icon">B</span><span class="app-label">배경생성 Gemini ↗</span></button>
+        <button id="btnOpenImageExtendApp" class="external-app-button gemini-app" type="button"
+            style="display:none;" title="Gemini 이미지확장 image_extend를 새 창에서 열기"><span class="app-icon">확장</span><span class="app-label">이미지확장 · image_extend ↗</span></button>
         <button id="btnOpenGeminiApp" class="external-app-button gemini-app" type="button"
-            style="display:none;" title="Gemini 인포그래픽 만화를 새 창에서 열기"><span class="app-icon">G</span><span class="app-label">Gemini 인포그래픽 만화 ↗</span></button>
+            style="display:none;" title="Gemini 인포그래픽 만화를 새 창에서 열기"><span class="app-icon">만화</span><span class="app-label">Gemini 인포그래픽 만화 ↗</span></button>
     </nav>
 
     <div class="layout">
@@ -317,6 +319,8 @@
                         <input id="aiStudioApiKey" type="password" autocomplete="off"
                             placeholder="AI Studio에서 발급한 API 키 입력">
                         <button id="btnToggleApiKey" type="button">표시</button>
+                        <button id="btnImportMdproApiKey" type="button"
+                            title="MDpro 설정에 저장된 AI Studio API 키 가져오기">MDpro에서 가져오기</button>
                         <a class="ai-key-link" href="https://aistudio.google.com/apikey"
                             target="_blank" rel="noopener noreferrer"
                             title="Google AI Studio API 키 발급 페이지 열기">키 발급 ↗</a>
@@ -404,6 +408,13 @@
                     <span>
                         <strong>배경생성 Gemini 앱 버튼 표시</strong>
                         <small>공유 Gemini 배경생성 앱을 독립된 새 창에서 엽니다. FMA API 키를 사용하지 않습니다.</small>
+                    </span>
+                </label>
+                <label class="settings-check">
+                    <input id="enableImageExtendApp" type="checkbox">
+                    <span>
+                        <strong>이미지확장 · image_extend</strong>
+                        <small>공유 Gemini 이미지확장 앱을 독립된 새 창에서 엽니다. FMA API 키를 사용하지 않습니다.</small>
                     </span>
                 </label>
                 <label class="settings-check">

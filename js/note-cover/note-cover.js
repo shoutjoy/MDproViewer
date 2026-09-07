@@ -1310,6 +1310,41 @@
         }, true);
     }
 
+    function ensureCoverToggle(rootElement, pages, options) {
+        if (!pages.length || rootElement.querySelector('.note-cover-toggle')) return;
+        var states = rootElement.__noteCoverCollapsedStates;
+        if (!states) states = rootElement.__noteCoverCollapsedStates = new Map();
+        var key = String(options.documentKey || 'default');
+        var button = rootElement.ownerDocument.createElement('button');
+        button.type = 'button';
+        button.className = 'note-cover-toggle no-print';
+        button.setAttribute('contenteditable', 'false');
+        button.setAttribute('data-html2canvas-ignore', 'true');
+        function update(collapsed) {
+            states.set(key, collapsed);
+            button.textContent = collapsed ? '▶' : '▼';
+            button.setAttribute('aria-label', collapsed ? '표지 펼치기' : '표지 접기');
+            button.setAttribute('title', collapsed ? '표지 펼치기' : '표지 접기');
+            button.setAttribute('aria-expanded', String(!collapsed));
+            Array.prototype.forEach.call(pages, function (page) {
+                page.classList.toggle('is-cover-collapsed', collapsed);
+                if (collapsed) {
+                    Array.prototype.forEach.call(page.querySelectorAll('.is-selected'), function (element) {
+                        element.classList.remove('is-selected');
+                    });
+                    syncToolbarForSelection(page, null);
+                }
+            });
+        }
+        button.addEventListener('click', function (event) {
+            event.preventDefault();
+            event.stopPropagation();
+            update(!states.get(key));
+        });
+        rootElement.insertBefore(button, rootElement.firstChild);
+        update(!!states.get(key));
+    }
+
     function hydrate(rootElement, options) {
         if (!rootElement || typeof rootElement.querySelectorAll !== 'function') return 0;
         var hydrateOptions = options || {};
@@ -1325,6 +1360,7 @@
             });
         });
         bindCoverKeyboard(rootElement.ownerDocument, rootElement, hydrateOptions);
+        ensureCoverToggle(rootElement, pages, hydrateOptions);
 
         var imageWrappers = rootElement.querySelectorAll('.note-cover-image');
         Array.prototype.forEach.call(imageWrappers, function (wrapper) {

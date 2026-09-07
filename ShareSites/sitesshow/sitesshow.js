@@ -33,7 +33,8 @@
         { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
         { name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' },
         { name: 'colab.new', url: 'http://colab.new' },
-        { name: '인포그래픽 만화', url: 'https://gemini.google.com/share/bbaf65f86ad2?skid=93184a42-374a-45ef-a33e-46657407c892', visible: false }
+        { name: '인포그래픽 만화', url: 'https://gemini.google.com/share/cf9601ca8bb0?skid=c485f35a-a1b3-421d-a5bd-7841cb209643' },
+        { name: '이미지확장', url: 'https://gemini.google.com/share/d1591e765dfd?skid=c20dbc64-20bb-4bcc-a772-24cf6a3ac2ea' }
     ];
 
     async function loadHtmlFragment(path) {
@@ -227,12 +228,28 @@
             return u === 'https://www.photopea.com' || u === 'https://photopea.com';
         });
         if (!hasPhotopea) base.push({ name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' });
-        const infographicComicUrl = 'https://gemini.google.com/share/bbaf65f86ad2?skid=93184a42-374a-45ef-a33e-46657407c892';
-        const hasInfographicComic = base.some(function (item) {
-            return normalizeUrl(item && item.url ? item.url : '') === normalizeUrl(infographicComicUrl);
+        const infographicComicUrl = 'https://gemini.google.com/share/cf9601ca8bb0?skid=c485f35a-a1b3-421d-a5bd-7841cb209643';
+        base.forEach(function (item) {
+            if (normalizeUrl(item.url).split('?')[0] === 'https://gemini.google.com/share/bbaf65f86ad2' ||
+                item.url === 'https://share.gemini.google/ASX2XZa8B6zV') {
+                item.url = infographicComicUrl;
+                item.visible = true;
+            }
         });
-        if (!hasInfographicComic) base.push({ name: '인포그래픽 만화', url: infographicComicUrl, visible: false });
-        return base;
+        const additions = [
+            { name: '인포그래픽 만화', url: infographicComicUrl },
+            { name: '이미지확장', url: 'https://gemini.google.com/share/d1591e765dfd?skid=c20dbc64-20bb-4bcc-a772-24cf6a3ac2ea' }
+        ];
+        additions.forEach(function (site) {
+            if (!base.some(function (item) { return normalizeUrl(item.url).split('?')[0] === normalizeUrl(site.url).split('?')[0]; })) base.push(site);
+        });
+        let hasInfographicComic = false;
+        return base.filter(function (item) {
+            if (normalizeUrl(item.url).split('?')[0] !== normalizeUrl(infographicComicUrl).split('?')[0]) return true;
+            if (hasInfographicComic) return false;
+            hasInfographicComic = true;
+            return true;
+        });
     }
 
     function renderSitesPanel() {

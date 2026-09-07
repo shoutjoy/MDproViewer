@@ -36,10 +36,16 @@ const EXTERNAL_IMAGE_APPS = {
         path: "https://gemini.google.com/share/f54d1096b1e0",
         external: true
     },
+    image_extend: {
+        title: "이미지확장 · image_extend",
+        description: "공유 Gemini 이미지확장 앱을 별도 창에서 실행합니다.",
+        path: "https://gemini.google.com/share/d1591e765dfd?skid=c20dbc64-20bb-4bcc-a772-24cf6a3ac2ea",
+        external: true
+    },
     geminiApp: {
         title: "Gemini 인포그래픽 만화",
         description: "공유 Gemini 인포그래픽 만화 앱을 별도 창에서 실행합니다.",
-        path: "https://share.gemini.google/ASX2XZa8B6zV",
+        path: "https://gemini.google.com/share/cf9601ca8bb0?skid=c485f35a-a1b3-421d-a5bd-7841cb209643",
         external: true
     },
     bg: {
@@ -72,6 +78,7 @@ function initExternalAppsFeature() {
     dom.btnOpenAuraApp.onclick = () => openExternalImageApp("aura");
     dom.btnOpenAuraGeminiApp.onclick = () => openExternalImageApp("auraGemini");
     dom.btnOpenBackgroundGeminiApp.onclick = () => openExternalImageApp("backgroundGemini");
+    dom.btnOpenImageExtendApp.onclick = () => openExternalImageApp("image_extend");
     dom.btnOpenGeminiApp.onclick = () => openExternalImageApp("geminiApp");
     dom.btnOpenBgApp.onclick = () => openExternalImageApp("bg");
     dom.btnCloseExternalApp.onclick = closeExternalImageApp;
@@ -323,6 +330,7 @@ function refreshExternalAppButtons() {
         aura: typeof isAuraAppEnabled === "function" && isAuraAppEnabled(),
         auraGemini: typeof isAuraGeminiAppEnabled === "function" && isAuraGeminiAppEnabled(),
         backgroundGemini: typeof isBackgroundGeminiAppEnabled === "function" && isBackgroundGeminiAppEnabled(),
+        image_extend: typeof isImageExtendAppEnabled === "function" && isImageExtendAppEnabled(),
         geminiApp: typeof isGeminiAppEnabled === "function" && isGeminiAppEnabled(),
         bg: typeof isBgRemoverAppEnabled === "function" && isBgRemoverAppEnabled()
     };
@@ -331,6 +339,7 @@ function refreshExternalAppButtons() {
     dom.btnOpenAuraApp.style.display = visibility.aura ? "inline-flex" : "none";
     dom.btnOpenAuraGeminiApp.style.display = visibility.auraGemini ? "inline-flex" : "none";
     dom.btnOpenBackgroundGeminiApp.style.display = visibility.backgroundGemini ? "inline-flex" : "none";
+    dom.btnOpenImageExtendApp.style.display = visibility.image_extend ? "inline-flex" : "none";
     dom.btnOpenGeminiApp.style.display = visibility.geminiApp ? "inline-flex" : "none";
     dom.btnOpenBgApp.style.display = visibility.bg ? "inline-flex" : "none";
     dom.externalAppButtons.style.display =

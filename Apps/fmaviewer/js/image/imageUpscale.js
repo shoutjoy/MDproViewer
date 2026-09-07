@@ -16,6 +16,7 @@ const STORY_HTML_APP_ENABLED_STORAGE = "fma_story_html_app_enabled";
 const AURA_APP_ENABLED_STORAGE = "fma_aura_app_enabled";
 const AURA_GEMINI_APP_ENABLED_STORAGE = "fma_aura_gemini_app_enabled";
 const BACKGROUND_GEMINI_APP_ENABLED_STORAGE = "fma_background_gemini_app_enabled";
+const IMAGE_EXTEND_APP_ENABLED_STORAGE = "fma_image_extend_app_enabled";
 const GEMINI_APP_ENABLED_STORAGE = "fma_gemini_app_enabled";
 const BG_REMOVER_APP_ENABLED_STORAGE = "fma_bg_remover_app_enabled";
 const DEFAULT_AI_UPSCALE_PROMPT =
@@ -115,6 +116,7 @@ function initUpscaleFeature() {
     dom.btnSettingsSave.onclick = saveUpscaleSettings;
     dom.btnClearApiKey.onclick = clearUpscaleApiKey;
     dom.btnToggleApiKey.onclick = toggleApiKeyVisibility;
+    if (dom.btnImportMdproApiKey) dom.btnImportMdproApiKey.onclick = importMdproAiStudioApiKey;
     dom.btnApplySharedApiKey.onclick = applySharedAiApiKey;
     dom.btnToggleAiKeyUsage.onclick = toggleAiKeyUsage;
     dom.btnResetAiUpscalePrompt.onclick = resetAiUpscalePrompt;
@@ -260,6 +262,10 @@ function isBackgroundGeminiAppEnabled() {
     return readUpscaleSetting(BACKGROUND_GEMINI_APP_ENABLED_STORAGE, "false") === "true";
 }
 
+function isImageExtendAppEnabled() {
+    return readUpscaleSetting(IMAGE_EXTEND_APP_ENABLED_STORAGE, "false") === "true";
+}
+
 function isGeminiAppEnabled() {
     return readUpscaleSetting(GEMINI_APP_ENABLED_STORAGE, "false") === "true";
 }
@@ -292,6 +298,7 @@ function openUpscaleSettings() {
     dom.enableAuraApp.checked = isAuraAppEnabled();
     dom.enableAuraGeminiApp.checked = isAuraGeminiAppEnabled();
     dom.enableBackgroundGeminiApp.checked = isBackgroundGeminiAppEnabled();
+    dom.enableImageExtendApp.checked = isImageExtendAppEnabled();
     dom.enableGeminiApp.checked = isGeminiAppEnabled();
     dom.enableBgRemoverApp.checked = isBgRemoverAppEnabled();
     dom.aiUpscaleResolution.value = getAiUpscaleResolution();
@@ -383,6 +390,7 @@ function saveUpscaleSettings() {
     writeUpscaleSetting(AURA_APP_ENABLED_STORAGE, String(dom.enableAuraApp.checked));
     writeUpscaleSetting(AURA_GEMINI_APP_ENABLED_STORAGE, String(dom.enableAuraGeminiApp.checked));
     writeUpscaleSetting(BACKGROUND_GEMINI_APP_ENABLED_STORAGE, String(dom.enableBackgroundGeminiApp.checked));
+    writeUpscaleSetting(IMAGE_EXTEND_APP_ENABLED_STORAGE, String(dom.enableImageExtendApp.checked));
     writeUpscaleSetting(GEMINI_APP_ENABLED_STORAGE, String(dom.enableGeminiApp.checked));
     writeUpscaleSetting(BG_REMOVER_APP_ENABLED_STORAGE, String(dom.enableBgRemoverApp.checked));
     writeUpscaleSetting(AI_RESOLUTION_STORAGE, dom.aiUpscaleResolution.value === "4K" ? "4K" : "2K");
@@ -408,6 +416,33 @@ function clearUpscaleApiKey() {
     if (images.length > 0 && typeof renderDynamicMeta === "function") {
         renderDynamicMeta(currentIndex);
     }
+}
+
+function importMdproAiStudioApiKey() {
+    let key = "";
+    let resolved = false;
+    // Use MDpro's credential accessor so a locked vault stays locked.
+    for (const host of [window.parent, window.opener, window]) {
+        try {
+            if (host && !host.closed && typeof host.getProtectedAiCredential === "function") {
+                key = String(host.getProtectedAiCredential("gemini", "ss_gemini_api_key") || "").trim();
+                resolved = true;
+                break;
+            }
+        } catch (_) { /* A different-origin window cannot share credentials. */ }
+    }
+    if (!resolved) {
+        try { key = String(localStorage.getItem("ss_gemini_api_key") || "").trim(); }
+        catch (_) { /* Storage may be unavailable. */ }
+    }
+    if (!key) {
+        setSharedApiKeyStatus("가져올 키가 없습니다. MDpro 설정에서 AI Studio 키를 저장하고, 보관함이 잠겨 있다면 잠금을 해제하세요.", "error");
+        return;
+    }
+    dom.aiStudioApiKey.value = key;
+    dom.aiStudioApiKey.type = "password";
+    dom.btnToggleApiKey.innerText = "표시";
+    setSharedApiKeyStatus("MDpro의 AI Studio 키를 가져왔습니다. ‘AI API Key 적용’ 또는 ‘저장’을 눌러 적용하세요.", "success");
 }
 
 function toggleApiKeyVisibility() {

@@ -325,6 +325,12 @@
     else content = '<div class="aic-query"><b>AI 입력에 사용된 첨부 기록</b><p>원문은 저장하지 않습니다. ' + escapeHtml(record.name || '') + ' · ' + escapeHtml(record.mimeType || '') + '</p></div>';
     host.innerHTML = '<header class="aic-detail-head"><div><small>' + typeLabel(record.recordType) + '</small><h2>' + escapeHtml(titleOf(record)) + '</h2><p>' + escapeHtml([record.provider, record.model, record.conversationTitle].filter(Boolean).join(' · ')) + '</p></div><button id="aic-delete" type="button">기록 삭제</button></header>' + content;
     document.getElementById('aic-delete').onclick = async function () { if (!confirm('이 AI 사용 기록을 삭제할까요?')) return; await remove(record.id); await refresh(); };
+    if (record.source === 'macro-jena' && root.MacroJena) {
+      var resume = document.createElement('button');
+      resume.type = 'button'; resume.textContent = 'Macro JENA에서 이어서 개발';
+      resume.onclick = async function () { if (await root.MacroJena.restoreConversation(record)) close(); };
+      host.querySelector('.aic-detail-head').appendChild(resume);
+    }
     host.querySelectorAll('.aic-answer-actions button').forEach(function (button) {
       button.onclick = async function () {
         var card = button.closest('[data-message-index]'); var index = Number(card.dataset.messageIndex); var key = card.dataset.messageKey;

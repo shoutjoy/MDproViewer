@@ -680,6 +680,37 @@
         }
 
         /* Markdown 내장 note-cover 표지 */
+        .note-cover-toggle {
+            position: sticky;
+            top: 8px;
+            z-index: 40;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 50px;
+            height: 30px;
+            margin: 0 0 12px;
+            padding: 0;
+            border: 1px solid #94a3b8;
+            border-radius: 8px;
+            background: #f8fafc;
+            color: #475569;
+            box-shadow: 0 2px 4px rgba(15, 23, 42, 0.12);
+            font: inherit;
+            font-size: 14px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .note-cover-toggle:hover { background: #e2e8f0; }
+        .dark .note-cover-toggle { background: #1e293b; color: #cbd5e1; border-color: #64748b; }
+        .dark .note-cover-toggle:hover { background: #334155; }
+        .note-cover-toggle:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; }
+        @media screen {
+            .note-cover-page.is-cover-collapsed { display: none !important; }
+        }
+        @media print {
+            .note-cover-toggle { display: none !important; }
+        }
         .note-cover-page {
             position: relative;
             container-type: inline-size;

@@ -187,13 +187,13 @@
             '<div class="p-4 border-b border-slate-200 dark:border-slate-700 space-y-4">',
             '  <div class="sidebar-primary-actions items-center gap-2 mb-2 sidebar-text">',
             '    <button type="button" onclick="openBackupModal()" class="w-9 h-9 flex items-center justify-center bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-slate-700 dark:text-slate-200 transition-colors" title="내문서 백업" aria-label="내문서 백업"><i data-lucide="archive" class="w-4 h-4"></i></button>',
-            '    <button type="button" onclick="openMergeModal()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="문서 묶기"><i data-lucide="layers" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate">merge</span></button>',
-            '    <button type="button" id="btn-highlight-popup" onclick="openHighlightPopup()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="하이라이트 열기" aria-label="하이라이트 열기"><i data-lucide="highlighter" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate">Highlight</span></button>',
+            '    <button type="button" onclick="openMergeModal()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="문서 묶기" aria-label="문서 묶기"><i data-lucide="layers" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate sidebar-control-label">merge</span></button>',
+            '    <button type="button" id="btn-highlight-popup" onclick="openHighlightPopup()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="하이라이트 열기" aria-label="하이라이트 열기"><i data-lucide="highlighter" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate sidebar-control-label">Highlight</span></button>',
             '  </div>',
             '  <div class="flex items-center justify-between sidebar-header-btns">',
             '    <div class="flex bg-slate-200 dark:bg-slate-800 rounded p-1 w-full mr-2 sidebar-text">',
-            '      <button onclick="switchSidebarTab(\'files\')" id="tab-files" class="flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors">파일</button>',
-            '      <button onclick="switchSidebarTab(\'toc\')" id="tab-toc" class="flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">목차</button>',
+            '      <button onclick="switchSidebarTab(\'files\')" id="tab-files" class="flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors" title="파일" aria-label="파일"><i data-lucide="files" class="sidebar-tab-icon w-4 h-4" aria-hidden="true"></i><span class="sidebar-control-label">파일</span></button>',
+            '      <button onclick="switchSidebarTab(\'toc\')" id="tab-toc" class="flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors" title="목차" aria-label="목차"><i data-lucide="list-tree" class="sidebar-tab-icon w-4 h-4" aria-hidden="true"></i><span class="sidebar-control-label">목차</span></button>',
             '    </div>',
             '    <div class="flex gap-1 shrink-0">',
             '      <button onclick="toggleSidebarCollapse()" class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400" title="사이드바 축소/확장"><i id="collapse-icon" data-lucide="chevron-left" class="w-4 h-4"></i></button>',
@@ -209,8 +209,8 @@
             '  <div id="storage-sync-status" class="hidden text-[10px] px-2 py-1 rounded border" role="status" aria-live="polite"></div>',
             '  <div class="flex items-center gap-2 search-container" id="search-container">',
             '    <div class="relative min-w-0 flex-1">',
-            '      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 search-icon-only"></i>',
-            '      <input type="text" id="db-search" oninput="scheduleStorageSearch()" placeholder="문서 제목·본문 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
+            '      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none search-icon-only"></i>',
+            '      <input type="text" id="db-search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="문서 검색" oninput="scheduleStorageSearch()" placeholder="문서 제목·본문 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
             '    </div>',
             '    <label class="document-actions-toggle shrink-0 inline-flex items-center cursor-pointer" title="문서 카드의 열기, 이동, github, 삭제 버튼 숨기기">',
             '      <input type="checkbox" id="hide-document-actions-toggle" onchange="toggleDocumentActionsVisibility(this)" class="w-4 h-4 accent-indigo-600" aria-label="문서 메뉴 숨기기">',
@@ -244,6 +244,18 @@
             const resizeHandle = sidebar.querySelector('#sidebar-resize-handle');
             if (resizeHandle) resizeHandle.insertAdjacentHTML('beforebegin', getSidebarShellHtml());
             else sidebar.insertAdjacentHTML('afterbegin', getSidebarShellHtml());
+        }
+        const search = document.getElementById('db-search');
+        if (search) {
+            search.value = '';
+            search.defaultValue = '';
+            search.setAttribute('autocomplete', 'off');
+            // Clear browser-restored form values on navigation, never during typing.
+            window.addEventListener('pageshow', function () {
+                if (!search.value) return;
+                search.value = '';
+                if (typeof window.scheduleStorageSearch === 'function') window.scheduleStorageSearch();
+            });
         }
         sidebar.dataset.sidebarLeftReady = '1';
         applyDocumentActionsVisibility(areDocumentActionsHidden());
@@ -398,6 +410,58 @@
         return top;
     }
 
+    function getModeSyncLine(ctx) {
+        const editor = ctx.getEditor();
+        const items = parseTocItemsFromMarkdown(ctx.getMarkdown());
+        if (!items.length) return null;
+        let active = null;
+        if (ctx.isEditMode()) {
+            if (!editor) return null;
+            const lines = String(editor.value || '').split('\n');
+            const offsets = [0];
+            lines.forEach((line, i) => offsets.push(offsets[i] + line.length + 1));
+            const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
+            // TOC navigation leaves three lines of context above the heading.
+            const limit = editor.scrollTop + lineHeight * 3 + 2;
+            let low = 0;
+            let high = items.length - 1;
+            while (low <= high) {
+                const middle = Math.floor((low + high) / 2);
+                if (getTextareaCaretTopOffset(editor, offsets[items[middle].lineIndex]) <= limit) {
+                    active = items[middle];
+                    low = middle + 1;
+                } else {
+                    high = middle - 1;
+                }
+            }
+        } else {
+            const viewer = ctx.getViewer();
+            const container = document.getElementById('viewer-container');
+            if (!viewer || !container) return null;
+            const headers = Array.from(viewer.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+            const containerTop = container.getBoundingClientRect().top;
+            const scrollPadding = parseFloat(getComputedStyle(container).scrollPaddingTop) || 0;
+            for (let index = 0; index < items.length; index++) {
+                const header = getTocHeader(items, index, headers);
+                if (!header) continue;
+                // scrollIntoView respects the heading's scroll-margin-top (5rem).
+                // Include that space so a TOC jump selects this heading, not the previous one.
+                const scrollMargin = parseFloat(getComputedStyle(header).scrollMarginTop) || 0;
+                const limit = containerTop + scrollPadding + scrollMargin + 2;
+                if (header.getBoundingClientRect().top > limit) continue;
+                active = items[index];
+            }
+        }
+        return active ? active.lineIndex : items[0].lineIndex;
+    }
+
+    function getTocHeader(items, index, headers) {
+        const item = items[index];
+        const text = String(item.text || '').trim();
+        const occurrence = items.slice(0, index).filter(other => other.level === item.level && String(other.text || '').trim() === text).length;
+        return headers.filter(header => Number(header.tagName.slice(1)) === item.level && String(header.textContent || '').trim() === text)[occurrence] || headers[index];
+    }
+
     function scrollToLine(lineIndex, ctx) {
         const editorTextarea = ctx && typeof ctx.getEditor === 'function' ? ctx.getEditor() : null;
         const viewer = ctx && typeof ctx.getViewer === 'function' ? ctx.getViewer() : null;
@@ -415,11 +479,11 @@
             editorTextarea.setSelectionRange(charPos, charPos);
             const top = getTextareaCaretTopOffset(editorTextarea, charPos);
             const lineHeight = parseFloat(getComputedStyle(editorTextarea).lineHeight) || 24;
-            editorTextarea.scrollTo({ top: Math.max(0, top - (lineHeight * 3)), behavior: 'smooth' });
+            editorTextarea.scrollTo({ top: Math.max(0, top - (lineHeight * 3)), behavior: ctx.instant ? 'instant' : 'smooth' });
             return;
         }
 
-        const tocItems = lastTocItems.length ? lastTocItems : parseTocItemsFromMarkdown(markdown);
+        const tocItems = parseTocItemsFromMarkdown(markdown);
         const targetIdx = tocItems.findIndex((item) => item.lineIndex === lineIndex);
         const targetItem = targetIdx >= 0 ? tocItems[targetIdx] : null;
         const headers = viewer ? Array.from(viewer.querySelectorAll('h1, h2, h3, h4, h5, h6')) : [];
@@ -436,13 +500,13 @@
                 return level === targetItem.level && String(h.textContent || '').trim() === normalizedTargetText;
             });
             if (matchingHeaders[sameKeyBefore]) {
-                matchingHeaders[sameKeyBefore].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                matchingHeaders[sameKeyBefore].scrollIntoView({ behavior: ctx.instant ? 'instant' : 'smooth', block: 'start' });
                 return;
             }
         }
 
         const fallbackIndex = Math.max(0, Math.min(Number(targetIdx >= 0 ? targetIdx : 0), headers.length - 1));
-        headers[fallbackIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        headers[fallbackIndex].scrollIntoView({ behavior: ctx.instant ? 'instant' : 'smooth', block: 'start' });
     }
 
     async function renderStorageList(ctx) {
@@ -676,6 +740,7 @@
         parseTocItemsFromMarkdown,
         renderTOC,
         scrollToLine,
+        getModeSyncLine,
         renderStorageList,
         renderInDbList
     };
