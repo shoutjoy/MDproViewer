@@ -235,13 +235,14 @@ async function loadImageInsertGallery() {
         const html = [];
         items.forEach(function (it, idx) {
             const id = String(it && it.id || '').trim();
-            if (!id || !it.blob) return;
-            const objectUrl = URL.createObjectURL(it.blob);
-            imageInsertGalleryObjectUrls.push(objectUrl);
+            const remoteUrl = window.ImageDB.getRemoteImageUrl(it);
+            if (!id || (!it.blob && !remoteUrl)) return;
+            const objectUrl = it.blob ? URL.createObjectURL(it.blob) : remoteUrl;
+            if (it.blob) imageInsertGalleryObjectUrls.push(objectUrl);
             const title = String(it.name || id).replace(/</g, '&lt;').replace(/>/g, '&gt;');
             html.push(
                 '<button type="button" class="img-gallery-item rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 p-1 text-left" data-idx="' + idx + '" data-id="' + encodeURIComponent(id) + '" title="' + title + '">' +
-                '<img src="' + objectUrl + '" class="w-full h-20 object-contain rounded bg-slate-100 dark:bg-slate-900">' +
+                '<img src="' + objectUrl.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '" class="w-full h-20 object-contain rounded bg-slate-100 dark:bg-slate-900">' +
                 '<div class="mt-1 text-[10px] text-slate-600 dark:text-slate-300 truncate">' + title + '</div>' +
                 '</button>'
             );
@@ -254,6 +255,18 @@ async function loadImageInsertGallery() {
                 const id = decodeURIComponent(encId);
                 const target = items.find(function (x) { return String(x && x.id || '') === id; });
                 if (!target) return;
+
+                const remoteUrl = window.ImageDB.getRemoteImageUrl(target);
+                if (remoteUrl) {
+                    document.getElementById('img-insert-url').value = remoteUrl;
+                    imageInsertCurrentDataUrl = '';
+                    imageInsertCurrentFileName = target.name || '';
+                    clearImageInsertInternalSavedState();
+                    renderImageInsertInternalInfo();
+                    setImageInsertPreview(remoteUrl);
+                    setImageInsertStatus('저장된 imgBB 링크를 선택했습니다. Markdown/HTML로 삽입하세요.', false);
+                    return;
+                }
 
                 const internalUrl = (window.ImageDB && typeof window.ImageDB.internalUrlFromId === 'function')
                     ? window.ImageDB.internalUrlFromId(id)
@@ -819,10 +832,17 @@ async function uploadImageInsertToImgbb() {
 
         const data = payload.data || {};
         const directUrl = data.url || (data.image && data.image.url) || data.display_url || '';
+        if (!/^https?:\/\//i.test(directUrl)) throw new Error('imgBB가 유효한 이미지 주소를 반환하지 않았습니다.');
         const input = document.getElementById('img-insert-url');
         if (input) input.value = directUrl || '';
         setImageUploadProgress(100, false);
-        setImageInsertStatus(directUrl ? ('Upload complete: ' + directUrl) : 'Upload complete.', false);
+        try {
+            await window.ImageDB.saveRemoteUrl(db, directUrl, { name: imageInsertCurrentFileName || data.title || 'imgBB image' });
+            refreshImageInsertGallery();
+            setImageInsertStatus('imgBB 업로드 및 inDB 링크 저장 완료. Markdown/HTML로 삽입하세요.', false);
+        } catch (saveError) {
+            setImageInsertStatus('imgBB 업로드 완료. inDB 링크 저장 실패: ' + (saveError.message || saveError) + ' · URL은 삽입할 수 있습니다.', true);
+        }
     } catch (e) {
         setImageUploadProgress(0, false);
         setImageInsertStatus('imgBB upload failed: ' + (e && e.message ? e.message : e), true);

@@ -79,11 +79,59 @@
   }
 
   function findUnusedImageIds(imageRecords, referenceValues) {
-    var referenced = new Set(extractInternalImageIdsDeep(referenceValues));
+    var referenced = new Set(extractReferencedImageIds(imageRecords, referenceValues));
     return Array.from(imageRecords || []).map(function (record) {
       return String(record && record.id || '').trim();
     }).filter(function (id) {
       return id && !referenced.has(id);
+    });
+  }
+
+  function getRemoteImageUrl(record) {
+    var url = String(record && record.url || '').trim();
+    return /^https?:\/\//i.test(url) ? url : '';
+  }
+
+  function extractReferencedImageIds(imageRecords, value) {
+    var ids = new Set(extractInternalImageIdsDeep(value));
+    var urls = new Map();
+    (imageRecords || []).forEach(function (record) {
+      var url = getRemoteImageUrl(record);
+      if (url) urls.set(url, String(record.id));
+    });
+    var seen = new Set();
+    function visit(current) {
+      if (typeof current === 'string') {
+        urls.forEach(function (id, url) {
+          if (current.includes(url) || current.includes(url.replace(/&/g, '&amp;'))) ids.add(id);
+        });
+      } else if (current && typeof current === 'object' && !seen.has(current)) {
+        if ((typeof Blob !== 'undefined' && current instanceof Blob)
+            || (typeof ArrayBuffer !== 'undefined' && (current instanceof ArrayBuffer || ArrayBuffer.isView(current)))) return;
+        seen.add(current);
+        Object.keys(current).forEach(function (key) { visit(current[key]); });
+      }
+    }
+    visit(value);
+    return Array.from(ids);
+  }
+
+  function saveRemoteUrl(db, url, opts) {
+    ensureDb(db);
+    url = getRemoteImageUrl({ url: url });
+    if (!url) return Promise.reject(new Error('Invalid remote image URL.'));
+    var record = {
+      id: 'remote_' + encodeURIComponent(url),
+      url: url,
+      name: opts && opts.name || url,
+      source: 'imgbb',
+      createdAt: Date.now()
+    };
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction('images', 'readwrite');
+      tx.objectStore('images').put(record);
+      tx.oncomplete = function () { resolve(record); };
+      tx.onerror = tx.onabort = function () { reject(tx.error || new Error('Failed to save image link.')); };
     });
   }
 
@@ -396,6 +444,9 @@
     extractInternalImageIds: extractInternalImageIds,
     extractInternalImageIdsDeep: extractInternalImageIdsDeep,
     findUnusedImageIds: findUnusedImageIds,
+    extractReferencedImageIds: extractReferencedImageIds,
+    getRemoteImageUrl: getRemoteImageUrl,
+    saveRemoteUrl: saveRemoteUrl,
     saveBlob: saveBlob,
     saveDataUrl: saveDataUrl,
     getBase64MarkdownImages: getBase64MarkdownImages,

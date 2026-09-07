@@ -454,6 +454,7 @@ function getInDbStatusSecondaryText(storeName, item) {
     }
     if (storeName === 'images') {
         const size = rec.blob && typeof rec.blob.size === 'number' ? rec.blob.size : 0;
+        if (getInDbRemoteImageUrl(rec)) return 'imgBB · 인터넷 연결 시 표시 | ' + getInDbRemoteImageUrl(rec);
         return 'id=' + String(rec.id || '') + ' | bytes=' + size;
     }
     if (storeName === 'fonts') {
@@ -558,7 +559,9 @@ async function createInDbStatusSnapshot() {
     const referencedIds = new Set();
     const referenceCounts = new Map();
     referenceValues.forEach(function (value) {
-        getInternalIdsFromInDbValue(value).forEach(function (id) {
+        (window.ImageDB && window.ImageDB.extractReferencedImageIds
+            ? window.ImageDB.extractReferencedImageIds(images, value)
+            : getInternalIdsFromInDbValue(value)).forEach(function (id) {
             referencedIds.add(id);
             referenceCounts.set(id, (referenceCounts.get(id) || 0) + 1);
         });
@@ -1335,6 +1338,10 @@ function renderSelectedInDbMermaidPreview() {
     });
 }
 
+function getInDbRemoteImageUrl(record) {
+    return window.ImageDB && window.ImageDB.getRemoteImageUrl ? window.ImageDB.getRemoteImageUrl(record) : '';
+}
+
 function renderInDbStatusDetail(snapshot, storeName, record) {
     if (!record) {
         return '<div class="indb-detail-placeholder"><span class="indb-detail-placeholder-icon">↖</span>'
@@ -1344,6 +1351,10 @@ function renderInDbStatusDetail(snapshot, storeName, record) {
     const title = escapeInDbStatusHtml(getInDbStatusPrimaryText(storeName, record));
     const lockedRoot = storeName === 'folders' && id === 'root';
     let imagePreview = '';
+    if (storeName === 'images' && getInDbRemoteImageUrl(record)) {
+        imagePreview = '<div class="indb-detail-image"><img src="' + escapeInDbStatusHtml(getInDbRemoteImageUrl(record))
+            + '" alt="' + title + ' (인터넷 연결 필요)" decoding="async"></div>';
+    }
     if (storeName === 'images' && record.blob instanceof Blob && /^image\//i.test(record.mime || record.blob.type || '')) {
         const imageUrl = createInDbStatusObjectUrl(record.blob);
         imagePreview = '<div class="indb-detail-image"><img src="' + escapeInDbStatusHtml(imageUrl)
@@ -1505,6 +1516,9 @@ function renderInDbStatusBrowser(snapshot) {
             } else if (blob && /^image\//i.test(mime)) {
                 const url = createInDbStatusObjectUrl(blob);
                 thumb = '<span class="indb-record-thumb"><img src="' + escapeInDbStatusHtml(url) + '" alt="" loading="lazy" decoding="async"></span>';
+            } else if (activeStore === 'images' && getInDbRemoteImageUrl(record)) {
+                thumb = '<span class="indb-record-thumb"><img src="' + escapeInDbStatusHtml(getInDbRemoteImageUrl(record))
+                    + '" alt="인터넷 연결 필요" loading="lazy" decoding="async"></span>';
             } else {
                 thumb = '<span class="indb-record-thumb indb-record-thumb-empty">IMG</span>';
             }
