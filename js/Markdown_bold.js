@@ -18,12 +18,22 @@ const MarkdownBold = (() => {
         return DEFAULT_BOLD_SPECIAL_CHARS + (extra || '');
     }
 
-    /** 인라인 코드가 아닌 일반 텍스트에서 굵게/굵은 기울임을 HTML로 선변환한다. */
+    /** 인라인 코드를 보호하면서 일반 텍스트의 굵게/굵은 기울임을 HTML로 선변환한다. */
     function preprocessBoldText(text) {
         if (!text) return text;
 
+        // 코드 안의 별표는 볼드 구분자로 해석하면 안 되지만, `code`가 볼드의
+        // 시작과 끝 사이에 놓인 경우에는 바깥 **...** 범위를 계속 읽어야 한다.
+        // 따라서 코드 구간만 충돌하지 않는 토큰으로 잠시 가린 뒤 복원한다.
+        const inlineCodes = [];
+        const masked = text.replace(/(`+)([\s\S]*?)\1/g, (code) => {
+            const token = '\u0000MDPROCODE' + inlineCodes.length + '\u0000';
+            inlineCodes.push(code);
+            return token;
+        });
+
         // ***X***를 먼저 처리해야 **X** 정규식이 세 별표를 2+1로 잘못 나누지 않는다.
-        let output = text.replace(/\*\*\*([^\n]+?)\*\*\*/g, (match, inner) => {
+        let output = masked.replace(/\*\*\*([^\n]+?)\*\*\*/g, (match, inner) => {
             if (!inner || !inner.trim()) return match;
             return '<b><i>' + inner + '</i></b>';
         });
@@ -34,22 +44,13 @@ const MarkdownBold = (() => {
             const formattedInner = inner.replace(/\*([^*\n]+?)\*/g, '<i>$1</i>');
             return '<b>' + formattedInner + '</b>';
         });
-        return output;
+
+        return output.replace(/\u0000MDPROCODE(\d+)\u0000/g, (token, index) => inlineCodes[Number(index)] || token);
     }
 
-    /** 인라인 코드(`...`)는 그대로 두고 나머지 텍스트만 변환한다. */
+    /** 인라인 코드를 보존하면서 그 앞뒤에 걸친 볼드도 함께 변환한다. */
     function preprocessInlineCodeAware(line) {
-        let output = '';
-        let cursor = 0;
-        const codeRe = /(`+)([\s\S]*?)\1/g;
-        let match;
-        while ((match = codeRe.exec(line)) !== null) {
-            output += preprocessBoldText(line.slice(cursor, match.index));
-            output += match[0];
-            cursor = match.index + match[0].length;
-        }
-        output += preprocessBoldText(line.slice(cursor));
-        return output;
+        return preprocessBoldText(line);
     }
 
     /** marked.parse 전에 호출. fenced code block과 inline code는 변경하지 않는다. */
