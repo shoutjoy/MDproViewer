@@ -28,9 +28,11 @@
 .a4-page-content img { max-width:100%; max-height:160mm; object-fit:contain; }
 .a4-page-content.a4-large-block { overflow:auto; }
 @media print {
+    @page a4-sheet { size:A4 portrait; margin:0; }
     .a4-document #drop-zone { --a4-paper:#fff !important; --a4-ink:#172033 !important; --a4-muted:#475569 !important; }
     .a4-document #drop-zone .a4-page-content :is(h1, h2, h3, h4, h5, h6) { color:#172033 !important; background:none !important; }
     #a4-page-toolbar, #a4-page-editor { display:none !important; }
-    .a4-document #viewer { display:block; padding:0; }
-    .a4-sheet { box-shadow:none; border:0; break-after:page; margin:0; }
+    .a4-document #viewer { display:block; width:210mm !important; min-width:210mm !important; max-width:210mm !important; padding:0; margin:0 auto !important; }
+    .a4-sheet { page:a4-sheet; box-shadow:none; border:0; break-after:page; page-break-after:always; break-inside:avoid; page-break-inside:avoid; margin:0 auto !important; }
+    .a4-sheet:last-child { break-after:auto; page-break-after:auto; }
 }

@@ -520,11 +520,23 @@
         }
 
         @media print {
+            @page {
+                size: A4 portrait;
+                margin: 16mm 18mm 18mm;
+            }
             .no-print { display: none !important; }
             html, body {
                 height: auto !important;
+                width: auto !important;
+                min-width: 0 !important;
                 overflow: visible !important;
                 background-color: white !important;
+            }
+            /* 화면의 flex 레이아웃과 확대/축소 폭이 인쇄 용지 폭을 줄이지 않게 한다. */
+            body.printing-active {
+                display: block !important;
+                margin: 0 !important;
+                padding: 0 !important;
             }
             html.dark,
             html.dark body.printing-active {
@@ -540,7 +552,10 @@
             #print-root {
                 position: static !important;
                 inset: auto !important;
-                width: auto !important;
+                display: block !important;
+                box-sizing: border-box !important;
+                width: 100% !important;
+                max-width: none !important;
                 min-height: auto !important;
                 padding: 0 !important;
                 margin: 0 !important;
@@ -558,6 +573,18 @@
                 color-scheme: light;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+            }
+            #print-root .markdown-body > *:not(.note-cover-page):not(.a4-sheet) {
+                max-width: 100% !important;
+            }
+            #print-root .page-break {
+                display: block !important;
+                height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                border: 0 !important;
+                break-before: page;
+                page-break-before: always;
             }
             /* 인쇄 결과는 현재 화면 테마와 무관하게 라이트 보기 모드 색상을 사용한다. */
             #print-root .markdown-body h1 {
@@ -616,6 +643,11 @@
             #print-root img {
                 break-inside: avoid;
                 page-break-inside: avoid;
+            }
+            #print-root p,
+            #print-root li {
+                orphans: 3;
+                widows: 3;
             }
         }
 

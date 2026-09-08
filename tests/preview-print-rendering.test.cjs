@@ -81,6 +81,10 @@ test('PV defaults and post-render hooks stay aligned with print output', () => {
 });
 
 test('native print always uses the light viewer palette even when the app is dark', () => {
+    assert.match(styleSource, /@page \{\s*size: A4 portrait;\s*margin: 16mm 18mm 18mm;/s);
+    assert.match(styleSource, /body\.printing-active \{[^}]*display: block !important;[^}]*margin: 0 !important;/s);
+    assert.match(styleSource, /#print-root \{[^}]*width: 100% !important;[^}]*max-width: none !important;/s);
+    assert.match(styleSource, /#print-root \.page-break \{[^}]*break-before: page;[^}]*page-break-before: always;/s);
     assert.match(styleSource, /#print-root \.markdown-body \{[^}]*color-scheme: light;[^}]*print-color-adjust: exact;/s);
     assert.match(styleSource, /#print-root \.markdown-body pre \{[^}]*background-color: #e2e8f0 !important;[^}]*color: #1e293b !important;/s);
     assert.match(styleSource, /#print-root \.markdown-body h1 \{[^}]*color: #1e3a8a !important;/s);
