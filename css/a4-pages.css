@@ -4,6 +4,8 @@
 #a4-page-toolbar[hidden] { display:none; }
 #a4-page-toolbar button, #a4-page-toolbar select { padding:4px 9px; border:1px solid var(--a4-border); border-radius:5px; background:var(--a4-paper); color:var(--a4-ink); }
 #a4-page-toolbar button:disabled { opacity:.35; }
+#a4-page-toolbar .a4-zoom-status { min-width:58px; font-variant-numeric:tabular-nums; }
+#a4-page-toolbar .a4-spread-toggle[aria-pressed="true"] { border-color:#6366f1; background:#4f46e5; color:#fff; }
 #a4-page-editor { display:none; }
 .a4-document #drop-zone { display:flex; flex-direction:column; }
 .a4-document #content-viewport, .a4-document #viewer-container { flex:1; min-height:0; height:auto; }
@@ -14,7 +16,9 @@
 .a4-document:not(.a4-source-mode) #editor-doc-wrap { display:none !important; }
 .a4-document:not(.a4-source-mode) #a4-page-editor { display:flex; flex-direction:column; align-items:center; gap:24px; width:100%; height:100%; overflow:auto; padding:8px 0 24px; }
 .a4-document #viewer { max-width:none !important; width:max-content; min-width:100%; display:flex; flex-direction:column; align-items:center; gap:24px; background:transparent; padding:12px; }
-.a4-sheet { --page-width:210mm; --page-height:297mm; box-sizing:border-box; width:var(--page-width); height:var(--page-height); min-width:var(--page-width); min-height:var(--page-height); padding:18mm; margin:0; background:var(--a4-paper); color:var(--a4-ink); border:1px solid var(--a4-border); box-shadow:0 3px 14px #0003; overflow:hidden; flex-shrink:0; scroll-margin:12px; }
+.a4-two-page-view.a4-document:not(.a4-source-mode) #a4-page-editor,
+.a4-two-page-view.a4-document #viewer { display:grid; grid-template-columns:max-content max-content; align-content:start; align-items:start; justify-content:center; }
+.a4-sheet { --page-width:210mm; --page-height:297mm; box-sizing:border-box; width:var(--page-width); height:var(--page-height); min-width:var(--page-width); min-height:var(--page-height); padding:18mm; margin:0; background:var(--a4-paper); color:var(--a4-ink); border:1px solid var(--a4-border); box-shadow:0 3px 14px #0003; overflow:hidden; flex-shrink:0; scroll-margin:12px; zoom:var(--a4-zoom, 1); }
 .a4-landscape { --page-width:297mm; --page-height:210mm; }
 .a4-sheet { position:relative; }
 .a4-sheet::after { content:attr(data-page-label); position:absolute; bottom:6mm; right:18mm; color:var(--a4-muted); font:12px/1.4 sans-serif; }

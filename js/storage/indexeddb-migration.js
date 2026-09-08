@@ -10,6 +10,7 @@
     const SAFE_SETTING_RULES = Object.freeze({
         aiMasterEnabled: ['features', 'global'], scholarAI: ['features', 'global'],
         sspimgAI: ['features', 'global'], imageUploadEnabled: ['features', 'global'],
+        imageUploadLinkSideVisible: ['features', 'global'],
         scholarSearchVisible: ['features', 'global'], highlightVisible: ['features', 'global'],
         sitesVisible: ['features', 'global'], macroVisible: ['features', 'global'],
         templateVisible: ['features', 'global'], templateNewFileVisible: ['features', 'global'],

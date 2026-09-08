@@ -4,7 +4,8 @@
     const HEADER = '<!-- mdpro-a4:v1 -->\n';
     const marker = /<!-- mdpro-page:(portrait|landscape) -->\n/g;
     let pages = null, source = null, active = 0, writing = false;
-    let toolbar, host, status, pageDirection, allDirection;
+    let toolbar, host, status, pageDirection, allDirection, zoomStatus, spreadButton;
+    let zoom = 1, spread = false;
     const orientation = value => value === 'landscape' ? 'landscape' : 'portrait';
     function parse(raw) {
         if (!String(raw).startsWith(HEADER)) return null;
@@ -35,6 +36,25 @@
         element.addEventListener('change', () => action(element.value));
         wrap.append(element); toolbar.append(wrap); return element;
     }
+    function applyViewOptions() {
+        document.documentElement.style.setProperty('--a4-zoom', String(zoom));
+        document.body.classList.toggle('a4-two-page-view', spread);
+        if (zoomStatus) {
+            zoomStatus.textContent = `${Math.round(zoom * 100)}%`;
+            zoomStatus.title = '확대/축소 초기화';
+            zoomStatus.setAttribute('aria-label', `현재 배율 ${Math.round(zoom * 100)}%. 클릭하면 100%로 초기화`);
+        }
+        if (spreadButton) {
+            spreadButton.textContent = spread ? '1페이지 보기' : '2페이지 보기';
+            spreadButton.setAttribute('aria-pressed', String(spread));
+            spreadButton.title = spread ? '한 페이지씩 보기' : '두 페이지씩 나란히 보기';
+            spreadButton.setAttribute('aria-label', spreadButton.title);
+        }
+    }
+    function changeZoom(delta) {
+        zoom = Math.max(.5, Math.min(2, Math.round((zoom + delta) * 10) / 10));
+        applyViewOptions();
+    }
     function init() {
         if (toolbar) return;
         toolbar = document.createElement('div'); toolbar.id = 'a4-page-toolbar'; toolbar.hidden = true;
@@ -54,6 +74,16 @@
         });
         const mixed = document.createElement('option'); mixed.value = ''; mixed.textContent = '혼합'; mixed.disabled = true;
         allDirection.append(mixed);
+        toolbar.append(button('−', '축소', () => changeZoom(-.1)));
+        zoomStatus = button('100%', '현재 배율 100%. 클릭하면 초기화', () => {
+            zoom = 1; applyViewOptions();
+        });
+        zoomStatus.className = 'a4-zoom-status'; toolbar.append(zoomStatus);
+        toolbar.append(button('+', '확대', () => changeZoom(.1)));
+        spreadButton = button('2페이지 보기', '두 페이지씩 나란히 보기', () => {
+            spread = !spread; applyViewOptions();
+        });
+        spreadButton.className = 'a4-spread-toggle'; toolbar.append(spreadButton);
         toolbar.append(button('원문', '기존 마크다운 편집기로 원문 편집', () => {
             document.body.classList.toggle('a4-source-mode');
             if (!isEditMode) toggleMode('edit');
@@ -89,6 +119,7 @@
         document.getElementById('viewer-edit-ta').addEventListener('input', () => {
             if (!writing) sync(editorTextarea.value);
         });
+        applyViewOptions();
     }
     function logicalIndex() {
         const sheet = !isEditMode && document.querySelectorAll('#viewer .a4-sheet')[active];

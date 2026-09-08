@@ -56,6 +56,7 @@ SAFE_SETTING_RULES: Dict[str, SettingRule] = {
     "scholarAI": _boolean(),
     "sspimgAI": _boolean(),
     "imageUploadEnabled": _boolean(),
+    "imageUploadLinkSideVisible": _boolean(),
     "scholarSearchVisible": _boolean(),
     "highlightVisible": _boolean(),
     "sitesVisible": _boolean(),

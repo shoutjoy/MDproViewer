@@ -10,6 +10,7 @@
         scholarAI: ['features', 'global', ['boolean'], 16],
         sspimgAI: ['features', 'global', ['boolean'], 16],
         imageUploadEnabled: ['features', 'global', ['boolean'], 16],
+        imageUploadLinkSideVisible: ['features', 'global', ['boolean'], 16],
         scholarSearchVisible: ['features', 'global', ['boolean'], 16],
         highlightVisible: ['features', 'global', ['boolean'], 16],
         sitesVisible: ['features', 'global', ['boolean'], 16],

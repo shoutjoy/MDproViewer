@@ -540,7 +540,7 @@ const autoSaveStats = {
     failed: 0
 };
 let isEditMode = true;
-let pageScale = 1.0;
+let pageWidthScale = 1.0;
 let fontSize = 16;
 document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
 let headerScale = 0.7;
@@ -8858,54 +8858,67 @@ function confirmModalInsert() {
 }
 
 // --- Utility ---
-function adjustPageScale(delta) {
-    const zoomDelta = Number(delta || 0);
-    const zoomTarget = (!isEditMode && viewerContainer)
+function adjustPageWidth(delta) {
+    const widthDelta = Number(delta || 0);
+    const widthTarget = (!isEditMode && viewerContainer)
         ? viewerContainer
         : (document.getElementById('content-viewport') || editorTextarea || null);
-    const prevMetrics = zoomTarget ? {
-        scrollWidth: zoomTarget.scrollWidth || 0,
-        scrollHeight: zoomTarget.scrollHeight || 0,
-        scrollLeft: zoomTarget.scrollLeft || 0,
-        scrollTop: zoomTarget.scrollTop || 0,
-        clientWidth: zoomTarget.clientWidth || 0,
-        clientHeight: zoomTarget.clientHeight || 0
+    const prevMetrics = widthTarget ? {
+        scrollWidth: widthTarget.scrollWidth || 0,
+        scrollLeft: widthTarget.scrollLeft || 0,
+        clientWidth: widthTarget.clientWidth || 0
     } : null;
 
-    pageScale = Math.max(0.1, Math.min(3, pageScale + zoomDelta));
-    applyDocumentWidthScale();
-    document.getElementById('scale-display').textContent = `${Math.round(pageScale * 100)}%`;
+    pageWidthScale = Math.max(0.5, Math.min(3, Math.round((pageWidthScale + widthDelta) * 10) / 10));
+    applyDocumentWidth();
+    const display = document.getElementById('scale-display');
+    if (display) display.textContent = `${Math.round(pageWidthScale * 100)}%`;
 
-    if (!zoomTarget || !prevMetrics) return;
+    if (!widthTarget || !prevMetrics) return;
     requestAnimationFrame(() => {
-        const nextScrollWidth = zoomTarget.scrollWidth || 0;
-        const nextScrollHeight = zoomTarget.scrollHeight || 0;
-        const nextClientWidth = zoomTarget.clientWidth || prevMetrics.clientWidth || 0;
-        const nextClientHeight = zoomTarget.clientHeight || prevMetrics.clientHeight || 0;
+        const nextScrollWidth = widthTarget.scrollWidth || 0;
+        const nextClientWidth = widthTarget.clientWidth || prevMetrics.clientWidth || 0;
 
         const prevCenterX = prevMetrics.scrollLeft + (prevMetrics.clientWidth / 2);
-        const prevCenterY = prevMetrics.scrollTop + (prevMetrics.clientHeight / 2);
         const ratioX = prevMetrics.scrollWidth > 0 ? (prevCenterX / prevMetrics.scrollWidth) : 0.5;
-        const ratioY = prevMetrics.scrollHeight > 0 ? (prevCenterY / prevMetrics.scrollHeight) : 0.5;
 
         const targetCenterX = ratioX * nextScrollWidth;
-        const targetCenterY = ratioY * nextScrollHeight;
         const nextLeft = Math.max(0, targetCenterX - (nextClientWidth / 2));
-        const nextTop = Math.max(0, targetCenterY - (nextClientHeight / 2));
-        zoomTarget.scrollLeft = Number.isFinite(nextLeft) ? nextLeft : 0;
-        zoomTarget.scrollTop = Number.isFinite(nextTop) ? nextTop : 0;
+        widthTarget.scrollLeft = Number.isFinite(nextLeft) ? nextLeft : 0;
     });
 }
 
-function applyDocumentWidthScale() {
+function applyDocumentWidth() {
     const baseMaxWidthRem = 56; // Tailwind max-w-4xl
-    const widthRem = Math.max(28, baseMaxWidthRem * pageScale);
+    const widthRem = baseMaxWidthRem * pageWidthScale;
     const widthValue = widthRem + 'rem';
-    if (viewer) viewer.style.maxWidth = widthValue;
+    const responsiveWidth = pageWidthScale <= 1 ? `min(100%, ${widthValue})` : widthValue;
+    const contentViewport = document.getElementById('content-viewport');
+    [viewerContainer, contentViewport].forEach((viewport) => {
+        if (!viewport) return;
+        viewport.style.overflowX = 'auto';
+        viewport.style.justifyContent = 'safe center';
+    });
+    if (viewer) {
+        viewer.style.width = responsiveWidth;
+        viewer.style.maxWidth = 'none';
+    }
     const editorDocWrap = document.getElementById('editor-doc-wrap');
-    if (editorDocWrap) editorDocWrap.style.maxWidth = widthValue;
-    if (editorTextarea) editorTextarea.style.maxWidth = widthValue;
+    if (editorDocWrap) {
+        editorDocWrap.style.width = responsiveWidth;
+        editorDocWrap.style.maxWidth = 'none';
+        editorDocWrap.style.flexShrink = '0';
+    }
+    if (editorTextarea) {
+        editorTextarea.style.width = '100%';
+        editorTextarea.style.maxWidth = 'none';
+    }
     applyEditorHorizontalShift();
+}
+
+// 기존 외부 호출과 저장된 HTML 조각의 호환성을 유지한다.
+function adjustPageScale(delta) {
+    adjustPageWidth(delta);
 }
 
 function adjustFontSize(delta) {
@@ -9236,7 +9249,7 @@ function initSettings() {
     loadMarkdownCommentColorSettings();
     const savedShift = Number(localStorage.getItem(EDITOR_HORIZONTAL_SHIFT_KEY));
     editorHorizontalShiftPx = Number.isFinite(savedShift) ? Math.round(savedShift) : 0;
-    applyDocumentWidthScale();
+    applyDocumentWidth();
     applyEditorHorizontalShift();
     const editorShiftFloat = document.getElementById('editor-shift-float');
     let savedFloatOrientation = 'vertical';
@@ -11603,6 +11616,10 @@ function getImageUploadEnabledFromSettings(settings) {
     return settings.imageUploadEnabled === true;
 }
 
+function getImageUploadLinkSideVisibleFromSettings(settings) {
+    return !!(settings && settings.imageUploadEnabled === true && settings.imageUploadLinkSideVisible === true);
+}
+
 function getHighlightVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.highlightVisible === true;
@@ -11617,6 +11634,10 @@ function getTemplateNewFileVisibleFromSettings(settings) {
     if (!settings) return false;
     if (typeof settings.templateNewFileVisible === 'boolean') return settings.templateNewFileVisible;
     return getTemplateVisibleFromSettings(settings);
+}
+
+function getA4NewFileVisibleFromSettings(settings) {
+    return !!(settings && settings.a4NewFileVisible === true);
 }
 
 function getNoteCoverInsertVisibleFromSettings(settings) {
@@ -12495,6 +12516,7 @@ function bindTemplatePanelResize() {
 function applyTemplateVisibility(settings) {
     const headerEnabled = getTemplateVisibleFromSettings(settings || {});
     const newFileEnabled = getTemplateNewFileVisibleFromSettings(settings || {});
+    const a4NewFileEnabled = getA4NewFileVisibleFromSettings(settings || {});
     const menuItem = document.getElementById('new-template-menu-item');
     const menuToggle = document.getElementById('new-file-menu-toggle');
     const newFileButton = document.getElementById('header-new-file-button');
@@ -12503,6 +12525,9 @@ function applyTemplateVisibility(settings) {
         menuItem.classList.toggle('hidden', !newFileEnabled);
         menuItem.classList.toggle('flex', newFileEnabled);
     }
+    document.querySelectorAll('[data-a4-new-file-menu-item]').forEach(function (item) {
+        item.classList.toggle('hidden', !a4NewFileEnabled);
+    });
     if (menuToggle) {
         menuToggle.classList.remove('hidden');
         menuToggle.classList.add('flex');
@@ -12604,7 +12629,8 @@ async function toggleTemplateSection() {
     const enabled = !!(check && check.checked);
     const newFileCheck = document.getElementById('template-new-file-visible');
     const newFileEnabled = !!(newFileCheck && newFileCheck.checked);
-    applyTemplateVisibility({ templateVisible: enabled, templateNewFileVisible: newFileEnabled });
+    const a4Check = document.getElementById('a4-new-file-visible');
+    applyTemplateVisibility({ templateVisible: enabled, templateNewFileVisible: newFileEnabled, a4NewFileVisible: !!(a4Check && a4Check.checked) });
     try { await setAiSettings({ templateVisible: enabled }); } catch (e) { console.error(e); }
 }
 
@@ -12613,8 +12639,22 @@ async function toggleTemplateNewFileSection() {
     const enabled = !!(check && check.checked);
     const headerCheck = document.getElementById('template-visible');
     const headerEnabled = !!(headerCheck && headerCheck.checked);
-    applyTemplateVisibility({ templateVisible: headerEnabled, templateNewFileVisible: enabled });
+    const a4Check = document.getElementById('a4-new-file-visible');
+    applyTemplateVisibility({ templateVisible: headerEnabled, templateNewFileVisible: enabled, a4NewFileVisible: !!(a4Check && a4Check.checked) });
     try { await setAiSettings({ templateNewFileVisible: enabled }); } catch (e) { console.error(e); }
+}
+
+async function toggleA4NewFileVisibilitySection() {
+    const check = document.getElementById('a4-new-file-visible');
+    const enabled = !!(check && check.checked);
+    const headerCheck = document.getElementById('template-visible');
+    const templateNewFileCheck = document.getElementById('template-new-file-visible');
+    applyTemplateVisibility({
+        templateVisible: !!(headerCheck && headerCheck.checked),
+        templateNewFileVisible: !!(templateNewFileCheck && templateNewFileCheck.checked),
+        a4NewFileVisible: enabled
+    });
+    try { await setAiSettings({ a4NewFileVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 function getHtml2pptOpenAiJenaDockWidth() {
@@ -13233,13 +13273,18 @@ function openHighlightDataWindow() {
 
 function applyImageUploadFeatureVisibility(settings) {
     const enabled = getImageUploadEnabledFromSettings(settings || {});
+    const linkSideVisible = getImageUploadLinkSideVisibleFromSettings(settings || {});
     const imgBtn = document.getElementById('btn-image-insert');
     if (imgBtn) imgBtn.style.display = 'inline-flex';
     const imageUploadBtn = document.getElementById('btn-image-upload-quick');
     if (imageUploadBtn) imageUploadBtn.classList.toggle('hidden', !enabled);
+    const linkSideBtn = document.getElementById('btn-image-upload-link-side');
+    if (linkSideBtn) linkSideBtn.classList.toggle('hidden', !linkSideVisible);
     const section = document.getElementById('image-upload-settings');
     const check = document.getElementById('image-upload-enabled');
     if (section && check) section.classList.toggle('hidden', !check.checked);
+    const linkSideCheck = document.getElementById('image-upload-link-side-visible');
+    if (linkSideCheck) linkSideCheck.disabled = !enabled;
     setInputModalImagePanelToggleState();
 }
 
@@ -13289,8 +13334,19 @@ document.addEventListener('keydown', function (event) {
 async function toggleImageUploadSection() {
     const check = document.getElementById('image-upload-enabled');
     const enabled = !!(check && check.checked);
-    applyImageUploadFeatureVisibility({ imageUploadEnabled: enabled });
+    const linkSideCheck = document.getElementById('image-upload-link-side-visible');
+    const linkSideVisible = !!(linkSideCheck && linkSideCheck.checked);
+    applyImageUploadFeatureVisibility({ imageUploadEnabled: enabled, imageUploadLinkSideVisible: linkSideVisible });
     try { await setAiSettings({ imageUploadEnabled: enabled }); } catch (e) { console.error(e); }
+}
+
+async function toggleImageUploadLinkSideVisibility() {
+    const uploadCheck = document.getElementById('image-upload-enabled');
+    const check = document.getElementById('image-upload-link-side-visible');
+    const enabled = !!(uploadCheck && uploadCheck.checked);
+    const visible = !!(check && check.checked);
+    applyImageUploadFeatureVisibility({ imageUploadEnabled: enabled, imageUploadLinkSideVisible: visible });
+    try { await setAiSettings({ imageUploadLinkSideVisible: visible }); } catch (e) { console.error(e); }
 }
 
 async function saveImgbbApiKeyFromModal() {
@@ -13504,6 +13560,8 @@ async function persistAiSettingsFromModal() {
     const sspimgOn = verified && sspimgEl && sspimgEl.checked;
     const imageUploadEl = document.getElementById('image-upload-enabled');
     const imageUploadEnabled = !!(imageUploadEl && imageUploadEl.checked);
+    const imageUploadLinkSideEl = document.getElementById('image-upload-link-side-visible');
+    const imageUploadLinkSideVisible = !!(imageUploadLinkSideEl && imageUploadLinkSideEl.checked);
     const scholarSearchVisible = !!(window.ScholarSearchApp &&
         typeof window.ScholarSearchApp.isVisibleSelected === 'function' &&
         window.ScholarSearchApp.isVisibleSelected());
@@ -13517,6 +13575,8 @@ async function persistAiSettingsFromModal() {
     const templateVisible = !!(templateVisibleEl && templateVisibleEl.checked);
     const templateNewFileVisibleEl = document.getElementById('template-new-file-visible');
     const templateNewFileVisible = !!(templateNewFileVisibleEl && templateNewFileVisibleEl.checked);
+    const a4NewFileVisibleEl = document.getElementById('a4-new-file-visible');
+    const a4NewFileVisible = !!(a4NewFileVisibleEl && a4NewFileVisibleEl.checked);
     const noteCoverInsertVisibleEl = document.getElementById('note-cover-insert-visible');
     const noteCoverInsertVisible = !!(noteCoverInsertVisibleEl && noteCoverInsertVisibleEl.checked);
     const pdfMergeVisibleEl = document.getElementById('pdf-merge-visible');
@@ -13552,6 +13612,7 @@ async function persistAiSettingsFromModal() {
         macroVisible: macroVisible,
         templateVisible: templateVisible,
         templateNewFileVisible: templateNewFileVisible,
+        a4NewFileVisible: a4NewFileVisible,
         noteCoverInsertVisible: noteCoverInsertVisible,
         pdfMergeVisible: pdfMergeVisible,
         chromeSplitTabVisible: chromeSplitTabVisible,
@@ -13563,6 +13624,7 @@ async function persistAiSettingsFromModal() {
         customShareDestinations: shareAddressSettings.customShareDestinations,
         naverBlogId: shareAddressSettings.naverBlogId,
         imageUploadEnabled: imageUploadEnabled,
+        imageUploadLinkSideVisible: imageUploadLinkSideVisible,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
         viewModeEditEnabled: viewModeEditEnabledValue,
@@ -17612,6 +17674,8 @@ async function loadAiSettingsToUI() {
     if (!settings) {
         const imageCheckEmpty = document.getElementById('image-upload-enabled');
         if (imageCheckEmpty) imageCheckEmpty.checked = false;
+        const imageLinkSideCheckEmpty = document.getElementById('image-upload-link-side-visible');
+        if (imageLinkSideCheckEmpty) imageLinkSideCheckEmpty.checked = false;
         const highlightCheckEmpty = document.getElementById('highlight-visible');
         if (highlightCheckEmpty) highlightCheckEmpty.checked = false;
         const sitesCheckEmpty = document.getElementById('sites-visible');
@@ -17622,6 +17686,8 @@ async function loadAiSettingsToUI() {
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
         const templateNewFileCheckEmpty = document.getElementById('template-new-file-visible');
         if (templateNewFileCheckEmpty) templateNewFileCheckEmpty.checked = false;
+        const a4NewFileCheckEmpty = document.getElementById('a4-new-file-visible');
+        if (a4NewFileCheckEmpty) a4NewFileCheckEmpty.checked = false;
         const noteCoverInsertCheckEmpty = document.getElementById('note-cover-insert-visible');
         if (noteCoverInsertCheckEmpty) noteCoverInsertCheckEmpty.checked = false;
         const pdfMergeCheckEmpty = document.getElementById('pdf-merge-visible');
@@ -17733,6 +17799,8 @@ async function loadAiSettingsToUI() {
     if (settings.openaiApiKey) localStorage.setItem('ss_openai_api_key', settings.openaiApiKey);
     const imageCheck = document.getElementById('image-upload-enabled');
     if (imageCheck) imageCheck.checked = settings.imageUploadEnabled === true;
+    const imageLinkSideCheck = document.getElementById('image-upload-link-side-visible');
+    if (imageLinkSideCheck) imageLinkSideCheck.checked = settings.imageUploadLinkSideVisible === true;
     const highlightCheck = document.getElementById('highlight-visible');
     if (highlightCheck) highlightCheck.checked = settings.highlightVisible === true;
     const sitesCheck = document.getElementById('sites-visible');
@@ -17743,6 +17811,8 @@ async function loadAiSettingsToUI() {
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
     const templateNewFileCheck = document.getElementById('template-new-file-visible');
     if (templateNewFileCheck) templateNewFileCheck.checked = getTemplateNewFileVisibleFromSettings(settings);
+    const a4NewFileCheck = document.getElementById('a4-new-file-visible');
+    if (a4NewFileCheck) a4NewFileCheck.checked = getA4NewFileVisibleFromSettings(settings);
     const noteCoverInsertCheck = document.getElementById('note-cover-insert-visible');
     if (noteCoverInsertCheck) noteCoverInsertCheck.checked = settings.noteCoverInsertVisible === true;
     const pdfMergeCheck = document.getElementById('pdf-merge-visible');
@@ -17976,7 +18046,11 @@ async function initAiVisibility() {
     });
 }
 
-function openSettingsModal() {
+async function openSettingsModal() {
+    if (window.MdproSettingsAccess && typeof window.MdproSettingsAccess.requestAccess === 'function') {
+        const granted = await window.MdproSettingsAccess.requestAccess();
+        if (!granted) return false;
+    }
     ensureInDbStatusUi();
     applyHeaderFileActionStyle(getHeaderFileActionStyle(), false);
     applyHeaderFeatureKeyStyle(getHeaderFeatureKeyStyle(), false);
@@ -18008,6 +18082,7 @@ function openSettingsModal() {
             return loadAiSettingsToUI();
         }).catch(function () {});
     }
+    return true;
 }
 
 const AI_WRITING_STYLE_PROMPT_KEY = 'mdpro_ai_writing_style_prompt_v1';
