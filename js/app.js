@@ -8370,7 +8370,7 @@ function openMermaidEditorModal() {
     const modal = document.getElementById('mermaid-editor-modal');
     if (!modal) return;
     const frame = document.getElementById('mermaid-editor-frame');
-    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260903-svg-popup-19';
+    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260909-feature-gate-1&ai=' + (advancedAiFeatureFlags.mermaidRefAi ? '1' : '0');
     if (frame && frame.dataset) frame.dataset.src = requiredSource;
     if (frame && String(frame.getAttribute('src') || '') !== requiredSource) frame.setAttribute('src', requiredSource);
     else ensureLazyFrameLoaded(frame);
@@ -11251,6 +11251,10 @@ function bindImg2MathPopup() {
 }
 
 function openImg2MathPopup() {
+    if (!advancedAiFeatureFlags.img2math) {
+        showToast('환경설정에서 Img2Math를 허용한 뒤 사용할 수 있습니다.');
+        return false;
+    }
     if (!isEditMode || !editorTextarea) { showToast('편집 모드에서 사용해 주세요.'); return; }
     img2MathSelection = { start: editorTextarea.selectionStart || 0, end: editorTextarea.selectionEnd || editorTextarea.selectionStart || 0 };
     bindImg2MathPopup();
@@ -11262,6 +11266,7 @@ function openImg2MathPopup() {
     updateImg2MathAiModelStatus();
     populateImg2MathModelSelect();
     document.getElementById('img2math-drop')?.focus();
+    return true;
 }
 
 function closeImg2MathPopup() {
@@ -11648,6 +11653,39 @@ function getNoteCoverInsertVisibleFromSettings(settings) {
 function getPdfMergeVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.pdfMergeVisible === true;
+}
+
+function getAdvancedAiFeatureFlags(settings) {
+    const value = settings || {};
+    return {
+        mermaidRefAi: value.mermaidRefAiEnabled === true,
+        img2math: value.img2mathEnabled === true,
+        tidyJena: value.tidyJenaEnabled === true
+    };
+}
+
+let advancedAiFeatureFlags = getAdvancedAiFeatureFlags(null);
+
+function applyAdvancedAiFeatureVisibility(settings) {
+    advancedAiFeatureFlags = getAdvancedAiFeatureFlags(settings);
+    window.advancedAiFeatureFlags = advancedAiFeatureFlags;
+    const img2mathButton = document.getElementById('btn-img2math');
+    if (img2mathButton) img2mathButton.classList.toggle('hidden', !advancedAiFeatureFlags.img2math);
+    if (!advancedAiFeatureFlags.img2math && typeof closeImg2MathPopup === 'function') closeImg2MathPopup();
+    const mermaidFrame = document.getElementById('mermaid-editor-frame');
+    if (mermaidFrame && mermaidFrame.contentWindow) {
+        mermaidFrame.contentWindow.postMessage({ type: 'mdv-mermaid-ai-feature', enabled: advancedAiFeatureFlags.mermaidRefAi }, '*');
+    }
+}
+
+async function toggleAdvancedAiFeatureSection() {
+    const next = {
+        mermaidRefAiEnabled: !!document.getElementById('mermaid-ref-ai-enabled')?.checked,
+        img2mathEnabled: !!document.getElementById('img2math-enabled')?.checked,
+        tidyJenaEnabled: !!document.getElementById('tidy-jena-enabled')?.checked
+    };
+    applyAdvancedAiFeatureVisibility(next);
+    try { await setAiSettings(next); } catch (error) { console.error(error); }
 }
 
 function getChromeSplitTabVisibleFromSettings(settings) {
@@ -13583,6 +13621,9 @@ async function persistAiSettingsFromModal() {
     const pdfMergeVisible = !!(pdfMergeVisibleEl && pdfMergeVisibleEl.checked);
     const chromeSplitTabVisibleEl = document.getElementById('chrome-split-tab-visible');
     const chromeSplitTabVisible = !!(chromeSplitTabVisibleEl && chromeSplitTabVisibleEl.checked);
+    const mermaidRefAiEnabled = !!document.getElementById('mermaid-ref-ai-enabled')?.checked;
+    const img2mathEnabled = !!document.getElementById('img2math-enabled')?.checked;
+    const tidyJenaEnabled = !!document.getElementById('tidy-jena-enabled')?.checked;
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
@@ -13616,6 +13657,9 @@ async function persistAiSettingsFromModal() {
         noteCoverInsertVisible: noteCoverInsertVisible,
         pdfMergeVisible: pdfMergeVisible,
         chromeSplitTabVisible: chromeSplitTabVisible,
+        mermaidRefAiEnabled: mermaidRefAiEnabled,
+        img2mathEnabled: img2mathEnabled,
+        tidyJenaEnabled: tidyJenaEnabled,
         templateCustomList: normalizeTemplateCustomList(templateCustomList).map(function (item) {
             return { id: item.id, name: item.name, desc: item.desc, content: item.content };
         }),
@@ -17694,6 +17738,10 @@ async function loadAiSettingsToUI() {
         if (pdfMergeCheckEmpty) pdfMergeCheckEmpty.checked = false;
         const chromeSplitTabCheckEmpty = document.getElementById('chrome-split-tab-visible');
         if (chromeSplitTabCheckEmpty) chromeSplitTabCheckEmpty.checked = false;
+        ['mermaid-ref-ai-enabled', 'img2math-enabled', 'tidy-jena-enabled'].forEach(function (id) {
+            const checkbox = document.getElementById(id);
+            if (checkbox) checkbox.checked = false;
+        });
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
         if (html2pptCheckEmpty) html2pptCheckEmpty.checked = false;
         const html2pptNameCheckEmpty = document.getElementById('html2ppt-name-visible');
@@ -17760,8 +17808,9 @@ async function loadAiSettingsToUI() {
         applyNoteCoverInsertVisibility({ noteCoverInsertVisible: false });
         applyPdfMergeVisibility({ pdfMergeVisible: false });
         applyChromeSplitTabVisibility({ chromeSplitTabVisible: false });
-    applyHtml2pptVisibility({ html2pptVisible: false, html2pptNameVisible: false });
-    applyFmaViewerVisibility({ fmaViewerVisible: false, fmaViewerNameVisible: false });
+        applyHtml2pptVisibility({ html2pptVisible: false, html2pptNameVisible: false });
+        applyFmaViewerVisibility({ fmaViewerVisible: false, fmaViewerNameVisible: false });
+        applyAdvancedAiFeatureVisibility({});
         applyAiUseFold(getAiUseFoldedFromLocal());
         applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
         applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -17819,6 +17868,13 @@ async function loadAiSettingsToUI() {
     if (pdfMergeCheck) pdfMergeCheck.checked = settings.pdfMergeVisible === true;
     const chromeSplitTabCheck = document.getElementById('chrome-split-tab-visible');
     if (chromeSplitTabCheck) chromeSplitTabCheck.checked = getChromeSplitTabVisibleFromSettings(settings);
+    const advancedFlags = getAdvancedAiFeatureFlags(settings);
+    const mermaidRefAiCheck = document.getElementById('mermaid-ref-ai-enabled');
+    const img2mathCheck = document.getElementById('img2math-enabled');
+    const tidyJenaCheck = document.getElementById('tidy-jena-enabled');
+    if (mermaidRefAiCheck) mermaidRefAiCheck.checked = advancedFlags.mermaidRefAi;
+    if (img2mathCheck) img2mathCheck.checked = advancedFlags.img2math;
+    if (tidyJenaCheck) tidyJenaCheck.checked = advancedFlags.tidyJena;
     const html2pptCheck = document.getElementById('html2ppt-visible');
     if (html2pptCheck) html2pptCheck.checked = getHtml2pptVisibleFromSettings(settings);
     const html2pptNameCheck = document.getElementById('html2ppt-name-visible');
@@ -17948,6 +18004,7 @@ async function loadAiSettingsToUI() {
     applyPdfMergeVisibility(settings);
     applyHtml2pptVisibility(settings);
     applyFmaViewerVisibility(settings);
+    applyAdvancedAiFeatureVisibility(settings);
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -18038,6 +18095,7 @@ async function initAiVisibility() {
     applyChromeSplitTabVisibility(settings || { chromeSplitTabVisible: false });
     applyHtml2pptVisibility(settings || { html2pptVisible: false, html2pptNameVisible: false });
     applyFmaViewerVisibility(settings || { fmaViewerVisible: false, fmaViewerNameVisible: false });
+    applyAdvancedAiFeatureVisibility(settings || {});
     applyEditToolsVisibilityByMode();
     await applyGithubUiState(settings || { githubEnabled: false, githubCacheDocs: [] });
     await applyAiFeatureVisibility();

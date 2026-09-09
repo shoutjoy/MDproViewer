@@ -385,6 +385,9 @@
     }
 
     async function rewriteWithJena(input) {
+        if (!(global.advancedAiFeatureFlags && global.advancedAiFeatureFlags.tidyJena)) {
+            throw new Error('환경설정에서 TIDY JS Jena 인공지능을 허용해 주세요.');
+        }
         var request = input && typeof input === 'object' ? input : {};
         var code = stringValue(request.code).trim();
         if (!code) throw new Error('먼저 변환할 JavaScript 코드를 입력하거나 업로드하세요.');
@@ -410,6 +413,9 @@
     }
 
     async function getJenaModels(provider, refresh) {
+        if (!(global.advancedAiFeatureFlags && global.advancedAiFeatureFlags.tidyJena)) {
+            throw new Error('환경설정에서 TIDY JS Jena 인공지능을 허용해 주세요.');
+        }
         if (typeof global.openAiJenaChat === 'function') await global.openAiJenaChat(false);
         if (!global.AIChat || typeof global.AIChat.getTaskModels !== 'function') throw new Error('메인 창을 새로고침한 뒤 다시 여세요.');
         return global.AIChat.getTaskModels(provider, refresh);
@@ -501,7 +507,8 @@
     function openManager() {
         if (global.TidyActions && typeof global.TidyActions.closeMenu === 'function') global.TidyActions.closeMenu();
         managerToken = createId();
-        var popup = global.open(managerUrl + '#bridge=' + encodeURIComponent(managerToken), 'mdviewer-tidy-script-manager', 'width=1100,height=760,resizable=yes,scrollbars=yes');
+        var jenaEnabled = !!(global.advancedAiFeatureFlags && global.advancedAiFeatureFlags.tidyJena);
+        var popup = global.open(managerUrl + '#bridge=' + encodeURIComponent(managerToken) + '&jena=' + (jenaEnabled ? '1' : '0'), 'mdviewer-tidy-script-manager', 'width=1100,height=760,resizable=yes,scrollbars=yes');
         managerWindow = popup;
         if (!popup && typeof deps.showToast === 'function') deps.showToast('팝업이 차단되었습니다. 이 사이트의 팝업을 허용하세요.');
         if (popup) popup.focus();

@@ -113,6 +113,19 @@ let mermaidImageTypingTimer = null;
 let mermaidHistoryRecords = [];
 const TOOLBAR_LAYOUT_KEY = 'mdv_mermaid_toolbar_layout_v1';
 const MERMAID_AI_COLLAPSED_KEY = 'mdv_mermaid_ai_panel_collapsed_v1';
+let mermaidAiFeatureEnabled = new URLSearchParams(window.location.search).get('ai') === '1';
+
+function applyMermaidAiFeatureAvailability(enabled) {
+  mermaidAiFeatureEnabled = enabled === true;
+  if (mermaidAiPanel) mermaidAiPanel.hidden = !mermaidAiFeatureEnabled;
+  if (mermaidAiCollapseBtn) mermaidAiCollapseBtn.hidden = !mermaidAiFeatureEnabled;
+  if (!mermaidAiFeatureEnabled) applyMermaidAiPanelState(true);
+}
+
+window.addEventListener('message', function (event) {
+  if (!event.data || event.data.type !== 'mdv-mermaid-ai-feature') return;
+  applyMermaidAiFeatureAvailability(event.data.enabled === true);
+});
 
 function setDocumentSelectionImportButton(message, isError) {
   if (!documentSelectionImportBtn) return;
@@ -142,12 +155,14 @@ function applyMermaidAiPanelState(collapsed) {
 }
 
 function toggleMermaidAiPanel() {
+  if (!mermaidAiFeatureEnabled) return;
   const collapsed = !(mermaidAiPanel && mermaidAiPanel.classList.contains('ai-collapsed'));
   applyMermaidAiPanelState(collapsed);
   try { localStorage.setItem(MERMAID_AI_COLLAPSED_KEY, collapsed ? 'true' : 'false'); } catch (error) {}
 }
 
 function initMermaidAiPanelState() {
+  applyMermaidAiFeatureAvailability(mermaidAiFeatureEnabled);
   let collapsed = true;
   try {
     const saved = localStorage.getItem(MERMAID_AI_COLLAPSED_KEY);

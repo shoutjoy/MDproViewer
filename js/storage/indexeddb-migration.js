@@ -24,6 +24,7 @@
         docSyncVisible: ['features', 'global'], githubEnabled: ['features', 'global'],
         enterButtonInsertBr: ['editor', 'global'], selectionWrapEnabled: ['editor', 'global'],
         viewModeEditEnabled: ['editor', 'global'], deepseekBaseUrl: ['integrations', 'workspace'],
+        mermaidRefAiEnabled: ['features', 'global'], img2mathEnabled: ['features', 'global'], tidyJenaEnabled: ['features', 'global'],
         githubRepo: ['integrations', 'workspace'], githubBranch: ['integrations', 'workspace'],
         githubDefaultPushPath: ['integrations', 'workspace'], githubPullMaxFiles: ['integrations', 'workspace'],
         googleDocsClientId: ['integrations', 'workspace'], googleCalendarOpenMode: ['integrations', 'profile'],

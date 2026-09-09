@@ -76,6 +76,9 @@ SAFE_SETTING_RULES: Dict[str, SettingRule] = {
     "enterButtonInsertBr": _boolean("editor"),
     "selectionWrapEnabled": _boolean("editor"),
     "viewModeEditEnabled": _boolean("editor"),
+    "mermaidRefAiEnabled": _boolean(),
+    "img2mathEnabled": _boolean(),
+    "tidyJenaEnabled": _boolean(),
     # Non-secret provider/repository preferences.
     "deepseekBaseUrl": SettingRule("integrations", "workspace", ("string",), 4096),
     "githubRepo": SettingRule("integrations", "workspace", ("string",), 1024),

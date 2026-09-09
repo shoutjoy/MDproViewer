@@ -72,7 +72,7 @@
             <div class="tabs">
                 <button class="btn tab active" data-mode="direct" type="button">직접 입력</button>
                 <button class="btn tab" data-mode="upload" type="button">JS 업로드</button>
-                <button class="btn tab" data-mode="jena" type="button">JS JENA 인공지능</button>
+                <button class="btn tab" id="jena-tab" data-mode="jena" type="button">JS JENA 인공지능</button>
             </div>
             <div id="upload-panel" class="upload">
                 <input id="file" type="file" accept=".js,text/javascript,application/javascript">
@@ -154,6 +154,11 @@
     var modelLoadId = 0;
     var jenaRunning = false;
     var $ = function (id) { return document.getElementById(id); };
+    var tidyJenaEnabled = /(?:^|&)jena=1(?:&|$)/.test(String(location.hash || '').replace(/^#/, ''));
+    if (!tidyJenaEnabled) {
+        $('jena-tab').hidden = true;
+        $('jena-panel').hidden = true;
+    }
 
     function status(message, kind) {
         $('status').textContent = message;
@@ -235,6 +240,7 @@
     }
     document.querySelectorAll('.tab').forEach(function (button) {
         button.onclick = function () {
+            if (button.dataset.mode === 'jena' && !tidyJenaEnabled) return;
             document.querySelectorAll('.tab').forEach(function (item) { item.classList.toggle('active', item === button); });
             $('upload-panel').classList.toggle('visible', button.dataset.mode === 'upload');
             $('jena-panel').classList.toggle('visible', button.dataset.mode === 'jena');
