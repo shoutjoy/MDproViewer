@@ -6,6 +6,16 @@
     const ITERATIONS = 210000;
     const BOOTSTRAP_VERIFIER = 'RgsYUM4DqUOUQ258i/e8/x+qCwfmMr/JTBFdNcA8XgU=';
     const RECOVERY_ADDRESS = 'shoutjoy1@yonsei.ac.kr';
+    const SHA256_CONSTANTS = new Uint32Array([
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ]);
     let pendingRequest = null;
 
     function encodeBase64(bytes) {
@@ -14,18 +24,116 @@
         return btoa(binary);
     }
 
+    function encodeUtf8(value) {
+        if (typeof TextEncoder === 'function') return new TextEncoder().encode(String(value));
+        const encoded = unescape(encodeURIComponent(String(value)));
+        const bytes = new Uint8Array(encoded.length);
+        for (let index = 0; index < encoded.length; index += 1) bytes[index] = encoded.charCodeAt(index);
+        return bytes;
+    }
+
+    // Web Crypto is unavailable in some Chromium forks and non-secure/file origins.
+    // Keep a small standards-compatible SHA-256/PBKDF2 fallback so the same verifier
+    // works everywhere without weakening or changing existing passwords.
+    function sha256(bytes) {
+        const bitLength = bytes.length * 8;
+        const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
+        const padded = new Uint8Array(paddedLength);
+        padded.set(bytes);
+        padded[bytes.length] = 0x80;
+        const view = new DataView(padded.buffer);
+        view.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false);
+        view.setUint32(paddedLength - 4, bitLength >>> 0, false);
+        const hash = new Uint32Array([0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]);
+        const words = new Uint32Array(64);
+        const rotateRight = function (value, amount) { return (value >>> amount) | (value << (32 - amount)); };
+        for (let offset = 0; offset < paddedLength; offset += 64) {
+            for (let index = 0; index < 16; index += 1) words[index] = view.getUint32(offset + index * 4, false);
+            for (let index = 16; index < 64; index += 1) {
+                const a = words[index - 15];
+                const b = words[index - 2];
+                const s0 = rotateRight(a, 7) ^ rotateRight(a, 18) ^ (a >>> 3);
+                const s1 = rotateRight(b, 17) ^ rotateRight(b, 19) ^ (b >>> 10);
+                words[index] = (words[index - 16] + s0 + words[index - 7] + s1) >>> 0;
+            }
+            let a = hash[0], b = hash[1], c = hash[2], d = hash[3];
+            let e = hash[4], f = hash[5], g = hash[6], h = hash[7];
+            for (let index = 0; index < 64; index += 1) {
+                const sum1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+                const choice = (e & f) ^ (~e & g);
+                const temp1 = (h + sum1 + choice + SHA256_CONSTANTS[index] + words[index]) >>> 0;
+                const sum0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+                const majority = (a & b) ^ (a & c) ^ (b & c);
+                const temp2 = (sum0 + majority) >>> 0;
+                h = g; g = f; f = e; e = (d + temp1) >>> 0;
+                d = c; c = b; b = a; a = (temp1 + temp2) >>> 0;
+            }
+            hash[0] = (hash[0] + a) >>> 0; hash[1] = (hash[1] + b) >>> 0;
+            hash[2] = (hash[2] + c) >>> 0; hash[3] = (hash[3] + d) >>> 0;
+            hash[4] = (hash[4] + e) >>> 0; hash[5] = (hash[5] + f) >>> 0;
+            hash[6] = (hash[6] + g) >>> 0; hash[7] = (hash[7] + h) >>> 0;
+        }
+        const output = new Uint8Array(32);
+        const outputView = new DataView(output.buffer);
+        for (let index = 0; index < 8; index += 1) outputView.setUint32(index * 4, hash[index], false);
+        return output;
+    }
+
+    function concatBytes(left, right) {
+        const output = new Uint8Array(left.length + right.length);
+        output.set(left);
+        output.set(right, left.length);
+        return output;
+    }
+
+    function createHmacSha256(key) {
+        const block = new Uint8Array(64);
+        block.set(key.length > 64 ? sha256(key) : key);
+        const innerPad = new Uint8Array(64);
+        const outerPad = new Uint8Array(64);
+        for (let index = 0; index < 64; index += 1) {
+            innerPad[index] = block[index] ^ 0x36;
+            outerPad[index] = block[index] ^ 0x5c;
+        }
+        return function (message) {
+            return sha256(concatBytes(outerPad, sha256(concatBytes(innerPad, message))));
+        };
+    }
+
+    async function deriveVerifierFallback(password) {
+        const key = encodeUtf8(password);
+        const salt = encodeUtf8(SALT);
+        const hmacSha256 = createHmacSha256(key);
+        const initialMessage = new Uint8Array(salt.length + 4);
+        initialMessage.set(salt);
+        initialMessage[initialMessage.length - 1] = 1;
+        let previous = hmacSha256(initialMessage);
+        const result = new Uint8Array(previous);
+        for (let iteration = 1; iteration < ITERATIONS; iteration += 1) {
+            previous = hmacSha256(previous);
+            for (let index = 0; index < result.length; index += 1) result[index] ^= previous[index];
+            if (iteration % 2048 === 0) await new Promise(function (resolve) { setTimeout(resolve, 0); });
+        }
+        return encodeBase64(result);
+    }
+
     async function deriveVerifier(password) {
-        const encoder = new TextEncoder();
-        const key = await crypto.subtle.importKey(
-            'raw', encoder.encode(password), { name: 'PBKDF2' }, false, ['deriveBits']
-        );
-        const bits = await crypto.subtle.deriveBits({
-            name: 'PBKDF2',
-            salt: encoder.encode(SALT),
-            iterations: ITERATIONS,
-            hash: 'SHA-256'
-        }, key, 256);
-        return encodeBase64(new Uint8Array(bits));
+        const subtle = typeof crypto !== 'undefined' && crypto && crypto.subtle;
+        if (subtle && typeof subtle.importKey === 'function' && typeof subtle.deriveBits === 'function') {
+            try {
+                const key = await subtle.importKey(
+                    'raw', encodeUtf8(password), { name: 'PBKDF2' }, false, ['deriveBits']
+                );
+                const bits = await subtle.deriveBits({
+                    name: 'PBKDF2', salt: encodeUtf8(SALT), iterations: ITERATIONS, hash: 'SHA-256'
+                }, key, 256);
+                return encodeBase64(new Uint8Array(bits));
+            } catch (_) {
+                // A present-but-disabled Web Crypto implementation is common on
+                // non-secure origins. Fall through to the compatible implementation.
+            }
+        }
+        return deriveVerifierFallback(password);
     }
 
     function initializeVerifier() {

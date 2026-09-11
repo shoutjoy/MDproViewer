@@ -48,10 +48,10 @@
   z-index: 2147483647;
   display: none;
   flex-direction: column;
-  width: min(380px, calc(100vw - 24px));
-  height: min(650px, calc(100vh - 32px));
-  min-width: min(340px, calc(100vw - 12px));
-  min-height: min(360px, calc(100vh - 12px));
+  width: min(330px, calc(100vw - 24px));
+  height: min(520px, calc(100vh - 32px));
+  min-width: min(280px, calc(100vw - 12px));
+  min-height: min(320px, calc(100vh - 12px));
   overflow: hidden;
   border: 1px solid var(--chat-border);
   border-radius: 16px;
@@ -267,6 +267,8 @@ html.ai-chat-page-pushed .ai-chat-panel.layout-popup {
 .ai-chat-header-model { display: block; }
 #ai-chat-header-model { overflow: hidden; color: #b9c9e0; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .ai-chat-header-actions { display: flex; gap: 5px; }
+.ai-chat-header-actions:not(.menu-open) > :not(#ai-chat-header-menu-toggle):not(#ai-chat-close) { display: none !important; }
+#ai-chat-header-menu-toggle[aria-expanded="true"] { border-color: #5eead4; background: #0d5967; }
 .ai-chat-header .ai-chat-icon-action {
   display: inline-flex;
   align-items: center;
@@ -1542,7 +1544,7 @@ body.theme-light .ai-chat-live-stream.reasoning > div.waiting { color: #91a3bd; 
 
 @media (max-width: 560px) {
   .ai-chat-launcher { right: 12px; bottom: 14px; }
-  .ai-chat-panel { right: 6px; bottom: 6px; width: calc(100vw - 12px); height: calc(100vh - 12px); border-radius: 12px; }
+  .ai-chat-panel.layout-popup { right: 8px; bottom: 8px; width: min(320px, calc(100vw - 16px)); height: min(480px, calc(100dvh - 16px)); min-width: min(270px, calc(100vw - 16px)); min-height: 300px; border-radius: 12px; }
   .ai-chat-provider-row { grid-template-columns: minmax(0, 1fr) 34px; }
   .ai-chat-provider-row label:first-child { grid-column: 1 / -1; }
   .ai-chat-writing-style-row { grid-template-columns: minmax(0, 1fr); }
@@ -1552,6 +1554,46 @@ body.theme-light .ai-chat-live-stream.reasoning > div.waiting { color: #91a3bd; 
   .ai-chat-panel.layout-fullscreen { inset: 2px; border-radius: 8px; }
   .ai-chat-panel.layout-fullscreen .ai-chat-history-sidebar { position: absolute; z-index: 8; top: 0; bottom: 0; left: 0; width: min(var(--ai-chat-history-width, 270px), 82vw); box-shadow: 8px 0 24px rgba(0,0,0,.4); }
   .ai-chat-dock-slot { min-width: min(360px, 100vw); width: min(360px, 100vw); }
+}
+
+/* Mobile Dock is a dedicated bottom pane. It does not cover the document. */
+@media (max-width: 700px) {
+  .ai-chat-dock-slot,
+  .ai-chat-dock-slot:popover-open {
+    inset: auto 0 0 0;
+    width: 100vw !important;
+    min-width: 0;
+    height: clamp(300px, 46dvh, 520px);
+    border-top: 1px solid #22a7b8;
+    border-left: 0;
+  }
+  .ai-chat-dock-resizer {
+    top: -6px;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
+    height: 11px;
+    background: linear-gradient(180deg, transparent 0 5px, #176b79 5px 7px, transparent 7px);
+    cursor: row-resize;
+  }
+  .ai-chat-dock-resizer:hover::after {
+    top: 4px;
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
+    height: 2px;
+  }
+  html.ai-chat-mobile-bottom-docked body {
+    height: calc(100dvh - var(--ai-chat-mobile-bottom-height, 46dvh)) !important;
+    max-height: calc(100dvh - var(--ai-chat-mobile-bottom-height, 46dvh)) !important;
+    overflow: auto !important;
+  }
+  html.ai-chat-mobile-bottom-docked body > :not(#ai-chat-panel):not(#ai-chat-launcher):not(#ai-chat-dock-slot) {
+    max-height: calc(100dvh - var(--ai-chat-mobile-bottom-height, 46dvh)) !important;
+  }
+  .ai-chat-panel.layout-dock { border-radius: 0; }
 }
 
 @media print {

@@ -54,9 +54,10 @@
   var CONVERSATION_STORE = 'conversations';
   var MAX_STORED_MESSAGES = 100;
   var MAX_CONTEXT_MESSAGES = 100;
-  var DEFAULT_CHAT_WIDTH = 380;
-  var MIN_CHAT_WIDTH = 340;
-  var DEFAULT_POPUP_HEIGHT = 585;
+  var DEFAULT_CHAT_WIDTH = 330;
+  var MIN_CHAT_WIDTH = 280;
+  var DEFAULT_POPUP_HEIGHT = 520;
+  var MOBILE_CHAT_BREAKPOINT = 700;
   var DEFAULT_GEMINI_MODELS = [
     'gemini-3.5-flash',
     'gemini-3.1-pro-preview',
@@ -564,6 +565,9 @@
       + '<header class="ai-chat-header">'
       + '  <div><strong>AI Jena</strong><span id="ai-chat-header-model">연결 확인 전</span></div>'
       + '  <div class="ai-chat-header-actions">'
+      + '    <button type="button" id="ai-chat-header-menu-toggle" class="ai-chat-icon-action" title="대화 메뉴 펼치기" aria-label="대화 메뉴 펼치기" aria-expanded="false">'
+      + '      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span class="ai-chat-action-label">메뉴</span>'
+      + '    </button>'
       + '    <button type="button" id="ai-chat-history-toggle" class="ai-chat-icon-action" title="왼쪽 대화 기록 열기" aria-label="왼쪽 대화 기록 열기" aria-expanded="false">'
       + '      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 8h1M5.5 12h1M5.5 16h1"/></svg><span class="ai-chat-action-label">기록</span>'
       + '    </button>'
@@ -669,6 +673,7 @@
     });
     setupLauncherDrag(launcher);
     document.getElementById('ai-chat-close').addEventListener('click', function () { setOpen(false); });
+    document.getElementById('ai-chat-header-menu-toggle').addEventListener('click', toggleHeaderMenu);
     document.getElementById('ai-chat-history-toggle').addEventListener('click', toggleHistorySidebar);
     document.getElementById('ai-chat-new').addEventListener('click', startNewChat);
     document.getElementById('ai-chat-history-new').addEventListener('click', startNewChat);
@@ -894,9 +899,12 @@
       if (!event.target.closest('.ai-chat-layout-menu-wrap')) closeLayoutMenu();
     });
     root.addEventListener('resize', function () {
+      var responsiveDock = document.getElementById('ai-chat-dock-slot');
+      if (responsiveDock && root.innerWidth > MOBILE_CHAT_BREAKPOINT) responsiveDock.style.height = '';
       clampPopupToViewport();
       clampLauncherToViewport();
       updateDockHistoryVisibility();
+      syncLayoutVisibility();
     });
     root.addEventListener('md-edit-toolbar-orientation-change', function () {
       requestAnimationFrame(clampLauncherToViewport);
@@ -1029,6 +1037,23 @@
     if (button) button.setAttribute('aria-expanded', 'false');
   }
 
+  function setHeaderMenuOpen(open) {
+    var actions = document.querySelector('#ai-chat-panel .ai-chat-header-actions');
+    var button = document.getElementById('ai-chat-header-menu-toggle');
+    if (actions) actions.classList.toggle('menu-open', open === true);
+    if (button) {
+      button.setAttribute('aria-expanded', open === true ? 'true' : 'false');
+      button.setAttribute('aria-label', open === true ? '대화 메뉴 접기' : '대화 메뉴 펼치기');
+      button.title = open === true ? '대화 메뉴 접기' : '대화 메뉴 펼치기';
+    }
+    if (open !== true) closeLayoutMenu();
+  }
+
+  function toggleHeaderMenu() {
+    var actions = document.querySelector('#ai-chat-panel .ai-chat-header-actions');
+    setHeaderMenuOpen(!(actions && actions.classList.contains('menu-open')));
+  }
+
   function toggleLayoutMenu() {
     var menu = document.getElementById('ai-chat-layout-menu');
     var button = document.getElementById('ai-chat-layout-menu-button');
@@ -1069,9 +1094,9 @@
       return;
     }
     var minWidth = Math.min(MIN_CHAT_WIDTH, root.innerWidth - 12);
-    var minHeight = Math.min(360, root.innerHeight - 12);
-    var width = Math.max(minWidth, Math.min(DEFAULT_CHAT_WIDTH, root.innerWidth - 12));
-    var height = Math.max(minHeight, Math.min(saved.height || 650, root.innerHeight - 12));
+    var minHeight = Math.min(320, root.innerHeight - 12);
+    var width = Math.max(minWidth, Math.min(saved.width || DEFAULT_CHAT_WIDTH, root.innerWidth - 12));
+    var height = Math.max(minHeight, Math.min(saved.height || DEFAULT_POPUP_HEIGHT, root.innerHeight - 12));
     var left = Math.max(6, Math.min(saved.left, root.innerWidth - width - 6));
     var top = Math.max(6, Math.min(saved.top, root.innerHeight - height - 6));
     panel.style.left = left + 'px';
@@ -1090,7 +1115,7 @@
     var width = Math.min(rect.width, root.innerWidth - 12);
     var height = Math.min(rect.height, root.innerHeight - 12);
     panel.style.width = Math.max(Math.min(MIN_CHAT_WIDTH, root.innerWidth - 12), width) + 'px';
-    panel.style.height = Math.max(Math.min(360, root.innerHeight - 12), height) + 'px';
+    panel.style.height = Math.max(Math.min(320, root.innerHeight - 12), height) + 'px';
     panel.style.left = Math.max(6, Math.min(rect.left, root.innerWidth - width - 6)) + 'px';
     panel.style.top = Math.max(6, Math.min(rect.top, root.innerHeight - height - 6)) + 'px';
     panel.style.right = 'auto';
@@ -1240,8 +1265,11 @@
   }
 
   function updatePagePush() {
-    // Popup is a true floating window. Only Dock reserves page width.
-    var shouldPush = state.open && state.enabled && state.layout === 'dock';
+    // Desktop Dock reserves width. On phones the Dock becomes a separate
+    // bottom work area and reserves height instead of covering the document.
+    var dockOpen = state.open && state.enabled && state.layout === 'dock';
+    var mobileBottom = dockOpen && root.innerWidth <= MOBILE_CHAT_BREAKPOINT;
+    var shouldPush = dockOpen && !mobileBottom;
     var panel = document.getElementById('ai-chat-panel');
     var slot = document.getElementById('ai-chat-dock-slot');
     var width = state.layout === 'dock' && slot
@@ -1250,7 +1278,9 @@
         ? panel.getBoundingClientRect().width + 16
         : 0;
     document.documentElement.classList.toggle('ai-chat-page-pushed', !!shouldPush);
+    document.documentElement.classList.toggle('ai-chat-mobile-bottom-docked', !!mobileBottom);
     document.documentElement.style.setProperty('--ai-chat-page-push', shouldPush ? Math.max(0, Math.round(width)) + 'px' : '0px');
+    document.documentElement.style.setProperty('--ai-chat-mobile-bottom-height', mobileBottom && slot ? Math.round(slot.getBoundingClientRect().height) + 'px' : '0px');
     try {
       root.dispatchEvent(new CustomEvent('ai-jena-layout-change', {
         detail: { open: state.open, enabled: state.enabled, layout: state.layout, dockWidth: shouldPush ? width : 0 }
@@ -1446,9 +1476,19 @@
     handle.addEventListener('pointerdown', function (event) {
       if (state.layout !== 'dock') return;
       var startX = event.clientX;
+      var startY = event.clientY;
       var startWidth = slot.getBoundingClientRect().width;
+      var startHeight = slot.getBoundingClientRect().height;
       handle.setPointerCapture(event.pointerId);
       function move(moveEvent) {
+        if (root.innerWidth <= MOBILE_CHAT_BREAKPOINT) {
+          var minimumHeight = Math.min(260, root.innerHeight * 0.4);
+          var maximumHeight = Math.max(minimumHeight, root.innerHeight * 0.72);
+          var height = Math.max(minimumHeight, Math.min(startHeight + startY - moveEvent.clientY, maximumHeight));
+          slot.style.height = Math.round(height) + 'px';
+          updatePagePush();
+          return;
+        }
         var minimumDockWidth = Math.min(MIN_CHAT_WIDTH, root.innerWidth);
         var maximumDockWidth = Math.max(minimumDockWidth, root.innerWidth * 0.7);
         var width = Math.max(minimumDockWidth, Math.min(startWidth + startX - moveEvent.clientX, maximumDockWidth));
@@ -4817,6 +4857,8 @@
       await saveConversationNow();
       pendingAttachments = [];
       renderPendingAttachments();
+      setProviderControlsOpen(false);
+      setHeaderMenuOpen(false);
       await createNewConversation(true);
     } catch (error) {
       setStatus('새 대화를 만들지 못했습니다.', 'error');
