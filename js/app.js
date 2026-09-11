@@ -162,7 +162,7 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1-pdf-to-pv-1',
     aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260902-web-search-recovery-2',
     aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260902-new-window-links-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260902-search-max-tokens-1-pdf-to-pv-1-search-actions-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260912-original-response-theme-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -276,6 +276,17 @@ async function ensureMdMathEngineLoaded() {
 }
 window.ensureMdMathEngineLoaded = ensureMdMathEngineLoaded;
 
+function isAiJenaMenuEntryEnabled() {
+    const enabledKey = 'ss_ai_chat_enabled';
+    const menuEnabledKey = 'ss_ai_chat_menu_enabled';
+    // 설정 초기화나 이전 버전 데이터에서 활성 진입 방식이 없으면
+    // 헤더 메뉴를 기본 진입점으로 복원한다.
+    if (localStorage.getItem(enabledKey) !== '1' && localStorage.getItem(menuEnabledKey) !== '1') {
+        localStorage.setItem(menuEnabledKey, '1');
+    }
+    return localStorage.getItem(menuEnabledKey) === '1';
+}
+
 function initializeLazyAiChatEntry() {
     const enabledKey = 'ss_ai_chat_enabled';
     const menuEnabledKey = 'ss_ai_chat_menu_enabled';
@@ -283,13 +294,14 @@ function initializeLazyAiChatEntry() {
     const checkbox = document.getElementById('ai-chat-enabled');
     const menuCheckbox = document.getElementById('ai-chat-menu-enabled');
     const menuButton = document.getElementById('btn-ai-jena-menu');
+    isAiJenaMenuEntryEnabled();
     // 이전 버전에서는 두 진입 방식을 동시에 켤 수 있었다. 겹친 저장값은
     // 메뉴 방식을 우선하여 한 번만 정리한다.
     if (localStorage.getItem(enabledKey) === '1' && localStorage.getItem(menuEnabledKey) === '1') {
         localStorage.setItem(enabledKey, '0');
     }
     const syncMenuButton = function () {
-        const enabled = localStorage.getItem(menuEnabledKey) === '1';
+        const enabled = isAiJenaMenuEntryEnabled();
         if (menuCheckbox) menuCheckbox.checked = enabled;
         if (menuButton) {
             menuButton.classList.toggle('hidden', !enabled);
@@ -14008,7 +14020,7 @@ async function applyAiFeatureVisibility() {
     const btnScholar = document.getElementById('btn-scholar-ai');
     const btnSsp = document.getElementById('btn-sspimg-ai');
     const btnJenaMenu = document.getElementById('btn-ai-jena-menu');
-    const jenaMenuOn = localStorage.getItem('ss_ai_chat_menu_enabled') === '1';
+    const jenaMenuOn = isAiJenaMenuEntryEnabled();
     const showAiOrJenaMenu = showAi || jenaMenuOn;
     if (headerBtns) {
         if (showAiOrJenaMenu) {
@@ -17067,6 +17079,12 @@ window.AIChatBridge = Object.freeze({
             const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true && request.internetSearch !== true;
             const continuationMode = request.continuation === true;
             const splitAcademicMode = request.splitAcademicResponse === true;
+            const originalResponseMode = request.originalResponse === true
+                && request.academicSearch !== true
+                && request.internetSearch !== true
+                && request.fastMode !== true
+                && request.continuation !== true
+                && request.splitAcademicResponse !== true;
             const modeInstruction = request.academicSearch
                 ? ''
                 : request.internetSearch
@@ -17079,6 +17097,8 @@ window.AIChatBridge = Object.freeze({
                 ? (reasoningMode
                     ? '제공된 학술 초록 근거를 충분히 비교·검토하되 필수 항목을 먼저 모두 완결하고 남은 범위에서 상세화하세요. 문장 중간에서 끝내지 마세요.'
                     : '제공된 학술 초록 근거에서 핵심 주장, 같은 결과, 다른 결과를 간결하게 모두 완결하세요. 세부 내용보다 전체 항목의 완성을 우선하고 문장 중간에서 끝내지 마세요.')
+                : originalResponseMode
+                ? ''
                 : (reasoningMode
                     ? '설정된 추론 강도로 충분히 검토한 뒤 완성도 높은 최종 답변을 작성하세요. 사용자가 요청한 모든 항목·코드·설명을 누락하지 말고, 내부 계획이나 추론은 최종 답변에 섞지 마세요.'
                     : '핵심부터 바로 답하되 사용자가 요청한 코드, 설명, 형식과 분량을 완전하게 충족하세요. 인위적인 문장 수 제한을 두지 마세요.');

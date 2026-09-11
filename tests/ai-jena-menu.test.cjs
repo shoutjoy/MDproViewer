@@ -17,6 +17,15 @@ test('AI Jena floating and menu settings are mutually exclusive', () => {
   assert.match(app, /localStorage\.setItem\(enabledKey, '0'\)/);
 });
 
+test('AI Jena menu is restored when no entry mode is active', () => {
+  assert.match(
+    app,
+    /function isAiJenaMenuEntryEnabled\(\)[\s\S]*?localStorage\.getItem\(enabledKey\) !== '1' && localStorage\.getItem\(menuEnabledKey\) !== '1'[\s\S]*?localStorage\.setItem\(menuEnabledKey, '1'\)/
+  );
+  assert.match(app, /const jenaMenuOn = isAiJenaMenuEntryEnabled\(\)/);
+  assert.match(html, /aiJenaEntryMode=20260912-menu-restore-1/);
+});
+
 test('AI Jena menu is a black button with a deep-blue teal inset after sspimgAI and opens without enabling floating', () => {
   assert.match(html, /id="btn-sspimg-ai"[\s\S]*id="btn-ai-jena-menu"/);
   assert.match(css, /#btn-ai-jena-menu[\s\S]*width: 42px;[\s\S]*height: 42px;[\s\S]*background: #05070b/);

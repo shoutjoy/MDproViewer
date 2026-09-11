@@ -20,10 +20,10 @@
   var DOCUMENT_WRITE_MODE_KEY = 'ss_ai_chat_document_write_mode';
   var SENTENCE_ONLY_KEY = 'ss_ai_chat_sentence_only_enabled';
   var DOCUMENT_INSERT_OPTIONS = [
-    { mode: 'replace', label: '대체 삽입', shortLabel: '대체', title: '선택한 내용을 AI 답변(Markdown 원문)으로 대체합니다.' },
-    { mode: 'cursor', label: '커서 위치에 삽입 · Ctrl+I', shortLabel: '커서', title: '현재 커서 위치에 Markdown 원문을 삽입합니다.' },
-    { mode: 'line-below', label: '한 줄 아래 삽입', shortLabel: '한 줄 아래', title: '커서 줄 바로 아래에 Markdown 원문을 삽입합니다.' },
-    { mode: 'document-end', label: '문서 맨 아래에 삽입', shortLabel: '맨 아래', title: 'Markdown 원문을 문서 맨 아래에 삽입합니다.' }
+    { mode: 'replace', label: '선택 영역 대체', shortLabel: '영역 대체', title: '선택한 내용을 AI 답변(Markdown 원문)으로 대체합니다.' },
+    { mode: 'cursor', label: '현재 커서에 삽입 · Ctrl+I', shortLabel: '현재 커서', title: '현재 커서 위치에 Markdown 원문을 삽입합니다.' },
+    { mode: 'line-below', label: '다음 줄에 삽입', shortLabel: '다음 줄', title: '커서 줄 바로 아래에 Markdown 원문을 삽입합니다.' },
+    { mode: 'document-end', label: '문서 끝에 삽입', shortLabel: '문서 끝', title: 'Markdown 원문을 문서 맨 아래에 삽입합니다.' }
   ];
   var RESPONSE_MODE_KEY = 'ss_ai_chat_response_mode';
   var FAST_MODE_KEY = 'ss_ai_chat_fast_mode';
@@ -108,7 +108,7 @@
     provider: 'lmstudio',
     providerControlsOpen: false,
     writingStyle: 'academic',
-    answerAppearance: 'plain-light',
+    answerAppearance: 'light',
     answerFontSize: 14,
     insertActionsExpanded: false,
     documentWriteEnabled: false,
@@ -183,16 +183,20 @@
   }
 
   function normalizeWritingStyle(value) {
+    if (value === 'original') return 'original';
     return value === 'polite' ? 'polite' : 'academic';
   }
 
   function writingStyleLabel(value) {
-    return normalizeWritingStyle(value) === 'academic'
+    var normalized = normalizeWritingStyle(value);
+    if (normalized === 'original') return 'Original(모델 고유 응답)';
+    return normalized === 'academic'
       ? '전문적 학술체(다양한 학술 서술어)'
       : '기본 존댓말(-습니다/-입니다)';
   }
 
   function writingStyleInstruction(options) {
+    if (state.writingStyle === 'original') return '';
     var academicContext = !!(options && options.academic);
     var sentenceInstruction = sentenceOnlyInstruction();
     if (state.writingStyle === 'academic') {
@@ -589,8 +593,8 @@
       + '        <button type="button" id="ai-chat-set-start-layout" class="ai-chat-set-start-layout" role="menuitem">현재 배치를 시작 위치로 지정</button>'
       + '      </div>'
       + '    </div>'
-      + '    <button type="button" id="ai-chat-writing-style-settings" class="ai-chat-icon-action" title="문체 설정" aria-label="문체 설정">'
-      + '      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.55V21h-4v-.08A1.7 1.7 0 0 0 8.95 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.08V3h4v.08A1.7 1.7 0 0 0 15.05 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9 1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span class="ai-chat-action-label">문체</span>'
+      + '    <button type="button" id="ai-chat-writing-style-settings" class="ai-chat-icon-action" title="응답 스타일 설정" aria-label="응답 스타일 설정">'
+      + '      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.55V21h-4v-.08A1.7 1.7 0 0 0 8.95 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3.08 14H3v-4h.08A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 8.97 4.6 1.7 1.7 0 0 0 10 3.08V3h4v.08A1.7 1.7 0 0 0 15.05 4.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9 1.7 1.7 0 0 0 20.92 10H21v4h-.08A1.7 1.7 0 0 0 19.4 15Z"/></svg><span class="ai-chat-action-label">스타일</span>'
       + '    </button>'
       + '    <button type="button" id="ai-chat-close" title="닫기" aria-label="AI Jena 닫기">×</button>'
       + '  </div>'
@@ -620,9 +624,9 @@
       + '        <button type="button" id="ai-chat-refresh-model" title="현재 모델 새로고침">↻</button>'
       + '      </div>'
       + '      <div class="ai-chat-writing-style-row">'
-      + '        <label>답변 문체<select id="ai-chat-writing-style"><option value="academic">전문적 학술체 (다양한 서술어)</option><option value="polite">기본 존댓말 (-습니다/-입니다)</option></select></label>'
-      + '        <label>답변 표시<select id="ai-chat-answer-appearance"><option value="current">현재 디자인</option><option value="plain-light">흰 바탕 · 검은 글씨</option></select></label>'
-      + '        <label class="ai-chat-insert-expand-toggle" title="켜면 각 AI 답변 아래에 문서 삽입 버튼을 펼쳐 표시합니다."><input type="checkbox" id="ai-chat-insert-expand"><span>문서에 넣기 펼치기</span></label>'
+      + '        <label>응답 스타일<select id="ai-chat-writing-style"><option value="academic">학술체</option><option value="polite">존댓말</option><option value="original">Original · 모델 고유</option></select></label>'
+      + '        <label>응답 테마<select id="ai-chat-answer-appearance"><option value="light">라이트</option><option value="dark">다크</option></select></label>'
+      + '        <label class="ai-chat-insert-expand-toggle" title="켜면 각 AI 답변 아래에 모든 문서 삽입 방식을 펼쳐 표시합니다."><input type="checkbox" id="ai-chat-insert-expand"><span>삽입 방식 펼치기</span></label>'
       + '      </div>'
       + '    </div>'
       + '    <div id="ai-chat-status" class="ai-chat-status" role="status" aria-live="polite"></div>'
@@ -1633,7 +1637,10 @@
     }
     if (answerWrap) answerWrap.hidden = false;
     if (answerBody) {
-      var visibleLiveAnswer = cleanAssistantProtocolArtifacts(liveStream.answer, true);
+      var preserveLiveFormatting = state.writingStyle === 'original' && !state.fastMode && !state.academicSearchEnabled && !state.internetSearchEnabled;
+      var visibleLiveAnswer = preserveLiveFormatting
+        ? visibleOriginalAnswer(liveStream.answer, true)
+        : cleanAssistantProtocolArtifacts(liveStream.answer, true);
       answerBody.classList.toggle('waiting', !visibleLiveAnswer);
       answerBody.textContent = visibleLiveAnswer || (showLiveReasoning
         ? '추론이 끝난 뒤 첫 응답 토큰이 도착하면 여기에 바로 표시됩니다.'
@@ -1742,6 +1749,9 @@
   function visibleDocumentStreamAnswer(raw) {
     var value = String(raw || '');
     if (!value) return '';
+    if (state.writingStyle === 'original' && !state.fastMode && !state.academicSearchEnabled && !state.internetSearchEnabled) {
+      return visibleOriginalAnswer(value, true);
+    }
     if (!state.fastMode && !state.academicSearchEnabled) {
       var answerOpen = value.search(/\[ANSWER\]/i);
       if (answerOpen < 0) return '';
@@ -2219,7 +2229,7 @@
       expanded.className = 'ai-chat-insert-expanded';
       var expandedLabel = document.createElement('span');
       expandedLabel.className = 'ai-chat-insert-expanded-label';
-      expandedLabel.textContent = '문서에 삽입';
+      expandedLabel.textContent = '삽입 방식';
       expanded.appendChild(expandedLabel);
       DOCUMENT_INSERT_OPTIONS.forEach(function (option) {
         var insertBtn = document.createElement('button');
@@ -2234,8 +2244,8 @@
     var insertWrap = document.createElement('details');
     insertWrap.className = 'ai-chat-insert-wrap';
     var insertSummary = document.createElement('summary');
-    insertSummary.textContent = '문서에 넣기';
-    insertSummary.title = 'AI 답변 Markdown 원문을 그대로 문서에 넣기';
+    insertSummary.textContent = '삽입 방식';
+    insertSummary.title = 'AI 답변 Markdown 원문을 넣을 위치 선택';
     insertSummary.addEventListener('mousedown', function (event) {
       snapshotEditorSelectionForInsert();
     });
@@ -2246,7 +2256,7 @@
     cursorInsertButton.setAttribute('aria-label', '커서 위치에 바로 삽입');
     cursorInsertButton.title = '커서 위치에 바로 삽입';
     cursorInsertButton.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H4m3.5-3.5L4 8l3.5 3.5"/></svg>';
-    bindDocumentInsertOptionButton(cursorInsertButton, messageIndex, message, DOCUMENT_INSERT_OPTIONS[0], insertWrap);
+    bindDocumentInsertOptionButton(cursorInsertButton, messageIndex, message, DOCUMENT_INSERT_OPTIONS[1], insertWrap);
     cursorInsertButton.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8H4m3.5-3.5L4 8l3.5 3.5"/></svg>';
     cursorInsertButton.setAttribute('aria-label', '커서 위치에 바로 삽입');
     cursorInsertButton.title = '커서 위치에 바로 삽입';
@@ -2268,11 +2278,12 @@
     var select = document.getElementById('ai-chat-writing-style');
     if (select) select.value = state.writingStyle;
     updateHeaderModel();
-    if (announce) setStatus('답변 문체를 ' + writingStyleLabel(state.writingStyle) + '로 설정했습니다.', 'ok');
+    if (announce) setStatus('응답 스타일을 ' + writingStyleLabel(state.writingStyle) + '로 설정했습니다.', 'ok');
   }
 
   function normalizeAnswerAppearance(value) {
-    return value === 'plain-light' ? 'plain-light' : 'current';
+    if (value === 'light' || value === 'plain-light') return 'light';
+    return 'dark';
   }
 
   function setAnswerAppearance(value, announce) {
@@ -2281,11 +2292,15 @@
     var select = document.getElementById('ai-chat-answer-appearance');
     var panel = document.getElementById('ai-chat-panel');
     if (select) select.value = state.answerAppearance;
-    if (panel) panel.classList.toggle('answer-plain-light', state.answerAppearance === 'plain-light');
+    if (panel) {
+      panel.classList.remove('answer-plain-light');
+      panel.classList.toggle('answer-light', state.answerAppearance === 'light');
+      panel.classList.toggle('answer-dark', state.answerAppearance === 'dark');
+    }
     if (announce) {
-      setStatus(state.answerAppearance === 'plain-light'
-        ? 'AI 답변을 흰 바탕 · 검은 글씨로 표시합니다.'
-        : 'AI 답변을 현재 디자인으로 표시합니다.', 'ok');
+      setStatus(state.answerAppearance === 'light'
+        ? 'AI 응답을 라이트 테마로 표시합니다.'
+        : 'AI 응답을 다크 테마로 표시합니다.', 'ok');
     }
   }
 
@@ -2945,6 +2960,13 @@
     return text.replace(/(?:&#x20;|&#32;|&nbsp;)(?=\s*$)/gi, '').trim();
   }
 
+  function visibleOriginalAnswer(value, streaming) {
+    var text = String(value || '')
+      .replace(/<(?:think|analysis|reasoning)>[\s\S]*?<\/(?:think|analysis|reasoning)>/gi, ' ');
+    if (streaming) text = text.replace(/<(?:think|analysis|reasoning)>[\s\S]*$/i, ' ');
+    return text.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function parseAssistantSections(rawText) {
     var raw = String(rawText || '')
       .replace(/\\*\[\s*\\*(\/?)\s*(CHECKLIST|EXPLANATION|ANSWER)\s*\\*\]/gi, '[$1$2]')
@@ -3179,7 +3201,7 @@
     return parts.join('\n\n');
   }
 
-  function separateEmbeddedReasoning(answerText, explicitReasoning) {
+  function separateEmbeddedReasoning(answerText, explicitReasoning, preserveModelFormatting) {
     var answer = String(answerText || '').trim();
     var reasoning = String(explicitReasoning || '').trim();
     if (!answer) return { answer: '', reasoning: reasoning };
@@ -3193,6 +3215,7 @@
       .replace(/\n{3,}/g, '\n\n')
       .trim();
     if (tagged.length) reasoning = joinSeparatedReasoning(reasoning, tagged.join('\n\n'));
+    if (preserveModelFormatting) return { answer: answer, reasoning: reasoning };
 
     // Prefer an explicit final-answer boundary when a model emits one inside
     // the normal content field instead of reasoning_content.
@@ -5431,6 +5454,7 @@
           'loading'
         );
       }
+      var originalResponse = state.writingStyle === 'original' && !academicSearchActive && !internetSearchActive && !state.fastMode;
       var result = await getBridge().complete({
         provider: state.provider,
         model: activeProviderModel(),
@@ -5439,6 +5463,7 @@
         internetSearch: internetSearchActive,
         splitAcademicResponse: splitAcademicResponse,
         fastMode: state.fastMode,
+        originalResponse: state.writingStyle === 'original',
         academicEvidenceCount: academicProfile ? academicProfile.count : 0,
         academicEvidenceTokens: academicProfile ? academicProfile.fullEvidenceTokens : 0,
         retainForContinuation: true,
@@ -5458,6 +5483,8 @@
               MERMAID_DARK_MODE_PROMPT_RULE,
               'For a Mermaid request, return exactly one fenced mermaid code block and nothing else.'
             ].join(' ')
+          : originalResponse
+            ? ''
           : [
               'You are a capable conversational assistant. Answer in Korean unless the user requests another language.',
               writingStyleInstruction({ academic: false }),
@@ -5476,11 +5503,13 @@
       var reasoningStatus = extractModelStatus(result && result.reasoning ? String(result.reasoning) : '');
       if (reasoningStatus.notice && !responseStatus.notice) responseStatus.notice = reasoningStatus.notice;
       var reasoningText = reasoningStatus.answer;
-      var separatedResponse = separateEmbeddedReasoning(responseStatus.answer, reasoningText);
+      var separatedResponse = separateEmbeddedReasoning(responseStatus.answer, reasoningText, originalResponse);
       responseStatus.answer = separatedResponse.answer;
       reasoningText = separatedResponse.reasoning;
       if (!responseStatus.answer && !responseStatus.notice && !reasoningText) throw new Error('AI 응답이 비어 있습니다.');
-      var sections = responseStatus.answer
+      var sections = originalResponse
+        ? { answer: responseStatus.answer, explanation: '', checklist: '', remaining: responseStatus.answer }
+        : responseStatus.answer
         ? parseAssistantSections(responseStatus.answer)
         : { answer: '', explanation: '', checklist: '', remaining: '' };
       if (academicSearchActive) {
@@ -5624,12 +5653,12 @@
       state.writingStyle = normalizeWritingStyle(storageGet(WRITING_STYLE_KEY, 'academic'));
     }
     var answerAppearanceDefaultRevision = storageGet(ANSWER_APPEARANCE_DEFAULT_REVISION_KEY, '');
-    if (answerAppearanceDefaultRevision !== 'plain-light-v1') {
-      state.answerAppearance = 'plain-light';
+    if (answerAppearanceDefaultRevision !== 'theme-v1') {
+      state.answerAppearance = normalizeAnswerAppearance(storageGet(ANSWER_APPEARANCE_KEY, 'light'));
       storageSet(ANSWER_APPEARANCE_KEY, state.answerAppearance);
-      storageSet(ANSWER_APPEARANCE_DEFAULT_REVISION_KEY, 'plain-light-v1');
+      storageSet(ANSWER_APPEARANCE_DEFAULT_REVISION_KEY, 'theme-v1');
     } else {
-      state.answerAppearance = normalizeAnswerAppearance(storageGet(ANSWER_APPEARANCE_KEY, 'plain-light'));
+      state.answerAppearance = normalizeAnswerAppearance(storageGet(ANSWER_APPEARANCE_KEY, 'light'));
     }
     state.answerFontSize = normalizeAnswerFontSize(storageGet(ANSWER_FONT_SIZE_KEY, '14'));
     state.insertActionsExpanded = storageGet(INSERT_EXPAND_KEY, '0') === '1';

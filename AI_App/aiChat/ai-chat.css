@@ -1751,6 +1751,22 @@ body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content
   box-shadow: inset 0 0 0 1px rgba(111, 148, 202, .08);
 }
 
+/* The response theme is independent from the application's chrome theme. */
+.ai-chat-panel.answer-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content,
+body.theme-light .ai-chat-panel.answer-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content {
+  border-color: #cbd5e1;
+  background: #fff;
+  color: #172033;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+.ai-chat-panel.answer-dark .ai-chat-message.assistant:not(.error) .ai-chat-message-content,
+body.theme-light .ai-chat-panel.answer-dark .ai-chat-message.assistant:not(.error) .ai-chat-message-content {
+  border-color: #183b4a;
+  background: #08111b;
+  color: #e8f4f5;
+  box-shadow: inset 0 0 0 1px rgba(111,148,202,.08);
+}
+
 body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered pre {
   border: 1px solid #28495b;
   background: #030a12;
@@ -1760,6 +1776,24 @@ body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content
 body.theme-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered code {
   color: #b9d8e8;
   font-family: Consolas, "Courier New", monospace;
+}
+
+body.theme-light .ai-chat-panel.answer-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered pre {
+  border-color: #d6deea;
+  background: #f1f5f9;
+  color: #172033;
+}
+body.theme-light .ai-chat-panel.answer-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered code {
+  color: #334155;
+}
+
+body.theme-light .ai-chat-panel.answer-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered pre {
+  border-color: #d6deea;
+  background: #f1f5f9;
+  color: #172033;
+}
+body.theme-light .ai-chat-panel.answer-light .ai-chat-message.assistant:not(.error) .ai-chat-message-content.markdown-rendered code {
+  color: #334155;
 }
 
 body.theme-light .ai-chat-document-answer-record {
