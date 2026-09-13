@@ -15613,8 +15613,12 @@ window.AIChatBridge = Object.freeze({
                     Number(config.timeoutMs) || 0,
                     Math.ceil((requestMaxTokens / 8) * 1000 + 120000)
                 );
+            let receivedStreamContent = false;
             const streamEventHandler = typeof request.onStreamEvent === 'function'
-                ? request.onStreamEvent
+                ? function (event, state) {
+                    if (event && /^(?:message|reasoning)\.delta$/.test(event.type) && event.content) receivedStreamContent = true;
+                    request.onStreamEvent(event, state);
+                }
                 : null;
             if (streamEventHandler) {
                 streamEventHandler({
@@ -15644,9 +15648,28 @@ window.AIChatBridge = Object.freeze({
                 signal: controller.signal,
                 onEvent: streamEventHandler || undefined
             };
-            const result = streamEventHandler && typeof client.chatStream === 'function'
-                ? await client.chatStream(chatOptions)
-                : await client.chat(chatOptions);
+            let result;
+            if (streamEventHandler && typeof client.chatStream === 'function') {
+                try {
+                    result = await client.chatStream(chatOptions);
+                } catch (streamError) {
+                    if (controller.signal.aborted || streamError?.name === 'AbortError') throw streamError;
+                    const retryableStreamFailure = /응답이 비어|empty response|failed to fetch|networkerror|load failed|스트리밍 연결에 실패/i.test(String(streamError?.message || ''));
+                    if (!retryableStreamFailure || receivedStreamContent) throw streamError;
+                    streamEventHandler({
+                        type: 'transport.fallback',
+                        transport: 'fetch-json',
+                        message: '스트리밍 연결이 완료되지 않아 비스트리밍 요청으로 자동 재시도합니다.'
+                    });
+                    result = await client.chat(Object.assign({}, chatOptions, {
+                        internalStream: false,
+                        onEvent: undefined,
+                        completeStreaming: false
+                    }));
+                }
+            } else {
+                result = await client.chat(chatOptions);
+            }
             return {
                 provider: 'lmstudio',
                 model: result.model || synced.model,

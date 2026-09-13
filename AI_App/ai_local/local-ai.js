@@ -375,11 +375,25 @@ Do not output only a reference list. Extract claims from titles and abstracts, g
         return await bound(url, options);
       } catch (error) {
         const location = root && root.location;
-        const canProxy = location && /^https?:$/.test(location.protocol) && isLoopback
+        if (options.signal && options.signal.aborted) throw error;
+        const isLocalOrigin = location && /^https?:$/.test(location.protocol)
+          && /^(?:127\.0\.0\.1|localhost|::1)$/.test(location.hostname);
+        const canProxy = isLocalOrigin && isLoopback
           && String(url).indexOf('/__mdviewer_lmstudio_proxy') < 0;
-        if (!canProxy || (error && error.name === 'AbortError')) throw error;
+        if (!canProxy || (error && error.name === 'AbortError')) {
+          if (isLoopback && error && /failed to fetch|networkerror|load failed/i.test(String(error.message || ''))) {
+            throw new Error('LM Studio 요청에 연결할 수 없습니다. 현재 페이지의 주소에서 로컬 서버 접근과 LM Studio CORS 허용을 확인하세요. (' + target.origin + ')');
+          }
+          throw error;
+        }
         const proxyUrl = '/__mdviewer_lmstudio_proxy?url=' + encodeURIComponent(String(url));
-        return await bound(proxyUrl, options);
+        try {
+          const response = await bound(proxyUrl, options);
+          if (response.status === 404) throw new Error('MD Viewer 로컬 프록시를 찾을 수 없습니다. 현재 버전의 로컬 서버에서 앱을 다시 실행하세요.');
+          return response;
+        } catch (proxyError) {
+          throw new Error('LM Studio 직접 연결과 MD Viewer 로컬 프록시 요청이 모두 실패했습니다: ' + String(proxyError.message || proxyError));
+        }
       }
     };
   }
