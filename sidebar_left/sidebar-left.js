@@ -3,6 +3,27 @@
 
     let activeTab = 'files';
     let lastTocItems = [];
+    const DOCUMENT_ACTIONS_HIDDEN_KEY = 'mdpro_sidebar_document_actions_hidden';
+
+    function areDocumentActionsHidden() {
+        try { return localStorage.getItem(DOCUMENT_ACTIONS_HIDDEN_KEY) === '1'; }
+        catch (_) { return false; }
+    }
+
+    function applyDocumentActionsVisibility(hidden) {
+        const shouldHide = !!hidden;
+        const sidebar = document.getElementById('sidebar');
+        const checkbox = document.getElementById('hide-document-actions-toggle');
+        if (sidebar) sidebar.classList.toggle('sidebar-doc-actions-hidden', shouldHide);
+        if (checkbox) checkbox.checked = shouldHide;
+    }
+
+    function toggleDocumentActionsVisibility(checkbox) {
+        const shouldHide = !!(checkbox && checkbox.checked);
+        try { localStorage.setItem(DOCUMENT_ACTIONS_HIDDEN_KEY, shouldHide ? '1' : '0'); }
+        catch (_) {}
+        applyDocumentActionsVisibility(shouldHide);
+    }
 
     function esc(value) {
         return String(value || '')
@@ -15,6 +36,10 @@
 
     function shortText(text, n) {
         return Array.from(String(text || '').trim()).slice(0, n).join('');
+    }
+
+    function compactInitial(text, fallback) {
+        return shortText(text, 1) || String(fallback || '#');
     }
 
     function buildFolderPath(folders, folderId) {
@@ -162,34 +187,39 @@
             '<div class="p-4 border-b border-slate-200 dark:border-slate-700 space-y-4">',
             '  <div class="sidebar-primary-actions items-center gap-2 mb-2 sidebar-text">',
             '    <button type="button" onclick="openBackupModal()" class="w-9 h-9 flex items-center justify-center bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-slate-700 dark:text-slate-200 transition-colors" title="내문서 백업" aria-label="내문서 백업"><i data-lucide="archive" class="w-4 h-4"></i></button>',
-            '    <button type="button" onclick="openMergeModal()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="문서 묶기"><i data-lucide="layers" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate">merge</span></button>',
-            '    <button type="button" id="btn-highlight-popup" onclick="openHighlightPopup()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="하이라이트 열기" aria-label="하이라이트 열기"><i data-lucide="highlighter" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate">Highlight</span></button>',
+            '    <button type="button" onclick="openMergeModal()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="문서 묶기" aria-label="문서 묶기"><i data-lucide="layers" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate sidebar-control-label">merge</span></button>',
+            '    <button type="button" id="btn-highlight-popup" onclick="openHighlightPopup()" class="min-w-0 w-full h-9 flex items-center justify-center gap-1 px-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 rounded text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition-colors" title="하이라이트 열기" aria-label="하이라이트 열기"><i data-lucide="highlighter" class="w-3.5 h-3.5 shrink-0"></i><span class="truncate sidebar-control-label">Highlight</span></button>',
             '  </div>',
             '  <div class="flex items-center justify-between sidebar-header-btns">',
             '    <div class="flex bg-slate-200 dark:bg-slate-800 rounded p-1 w-full mr-2 sidebar-text">',
-            '      <button onclick="switchSidebarTab(\'files\')" id="tab-files" class="flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors">파일</button>',
-            '      <button onclick="switchSidebarTab(\'toc\')" id="tab-toc" class="flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors">목차</button>',
+            '      <button onclick="switchSidebarTab(\'files\')" id="tab-files" class="flex-1 text-xs font-bold py-1 bg-white dark:bg-slate-700 rounded shadow-sm text-slate-800 dark:text-white transition-colors" title="파일" aria-label="파일"><i data-lucide="files" class="sidebar-tab-icon w-4 h-4" aria-hidden="true"></i><span class="sidebar-control-label">파일</span></button>',
+            '      <button onclick="switchSidebarTab(\'toc\')" id="tab-toc" class="flex-1 text-xs font-bold py-1 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-colors" title="목차" aria-label="목차"><i data-lucide="list-tree" class="sidebar-tab-icon w-4 h-4" aria-hidden="true"></i><span class="sidebar-control-label">목차</span></button>',
             '    </div>',
             '    <div class="flex gap-1 shrink-0">',
-            '      <button onclick="createNewFolder()" id="btn-new-folder" class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400" title="폴더 생성"><i data-lucide="folder-plus" class="w-4 h-4"></i></button>',
             '      <button onclick="toggleSidebarCollapse()" class="p-1.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400" title="사이드바 축소/확장"><i id="collapse-icon" data-lucide="chevron-left" class="w-4 h-4"></i></button>',
             '    </div>',
             '  </div>',
             '  <div id="storage-source-tabs" class="hidden items-center gap-1">',
-            '    <button type="button" id="tab-storage-local" onclick="switchStorageSourceTab(\'local\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="로컬 폴더를 탐색기처럼 열기"><i data-lucide="folder-open" class="w-3.5 h-3.5"></i><span>Local</span></button>',
-            '    <button type="button" id="tab-storage-indb" onclick="switchStorageSourceTab(\'indb\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">inDB</button>',
-            '    <button type="button" id="tab-storage-sqlite" onclick="switchStorageSourceTab(\'sqlite\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="로컬 SQLite 저장소">SQLite</button>',
-            '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200">github</button>',
+            '    <button type="button" id="tab-storage-local" onclick="switchStorageSourceTab(\'local\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="Local · 로컬 폴더"><i data-lucide="folder-open" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">Local</span></button>',
+            '    <button type="button" id="tab-storage-indb" onclick="switchStorageSourceTab(\'indb\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="inDB · 내부 저장소"><i data-lucide="database" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">inDB</span></button>',
+            '    <button type="button" id="tab-storage-sqlite" onclick="switchStorageSourceTab(\'sqlite\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="SQLite · 로컬 SQLite 저장소"><i data-lucide="hard-drive" class="storage-tab-icon w-3.5 h-3.5"></i><span class="storage-tab-label">SQLite</span></button>',
+            '    <button type="button" id="tab-storage-github" onclick="switchStorageSourceTab(\'github\')" class="inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200" title="GitHub · 원격 저장소" aria-label="GitHub 저장소"><i data-lucide="github" class="storage-tab-icon w-3.5 h-3.5" aria-hidden="true"></i><span class="storage-tab-label">github</span></button>',
             '    <a id="tab-storage-github-link" href="#" target="_blank" rel="noopener noreferrer" onclick="return openGithubRepositoryLink(event)" class="hidden px-1.5 py-1 text-[10px] font-bold border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700" title="GitHub 로그인 후 저장소 열기">↗</a>',
             '  </div>',
             '  <div id="storage-sync-status" class="hidden text-[10px] px-2 py-1 rounded border" role="status" aria-live="polite"></div>',
-            '  <div class="relative search-container" id="search-container">',
-            '    <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 search-icon-only"></i>',
-            '    <input type="text" id="db-search" oninput="scheduleStorageSearch()" placeholder="문서 제목·본문 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
+            '  <div class="flex items-center gap-2 search-container" id="search-container">',
+            '    <div class="relative min-w-0 flex-1">',
+            '      <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none search-icon-only"></i>',
+            '      <input type="text" id="db-search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" aria-label="문서 검색" oninput="scheduleStorageSearch()" placeholder="문서 제목·본문 검색..." class="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500">',
+            '    </div>',
+            '    <label class="document-actions-toggle shrink-0 inline-flex items-center cursor-pointer" title="문서 카드의 열기, 이동, github, 삭제 버튼 숨기기">',
+            '      <input type="checkbox" id="hide-document-actions-toggle" onchange="toggleDocumentActionsVisibility(this)" class="w-4 h-4 accent-indigo-600" aria-label="문서 메뉴 숨기기">',
+            '    </label>',
+            '    <button type="button" id="toggle-all-sidebar-folders" onclick="toggleAllSidebarFolders()" class="shrink-0 w-6 h-6 inline-flex items-center justify-center rounded text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700" title="모든 폴더 접기" aria-label="모든 폴더 접기" aria-pressed="false">▼</button>',
             '  </div>',
             '</div>',
-            '<div id="db-list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1"></div>',
-            '<div id="toc-list" class="hidden flex-1 overflow-y-auto custom-scrollbar p-2"></div>',
+            '<div id="db-list" class="min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-2 space-y-1"></div>',
+            '<div id="toc-list" class="hidden min-h-0 flex-1 overflow-y-auto overscroll-contain custom-scrollbar p-2"></div>',
             '<div class="p-2 border-t border-slate-200 dark:border-slate-700">',
             '  <div class="flex items-center gap-2">',
             '    <button type="button" id="btn-github-sync" onclick="pullGithubRepo()" class="hidden flex-1 items-center justify-center px-3 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-md text-xs font-semibold text-white transition-colors" title="GitHub 저장소에서 Pull 동기화"><span id="github-sync-label">SYNC</span></button>',
@@ -215,11 +245,26 @@
             if (resizeHandle) resizeHandle.insertAdjacentHTML('beforebegin', getSidebarShellHtml());
             else sidebar.insertAdjacentHTML('afterbegin', getSidebarShellHtml());
         }
+        const search = document.getElementById('db-search');
+        if (search) {
+            search.value = '';
+            search.defaultValue = '';
+            search.setAttribute('autocomplete', 'off');
+            // Clear browser-restored form values on navigation, never during typing.
+            window.addEventListener('pageshow', function () {
+                if (!search.value) return;
+                search.value = '';
+                if (typeof window.scheduleStorageSearch === 'function') window.scheduleStorageSearch();
+            });
+        }
         sidebar.dataset.sidebarLeftReady = '1';
+        applyDocumentActionsVisibility(areDocumentActionsHidden());
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSidebarShell);
     else installSidebarShell();
+
+    window.toggleDocumentActionsVisibility = toggleDocumentActionsVisibility;
 
     function switchSidebarTab(tab, ctx) {
         activeTab = tab === 'toc' ? 'toc' : 'files';
@@ -308,13 +353,13 @@
 
         if (isCollapsed) {
             if (!tocItems.length) {
-                tocList.innerHTML = '<div class="p-2 flex justify-center"><button type="button" class="w-12 h-6 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600 text-[10px] font-bold cursor-not-allowed flex items-center justify-center" disabled aria-label="No headings found">-</button></div>';
+                tocList.innerHTML = '<div class="p-2 flex justify-center"><button type="button" class="sidebar-compact-item border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-300 dark:text-slate-600 cursor-not-allowed" disabled aria-label="No headings found"><span class="sidebar-compact-initial">-</span></button></div>';
                 return lastTocItems;
             }
-            let compactHtml = '<div class="space-y-1 p-1 flex flex-col items-center">';
+            let compactHtml = '<div class="sidebar-compact-list">';
             tocItems.forEach((item) => {
-                const label = shortText(item.text, 3) || '#';
-                compactHtml += '<button type="button" class="w-12 h-6 rounded-md border text-[10px] font-bold transition-colors flex items-center justify-center ' + levelToneClass(item.level) + '" title="' + esc(item.text) + '" aria-label="' + esc(item.text) + '" onclick="scrollToLine(' + item.lineIndex + ')"><span class="truncate" style="max-width:2.4rem;display:inline-block">' + esc(label) + '</span></button>';
+                const label = compactInitial(item.text, '#');
+                compactHtml += '<button type="button" class="sidebar-compact-item border transition-colors ' + levelToneClass(item.level) + '" title="' + esc(item.text) + '" aria-label="' + esc(item.text) + '" onclick="scrollToLine(' + item.lineIndex + ')"><span class="sidebar-compact-initial">' + esc(label) + '</span></button>';
             });
             tocList.innerHTML = compactHtml + '</div>';
             return lastTocItems;
@@ -365,6 +410,58 @@
         return top;
     }
 
+    function getModeSyncLine(ctx) {
+        const editor = ctx.getEditor();
+        const items = parseTocItemsFromMarkdown(ctx.getMarkdown());
+        if (!items.length) return null;
+        let active = null;
+        if (ctx.isEditMode()) {
+            if (!editor) return null;
+            const lines = String(editor.value || '').split('\n');
+            const offsets = [0];
+            lines.forEach((line, i) => offsets.push(offsets[i] + line.length + 1));
+            const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 24;
+            // TOC navigation leaves three lines of context above the heading.
+            const limit = editor.scrollTop + lineHeight * 3 + 2;
+            let low = 0;
+            let high = items.length - 1;
+            while (low <= high) {
+                const middle = Math.floor((low + high) / 2);
+                if (getTextareaCaretTopOffset(editor, offsets[items[middle].lineIndex]) <= limit) {
+                    active = items[middle];
+                    low = middle + 1;
+                } else {
+                    high = middle - 1;
+                }
+            }
+        } else {
+            const viewer = ctx.getViewer();
+            const container = document.getElementById('viewer-container');
+            if (!viewer || !container) return null;
+            const headers = Array.from(viewer.querySelectorAll('h1, h2, h3, h4, h5, h6'));
+            const containerTop = container.getBoundingClientRect().top;
+            const scrollPadding = parseFloat(getComputedStyle(container).scrollPaddingTop) || 0;
+            for (let index = 0; index < items.length; index++) {
+                const header = getTocHeader(items, index, headers);
+                if (!header) continue;
+                // scrollIntoView respects the heading's scroll-margin-top (5rem).
+                // Include that space so a TOC jump selects this heading, not the previous one.
+                const scrollMargin = parseFloat(getComputedStyle(header).scrollMarginTop) || 0;
+                const limit = containerTop + scrollPadding + scrollMargin + 2;
+                if (header.getBoundingClientRect().top > limit) continue;
+                active = items[index];
+            }
+        }
+        return active ? active.lineIndex : items[0].lineIndex;
+    }
+
+    function getTocHeader(items, index, headers) {
+        const item = items[index];
+        const text = String(item.text || '').trim();
+        const occurrence = items.slice(0, index).filter(other => other.level === item.level && String(other.text || '').trim() === text).length;
+        return headers.filter(header => Number(header.tagName.slice(1)) === item.level && String(header.textContent || '').trim() === text)[occurrence] || headers[index];
+    }
+
     function scrollToLine(lineIndex, ctx) {
         const editorTextarea = ctx && typeof ctx.getEditor === 'function' ? ctx.getEditor() : null;
         const viewer = ctx && typeof ctx.getViewer === 'function' ? ctx.getViewer() : null;
@@ -382,11 +479,11 @@
             editorTextarea.setSelectionRange(charPos, charPos);
             const top = getTextareaCaretTopOffset(editorTextarea, charPos);
             const lineHeight = parseFloat(getComputedStyle(editorTextarea).lineHeight) || 24;
-            editorTextarea.scrollTo({ top: Math.max(0, top - (lineHeight * 3)), behavior: 'smooth' });
+            editorTextarea.scrollTo({ top: Math.max(0, top - (lineHeight * 3)), behavior: ctx.instant ? 'instant' : 'smooth' });
             return;
         }
 
-        const tocItems = lastTocItems.length ? lastTocItems : parseTocItemsFromMarkdown(markdown);
+        const tocItems = parseTocItemsFromMarkdown(markdown);
         const targetIdx = tocItems.findIndex((item) => item.lineIndex === lineIndex);
         const targetItem = targetIdx >= 0 ? tocItems[targetIdx] : null;
         const headers = viewer ? Array.from(viewer.querySelectorAll('h1, h2, h3, h4, h5, h6')) : [];
@@ -403,13 +500,13 @@
                 return level === targetItem.level && String(h.textContent || '').trim() === normalizedTargetText;
             });
             if (matchingHeaders[sameKeyBefore]) {
-                matchingHeaders[sameKeyBefore].scrollIntoView({ behavior: 'smooth', block: 'start' });
+                matchingHeaders[sameKeyBefore].scrollIntoView({ behavior: ctx.instant ? 'instant' : 'smooth', block: 'start' });
                 return;
             }
         }
 
         const fallbackIndex = Math.max(0, Math.min(Number(targetIdx >= 0 ? targetIdx : 0), headers.length - 1));
-        headers[fallbackIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+        headers[fallbackIndex].scrollIntoView({ behavior: ctx.instant ? 'instant' : 'smooth', block: 'start' });
     }
 
     async function renderStorageList(ctx) {
@@ -469,7 +566,7 @@
             docItem.dataset.storageMode = storageMode;
             if (storageMode === 'indb') docItem.dataset.indbDocId = String(doc.id || '');
             docItem.className = isSidebarCollapsed
-                ? 'sidebar-folder-document group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
+                ? 'sidebar-folder-document sidebar-compact-item group mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer'
                 : 'sidebar-folder-document group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
             docItem.title = String(doc.title || '');
 
@@ -479,8 +576,8 @@
             titleRow.className = 'sidebar-doc-title-row flex items-start gap-2';
             titleRow.innerHTML = '<i data-lucide="file-text" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>';
             const titleSpan = document.createElement('span');
-            titleSpan.className = 'sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? '' : 'sidebar-text');
-            titleSpan.textContent = isSidebarCollapsed ? shortText(doc.title, 3) : String(doc.title || '');
+            titleSpan.className = 'sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? 'sidebar-compact-initial' : 'sidebar-text');
+            titleSpan.textContent = isSidebarCollapsed ? compactInitial(doc.title, '#') : String(doc.title || '');
             titleSpan.title = String(doc.title || '') + (isSidebarCollapsed ? '' : ' · 더블클릭하여 이름 수정');
             if (!isSidebarCollapsed) titleSpan.dataset.inlineRename = '1';
             titleRow.appendChild(titleSpan);
@@ -643,6 +740,7 @@
         parseTocItemsFromMarkdown,
         renderTOC,
         scrollToLine,
+        getModeSyncLine,
         renderStorageList,
         renderInDbList
     };

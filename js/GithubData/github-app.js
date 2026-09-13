@@ -51,6 +51,23 @@
         };
     }
 
+    function syncGithubSettingsFields(settings) {
+        const cfg = getGithubConfigFromSettings(settings || {});
+        const enabledEl = document.getElementById('ai-github-enabled');
+        const tokenEl = document.getElementById('github-token-input');
+        const repoEl = document.getElementById('github-repo-input');
+        const branchEl = document.getElementById('github-branch-input');
+        const pullMaxEl = document.getElementById('github-pull-max-files-input');
+        const defaultPushPathEl = document.getElementById('github-default-push-path-input');
+        if (enabledEl) enabledEl.checked = cfg.enabled;
+        if (tokenEl) tokenEl.value = cfg.token;
+        if (repoEl) repoEl.value = cfg.repoInput;
+        if (branchEl) branchEl.value = cfg.branch;
+        if (pullMaxEl) pullMaxEl.value = String(cfg.pullMaxFiles);
+        if (defaultPushPathEl) defaultPushPathEl.value = cfg.defaultPushPath;
+        return cfg;
+    }
+
     function getGithubLinkPathFromConfig(cfg) {
         const rawInput = String(cfg && cfg.repoInput ? cfg.repoInput : '').trim();
         const normalized = rawInput
@@ -242,7 +259,7 @@
         const tabsWrap = document.getElementById('storage-source-tabs');
         if (tabsWrap) {
             const hasVisibleTab = Object.keys(saved).some(function (key) { return saved[key] !== false; });
-            const shouldShow = !isSidebarCollapsed && hasVisibleTab;
+            const shouldShow = hasVisibleTab;
             tabsWrap.classList.toggle('hidden', !shouldShow);
             tabsWrap.classList.toggle('flex', shouldShow);
         }
@@ -324,14 +341,14 @@
         const hasVisibleTab = Object.keys(sidebarVisibility).some(function (key) {
             return sidebarVisibility[key] !== false;
         });
-        const shouldShow = !isSidebarCollapsed && hasVisibleTab;
+        const shouldShow = hasVisibleTab;
         tabsWrap.classList.toggle('hidden', !shouldShow);
         tabsWrap.classList.toggle('flex', shouldShow);
     }
 
     async function applyGithubUiState(settingsInput) {
         const settings = settingsInput || await getAiSettings() || {};
-        const cfg = getGithubConfigFromSettings(settings);
+        const cfg = syncGithubSettingsFields(settings);
         const githubConfigured = !!(cfg.enabled && cfg.token);
         const repoLink = document.getElementById('tab-storage-github-link');
         const syncBtn = document.getElementById('btn-github-sync');
@@ -380,8 +397,14 @@
         const requested = String(tab || '').toLowerCase();
         const next = requested === 'github' || requested === 'sqlite' || requested === 'local' ? requested : 'indb';
         const featureFlags = getStorageFeatureFlags();
-        const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
-        const githubToken = String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
+        const savedSettings = next === 'github' ? (await getAiSettings() || {}) : null;
+        const savedGithubConfig = savedSettings ? getGithubConfigFromSettings(savedSettings) : null;
+        const githubEnabled = savedGithubConfig
+            ? savedGithubConfig.enabled
+            : !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
+        const githubToken = savedGithubConfig
+            ? savedGithubConfig.token
+            : String(document.getElementById('github-token-input') && document.getElementById('github-token-input').value ? document.getElementById('github-token-input').value : '').trim();
         const githubConfigured = !!(githubEnabled && githubToken);
         if (next === 'github' && !githubConfigured) {
             currentStorageSourceTab = 'indb';
@@ -414,6 +437,9 @@
         } else if (next !== 'github') {
             if (!window.MDPStorage || typeof window.MDPStorage.requestMode !== 'function') return;
             try {
+                if (typeof window.ensureStorageServiceReady === 'function') {
+                    await window.ensureStorageServiceReady();
+                }
                 const state = await window.MDPStorage.requestMode(next);
                 currentStorageSourceTab = state.activeMode === 'sqlite' ? 'sqlite' : 'indb';
             } catch (error) {
@@ -1380,7 +1406,8 @@
             const isCollapsedFolder = !searchTerm && isFolderCollapsed(folderId);
 
             const folderDiv = document.createElement('div');
-            folderDiv.className = 'mb-2';
+            folderDiv.className = 'sidebar-folder-node mb-2';
+            folderDiv.dataset.folderId = folderId;
             const folderHeader = document.createElement('div');
             folderHeader.className = 'flex items-center gap-2 px-2 py-1 text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-tighter cursor-pointer select-none hover:bg-slate-100/70 dark:hover:bg-slate-800/70 rounded ' + (isSidebarCollapsed ? 'justify-center' : '');
             folderHeader.innerHTML = ''
@@ -1410,10 +1437,10 @@
             items.forEach(function (doc) {
                 const path = String(doc && doc.path ? doc.path : '');
                 const title = String(doc && doc.title ? doc.title : getGithubDocTitleFromPath(path));
-                const shortTitle = Array.from(title).slice(0, 3).join('');
+                const shortTitle = Array.from(title.trim()).slice(0, 1).join('') || '#';
                 const docItem = document.createElement('div');
                 docItem.className = isSidebarCollapsed
-                    ? 'group w-12 h-6 mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer flex items-center justify-center'
+                    ? 'sidebar-compact-item group mx-auto bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer'
                     : 'group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-md p-2 hover:border-indigo-300 dark:hover:border-indigo-600 transition-all shadow-sm cursor-pointer';
                 docItem.title = path || title;
                 docItem.onclick = function () { loadFromGithubCache(path); };
@@ -1421,7 +1448,7 @@
                     + '<div class="flex flex-col gap-1 doc-item-inner">'
                     + '<div class="sidebar-doc-title-row flex items-start gap-2">'
                     + '<i data-lucide="file-code-2" class="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0 ' + (isSidebarCollapsed ? 'hidden' : '') + '"></i>'
-                    + '<span class="sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? '' : 'sidebar-text') + '">'
+                    + '<span class="sidebar-doc-title font-semibold text-slate-700 dark:text-slate-300 ' + (isSidebarCollapsed ? 'sidebar-compact-initial' : 'sidebar-text') + '">'
                     + escapeHtmlText(isSidebarCollapsed ? shortTitle : title)
                     + '</span>'
                     + '</div>'
@@ -1447,6 +1474,7 @@
     window.GithubApp = {
         parseGithubRepoInput: parseGithubRepoInput,
         getGithubConfigFromSettings: getGithubConfigFromSettings,
+        syncGithubSettingsFields: syncGithubSettingsFields,
         getGithubLinkPathFromConfig: getGithubLinkPathFromConfig,
         getGithubLoginUrlForRepoPath: getGithubLoginUrlForRepoPath,
         openGithubRepositoryLink: openGithubRepositoryLink,
@@ -1491,6 +1519,7 @@
 
     window.parseGithubRepoInput = parseGithubRepoInput;
     window.getGithubConfigFromSettings = getGithubConfigFromSettings;
+    window.syncGithubSettingsFields = syncGithubSettingsFields;
     window.getGithubLinkPathFromConfig = getGithubLinkPathFromConfig;
     window.getGithubLoginUrlForRepoPath = getGithubLoginUrlForRepoPath;
     window.openGithubRepositoryLink = openGithubRepositoryLink;

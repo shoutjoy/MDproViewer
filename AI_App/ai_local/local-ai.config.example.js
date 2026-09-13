@@ -4,7 +4,7 @@ const localAIConfig = {
   model: 'google/gemma-4-e4b',
   apiKey: '',
   temperature: 0.4,
-  maxTokens: 8192,
+  maxTokens: 16384,
   timeoutMs: 720000,
   topP: null,
   seed: null,

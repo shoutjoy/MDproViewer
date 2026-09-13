@@ -37,7 +37,7 @@
             + '      <button type="button" onclick="pullGithubRepo()" class="px-3 py-1.5 bg-slate-600 rounded-md text-xs font-medium text-white hover:bg-slate-700">pull</button>'
             + '      <button type="button" onclick="openGithubRepoCreateModal()" class="px-3 py-1.5 bg-emerald-600 rounded-md text-xs font-medium text-white hover:bg-emerald-700">저장소 생성</button>'
             + '    </div>'
-            + '    <div id="github-connection-status" class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400">'
+            + '    <div id="github-connection-status" role="status" aria-live="polite" class="flex items-center gap-2 px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400">'
             + '      <span id="github-connection-dot" class="inline-block w-2.5 h-2.5 rounded-full bg-slate-400"></span>'
             + '      <span id="github-connection-text">GitHub 연결 상태를 확인하지 않았습니다.</span>'
             + '    </div>'
@@ -81,9 +81,9 @@
         if (typeof window.setStorageConnectionButtonGlow === 'function') {
             window.setStorageConnectionButtonGlow('tab-storage-github', 'github', connected);
         }
-        text.textContent = connected ? '' : String(message || '');
+        text.textContent = String(message || '');
         if (s === 'ok') {
-            wrap.className = 'hidden items-center gap-2 px-2 py-1.5 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs text-emerald-700 dark:text-emerald-300';
+            wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-xs text-emerald-700 dark:text-emerald-300';
             dot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,.18)]';
         } else if (s === 'checking') {
             wrap.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md border border-cyan-200 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-950/40 text-xs text-cyan-700 dark:text-cyan-300';

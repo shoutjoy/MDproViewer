@@ -1,14 +1,124 @@
 #sidebar {
     min-width: 0;
+    container-name: file-sidebar;
+    container-type: inline-size;
+}
+
+#sidebar .sidebar-tab-icon {
+    display: none;
+}
+
+#sidebar #storage-source-tabs > button {
+    min-width: 0;
+    white-space: nowrap;
+}
+
+/* Follow the sidebar's width, including drag resizing and restored widths. */
+@container file-sidebar (max-width: 380px) {
+    #sidebar:not(.sidebar-collapsed) > div:first-child {
+        padding: 12px;
+    }
+
+    #sidebar:not(.sidebar-collapsed) .sidebar-primary-actions {
+        grid-template-columns: repeat(3, minmax(0, 32px));
+    }
+
+    #sidebar:not(.sidebar-collapsed) .sidebar-primary-actions > button {
+        width: 100%;
+        height: 32px;
+        padding: 0;
+        gap: 0;
+    }
+
+    #sidebar:not(.sidebar-collapsed) .sidebar-control-label {
+        display: none;
+    }
+
+    #sidebar:not(.sidebar-collapsed) .sidebar-tab-icon {
+        display: block;
+        margin: auto;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #tab-files,
+    #sidebar:not(.sidebar-collapsed) #tab-toc {
+        min-width: 28px;
+        height: 28px;
+    }
+
+    #sidebar:not(.sidebar-collapsed) .search-container > .relative {
+        flex: 0 1 32px;
+        transition: flex-basis 150ms ease;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #db-search {
+        height: 32px;
+        min-width: 0;
+        padding: 0;
+        color: transparent;
+        cursor: pointer;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #db-search::placeholder {
+        color: transparent;
+    }
+
+    #sidebar:not(.sidebar-collapsed) .search-icon-only {
+        left: 8px;
+        pointer-events: none;
+    }
+
+    #sidebar:not(.sidebar-collapsed) .search-container > .relative:focus-within {
+        flex: 1 1 0%;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #db-search:focus {
+        padding-left: 28px;
+        padding-right: 6px;
+        color: inherit;
+        cursor: text;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #storage-source-tabs {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        gap: 5px;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #storage-source-tabs > button,
+    #sidebar:not(.sidebar-collapsed) #storage-source-tabs > a {
+        width: 32px;
+        min-width: 32px;
+        height: 32px;
+        padding: 0;
+        flex-shrink: 0;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #storage-source-tabs .storage-tab-label {
+        display: none;
+    }
+
+    #sidebar:not(.sidebar-collapsed) #storage-source-tabs .storage-tab-icon {
+        display: block;
+        width: 18px;
+        height: 18px;
+        flex: 0 0 18px;
+    }
+}
+
+#sidebar:not(.sidebar-collapsed) {
+    min-width: 200px;
 }
 
 #sidebar-resize-handle {
     position: absolute;
     top: 0;
-    right: -6px;
+    right: -7px;
     bottom: 0;
     z-index: 40;
-    width: 12px;
+    width: 14px;
     padding: 0;
     border: 0;
     outline: 0;

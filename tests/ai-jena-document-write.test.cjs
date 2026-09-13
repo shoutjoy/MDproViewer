@@ -13,6 +13,10 @@ assert.match(chat, /aria-label="문서에 작성"[\s\S]*?<span aria-hidden="true
 assert.match(chat, /value="cursor" aria-label="현재 커서">←<\/option>/);
 assert.match(chat, /value="document-end" aria-label="문서 맨 아래">↓<\/option>/);
 assert.match(chat, /value="selection" hidden aria-label="선택 영역">↔<\/option>/);
+assert.match(chat, /id="ai-chat-document-write-mode"[\s\S]*?id="ai-chat-sentence-only"/);
+assert.match(chat, /id="ai-chat-sentence-only"[^>]*aria-label="문장으로만 작성"/);
+assert.match(chat, /SENTENCE_ONLY_KEY/);
+assert.match(chat, /state\.sentenceOnlyEnabled[\s\S]*?필수 문장형 출력 규칙/);
 assert.match(chat, /function captureDocumentSelection/);
 assert.match(chat, /selectionSnapshot: documentSelectionSnapshot/);
 assert.match(chat, /replaceSelection: selectionWriteModeActive\(\)/);

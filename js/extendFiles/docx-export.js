@@ -621,6 +621,7 @@
     var items = [];
     var references = {};
     var inFence = false;
+    var fenceLanguage = '';
     var codeLines = [];
     var index = 0;
 
@@ -632,14 +633,23 @@
 
     function flushCode() {
       if (!codeLines.length) return;
-      items.push({ type: 'code', text: codeLines.join('\n') });
+      var code = codeLines.join('\n');
+      items.push(/^mermaid$/i.test(fenceLanguage)
+        ? { type: 'mermaid', text: code, alt: 'Mermaid diagram' }
+        : { type: 'code', text: code });
       codeLines = [];
     }
 
     while (index < lines.length) {
       var line = String(lines[index] || '');
-      if (/^\s*```/.test(line)) {
-        if (inFence) flushCode();
+      var fence = line.match(/^\s*```\s*([^\s`]*)/);
+      if (fence) {
+        if (inFence) {
+          flushCode();
+          fenceLanguage = '';
+        } else {
+          fenceLanguage = String(fence[1] || '').trim();
+        }
         inFence = !inFence;
         index += 1;
         continue;
@@ -727,6 +737,89 @@
 
     if (inFence) flushCode();
     return items;
+  }
+
+  function readSvgDimensions(svg) {
+    var width = readPositiveNumber(svg && svg.getAttribute && svg.getAttribute('width'));
+    var height = readPositiveNumber(svg && svg.getAttribute && svg.getAttribute('height'));
+    var viewBox = String(svg && svg.getAttribute && svg.getAttribute('viewBox') || '')
+      .trim().split(/[\s,]+/).map(Number);
+    if ((!width || !height) && viewBox.length === 4 && viewBox.every(Number.isFinite)) {
+      width = width || Math.abs(viewBox[2]);
+      height = height || Math.abs(viewBox[3]);
+    }
+    return { width: width || 800, height: height || 450 };
+  }
+
+  async function renderMermaidImageItem(item) {
+    if (!global.document || !global.MermaidTRT ||
+        typeof global.MermaidTRT.renderIn !== 'function') {
+      throw new Error('Mermaid renderer is unavailable.');
+    }
+    var host = global.document.createElement('div');
+    host.setAttribute('aria-hidden', 'true');
+    host.style.cssText = 'position:fixed;left:-100000px;top:0;width:1200px;opacity:0;pointer-events:none;';
+    var pre = global.document.createElement('pre');
+    var code = global.document.createElement('code');
+    code.className = 'language-mermaid';
+    code.textContent = String(item && item.text || '');
+    pre.appendChild(code);
+    host.appendChild(pre);
+    global.document.body.appendChild(host);
+    try {
+      var result = await global.MermaidTRT.renderIn(host);
+      var svg = host.querySelector('svg');
+      if (!svg || (result && result.errorCount)) {
+        throw (result && result.error) || new Error('Mermaid did not produce an SVG.');
+      }
+      if (!svg.getAttribute('xmlns')) svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      var dimensions = readSvgDimensions(svg);
+      var source = new XMLSerializer().serializeToString(svg);
+      return {
+        type: 'image',
+        blob: new Blob([source], { type: 'image/svg+xml;charset=utf-8' }),
+        alt: String(item.alt || 'Mermaid diagram'),
+        mermaidSource: String(item.text || ''),
+        width: dimensions.width,
+        height: dimensions.height
+      };
+    } finally {
+      if (host.parentNode) host.parentNode.removeChild(host);
+    }
+  }
+
+  async function renderMermaidItems(items) {
+    var rendered = [];
+    for (var index = 0; index < items.length; index += 1) {
+      var item = items[index];
+      if (!item || item.type !== 'mermaid') {
+        rendered.push(item);
+        continue;
+      }
+      try {
+        rendered.push(await renderMermaidImageItem(item));
+      } catch (error) {
+        if (global.console && typeof global.console.warn === 'function') {
+          global.console.warn('[DOCX export] Mermaid rendering failed.', error);
+        }
+        rendered.push({ type: 'code', text: String(item.text || '') });
+      }
+    }
+    return rendered;
+  }
+
+  function makeMermaidCodeAppendix(sources) {
+    if (!sources.length) return [];
+    var appendix = [{ type: 'heading', level: 2, text: 'Mermaid 코드' }];
+    sources.forEach(function (source, index) {
+      appendix.push({
+        type: 'heading',
+        level: 3,
+        text: 'Mermaid 코드 ' + (index + 1)
+      });
+      appendix.push({ type: 'code', text: String(source || '') });
+    });
+    return appendix;
   }
 
   function makeDocxTextRun(text, isBold) {
@@ -899,6 +992,7 @@
 
   async function resolveImageBlob(item, payload) {
     var data = payload || {};
+    if (item && item.blob instanceof Blob && item.blob.size) return { blob: item.blob };
     var source = String(item && item.src || '').trim();
     if (!source) return null;
 
@@ -1328,7 +1422,8 @@
     var extension = mime === 'image/png' ? 'png' :
       mime === 'image/jpeg' ? 'jpg' :
       mime === 'image/gif' ? 'gif' :
-      mime === 'image/bmp' ? 'bmp' : '';
+      mime === 'image/bmp' ? 'bmp' :
+      mime === 'image/svg+xml' ? 'svg' : '';
 
     if (!extension) {
       var rasterized = await rasterizeToPng(blob);
@@ -1613,6 +1708,7 @@
       return { type: 'paragraph', text: '[표지 렌더링 오류: ' + message + ']' };
     }), items);
     if (!items.length) items = [{ type: 'paragraph', text: '' }];
+    items = await renderMermaidItems(items);
 
     var imageSequence = 0;
     var preparedImages = await Promise.all(items.map(async function (item) {
@@ -1630,6 +1726,7 @@
     }));
 
     var media = [];
+    var exportedMermaidSources = [];
     var relationshipSequence = 2;
     var drawingSequence = 1;
     items = items.map(function (item, itemIndex) {
@@ -1638,6 +1735,9 @@
       if (!prepared || prepared.error) {
         if (item.type === 'cover') {
           return { type: 'paragraph', text: '[표지를 DOCX 이미지로 렌더링하지 못했습니다.]' };
+        }
+        if (item.mermaidSource) {
+          return { type: 'code', text: String(item.mermaidSource) };
         }
         var label = item.alt ? item.alt + ' — ' : '';
         return {
@@ -1650,10 +1750,12 @@
       relationshipSequence += 1;
       drawingSequence += 1;
       media.push(prepared);
+      if (item.mermaidSource) exportedMermaidSources.push(item.mermaidSource);
       return Object.assign({}, item, prepared, {
         type: item.type === 'cover' ? 'coverImage' : 'image'
       });
     });
+    items = items.concat(makeMermaidCodeAppendix(exportedMermaidSources));
 
     var frontMatterXml = makeMergeCoverXml(data.mergeCover) + makeAutomaticTocXml(data.includeToc);
     var documentXml =

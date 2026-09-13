@@ -21,7 +21,7 @@
         <div class="flex items-center gap-2 flex-wrap">
             <button type="button" onclick="checkGithubConnectionFromModal()"
                 class="px-3 py-1.5 bg-cyan-600 rounded-md text-xs font-medium text-white hover:bg-cyan-700">연결 확인</button>
-            <div id="github-connection-status"
+            <div id="github-connection-status" role="status" aria-live="polite"
                 class="flex-1 min-w-[160px] flex items-center gap-2 px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-xs text-slate-500 dark:text-slate-400">
                 <span id="github-connection-dot" class="inline-block w-2.5 h-2.5 rounded-full bg-slate-400"></span>
                 <span id="github-connection-text">GitHub 연결 상태를 확인하지 않았습니다.</span>

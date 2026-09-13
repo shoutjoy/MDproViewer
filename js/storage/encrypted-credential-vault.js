@@ -314,7 +314,7 @@
             baseUrl: String(config.baseUrl || 'http://127.0.0.1:5678/v1'),
             model: String(config.model || ''),
             temperature: Number.isFinite(Number(config.temperature)) ? Number(config.temperature) : 0.4,
-            outputLimit: Math.max(1, Number(config.maxTokens) || 8192),
+            outputLimit: Math.max(1, Number(config.maxTokens) || 16384),
             quickOutputLimit: Math.max(1, Number(config.quickMaxTokens) || 4096),
             reasoningOutputLimit: Math.max(1, Number(config.reasoningMaxTokens) || 8192),
             fastOutputLimit: Math.max(1, Number(config.fastMaxTokens) || 4000),

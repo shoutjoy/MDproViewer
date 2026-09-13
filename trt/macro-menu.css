@@ -1,0 +1,10 @@
+#macro-menu-panel .macro-menu-edge { position:absolute; z-index:6; touch-action:none; border-radius:4px; }
+#macro-menu-panel .macro-menu-edge-n { top:0; left:12px; right:12px; height:8px; cursor:ns-resize; }
+#macro-menu-panel .macro-menu-edge-s { bottom:0; left:12px; right:22px; height:8px; cursor:ns-resize; }
+#macro-menu-panel .macro-menu-edge-w { left:0; top:12px; bottom:12px; width:8px; cursor:ew-resize; }
+#macro-menu-panel .macro-menu-edge-e { right:0; top:12px; bottom:22px; width:8px; cursor:ew-resize; }
+#macro-menu-panel .macro-menu-edge::after { content:""; position:absolute; background:#818cf8; border-radius:3px; }
+#macro-menu-panel .macro-menu-edge-n::after, #macro-menu-panel .macro-menu-edge-s::after { width:36px; height:3px; left:calc(50% - 18px); top:2px; }
+#macro-menu-panel .macro-menu-edge-w::after, #macro-menu-panel .macro-menu-edge-e::after { width:3px; height:36px; top:calc(50% - 18px); left:2px; }
+#macro-menu-panel .macro-menu-edge-se { right:0; bottom:0; width:20px; height:20px; cursor:nwse-resize; background:repeating-linear-gradient(135deg,transparent 0 4px,#818cf8 4px 6px); clip-path:polygon(100% 0,100% 100%,0 100%); }
+#macro-menu-panel .macro-menu-edge:hover, #macro-menu-panel .macro-menu-edge:focus-visible { background-color:#818cf866; outline:2px solid #818cf8; }

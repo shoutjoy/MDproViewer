@@ -10,6 +10,7 @@
     const SAFE_SETTING_RULES = Object.freeze({
         aiMasterEnabled: ['features', 'global'], scholarAI: ['features', 'global'],
         sspimgAI: ['features', 'global'], imageUploadEnabled: ['features', 'global'],
+        imageUploadLinkSideVisible: ['features', 'global'],
         scholarSearchVisible: ['features', 'global'], highlightVisible: ['features', 'global'],
         sitesVisible: ['features', 'global'], macroVisible: ['features', 'global'],
         templateVisible: ['features', 'global'], templateNewFileVisible: ['features', 'global'],
@@ -23,6 +24,7 @@
         docSyncVisible: ['features', 'global'], githubEnabled: ['features', 'global'],
         enterButtonInsertBr: ['editor', 'global'], selectionWrapEnabled: ['editor', 'global'],
         viewModeEditEnabled: ['editor', 'global'], deepseekBaseUrl: ['integrations', 'workspace'],
+        mermaidRefAiEnabled: ['features', 'global'], img2mathEnabled: ['features', 'global'], tidyJenaEnabled: ['features', 'global'],
         githubRepo: ['integrations', 'workspace'], githubBranch: ['integrations', 'workspace'],
         githubDefaultPushPath: ['integrations', 'workspace'], githubPullMaxFiles: ['integrations', 'workspace'],
         googleDocsClientId: ['integrations', 'workspace'], googleCalendarOpenMode: ['integrations', 'profile'],

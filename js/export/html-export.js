@@ -251,12 +251,29 @@
     }
   }
 
+  function applyLightExportTheme(documentNode) {
+    if (!documentNode || !documentNode.documentElement) return;
+    var html = documentNode.documentElement;
+    var body = documentNode.body;
+    html.classList.remove('dark');
+    html.style.colorScheme = 'light';
+    html.setAttribute('data-color-scheme', 'light');
+    if (html.hasAttribute('data-theme')) html.setAttribute('data-theme', 'light');
+    if (body) {
+      body.classList.remove('dark');
+      body.classList.add('theme-light');
+      body.style.colorScheme = 'light';
+      if (body.hasAttribute('data-theme')) body.setAttribute('data-theme', 'light');
+    }
+  }
+
   async function buildExportHtml(payload) {
     var content = String(payload.content || '');
     var fileBase = sanitizeFileBase(payload.fileName);
     if (isFullHtmlDocument(content, payload.fileName) && typeof global.DOMParser === 'function') {
       var parsed = new global.DOMParser().parseFromString(content, 'text/html');
       ensureHtmlMetadata(parsed, fileBase, payload.baseUrl);
+      applyLightExportTheme(parsed);
       var htmlImages = await embedImages(parsed, null, payload);
       return {
         html: '<!DOCTYPE html>\n' + parsed.documentElement.outerHTML,
@@ -274,15 +291,17 @@
     });
     var imageResult = await embedImages(clone, rendered, payload);
     var styles = await collectPageStyles();
-    var rootClass = global.document ? global.document.documentElement.className : '';
+    var rootClass = global.document
+      ? Array.prototype.filter.call(global.document.documentElement.classList, function (name) { return name !== 'dark'; }).join(' ')
+      : '';
     var rootStyle = global.document ? (global.document.documentElement.getAttribute('style') || '') : '';
     var html = '<!DOCTYPE html>\n' +
-      '<html lang="ko" class="' + escapeHtml(rootClass) + '" style="' + escapeHtml(rootStyle) + '">\n' +
+      '<html lang="ko" class="' + escapeHtml(rootClass) + '" style="' + escapeHtml(rootStyle) + ';color-scheme:light" data-color-scheme="light">\n' +
       '<head>\n<meta charset="UTF-8">\n' +
       '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n' +
       '<title>' + escapeHtml(fileBase) + '</title>\n' + styles + '\n' +
-      '<style>body{margin:0;padding:32px 16px}.mdviewer-export-document{max-width:960px;margin:0 auto}</style>\n' +
-      '</head>\n<body class="mdviewer-export-body">\n' +
+      '<style>html,body{color-scheme:light}body{margin:0;padding:32px 16px;background:#fff;color:#1e293b}.mdviewer-export-document{max-width:960px;margin:0 auto}</style>\n' +
+      '</head>\n<body class="mdviewer-export-body theme-light" style="color-scheme:light">\n' +
       '<main class="mdviewer-export-document">' + clone.outerHTML + '</main>\n' +
       '</body>\n</html>';
     return {

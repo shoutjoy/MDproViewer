@@ -56,6 +56,7 @@ SAFE_SETTING_RULES: Dict[str, SettingRule] = {
     "scholarAI": _boolean(),
     "sspimgAI": _boolean(),
     "imageUploadEnabled": _boolean(),
+    "imageUploadLinkSideVisible": _boolean(),
     "scholarSearchVisible": _boolean(),
     "highlightVisible": _boolean(),
     "sitesVisible": _boolean(),
@@ -75,6 +76,9 @@ SAFE_SETTING_RULES: Dict[str, SettingRule] = {
     "enterButtonInsertBr": _boolean("editor"),
     "selectionWrapEnabled": _boolean("editor"),
     "viewModeEditEnabled": _boolean("editor"),
+    "mermaidRefAiEnabled": _boolean(),
+    "img2mathEnabled": _boolean(),
+    "tidyJenaEnabled": _boolean(),
     # Non-secret provider/repository preferences.
     "deepseekBaseUrl": SettingRule("integrations", "workspace", ("string",), 4096),
     "githubRepo": SettingRule("integrations", "workspace", ("string",), 1024),

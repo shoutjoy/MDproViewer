@@ -56,7 +56,7 @@ assert.match(storage, /mdpro_sqlite_feature_enabled_v1/);
 assert.match(indexedDb, /async uploadWorkFile/);
 assert.match(indexedDb, /async listWorkFiles/);
 assert.match(indexedDb, /async downloadWorkFile/);
-assert.match(inDbModule, /const DB_VERSION = 8/);
+assert.match(inDbModule, /const DB_VERSION = 9/);
 assert.match(inDbModule, /createObjectStore\('fonts'/);
 assert.match(inDbModule, /createObjectStore\('work_files'/);
 assert.match(app, /'STORAGE'/);

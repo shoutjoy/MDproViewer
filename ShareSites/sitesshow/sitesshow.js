@@ -32,7 +32,9 @@
         { name: 'Napkin', url: 'https://app.napkin.ai/' },
         { name: 'Mermaid AI', url: 'https://mermaid.ai/' },
         { name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' },
-        { name: 'colab.new', url: 'http://colab.new' }
+        { name: 'colab.new', url: 'http://colab.new' },
+        { name: '인포그래픽 만화', url: 'https://gemini.google.com/share/cf9601ca8bb0?skid=c485f35a-a1b3-421d-a5bd-7841cb209643' },
+        { name: '이미지확장', url: 'https://gemini.google.com/share/d1591e765dfd?skid=c20dbc64-20bb-4bcc-a772-24cf6a3ac2ea' }
     ];
 
     async function loadHtmlFragment(path) {
@@ -173,7 +175,7 @@
             .map(function (item) {
                 const name = String(item && item.name ? item.name : '').trim();
                 const url = String(item && item.url ? item.url : '').trim();
-                return { name: name, url: url };
+                return { name: name, url: url, visible: item && item.visible !== false };
             })
             .filter(function (item) { return !!item.url; });
 
@@ -226,14 +228,35 @@
             return u === 'https://www.photopea.com' || u === 'https://photopea.com';
         });
         if (!hasPhotopea) base.push({ name: 'online Photoshop (photopea)', url: 'https://www.photopea.com/' });
-        return base;
+        const infographicComicUrl = 'https://gemini.google.com/share/cf9601ca8bb0?skid=c485f35a-a1b3-421d-a5bd-7841cb209643';
+        base.forEach(function (item) {
+            if (normalizeUrl(item.url).split('?')[0] === 'https://gemini.google.com/share/bbaf65f86ad2' ||
+                item.url === 'https://share.gemini.google/ASX2XZa8B6zV') {
+                item.url = infographicComicUrl;
+                item.visible = true;
+            }
+        });
+        const additions = [
+            { name: '인포그래픽 만화', url: infographicComicUrl },
+            { name: '이미지확장', url: 'https://gemini.google.com/share/d1591e765dfd?skid=c20dbc64-20bb-4bcc-a772-24cf6a3ac2ea' }
+        ];
+        additions.forEach(function (site) {
+            if (!base.some(function (item) { return normalizeUrl(item.url).split('?')[0] === normalizeUrl(site.url).split('?')[0]; })) base.push(site);
+        });
+        let hasInfographicComic = false;
+        return base.filter(function (item) {
+            if (normalizeUrl(item.url).split('?')[0] !== normalizeUrl(infographicComicUrl).split('?')[0]) return true;
+            if (hasInfographicComic) return false;
+            hasInfographicComic = true;
+            return true;
+        });
     }
 
     function renderSitesPanel() {
         const listEl = document.getElementById('sites-list');
         if (listEl) {
             listEl.innerHTML = '';
-            sitesList.forEach(function (site) {
+            sitesList.filter(function (site) { return site.visible !== false; }).forEach(function (site) {
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 if (sitesPanelCompact) {
@@ -296,6 +319,18 @@
             del.onclick = function () { removeSiteAt(idx); };
             row.appendChild(del);
 
+            const visibleLabel = document.createElement('label');
+            visibleLabel.className = 'shrink-0 inline-flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300 cursor-pointer select-none';
+            const visible = document.createElement('input');
+            visible.type = 'checkbox';
+            visible.checked = site.visible !== false;
+            visible.className = 'rounded border-slate-300 dark:border-slate-600 text-indigo-600 focus:ring-indigo-500';
+            visible.setAttribute('aria-label', (site.name || site.url) + ' 보이기');
+            visible.onchange = function () { setSiteVisibility(idx, visible.checked); };
+            visibleLabel.appendChild(visible);
+            visibleLabel.appendChild(document.createTextNode('보이기'));
+            row.appendChild(visibleLabel);
+
             listEl.appendChild(row);
         });
     }
@@ -327,6 +362,14 @@
             del.textContent = 'Delete';
             del.onclick = function () { removeSiteAt(idx); };
             row.appendChild(del);
+
+            const visible = document.createElement('input');
+            visible.type = 'checkbox';
+            visible.checked = site.visible !== false;
+            visible.title = 'Show site';
+            visible.setAttribute('aria-label', (site.name || site.url) + ' 보이기');
+            visible.onchange = function () { setSiteVisibility(idx, visible.checked); };
+            row.appendChild(visible);
 
             listEl.appendChild(row);
         });
@@ -557,6 +600,13 @@
         await setAiSettings({ sitesList: sitesList.slice() });
     }
 
+    async function setSiteVisibility(index, visible) {
+        if (index < 0 || index >= sitesList.length) return;
+        sitesList[index] = Object.assign({}, sitesList[index], { visible: !!visible });
+        await saveSitesListToSettings();
+        renderSitesPanel();
+    }
+
     function normalizeUrlForCompare(url) {
         return String(url || '').trim().toLowerCase().replace(/\/+$/, '');
     }
@@ -661,9 +711,9 @@
         const displayName = String(nameInput && nameInput.value ? nameInput.value : '').trim()
             || buildSiteNameFromUrl(normalized);
         if (editing) {
-            sitesList[editingPreferencesSiteIndex] = { name: displayName, url: normalized };
+            sitesList[editingPreferencesSiteIndex] = { name: displayName, url: normalized, visible: sitesList[editingPreferencesSiteIndex].visible !== false };
         } else {
-            sitesList.push({ name: displayName, url: normalized });
+            sitesList.push({ name: displayName, url: normalized, visible: true });
         }
         await saveSitesListToSettings();
         renderSitesPanel();
@@ -700,9 +750,9 @@
         }
         const displayName = String(nameInput && nameInput.value ? nameInput.value : '').trim() || buildSiteNameFromUrl(normalized);
         if (editing) {
-            sitesList[editingSiteIndex] = { name: displayName, url: normalized };
+            sitesList[editingSiteIndex] = { name: displayName, url: normalized, visible: sitesList[editingSiteIndex].visible !== false };
         } else {
-            sitesList.push({ name: displayName, url: normalized });
+            sitesList.push({ name: displayName, url: normalized, visible: true });
         }
         await saveSitesListToSettings();
         renderSitesPanel();

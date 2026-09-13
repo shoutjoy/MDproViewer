@@ -73,6 +73,7 @@
       return authorship && authorship.author ? authorship.author.display_name : '';
     }).map(cleanText).filter(Boolean);
     var primary = item && item.primary_location || {};
+    var bestOpenAccess = item && item.best_oa_location || {};
     var source = primary.source || {};
     var doi = normalizeDoi(item && item.doi);
     return {
@@ -85,6 +86,7 @@
       journal: cleanText(source.display_name),
       doi: doi,
       url: doi ? 'https://doi.org/' + doi : cleanText(primary.landing_page_url || item && item.id),
+      pdfUrl: cleanText(bestOpenAccess.pdf_url || primary.pdf_url),
       citedBy: Number(item && item.cited_by_count) || 0,
       abstract: abstractFromInvertedIndex(item && item.abstract_inverted_index).slice(0, 6000),
       type: cleanText(item && item.type)
@@ -98,6 +100,9 @@
     var doi = normalizeDoi(item && item.DOI);
     var title = Array.isArray(item && item.title) ? item.title[0] : item && item.title;
     var journal = Array.isArray(item && item['container-title']) ? item['container-title'][0] : item && item['container-title'];
+    var pdfLink = (Array.isArray(item && item.link) ? item.link : []).find(function (link) {
+      return /pdf/i.test(cleanText(link && (link['content-type'] || link.URL)));
+    });
     return {
       id: doi ? 'https://doi.org/' + doi : cleanText(item && item.URL),
       sources: ['Crossref'],
@@ -108,6 +113,7 @@
       journal: cleanText(journal),
       doi: doi,
       url: doi ? 'https://doi.org/' + doi : cleanText(item && item.URL),
+      pdfUrl: cleanText(pdfLink && pdfLink.URL),
       citedBy: Number(item && item['is-referenced-by-count']) || 0,
       abstract: cleanText(item && item.abstract).slice(0, 6000),
       type: cleanText(item && item.type)
@@ -137,6 +143,7 @@
       if (!existing.abstract && item.abstract) existing.abstract = item.abstract;
       if (!existing.doi && item.doi) existing.doi = item.doi;
       if (!existing.url && item.url) existing.url = item.url;
+      if (!existing.pdfUrl && item.pdfUrl) existing.pdfUrl = item.pdfUrl;
       if (!existing.journal && item.journal) existing.journal = item.journal;
       if (!existing.year && item.year) existing.year = item.year;
       if ((!existing.authors || !existing.authors.length) && item.authors && item.authors.length) {
@@ -161,7 +168,7 @@
     params.set('search', query);
     if (requireAbstract !== false) params.set('filter', 'has_abstract:true');
     params.set('per-page', String(rows));
-    params.set('select', 'id,doi,title,display_name,publication_year,authorships,primary_location,abstract_inverted_index,cited_by_count,type');
+    params.set('select', 'id,doi,title,display_name,publication_year,authorships,primary_location,best_oa_location,abstract_inverted_index,cited_by_count,type');
     var data = await fetchJson(OPENALEX_API + '?' + params.toString(), signal, 'OpenAlex');
     return (Array.isArray(data && data.results) ? data.results : []).map(fromOpenAlex);
   }

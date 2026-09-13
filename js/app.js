@@ -1,5 +1,53 @@
 // js/inDB/inDB.js opens MarkdownProDB; app.js keeps the shared connection for editor integrations.
 let db;
+let mainDatabaseReadyPromise = null;
+let storageServiceReadyPromise = null;
+
+function ensureMainDatabaseReady() {
+    if (db) return Promise.resolve(db);
+    if (mainDatabaseReadyPromise) return mainDatabaseReadyPromise;
+    if (typeof initDB !== 'function') {
+        return Promise.reject(new Error('데이터베이스 초기화 모듈을 불러오지 못했습니다.'));
+    }
+    mainDatabaseReadyPromise = Promise.resolve()
+        .then(function () { return initDB(); })
+        .then(function (openedDb) {
+            db = openedDb || db;
+            if (!db) throw new Error('데이터베이스 연결을 만들지 못했습니다.');
+            return db;
+        })
+        .catch(function (error) {
+            mainDatabaseReadyPromise = null;
+            throw error;
+        });
+    return mainDatabaseReadyPromise;
+}
+
+function ensureStorageServiceReady() {
+    if (!window.MDPStorage || typeof window.MDPStorage.initialize !== 'function') {
+        return Promise.reject(new Error('저장소 초기화 모듈을 불러오지 못했습니다.'));
+    }
+    const currentState = typeof window.MDPStorage.getStatus === 'function'
+        ? window.MDPStorage.getStatus()
+        : null;
+    if (currentState && currentState.initialized) return Promise.resolve(currentState);
+    if (storageServiceReadyPromise) return storageServiceReadyPromise;
+
+    storageServiceReadyPromise = ensureMainDatabaseReady()
+        .then(function () {
+            const latestState = typeof window.MDPStorage.getStatus === 'function'
+                ? window.MDPStorage.getStatus()
+                : null;
+            if (latestState && latestState.initialized) return latestState;
+            return window.MDPStorage.initialize({ getIndexedDb: function () { return db; } });
+        })
+        .catch(function (error) {
+            storageServiceReadyPromise = null;
+            throw error;
+        });
+    return storageServiceReadyPromise;
+}
+window.ensureStorageServiceReady = ensureStorageServiceReady;
 const AI_SETTINGS_KEY = 'ai_settings';
 const AI_SETTINGS_FALLBACK_KEY = 'md_viewer_ai_settings_fallback';
 const AI_PASSWORD_HASH = 'dc98e82fcfb4b165f5fa390d5ca61a9245a5be6ea70a4f00020ddff029afefba';
@@ -106,15 +154,15 @@ const OPTIONAL_SCRIPT_SOURCES = Object.freeze({
     docxImport: './js/extendFiles/docx-import.js?v=20260817-dark-table-contrast-1',
     pdfJs: './js/extendFiles/pdfjs-loader.mjs?v=20260815-editable-2',
     pdfOpen: './js/extendFiles/pdf-open.js?v=20260815-editable-1',
-    docxExport: './js/extendFiles/docx-export.js?v=20260816-merge-cover-toc-2',
-    htmlExport: './js/export/html-export.js?v=20260805-image-1',
+    docxExport: './js/extendFiles/docx-export.js?v=20260902-mermaid-image-4',
+    htmlExport: './js/export/html-export.js?v=20260902-light-theme-1',
     pdfExport: './js/export/pdf-export.js?v=20260813-merge-tool-1',
     html2canvas: './vendor/html2canvas/html2canvas.min.js?v=1.4.1',
     jsPdf: './vendor/jspdf/jspdf.umd.min.js?v=4.2.1',
-    aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1',
-    aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260823-web-search-1',
-    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260825-table-pipes-1',
-    aiChat: './AI_App/aiChat/ai-chat.js?v=20260902-send-recovery-1',
+    aiAcademicSearch: './js/Scholarref/ai/academic-search.js?v=20260817-scholar-audit-1-pdf-to-pv-1',
+    aiWebSearch: './AI_App/aiChat/ai-jena-local-api.js?v=20260902-web-search-recovery-2',
+    aiMarkdown: './AI_App/aiChat/ai-chat-markdown.js?v=20260902-new-window-links-1',
+    aiChat: './AI_App/aiChat/ai-chat.js?v=20260912-original-response-theme-1',
     mathJax: 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.min.js',
     inputPaintBenchmark: './js/performance/input-paint-benchmark.js?v=20260810-4',
     codeMirrorPrototype: './js/editor/codemirror-prototype.mjs?v=20260810-3'
@@ -228,6 +276,17 @@ async function ensureMdMathEngineLoaded() {
 }
 window.ensureMdMathEngineLoaded = ensureMdMathEngineLoaded;
 
+function isAiJenaMenuEntryEnabled() {
+    const enabledKey = 'ss_ai_chat_enabled';
+    const menuEnabledKey = 'ss_ai_chat_menu_enabled';
+    // 설정 초기화나 이전 버전 데이터에서 활성 진입 방식이 없으면
+    // 헤더 메뉴를 기본 진입점으로 복원한다.
+    if (localStorage.getItem(enabledKey) !== '1' && localStorage.getItem(menuEnabledKey) !== '1') {
+        localStorage.setItem(menuEnabledKey, '1');
+    }
+    return localStorage.getItem(menuEnabledKey) === '1';
+}
+
 function initializeLazyAiChatEntry() {
     const enabledKey = 'ss_ai_chat_enabled';
     const menuEnabledKey = 'ss_ai_chat_menu_enabled';
@@ -235,8 +294,14 @@ function initializeLazyAiChatEntry() {
     const checkbox = document.getElementById('ai-chat-enabled');
     const menuCheckbox = document.getElementById('ai-chat-menu-enabled');
     const menuButton = document.getElementById('btn-ai-jena-menu');
+    isAiJenaMenuEntryEnabled();
+    // 이전 버전에서는 두 진입 방식을 동시에 켤 수 있었다. 겹친 저장값은
+    // 메뉴 방식을 우선하여 한 번만 정리한다.
+    if (localStorage.getItem(enabledKey) === '1' && localStorage.getItem(menuEnabledKey) === '1') {
+        localStorage.setItem(enabledKey, '0');
+    }
     const syncMenuButton = function () {
-        const enabled = localStorage.getItem(menuEnabledKey) === '1';
+        const enabled = isAiJenaMenuEntryEnabled();
         if (menuCheckbox) menuCheckbox.checked = enabled;
         if (menuButton) {
             menuButton.classList.toggle('hidden', !enabled);
@@ -364,7 +429,11 @@ function initializeLazyAiChatEntry() {
         checkbox.dataset.lazyAiChatBound = '1';
         checkbox.checked = localStorage.getItem(enabledKey) === '1';
         checkbox.addEventListener('change', function () {
+            if (!checkbox.checked) return;
+            if (menuCheckbox) menuCheckbox.checked = false;
+            localStorage.setItem(menuEnabledKey, '0');
             localStorage.setItem(enabledKey, checkbox.checked ? '1' : '0');
+            syncMenuButton();
             window.dispatchEvent(new CustomEvent('ai-jena-enabled-change', {
                 detail: { enabled: checkbox.checked }
             }));
@@ -375,9 +444,19 @@ function initializeLazyAiChatEntry() {
     if (menuCheckbox && !menuCheckbox.dataset.aiChatMenuBound) {
         menuCheckbox.dataset.aiChatMenuBound = '1';
         menuCheckbox.addEventListener('change', function () {
+            if (!menuCheckbox.checked) return;
+            if (checkbox) checkbox.checked = false;
+            localStorage.setItem(enabledKey, '0');
             localStorage.setItem(menuEnabledKey, menuCheckbox.checked ? '1' : '0');
+            removeLauncher();
+            if (window.AIChat && typeof window.AIChat.setEnabled === 'function') {
+                window.AIChat.setEnabled(false);
+            }
+            window.dispatchEvent(new CustomEvent('ai-jena-enabled-change', {
+                detail: { enabled: false }
+            }));
             syncMenuButton();
-            if (!menuCheckbox.checked && typeof applyAiFeatureVisibility === 'function') applyAiFeatureVisibility();
+            if (typeof applyAiFeatureVisibility === 'function') applyAiFeatureVisibility();
         });
     }
     syncMenuButton();
@@ -441,6 +520,8 @@ function enableTouchModalDrag(panel, handle, options) {
 }
 const GITHUB_SETTINGS_FOLD_KEY = 'md_viewer_github_settings_folded';
 const EDITOR_HORIZONTAL_SHIFT_KEY = 'md_viewer_editor_horizontal_shift_px';
+const EDITOR_SHIFT_FLOAT_POSITION_KEY = 'md_viewer_editor_shift_float_position';
+const EDITOR_SHIFT_FLOAT_ORIENTATION_KEY = 'md_viewer_editor_shift_float_orientation';
 
 // State
 let currentMarkdown = "";
@@ -471,7 +552,7 @@ const autoSaveStats = {
     failed: 0
 };
 let isEditMode = true;
-let pageScale = 1.0;
+let pageWidthScale = 1.0;
 let fontSize = 16;
 document.documentElement.style.setProperty('--md-app-font-size', `${fontSize}px`);
 let headerScale = 0.7;
@@ -512,6 +593,7 @@ let highlightPopupDragBound = false;
 let highlightPopupDragging = false;
 let highlightPopupDragOffsetX = 0;
 let highlightPopupDragOffsetY = 0;
+let highlightPopupDockLeft = 12;
 let highlightPopupDockTop = 80;
 let highlightSelectionSyncBound = false;
 let highlightPopupMsgBound = false;
@@ -740,6 +822,14 @@ let math99PopupStartX = 0;
 let math99PopupStartY = 0;
 let math99PopupStartW = 0;
 let math99PopupStartH = 0;
+let img2MathImage = null;
+let img2MathBound = false;
+let img2MathSelection = { start: 0, end: 0 };
+const IMG2MATH_MODEL_SELECTION_KEY = 'mdv_img2math_model_selection_v1';
+let img2MathAiSelection = null;
+let img2MathFloatingBound = false;
+let img2MathFloatingPositioned = false;
+let img2MathLastDocumentSelection = '';
 
 function loadFolderCollapseState() {
     try {
@@ -772,8 +862,36 @@ function toggleFolderCollapse(folderId) {
     if (!key) return;
     folderCollapseState[key] = !isFolderCollapsed(key);
     saveFolderCollapseState();
-    renderDBList();
+    Promise.resolve(renderDBList()).finally(syncToggleAllSidebarFoldersButton);
 }
+
+function syncToggleAllSidebarFoldersButton() {
+    const button = document.getElementById('toggle-all-sidebar-folders');
+    const folderNodes = document.querySelectorAll('#db-list .sidebar-folder-node[data-folder-id]');
+    const allCollapsed = folderNodes.length > 0 && Array.from(folderNodes).every(function (node) {
+        return isFolderCollapsed(node.dataset.folderId);
+    });
+    if (!button) return allCollapsed;
+    const label = allCollapsed ? '모든 폴더 펼치기' : '모든 폴더 접기';
+    button.textContent = allCollapsed ? '▲' : '▼';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(allCollapsed));
+    return allCollapsed;
+}
+
+function toggleAllSidebarFolders() {
+    const folderNodes = document.querySelectorAll('#db-list .sidebar-folder-node[data-folder-id]');
+    const shouldCollapse = !syncToggleAllSidebarFoldersButton();
+    folderNodes.forEach(function (node) {
+        const folderId = String(node.dataset.folderId || '');
+        if (folderId) folderCollapseState[folderId] = shouldCollapse;
+    });
+    saveFolderCollapseState();
+    Promise.resolve(renderDBList()).finally(syncToggleAllSidebarFoldersButton);
+}
+
+window.toggleAllSidebarFolders = toggleAllSidebarFolders;
 
 function getStorageSourceTabFromLocal() {
     try {
@@ -2088,7 +2206,7 @@ window.onload = async () => {
 
         // Open native files even if optional storage initialization later fails.
         await tauriFileOpenReady;
-        await initDB();
+        await ensureMainDatabaseReady();
         if (window.TextStyleTool && typeof window.TextStyleTool.setDatabase === 'function') {
             try {
                 await window.TextStyleTool.setDatabase(db);
@@ -2098,7 +2216,7 @@ window.onload = async () => {
             }
         }
         if (window.MDPStorage && typeof window.MDPStorage.initialize === 'function') {
-            const storageState = await window.MDPStorage.initialize({ getIndexedDb: function () { return db; } });
+            const storageState = await ensureStorageServiceReady();
             if (window.TextStyleTool && typeof window.TextStyleTool.setSqliteStorage === 'function') {
                 const fontSync = await window.TextStyleTool.setSqliteStorage(window.MDPStorage);
                 if (fontSync && fontSync.pending) {
@@ -2174,6 +2292,13 @@ window.onload = async () => {
                 showToast: showToast
             });
         }
+        const startupSettings = await getAiSettings();
+        if (window.GithubDataSettings && typeof window.GithubDataSettings.ensureUiReady === 'function') {
+            await window.GithubDataSettings.ensureUiReady();
+        }
+        if (typeof window.syncGithubSettingsFields === 'function') {
+            window.syncGithubSettingsFields(startupSettings || {});
+        }
         loadFolderCollapseState();
         currentStorageSourceTab = getStorageSourceTabFromLocal();
         updateStorageSourceTabsUI();
@@ -2234,7 +2359,7 @@ window.onload = async () => {
             refreshLucideIcons(sidebar);
         }
 
-        initAiVisibility();
+        await initAiVisibility();
 
     window.addEventListener('electron-open-file', async function (ev) {
         const detail = ev && ev.detail ? ev.detail : null;
@@ -2402,6 +2527,7 @@ window.onload = async () => {
 
     // Keyboard Shortcuts
     window.addEventListener('keydown', (e) => {
+        if (e.defaultPrevented) return;
         const isAltGraph = typeof e.getModifierState === 'function' && e.getModifierState('AltGraph');
         if (window.EditorRule && typeof window.EditorRule.handleSelectionWrapByTypedPair === 'function') {
             const wrapped = window.EditorRule.handleSelectionWrapByTypedPair(e, {
@@ -2614,6 +2740,7 @@ function updateContent(md) {
     notebookLmEqualsHrPreprocess = false;
     currentMarkdown = md;
     if (editorTextarea) editorTextarea.value = md;
+    if (window.A4Pages) window.A4Pages.sync(md);
     resetEditorDocumentHistory();
     updateCurrentDocumentMetadataDisplay();
     mainRenderDirty = true;
@@ -3487,6 +3614,7 @@ window.renderHtmlDocumentFrame = renderHtmlDocumentFrame;
 window.setHtmlDocumentMode = setHtmlDocumentMode;
 
 async function renderMarkdown(options) {
+    if (window.A4Pages) window.A4Pages.sync(currentMarkdown);
     if (!viewer) return;
     const renderToken = ++mainRenderToken;
     const opts = options || {};
@@ -3516,6 +3644,7 @@ async function renderMarkdown(options) {
                 && window.NoteCoverRenderer
                 && typeof window.NoteCoverRenderer.hydrate === 'function') {
                 window.NoteCoverRenderer.hydrate(viewer, {
+                    documentKey: currentDbDocId || currentFilePath || currentDocumentVirtualPath || currentFileName,
                     onTextChange: applyNoteCoverTextChange,
                     onGeometryChange: applyNoteCoverGeometryChange,
                     onStyleChange: applyNoteCoverTextStyleChange,
@@ -3579,6 +3708,12 @@ async function renderMarkdown(options) {
     revokeObjectUrls(viewerInternalImageObjectUrls);
 
     try {
+        if (window.A4Pages && window.A4Pages.parse(raw)) {
+            setHtmlDocumentMode(viewer, false);
+            await window.A4Pages.render(viewer, raw, isCurrentRender);
+            runPostRenderHooks();
+            return;
+        }
         const htmlDocument = getRenderableHtmlDocument(renderRaw);
         if (htmlDocument !== null) {
             if (!isCurrentRender()) return;
@@ -3887,6 +4022,16 @@ function toggleMode(mode) {
         console.warn('toggleMode: viewer-container or content-viewport not found.', { vc: !!vc, ec: !!ec });
         return;
     }
+    const modeChanged = isEditMode !== (mode === 'edit');
+    const syncContext = {
+        getEditor: function () { return editorTextarea; },
+        getViewer: function () { return viewer; },
+        getMarkdown: function () { return editorTextarea ? editorTextarea.value : currentMarkdown; },
+        isEditMode: function () { return isEditMode; },
+        instant: true
+    };
+    const syncLine = modeChanged && window.SidebarLeft && typeof window.SidebarLeft.getModeSyncLine === 'function'
+        ? window.SidebarLeft.getModeSyncLine(syncContext) : null;
     document.body.classList.toggle('viewer-view-mode', mode !== 'edit');
 
     if (mode === 'edit') {
@@ -3916,6 +4061,10 @@ function toggleMode(mode) {
         }
         viewClickMappedCaretPos = null;
         applyMiniPreviewVisibility();
+        if (syncLine != null) {
+            window.SidebarLeft.scrollToLine(syncLine, syncContext);
+            lastEditCaretPos = editorTextarea.selectionStart;
+        }
     } else {
         if (editorTextarea) {
             lastEditCaretPos = Math.max(0, editorTextarea.selectionStart || 0);
@@ -3965,7 +4114,8 @@ function toggleMode(mode) {
             const ratioFromCaret = getMarkdownRatioFromCharPos(lastEditCaretPos);
             requestAnimationFrame(function () {
                 if (isEditMode) return;
-                setScrollRatio(vc, ratioFromCaret);
+                if (syncLine != null) window.SidebarLeft.scrollToLine(syncLine, syncContext);
+                else setScrollRatio(vc, ratioFromCaret);
             });
         });
         applyMiniPreviewVisibility();
@@ -3975,6 +4125,17 @@ function toggleMode(mode) {
     }
     if (typeof window.refreshEditorFormatGutter === 'function') {
         requestAnimationFrame(window.refreshEditorFormatGutter);
+    }
+    if (window.A4Pages) window.A4Pages.modeChanged();
+    if (mode === 'edit' && syncLine != null) {
+        const sourceAtSwitch = syncContext.getMarkdown();
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                if (!isEditMode || syncContext.getMarkdown() !== sourceAtSwitch) return;
+                window.SidebarLeft.scrollToLine(syncLine, syncContext);
+                lastEditCaretPos = editorTextarea.selectionStart;
+            });
+        });
     }
 }
 
@@ -4198,7 +4359,9 @@ function toggleOpenSourceMenu(event) {
     if (event) event.stopPropagation();
     const menu = document.getElementById('open-source-menu');
     if (!menu) return;
-    setOpenSourceMenuVisible(menu.classList.contains('hidden'));
+    const shouldOpen = menu.classList.contains('hidden');
+    if (shouldOpen) closeOtherHeaderMenus('open-source-menu');
+    setOpenSourceMenuVisible(shouldOpen);
 }
 
 function setNewFileMenuVisible(visible) {
@@ -4214,7 +4377,15 @@ function toggleNewFileMenu(event) {
     if (event) event.stopPropagation();
     const menu = document.getElementById('new-file-menu');
     if (!menu) return;
-    setNewFileMenuVisible(menu.classList.contains('hidden'));
+    const shouldOpen = menu.classList.contains('hidden');
+    if (shouldOpen) closeOtherHeaderMenus('new-file-menu');
+    setNewFileMenuVisible(shouldOpen);
+}
+
+function closeOtherHeaderMenus(exceptMenuId) {
+    if (exceptMenuId !== 'new-file-menu') setNewFileMenuVisible(false);
+    if (exceptMenuId !== 'open-source-menu') setOpenSourceMenuVisible(false);
+    if (exceptMenuId !== 'save-dropdown-menu') closeSaveDropdown();
 }
 
 function createBlankFileFromNewMenu(event) {
@@ -4956,7 +5127,7 @@ async function readFile(file, options) {
         return;
     }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
         const raw = decodeOpenedTextBytes(e.target.result).text;
         const parsed = (formatApi && typeof formatApi.parseFileText === 'function')
             ? formatApi.parseFileText(name, raw)
@@ -4982,14 +5153,17 @@ async function readFile(file, options) {
                     ? parser.detectPayloadKind(data)
                     : '';
                 if (kind === 'mpv' || (data && data.format === MPV_FORMAT && Array.isArray(data.folders) && Array.isArray(data.documents))) {
-                    restoreFromMpv(data);
+                    await restoreFromMpv(data);
                     return;
                 }
                 if (kind === 'mpp') {
                     showToast('MPP file detected. Open it in GenSlide editor.');
                     return;
                 }
-            } catch (_) {}
+            } catch (err) {
+                showToast('MPV 파일을 열 수 없습니다: ' + (err && err.message ? err.message : err));
+                return;
+            }
         }
         if (kind === 'mpp') {
             showToast('MPP file detected. Open it in GenSlide editor.');
@@ -5070,6 +5244,13 @@ async function importMddDocumentFile(file, options) {
 }
 
 async function importZipDocumentFile(file) {
+    if (typeof JSZip !== 'undefined') {
+        const inspectedZip = await JSZip.loadAsync(await file.arrayBuffer());
+        if (inspectedZip.file('_mdpro_backup.json')) {
+            await restoreFromZipBackup(inspectedZip);
+            return;
+        }
+    }
     if (!db) {
         showToast('Database is not ready yet. Please try again.');
         return;
@@ -5090,7 +5271,10 @@ async function importZipDocumentFile(file) {
 }
 
 async function restoreFromMpv(data) {
-    if (!db) return;
+    await ensureMainDatabaseReady();
+    if (!data || !Array.isArray(data.folders) || !Array.isArray(data.documents)) {
+        throw new Error('올바른 MPV 백업 파일이 아닙니다.');
+    }
     const tx = db.transaction(['folders', 'documents'], 'readwrite');
     const storeFolders = tx.objectStore('folders');
     const storeDocs = tx.objectStore('documents');
@@ -5124,6 +5308,102 @@ function openBackupModal() {
 function closeBackupModal() {
     document.getElementById('backup-modal').classList.add('hidden');
     document.getElementById('backup-modal').classList.remove('flex');
+}
+
+function openMpvFilePicker(event) {
+    if (event) event.preventDefault();
+    const input = document.getElementById('file-input');
+    if (!input) {
+        showToast('파일 선택기를 열 수 없습니다.');
+        return false;
+    }
+    // Reset first so choosing the same backup twice still fires `change`.
+    input.value = '';
+    closeBackupModal();
+    input.click();
+    return true;
+}
+
+function openZipBackupFilePicker(event) {
+    if (event) event.preventDefault();
+    const input = document.getElementById('zip-backup-input');
+    if (!input) {
+        showToast('ZIP 파일 선택기를 열 수 없습니다.');
+        return false;
+    }
+    input.value = '';
+    closeBackupModal();
+    input.click();
+    return true;
+}
+
+async function handleZipBackupFileSelect(event) {
+    const input = event && event.target;
+    const file = input && input.files && input.files[0];
+    if (!file) return false;
+    try {
+        if (typeof JSZip === 'undefined') throw new Error('ZIP 모듈을 불러오지 못했습니다.');
+        const zip = await JSZip.loadAsync(await file.arrayBuffer());
+        await restoreFromZipBackup(zip);
+        return true;
+    } catch (error) {
+        showToast('ZIP 백업을 열 수 없습니다: ' + (error && error.message ? error.message : error));
+        return false;
+    } finally {
+        if (input) input.value = '';
+    }
+}
+
+async function restoreFromZipBackup(zip) {
+    const manifestEntry = zip && zip.file('_mdpro_backup.json');
+    if (manifestEntry) {
+        const manifest = JSON.parse(await manifestEntry.async('string'));
+        if (!manifest || manifest.format !== 'mdpro-zip-backup' || !Array.isArray(manifest.documents)) {
+            throw new Error('올바른 MDPro ZIP 백업 파일이 아닙니다.');
+        }
+        await restoreFromMpv({ folders: manifest.folders || [], documents: manifest.documents });
+        showToast('ZIP 백업의 모든 문서를 복원했습니다.');
+        return;
+    }
+
+    const markdownEntries = Object.keys((zip && zip.files) || {}).filter(function (path) {
+        const entry = zip.files[path];
+        return entry && !entry.dir && /\.md$/i.test(path) && !path.includes('__MACOSX/');
+    });
+    if (!markdownEntries.length) throw new Error('ZIP 안에서 Markdown 문서를 찾지 못했습니다.');
+    if (markdownEntries.length > 2000) throw new Error('ZIP 문서 수가 너무 많습니다 (최대 2,000개).');
+    const totalBytes = markdownEntries.reduce(function (sum, path) {
+        const data = zip.files[path] && zip.files[path]._data;
+        return sum + Number(data && data.uncompressedSize || 0);
+    }, 0);
+    if (totalBytes > 100 * 1024 * 1024) throw new Error('압축 해제할 문서가 너무 큽니다 (최대 100MB).');
+
+    const now = Date.now();
+    const folderIds = new Map();
+    const folders = [];
+    const documents = [];
+    for (let index = 0; index < markdownEntries.length; index++) {
+        const path = markdownEntries[index].replace(/\\/g, '/').replace(/^\/+/, '');
+        const parts = path.split('/').filter(Boolean);
+        const folderName = parts.length > 1 ? parts.slice(0, -1).join(' / ') : 'root';
+        let folderId = 'root';
+        if (folderName.toLowerCase() !== 'root') {
+            if (!folderIds.has(folderName)) {
+                folderIds.set(folderName, 'zip_folder_' + now + '_' + folderIds.size);
+                folders.push({ id: folderIds.get(folderName), name: folderName, parentId: 'root' });
+            }
+            folderId = folderIds.get(folderName);
+        }
+        documents.push({
+            id: 'zip_doc_' + now + '_' + index,
+            title: (parts[parts.length - 1] || 'untitled.md').replace(/\.md$/i, ''),
+            content: await zip.files[markdownEntries[index]].async('string'),
+            folderId: folderId,
+            updatedAt: new Date(now).toISOString()
+        });
+    }
+    await restoreFromMpv({ folders: folders, documents: documents });
+    showToast('ZIP 백업에서 ' + documents.length + '개 문서를 복원했습니다.');
 }
 
 function callSidebarLeftMergeApi(method, args) {
@@ -5166,6 +5446,21 @@ async function exportZip() {
         const path = safeDir + '/' + (doc.title || 'untitled').replace(/[/\\?*:|\"]/g, '_') + '.md';
         zip.file(path, doc.content || '');
     }
+    zip.file('_mdpro_backup.json', JSON.stringify({
+        format: 'mdpro-zip-backup',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        folders: folders || [],
+        documents: (documents || []).map(function (doc) {
+            return {
+                id: doc.id,
+                title: doc.title,
+                content: doc.content || '',
+                folderId: doc.folderId || 'root',
+                updatedAt: doc.updatedAt instanceof Date ? doc.updatedAt.toISOString() : (doc.updatedAt || null)
+            };
+        })
+    }, null, 2));
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -5290,6 +5585,7 @@ function toggleSaveDropdown(event) {
     if (!menu || !toggle) return false;
     bindSaveDropdownDismiss();
     const shouldOpen = menu.classList.contains('hidden');
+    if (shouldOpen) closeOtherHeaderMenus('save-dropdown-menu');
     menu.classList.toggle('hidden', !shouldOpen);
     toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
     return shouldOpen;
@@ -5659,6 +5955,17 @@ async function copyViewFormattedToClipboard() {
 function toggleSidebarVisibility() {
     isSidebarHidden = !isSidebarHidden;
     sidebar.style.display = isSidebarHidden ? 'none' : 'flex';
+    if (!isSidebarHidden) {
+        if (!sidebar.style.width || parseInt(sidebar.style.width, 10) < 188) {
+            if (window.SidebarResize && typeof window.SidebarResize.reset === 'function') {
+                window.SidebarResize.reset();
+            } else {
+                sidebar.style.width = '320px';
+                sidebar.classList.remove('sidebar-narrow');
+                sidebar.classList.remove('sidebar-collapsed');
+            }
+        }
+    }
     requestAnimationFrame(syncEditorShiftFloatPosition);
 }
 
@@ -5668,10 +5975,17 @@ function toggleSidebarCollapse() {
 
     if (isSidebarCollapsed) {
         sidebar.classList.add('sidebar-collapsed');
-        collapseIcon.setAttribute('data-lucide', 'chevron-right');
+        sidebar.classList.remove('sidebar-narrow');
+        sidebar.style.width = '3.5rem';
+        if (collapseIcon) collapseIcon.setAttribute('data-lucide', 'chevron-right');
     } else {
         sidebar.classList.remove('sidebar-collapsed');
-        collapseIcon.setAttribute('data-lucide', 'chevron-left');
+        sidebar.classList.remove('sidebar-narrow');
+        const restoredWidth = (window.SidebarResize && typeof window.SidebarResize.loadWidth === 'function')
+            ? window.SidebarResize.loadWidth()
+            : 320;
+        sidebar.style.width = Math.max(280, restoredWidth) + 'px';
+        if (collapseIcon) collapseIcon.setAttribute('data-lucide', 'chevron-left');
     }
     try {
         const githubEnabled = !!(document.getElementById('ai-github-enabled') && document.getElementById('ai-github-enabled').checked);
@@ -6108,6 +6422,7 @@ async function renderDBList() {
     if (generation !== renderDBListGeneration) return;
     listEl.replaceChildren(...Array.from(nextList.childNodes));
     refreshLucideIcons(listEl);
+    syncToggleAllSidebarFoldersButton();
 }
 
 function scheduleStorageSearch() {
@@ -8025,12 +8340,55 @@ function closeTextStyleModal() {
     return window.TextStyleTool.close({ textarea: editorTextarea });
 }
 
+let lastMermaidDocumentSelection = '';
+
+function getSelectedDocumentTextForMermaidEditor() {
+    const editorIsVisible = !!(editorTextarea && editorTextarea.offsetParent !== null);
+    if ((isEditMode || editorIsVisible) && editorTextarea) {
+        const start = Math.max(0, Number(editorTextarea.selectionStart) || 0);
+        const end = Math.max(start, Number(editorTextarea.selectionEnd) || start);
+        const selected = String(editorTextarea.value || '').slice(start, end).trim();
+        if (selected) {
+            lastMermaidDocumentSelection = selected;
+            return selected;
+        }
+    }
+
+    const selection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (selection && selection.rangeCount > 0 && String(selection.toString() || '').trim()) {
+        const range = selection.getRangeAt(0);
+        const commonNode = range.commonAncestorContainer;
+        const commonElement = commonNode && commonNode.nodeType === Node.ELEMENT_NODE ? commonNode : commonNode && commonNode.parentElement;
+        if (viewer && commonElement && viewer.contains(commonElement)) {
+            lastMermaidDocumentSelection = String(selection.toString() || '').trim();
+            return lastMermaidDocumentSelection;
+        }
+    }
+    return lastMermaidDocumentSelection;
+}
+
+function rememberSelectedDocumentTextForMermaidEditor() {
+    getSelectedDocumentTextForMermaidEditor();
+}
+
+if (editorTextarea) {
+    editorTextarea.addEventListener('select', rememberSelectedDocumentTextForMermaidEditor);
+    editorTextarea.addEventListener('mouseup', rememberSelectedDocumentTextForMermaidEditor);
+    editorTextarea.addEventListener('keyup', rememberSelectedDocumentTextForMermaidEditor);
+}
+if (viewer) viewer.addEventListener('mouseup', rememberSelectedDocumentTextForMermaidEditor);
+
 function openMermaidEditorModal() {
     const modal = document.getElementById('mermaid-editor-modal');
     if (!modal) return;
-    ensureLazyFrameLoaded('mermaid-editor-frame');
+    const frame = document.getElementById('mermaid-editor-frame');
+    const requiredSource = './js/mermaid/mermaid-editor/index.html?v=20260909-feature-gate-1&ai=' + (advancedAiFeatureFlags.mermaidRefAi ? '1' : '0');
+    if (frame && frame.dataset) frame.dataset.src = requiredSource;
+    if (frame && String(frame.getAttribute('src') || '') !== requiredSource) frame.setAttribute('src', requiredSource);
+    else ensureLazyFrameLoaded(frame);
     modal.classList.remove('hidden');
     bindMermaidEditorModalDrag();
+    bindMermaidEditorSideResize();
 }
 
 function closeMermaidEditorModal() {
@@ -8040,6 +8398,7 @@ function closeMermaidEditorModal() {
 }
 
 let mermaidEditorModalDragBound = false;
+let mermaidEditorModalResizeBound = false;
 let mermaidEditorModalFullscreen = false;
 let mermaidEditorModalDockRight = false;
 
@@ -8048,19 +8407,24 @@ function applyMermaidEditorDockRight(docked) {
     const dockBtn = document.getElementById('mermaid-editor-dock-right-btn');
     if (!panel) return;
     mermaidEditorModalDockRight = !!docked;
-    if (dockBtn) dockBtn.textContent = mermaidEditorModalDockRight ? '<<' : '>>';
+    if (dockBtn) {
+        dockBtn.textContent = mermaidEditorModalDockRight ? 'Dock 해제' : 'Dock';
+        dockBtn.title = mermaidEditorModalDockRight ? '우측 도킹 해제' : '창을 화면 오른쪽에 도킹';
+        dockBtn.setAttribute('aria-pressed', String(mermaidEditorModalDockRight));
+    }
+    panel.classList.toggle('is-docked-right', mermaidEditorModalDockRight);
     if (mermaidEditorModalDockRight) {
         mermaidEditorModalFullscreen = false;
         panel.style.transform = 'none';
         panel.style.left = 'auto';
-        panel.style.top = '8px';
-        panel.style.right = '8px';
-        panel.style.bottom = '8px';
+        panel.style.top = '0';
+        panel.style.right = '0';
+        panel.style.bottom = '0';
         panel.style.width = 'min(960px, 48vw)';
-        panel.style.height = 'calc(100vh - 16px)';
+        panel.style.height = '100vh';
         panel.style.maxWidth = '98vw';
-        panel.style.maxHeight = 'calc(100vh - 16px)';
-        panel.style.resize = 'both';
+        panel.style.maxHeight = '100vh';
+        panel.style.resize = 'none';
         return;
     }
     panel.style.left = '50%';
@@ -8077,6 +8441,103 @@ function applyMermaidEditorDockRight(docked) {
 
 function toggleMermaidEditorDockRight() {
     applyMermaidEditorDockRight(!mermaidEditorModalDockRight);
+}
+
+function bindMermaidEditorSideResize() {
+    if (mermaidEditorModalResizeBound) return;
+    const panel = document.getElementById('mermaid-editor-modal-panel');
+    const frame = document.getElementById('mermaid-editor-frame');
+    const handles = [
+        { element: document.getElementById('mermaid-editor-resize-left'), side: 'left' },
+        { element: document.getElementById('mermaid-editor-resize-right'), side: 'right' }
+    ];
+    if (!panel || handles.some(function (item) { return !item.element; })) return;
+
+    handles.forEach(function (item) {
+        item.element.addEventListener('keydown', function (event) {
+            if (mermaidEditorModalFullscreen || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+            const rect = panel.getBoundingClientRect();
+            const edgeDirection = event.key === 'ArrowRight' ? 1 : -1;
+            const widthDelta = item.side === 'left' ? -edgeDirection * 24 : edgeDirection * 24;
+            const viewportMaxWidth = Math.max(320, window.innerWidth - 8);
+            const computedMin = parseFloat(window.getComputedStyle(panel).minWidth) || 520;
+            const minWidth = Math.min(computedMin, viewportMaxWidth);
+            const fixedLeft = Math.max(4, Math.min(rect.left, window.innerWidth - minWidth - 4));
+            const fixedRight = Math.max(minWidth + 4, Math.min(rect.right, window.innerWidth - 4));
+            const maxWidth = mermaidEditorModalDockRight
+                ? viewportMaxWidth
+                : (item.side === 'left' ? fixedRight - 4 : window.innerWidth - fixedLeft - 4);
+            const nextWidth = Math.max(minWidth, Math.min(maxWidth, rect.width + widthDelta));
+            panel.style.width = Math.round(nextWidth) + 'px';
+            panel.style.transform = 'none';
+            if (mermaidEditorModalDockRight) {
+                panel.style.left = 'auto';
+                panel.style.right = '0';
+            } else {
+                panel.style.right = 'auto';
+                panel.style.left = (item.side === 'left' ? fixedRight - nextWidth : fixedLeft) + 'px';
+            }
+            item.element.setAttribute('aria-valuenow', String(Math.round(nextWidth)));
+            event.preventDefault();
+        });
+        item.element.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0 || mermaidEditorModalFullscreen) return;
+            const handle = item.element;
+            const rect = panel.getBoundingClientRect();
+            const startX = event.clientX;
+            const startWidth = rect.width;
+            const viewportMaxWidth = Math.max(320, window.innerWidth - 8);
+            const computedMin = parseFloat(window.getComputedStyle(panel).minWidth) || 520;
+            const minWidth = Math.min(computedMin, viewportMaxWidth);
+            const fixedLeft = Math.max(4, Math.min(rect.left, window.innerWidth - minWidth - 4));
+            const fixedRight = Math.max(minWidth + 4, Math.min(rect.right, window.innerWidth - 4));
+            const maxWidth = mermaidEditorModalDockRight
+                ? viewportMaxWidth
+                : (item.side === 'left' ? fixedRight - 4 : window.innerWidth - fixedLeft - 4);
+
+            if (!mermaidEditorModalDockRight) {
+                panel.style.left = fixedLeft + 'px';
+                panel.style.right = 'auto';
+                panel.style.transform = 'none';
+            }
+            panel.style.resize = 'none';
+            panel.classList.add('is-side-resizing');
+            if (frame) frame.style.pointerEvents = 'none';
+            handle.setPointerCapture(event.pointerId);
+
+            function move(moveEvent) {
+                let nextWidth = item.side === 'left'
+                    ? startWidth + (startX - moveEvent.clientX)
+                    : startWidth + (moveEvent.clientX - startX);
+                nextWidth = Math.max(minWidth, Math.min(maxWidth, nextWidth));
+                panel.style.width = Math.round(nextWidth) + 'px';
+                handle.setAttribute('aria-valuenow', String(Math.round(nextWidth)));
+                if (mermaidEditorModalDockRight) {
+                    panel.style.left = 'auto';
+                    panel.style.right = '0';
+                } else if (item.side === 'left') {
+                    panel.style.left = (fixedRight - nextWidth) + 'px';
+                } else {
+                    panel.style.left = fixedLeft + 'px';
+                }
+            }
+
+            function stop() {
+                handle.removeEventListener('pointermove', move);
+                handle.removeEventListener('pointerup', stop);
+                handle.removeEventListener('pointercancel', stop);
+                panel.classList.remove('is-side-resizing');
+                if (frame) frame.style.pointerEvents = '';
+                if (!mermaidEditorModalDockRight) panel.style.resize = 'both';
+            }
+
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', stop);
+            handle.addEventListener('pointercancel', stop);
+            event.preventDefault();
+        });
+    });
+    mermaidEditorModalResizeBound = true;
 }
 
 function bindMermaidEditorModalDrag() {
@@ -8186,9 +8647,162 @@ function insertMermaidBlockFromExternal(codeText) {
 
 window.addEventListener('message', function (event) {
     const data = event && event.data ? event.data : null;
-    if (!data || data.type !== 'mdv-insert-mermaid') return;
-    insertMermaidBlockFromExternal(data.code || '');
+    if (!data) return;
+    const mermaidFrame = document.getElementById('mermaid-editor-frame');
+    const fromMermaidEditor = !!(mermaidFrame && mermaidFrame.contentWindow === event.source);
+    if (data.type === 'mdv-request-document-selection') {
+        if (!fromMermaidEditor) return;
+        const selectedText = getSelectedDocumentTextForMermaidEditor();
+        if (!selectedText) {
+            event.source.postMessage({ type: 'mdv-document-selection-unavailable' }, '*');
+            return;
+        }
+        event.source.postMessage({ type: 'mdv-load-document-selection', code: selectedText }, '*');
+        return;
+    }
+    if (data.type === 'mdv-insert-mermaid') {
+        if (!fromMermaidEditor) return;
+        insertMermaidBlockFromExternal(data.code || '');
+        if (data.closeEditor === true) closeMermaidEditorModal();
+        return;
+    }
+    if (data.type === 'mdv-open-mermaid-svg-in-image-insert') {
+        if (!fromMermaidEditor) return;
+        if (typeof window.openImageInsertModal !== 'function' || typeof window.applyImageInsertDataUrl !== 'function') {
+            showToast('이미지 넣기 모듈을 불러오지 못했습니다.');
+            return;
+        }
+        closeMermaidEditorModal();
+        window.openImageInsertModal();
+        window.applyImageInsertDataUrl(data.dataUrl || '', data.fileName || 'mermaid-diagram.svg');
+        showToast('SVG를 이미지 넣기로 옮겼습니다. 문서 저장 또는 imgBB를 선택하세요.');
+        return;
+    }
+    if (data.type === 'mdv-open-mermaid-png-in-image-insert') {
+        if (!fromMermaidEditor) return;
+        if (typeof window.openImageInsertModal !== 'function' || typeof window.applyImageInsertDataUrl !== 'function') {
+            showToast('이미지 넣기 모듈을 불러오지 못했습니다.');
+            return;
+        }
+        closeMermaidEditorModal();
+        window.openImageInsertModal();
+        window.applyImageInsertDataUrl(data.dataUrl || '', data.fileName || 'mermaid-diagram.png');
+        showToast('PNG를 이미지 넣기로 옮겼습니다. 문서 저장 또는 imgBB를 선택하세요.');
+        return;
+    }
+    if (data.type === 'mdv-mermaid-history-save' && fromMermaidEditor) {
+        saveMermaidHistoryToInDb(data.record, event.source);
+        return;
+    }
+    if (data.type === 'mdv-mermaid-history-list' && fromMermaidEditor) {
+        sendMermaidHistoryFromInDb(event.source);
+        return;
+    }
+    if (data.type === 'mdv-mermaid-history-delete' && fromMermaidEditor) {
+        deleteMermaidHistoryFromInDb(data.id, event.source);
+        return;
+    }
+    if (data.type === 'mdv-analyze-image-to-mermaid' && fromMermaidEditor) analyzeImageToMermaidForEditor(data, event.source);
 });
+
+function postMermaidHistoryRecords(targetWindow, records, error) {
+    if (!targetWindow || targetWindow.closed) return;
+    targetWindow.postMessage({ type: 'mdv-mermaid-history-records', records: records || [], error: error || '' }, '*');
+}
+
+async function saveMermaidHistoryToInDb(record, targetWindow) {
+    try {
+        if (typeof window.isInDbStorageEnabled === 'function' && !window.isInDbStorageEnabled()) throw new Error('설정에서 inDB 사용을 먼저 켜세요.');
+        if (typeof window.saveFeatureRecordToInDb !== 'function') throw new Error('inDB 저장 모듈이 준비되지 않았습니다.');
+        const saved = await window.saveFeatureRecordToInDb('mermaid_refs', Object.assign({}, record, { recordType: 'mermaid_ref', updatedAt: Date.now() }));
+        if (!saved) throw new Error('inDB가 아직 준비되지 않았거나 사용이 꺼져 있습니다.');
+        if (targetWindow && !targetWindow.closed) targetWindow.postMessage({ type: 'mdv-mermaid-history-saved', id: record && record.id }, '*');
+    } catch (error) {
+        if (targetWindow && !targetWindow.closed) targetWindow.postMessage({ type: 'mdv-mermaid-history-saved', ok: false, error: error && error.message ? error.message : String(error) }, '*');
+    }
+}
+
+async function sendMermaidHistoryFromInDb(targetWindow) {
+    try {
+        const database = window.InDbStorage && window.InDbStorage.getDatabase ? window.InDbStorage.getDatabase() : null;
+        if (!database || !database.objectStoreNames.contains('mermaid_refs')) return postMermaidHistoryRecords(targetWindow, []);
+        const records = await new Promise(function (resolve, reject) {
+            const request = database.transaction('mermaid_refs', 'readonly').objectStore('mermaid_refs').getAll();
+            request.onsuccess = function () { resolve(Array.isArray(request.result) ? request.result : []); };
+            request.onerror = function () { reject(request.error || new Error('Mermaid 기록을 읽지 못했습니다.')); };
+        });
+        postMermaidHistoryRecords(targetWindow, records.map(function (item) {
+            return { id: item.id, code: item.code, prompt: item.prompt, imageName: item.imageName, createdAt: item.createdAt, updatedAt: item.updatedAt };
+        }));
+    } catch (error) {
+        postMermaidHistoryRecords(targetWindow, [], error && error.message ? error.message : String(error));
+    }
+}
+
+async function deleteMermaidHistoryFromInDb(id, targetWindow) {
+    try {
+        if (typeof window.deleteFeatureRecordFromInDb !== 'function') throw new Error('inDB 삭제 모듈이 준비되지 않았습니다.');
+        await window.deleteFeatureRecordFromInDb('mermaid_refs', id);
+        await sendMermaidHistoryFromInDb(targetWindow);
+        showToast('Mermaid 생성 기록을 삭제했습니다.');
+    } catch (error) {
+        postMermaidHistoryRecords(targetWindow, [], error && error.message ? error.message : String(error));
+    }
+}
+
+function getMermaidVisionProviderSelection() {
+    let provider = String(localStorage.getItem('ss_ai_chat_provider') || 'lmstudio');
+    const modelKeys = {
+        aistudio: 'ss_ai_chat_gemini_model', openai: 'ss_ai_chat_openai_model', deepseek: 'ss_ai_chat_deepseek_model',
+        'openai-compatible': 'ss_ai_chat_openai_compatible_model', ollama: 'ss_ai_chat_ollama_model',
+        litertlm: 'ss_ai_chat_litertlm_model', lmstudio: 'ss_ai_chat_lmstudio_model'
+    };
+    let model = String(localStorage.getItem(modelKeys[provider] || '') || '');
+    if (provider !== 'openai' && provider !== 'aistudio') {
+        const openAIState = typeof getOpenAIApiState === 'function' ? getOpenAIApiState() : null;
+        const hasOpenAI = !!String(openAIState && openAIState.key || '').trim();
+        const hasGemini = typeof getProtectedAiCredential === 'function'
+            ? !!String(getProtectedAiCredential('gemini', 'ss_gemini_api_key') || '').trim()
+            : !!String(localStorage.getItem('ss_gemini_api_key') || '').trim();
+        if (hasOpenAI) { provider = 'openai'; model = String(localStorage.getItem(modelKeys.openai) || 'gpt-5.6-sol'); }
+        else if (hasGemini) { provider = 'aistudio'; model = String(localStorage.getItem(modelKeys.aistudio) || 'gemini-2.5-flash'); }
+        else throw new Error('이미지 분석이 가능한 OpenAI 또는 AI Studio API 키가 필요합니다. AI Jena 설정에서 연결해 주세요.');
+    }
+    if (provider === 'aistudio' && /(?:image|tts|audio|veo|lyria)/i.test(model)) model = 'gemini-2.5-flash';
+    return { provider: provider, model: model };
+}
+
+async function analyzeImageToMermaidForEditor(data, targetWindow) {
+    const reply = function (payload) {
+        if (targetWindow && !targetWindow.closed) targetWindow.postMessage(Object.assign({ type: 'mdv-image-to-mermaid-result', requestId: data.requestId }, payload), '*');
+    };
+    try {
+        if (!window.AIChatBridge || typeof window.AIChatBridge.complete !== 'function') throw new Error('AI Jena 연결 모듈이 준비되지 않았습니다.');
+        const image = data.image || {};
+        if (!/^data:image\//i.test(String(image.dataUrl || ''))) throw new Error('분석할 이미지 데이터가 없습니다.');
+        const selected = getMermaidVisionProviderSelection();
+        const streamReply = function (streamEvent) {
+            if (!streamEvent || streamEvent.type !== 'message.delta' || !streamEvent.content || !targetWindow || targetWindow.closed) return;
+            targetWindow.postMessage({ type: 'mdv-image-to-mermaid-stream', requestId: data.requestId, delta: String(streamEvent.content) }, '*');
+        };
+        const result = await window.AIChatBridge.complete({
+            provider: selected.provider,
+            model: selected.model,
+            mode: 'quick',
+            onStreamEvent: streamReply,
+            messages: [{ role: 'user', content: String(data.prompt || '').trim() || '이 이미지를 Mermaid 다이어그램으로 변환해 주세요.', attachments: [{ kind: 'image', name: image.name || 'diagram.png', type: image.type || 'image/png', size: image.size || 0, dataUrl: image.dataUrl }] }],
+            systemInstruction: [
+                'You convert reference diagram images into valid Mermaid source code.',
+                'Read every visible label and preserve structure, direction, grouping, relationships, and meaning as closely as Mermaid supports.',
+                'Choose the best Mermaid diagram type. Use quoted labels when punctuation could break syntax.',
+                'Return only one fenced mermaid code block. Do not explain, apologize, or add prose.'
+            ].join(' ')
+        });
+        reply({ ok: true, code: String(result && result.text || '') });
+    } catch (error) {
+        reply({ ok: false, error: error && error.message ? error.message : String(error) });
+    }
+}
 
 function applyTextStyleToSelection() {
     if (!isEditMode || !editorTextarea) {
@@ -8256,54 +8870,67 @@ function confirmModalInsert() {
 }
 
 // --- Utility ---
-function adjustPageScale(delta) {
-    const zoomDelta = Number(delta || 0);
-    const zoomTarget = (!isEditMode && viewerContainer)
+function adjustPageWidth(delta) {
+    const widthDelta = Number(delta || 0);
+    const widthTarget = (!isEditMode && viewerContainer)
         ? viewerContainer
         : (document.getElementById('content-viewport') || editorTextarea || null);
-    const prevMetrics = zoomTarget ? {
-        scrollWidth: zoomTarget.scrollWidth || 0,
-        scrollHeight: zoomTarget.scrollHeight || 0,
-        scrollLeft: zoomTarget.scrollLeft || 0,
-        scrollTop: zoomTarget.scrollTop || 0,
-        clientWidth: zoomTarget.clientWidth || 0,
-        clientHeight: zoomTarget.clientHeight || 0
+    const prevMetrics = widthTarget ? {
+        scrollWidth: widthTarget.scrollWidth || 0,
+        scrollLeft: widthTarget.scrollLeft || 0,
+        clientWidth: widthTarget.clientWidth || 0
     } : null;
 
-    pageScale = Math.max(0.1, Math.min(3, pageScale + zoomDelta));
-    applyDocumentWidthScale();
-    document.getElementById('scale-display').textContent = `${Math.round(pageScale * 100)}%`;
+    pageWidthScale = Math.max(0.5, Math.min(3, Math.round((pageWidthScale + widthDelta) * 10) / 10));
+    applyDocumentWidth();
+    const display = document.getElementById('scale-display');
+    if (display) display.textContent = `${Math.round(pageWidthScale * 100)}%`;
 
-    if (!zoomTarget || !prevMetrics) return;
+    if (!widthTarget || !prevMetrics) return;
     requestAnimationFrame(() => {
-        const nextScrollWidth = zoomTarget.scrollWidth || 0;
-        const nextScrollHeight = zoomTarget.scrollHeight || 0;
-        const nextClientWidth = zoomTarget.clientWidth || prevMetrics.clientWidth || 0;
-        const nextClientHeight = zoomTarget.clientHeight || prevMetrics.clientHeight || 0;
+        const nextScrollWidth = widthTarget.scrollWidth || 0;
+        const nextClientWidth = widthTarget.clientWidth || prevMetrics.clientWidth || 0;
 
         const prevCenterX = prevMetrics.scrollLeft + (prevMetrics.clientWidth / 2);
-        const prevCenterY = prevMetrics.scrollTop + (prevMetrics.clientHeight / 2);
         const ratioX = prevMetrics.scrollWidth > 0 ? (prevCenterX / prevMetrics.scrollWidth) : 0.5;
-        const ratioY = prevMetrics.scrollHeight > 0 ? (prevCenterY / prevMetrics.scrollHeight) : 0.5;
 
         const targetCenterX = ratioX * nextScrollWidth;
-        const targetCenterY = ratioY * nextScrollHeight;
         const nextLeft = Math.max(0, targetCenterX - (nextClientWidth / 2));
-        const nextTop = Math.max(0, targetCenterY - (nextClientHeight / 2));
-        zoomTarget.scrollLeft = Number.isFinite(nextLeft) ? nextLeft : 0;
-        zoomTarget.scrollTop = Number.isFinite(nextTop) ? nextTop : 0;
+        widthTarget.scrollLeft = Number.isFinite(nextLeft) ? nextLeft : 0;
     });
 }
 
-function applyDocumentWidthScale() {
+function applyDocumentWidth() {
     const baseMaxWidthRem = 56; // Tailwind max-w-4xl
-    const widthRem = Math.max(28, baseMaxWidthRem * pageScale);
+    const widthRem = baseMaxWidthRem * pageWidthScale;
     const widthValue = widthRem + 'rem';
-    if (viewer) viewer.style.maxWidth = widthValue;
+    const responsiveWidth = pageWidthScale <= 1 ? `min(100%, ${widthValue})` : widthValue;
+    const contentViewport = document.getElementById('content-viewport');
+    [viewerContainer, contentViewport].forEach((viewport) => {
+        if (!viewport) return;
+        viewport.style.overflowX = 'auto';
+        viewport.style.justifyContent = 'safe center';
+    });
+    if (viewer) {
+        viewer.style.width = responsiveWidth;
+        viewer.style.maxWidth = 'none';
+    }
     const editorDocWrap = document.getElementById('editor-doc-wrap');
-    if (editorDocWrap) editorDocWrap.style.maxWidth = widthValue;
-    if (editorTextarea) editorTextarea.style.maxWidth = widthValue;
+    if (editorDocWrap) {
+        editorDocWrap.style.width = responsiveWidth;
+        editorDocWrap.style.maxWidth = 'none';
+        editorDocWrap.style.flexShrink = '0';
+    }
+    if (editorTextarea) {
+        editorTextarea.style.width = '100%';
+        editorTextarea.style.maxWidth = 'none';
+    }
     applyEditorHorizontalShift();
+}
+
+// 기존 외부 호출과 저장된 HTML 조각의 호환성을 유지한다.
+function adjustPageScale(delta) {
+    adjustPageWidth(delta);
 }
 
 function adjustFontSize(delta) {
@@ -8343,20 +8970,112 @@ function applyEditorHorizontalShift() {
 }
 
 let editorShiftFloatPositionTrackingInstalled = false;
+let editorShiftFloatDragInstalled = false;
+
+function clampEditorShiftFloatPosition(left, top) {
+    const control = document.getElementById('editor-shift-float');
+    const gap = 8;
+    const maxLeft = Math.max(gap, window.innerWidth - (control ? control.offsetWidth : 0) - gap);
+    const maxTop = Math.max(gap, window.innerHeight - (control ? control.offsetHeight : 0) - gap);
+    return {
+        left: Math.round(Math.max(gap, Math.min(maxLeft, Number(left) || gap))),
+        top: Math.round(Math.max(gap, Math.min(maxTop, Number(top) || gap)))
+    };
+}
+
+function saveEditorShiftFloatPosition() {
+    const control = document.getElementById('editor-shift-float');
+    if (!control || !control.classList.contains('is-positioned')) return;
+    const rect = control.getBoundingClientRect();
+    try { localStorage.setItem(EDITOR_SHIFT_FLOAT_POSITION_KEY, JSON.stringify({ left: Math.round(rect.left), top: Math.round(rect.top) })); } catch (_) {}
+}
+
+function applyEditorShiftFloatOrientation(orientation, persist) {
+    const control = document.getElementById('editor-shift-float');
+    if (!control) return;
+    const horizontal = orientation === 'horizontal';
+    control.classList.toggle('is-horizontal', horizontal);
+    const button = control.querySelector('.editor-shift-orientation-toggle');
+    if (button) {
+        button.textContent = horizontal ? '↕' : '↔';
+        button.title = horizontal ? '세로 배치로 전환' : '가로 배치로 전환';
+        button.setAttribute('aria-label', button.title);
+        button.setAttribute('aria-pressed', String(horizontal));
+    }
+    if (persist !== false) {
+        try { localStorage.setItem(EDITOR_SHIFT_FLOAT_ORIENTATION_KEY, horizontal ? 'horizontal' : 'vertical'); } catch (_) {}
+    }
+    requestAnimationFrame(syncEditorShiftFloatPosition);
+}
+
+function toggleEditorShiftFloatOrientation() {
+    const control = document.getElementById('editor-shift-float');
+    if (!control) return;
+    applyEditorShiftFloatOrientation(control.classList.contains('is-horizontal') ? 'vertical' : 'horizontal', true);
+}
+
+function bindEditorShiftFloatDrag() {
+    const control = document.getElementById('editor-shift-float');
+    const handle = control && control.querySelector('.editor-shift-drag-handle');
+    if (!control || !handle || editorShiftFloatDragInstalled) return;
+    editorShiftFloatDragInstalled = true;
+    handle.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0) return;
+        const rect = control.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startLeft = rect.left;
+        const startTop = rect.top;
+        control.classList.add('is-positioned', 'is-dragging');
+        control.style.left = startLeft + 'px';
+        control.style.top = startTop + 'px';
+        control.style.right = 'auto';
+        control.style.bottom = 'auto';
+        try { handle.setPointerCapture(event.pointerId); } catch (_) {}
+        const move = function (moveEvent) {
+            const next = clampEditorShiftFloatPosition(startLeft + moveEvent.clientX - startX, startTop + moveEvent.clientY - startY);
+            control.style.left = next.left + 'px';
+            control.style.top = next.top + 'px';
+            syncToastPosition();
+            moveEvent.preventDefault();
+        };
+        const finish = function () {
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', finish);
+            document.removeEventListener('pointercancel', finish);
+            control.classList.remove('is-dragging');
+            saveEditorShiftFloatPosition();
+        };
+        document.addEventListener('pointermove', move, { passive: false });
+        document.addEventListener('pointerup', finish);
+        document.addEventListener('pointercancel', finish);
+        event.preventDefault();
+    });
+}
 
 function syncEditorShiftFloatPosition() {
     const control = document.getElementById('editor-shift-float');
     const viewport = document.getElementById('content-viewport');
+    const sidebarEl = document.getElementById('sidebar');
     if (!control || !viewport) return;
 
-    const viewportRect = viewport.getBoundingClientRect();
-    const sidebarEl = document.getElementById('sidebar');
-    const sidebarVisible = !!(sidebarEl && getComputedStyle(sidebarEl).display !== 'none');
-    const sidebarRect = sidebarVisible ? sidebarEl.getBoundingClientRect() : null;
-    const outsideSidebarLeft = sidebarRect && sidebarRect.width > 0 ? sidebarRect.right + 8 : viewportRect.left + 8;
-
-    control.style.left = `${Math.max(viewportRect.left + 8, outsideSidebarLeft)}px`;
-    control.style.bottom = `${Math.max(8, window.innerHeight - viewportRect.bottom + 8)}px`;
+    if (control.classList.contains('is-positioned')) {
+        const rect = control.getBoundingClientRect();
+        const next = clampEditorShiftFloatPosition(rect.left, rect.top);
+        control.style.left = next.left + 'px';
+        control.style.top = next.top + 'px';
+        control.style.right = 'auto';
+        control.style.bottom = 'auto';
+        syncToastPosition();
+    } else {
+        const viewportRect = viewport.getBoundingClientRect();
+        const sidebarVisible = !!(sidebarEl && getComputedStyle(sidebarEl).display !== 'none');
+        const sidebarRect = sidebarVisible ? sidebarEl.getBoundingClientRect() : null;
+        const outsideSidebarLeft = sidebarRect && sidebarRect.width > 0 ? sidebarRect.right + 8 : viewportRect.left + 8;
+        control.style.left = `${Math.max(viewportRect.left + 8, outsideSidebarLeft)}px`;
+        control.style.bottom = `${Math.max(8, window.innerHeight - viewportRect.bottom + 8)}px`;
+        syncToastPosition();
+    }
 
     if (editorShiftFloatPositionTrackingInstalled) return;
     editorShiftFloatPositionTrackingInstalled = true;
@@ -8392,6 +9111,21 @@ function sanitizeUiMessage(msg) {
 
 let toastHideTimer = null;
 
+function syncToastPosition() {
+    const toast = document.getElementById('toast');
+    const control = document.getElementById('editor-shift-float');
+    if (!toast || !control) return;
+
+    const controlRect = control.getBoundingClientRect();
+    const gap = 12;
+    const viewportGap = 16;
+    const preferredLeft = Math.round(controlRect.right + gap);
+    const availableWidth = Math.max(180, window.innerWidth - preferredLeft - viewportGap);
+    toast.style.left = `${preferredLeft}px`;
+    toast.style.right = 'auto';
+    toast.style.maxWidth = `${Math.min(720, availableWidth)}px`;
+}
+
 function hideToast() {
     const toast = document.getElementById('toast');
     if (!toast) return;
@@ -8419,6 +9153,7 @@ function showToast(msg, options) {
     if (toastHideTimer !== null) clearTimeout(toastHideTimer);
     toastHideTimer = null;
     toast.style.display = 'flex';
+    syncToastPosition();
     toast.style.opacity = '1';
     toast.style.pointerEvents = config.dismissible === true ? 'auto' : 'none';
     toast.setAttribute('aria-hidden', 'false');
@@ -8526,8 +9261,26 @@ function initSettings() {
     loadMarkdownCommentColorSettings();
     const savedShift = Number(localStorage.getItem(EDITOR_HORIZONTAL_SHIFT_KEY));
     editorHorizontalShiftPx = Number.isFinite(savedShift) ? Math.round(savedShift) : 0;
-    applyDocumentWidthScale();
+    applyDocumentWidth();
     applyEditorHorizontalShift();
+    const editorShiftFloat = document.getElementById('editor-shift-float');
+    let savedFloatOrientation = 'vertical';
+    try { savedFloatOrientation = localStorage.getItem(EDITOR_SHIFT_FLOAT_ORIENTATION_KEY) || 'vertical'; } catch (_) {}
+    applyEditorShiftFloatOrientation(savedFloatOrientation === 'horizontal' ? 'horizontal' : 'vertical', false);
+    if (editorShiftFloat) {
+        try {
+            const savedFloatPosition = JSON.parse(localStorage.getItem(EDITOR_SHIFT_FLOAT_POSITION_KEY) || 'null');
+            if (savedFloatPosition && Number.isFinite(savedFloatPosition.left) && Number.isFinite(savedFloatPosition.top)) {
+                editorShiftFloat.classList.add('is-positioned');
+                editorShiftFloat.style.left = savedFloatPosition.left + 'px';
+                editorShiftFloat.style.top = savedFloatPosition.top + 'px';
+                editorShiftFloat.style.right = 'auto';
+                editorShiftFloat.style.bottom = 'auto';
+            }
+        } catch (_) {}
+    }
+    bindEditorShiftFloatDrag();
+    syncEditorShiftFloatPosition();
     if (!editorShiftResizeBound) {
         editorShiftResizeBound = true;
         window.addEventListener('resize', applyEditorHorizontalShift);
@@ -8991,7 +9744,7 @@ function getShareAddressSettingsSnapshot(settings) {
         : normalizeSitesList(source.sitesList);
     return {
         sitesList: normalizeSitesList(Array.isArray(source.sitesList) ? source.sitesList : currentSites)
-            .map(function (item) { return { name: item.name, url: item.url }; }),
+            .map(function (item) { return { name: item.name, url: item.url, visible: item.visible !== false }; }),
         shareSites: (Array.isArray(source.shareSites) ? source.shareSites : shareSnapshot.shareSites || [])
             .map(function (value) { return String(value || '').trim(); })
             .filter(function (value, index, list) { return value && list.indexOf(value) === index; }),
@@ -10114,6 +10867,424 @@ function closeMath99Popup() {
     wrap.classList.add('hidden');
 }
 
+function cleanImg2MathLatex(value) {
+    let text = String(value || '').trim().replace(/^```(?:latex|tex|math)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    try {
+        const parsed = JSON.parse(text);
+        text = String(parsed.latex || parsed.formula || parsed.tex || '').trim();
+    } catch (_error) { }
+    const wrapped = text.match(/^\$\$([\s\S]*)\$\$$|^\\\[([\s\S]*)\\\]$|^\\\(([\s\S]*)\\\)$|^\$([^$]+)\$$/);
+    if (wrapped) text = wrapped.slice(1).find(Boolean) || text;
+    return text.replace(/^\s*(?:latex|tex)\s*:\s*/i, '').trim();
+}
+
+function setImg2MathImage(file) {
+    if (!file || !String(file.type || '').startsWith('image/')) {
+        showToast('이미지 파일을 선택해 주세요.');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function () {
+        img2MathImage = { name: file.name || 'formula.png', type: file.type || 'image/png', size: file.size || 0, dataUrl: String(reader.result || '') };
+        const preview = document.getElementById('img2math-image-preview');
+        const label = document.getElementById('img2math-drop-label');
+        const clearButton = document.getElementById('img2math-clear');
+        const result = document.getElementById('img2math-result');
+        if (preview) { preview.src = img2MathImage.dataUrl; preview.classList.remove('hidden'); }
+        if (label) label.textContent = img2MathImage.name;
+        if (clearButton) clearButton.classList.remove('hidden');
+        if (result) result.value = '';
+        renderImg2MathPreview();
+        const status = document.getElementById('img2math-status');
+        if (status) status.textContent = '이미지를 불러왔습니다.';
+    };
+    reader.onerror = function () { showToast('이미지를 읽지 못했습니다.'); };
+    reader.readAsDataURL(file);
+}
+
+function clearImg2MathImage() {
+    img2MathImage = null;
+    const preview = document.getElementById('img2math-image-preview');
+    const label = document.getElementById('img2math-drop-label');
+    const file = document.getElementById('img2math-file');
+    const clearButton = document.getElementById('img2math-clear');
+    const result = document.getElementById('img2math-result');
+    const status = document.getElementById('img2math-status');
+    if (preview) {
+        preview.removeAttribute('src');
+        preview.classList.add('hidden');
+    }
+    if (label) label.textContent = '이미지를 끌어 놓거나 붙여넣으세요';
+    if (file) file.value = '';
+    if (clearButton) clearButton.classList.add('hidden');
+    if (result) result.value = '';
+    renderImg2MathPreview();
+    if (status) status.textContent = '기존 이미지를 지웠습니다. 새 이미지를 추가해 주세요.';
+    document.getElementById('img2math-drop')?.focus();
+}
+
+async function pasteImg2MathImage() {
+    const status = document.getElementById('img2math-status');
+    try {
+        if (!navigator.clipboard || typeof navigator.clipboard.read !== 'function') throw new Error('이 환경에서는 Ctrl+V를 사용해 주세요.');
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+            const type = item.types.find(function (candidate) { return candidate.startsWith('image/'); });
+            if (type) { setImg2MathImage(new File([await item.getType(type)], '붙여넣은 수식 이미지', { type: type })); return; }
+        }
+        throw new Error('클립보드에 이미지가 없습니다.');
+    } catch (error) {
+        if (status) status.textContent = error.message;
+    }
+}
+
+async function renderImg2MathPreview() {
+    const target = document.getElementById('img2math-render');
+    const result = document.getElementById('img2math-result');
+    if (!target || !result) return;
+    const latex = cleanImg2MathLatex(result.value);
+    target.textContent = latex ? '\\[' + latex + '\\]' : '인식된 수식이 여기에 렌더링됩니다.';
+    if (!latex) return;
+    try {
+        await ensureMdMathEngineLoaded();
+        if (window.MathJax.typesetClear) window.MathJax.typesetClear([target]);
+        await window.MathJax.typesetPromise([target]);
+    } catch (error) {
+        target.textContent = '수식 렌더링 오류: ' + error.message;
+    }
+}
+
+async function generateImg2Math() {
+    const status = document.getElementById('img2math-status');
+    const button = document.getElementById('img2math-generate');
+    const prompt = document.getElementById('img2math-prompt');
+    const output = document.getElementById('img2math-result');
+    if (!img2MathImage) { if (status) status.textContent = '먼저 수식 이미지를 추가해 주세요.'; return; }
+    try {
+        button.disabled = true;
+        button.textContent = 'AI Jena가 수식을 인식하고 있습니다…';
+        if (status) status.textContent = 'AI Jena 연결과 이미지 인식 모델을 확인하고 있습니다.';
+        if (!window.AIChatBridge || typeof window.AIChatBridge.complete !== 'function') throw new Error('AI Jena 연결 모듈이 준비되지 않았습니다.');
+        const selected = getImg2MathProviderSelection();
+        updateImg2MathAiModelStatus(selected);
+        if (status) status.textContent = formatImg2MathAiModel(selected) + ' 모델이 이미지의 기호와 수식 구조를 분석하고 있습니다.';
+        const response = await window.AIChatBridge.complete({
+            provider: selected.provider,
+            model: selected.model,
+            mode: 'quick',
+            messages: [{ role: 'user', content: String(prompt.value || '').trim(), attachments: [{ kind: 'image', name: img2MathImage.name, type: img2MathImage.type, size: img2MathImage.size, dataUrl: img2MathImage.dataUrl }] }],
+            systemInstruction: 'You are a mathematical OCR engine. Read every visible formula precisely. Return only the raw LaTeX body, without dollar signs, code fences, JSON, prose, or explanation. Preserve fractions, roots, matrices, cases, accents, Greek letters, superscripts, subscripts, and delimiters.'
+        });
+        const latex = cleanImg2MathLatex(response && response.text);
+        if (!latex) throw new Error('AI 응답에서 수식을 찾지 못했습니다.');
+        output.value = latex;
+        await renderImg2MathPreview();
+        if (status) status.textContent = formatImg2MathAiModel(response || selected) + ' 인식이 완료되었습니다. 결과를 수정하거나 문서에 삽입할 수 있습니다.';
+    } catch (error) {
+        if (status) status.textContent = '수식 인식 실패: ' + (error && error.message ? error.message : String(error));
+    } finally {
+        button.disabled = false;
+        button.textContent = '✦ AI Jena로 수식 인식 실행';
+    }
+}
+
+function formatImg2MathAiModel(selection) {
+    const providerNames = {
+        aistudio: 'Google AI Studio',
+        openai: 'OpenAI',
+        lmstudio: 'LM Studio',
+        ollama: 'Ollama',
+        deepseek: 'DeepSeek',
+        litertlm: 'LiteRTLM',
+        'openai-compatible': 'OpenAI 호환 API'
+    };
+    const provider = String(selection && selection.provider || '').trim();
+    const model = String(selection && selection.model || '').trim();
+    return [providerNames[provider] || provider || 'AI Jena', model].filter(Boolean).join(' · ');
+}
+
+function getImg2MathProviderSelection() {
+    const configured = getMermaidVisionProviderSelection();
+    if (!img2MathAiSelection) {
+        try {
+            const saved = JSON.parse(localStorage.getItem(IMG2MATH_MODEL_SELECTION_KEY) || 'null');
+            if (saved && typeof saved === 'object') {
+                img2MathAiSelection = { provider: String(saved.provider || ''), model: String(saved.model || '') };
+            }
+        } catch (_error) { }
+    }
+    if (img2MathAiSelection && img2MathAiSelection.provider === configured.provider && img2MathAiSelection.model) {
+        return { provider: configured.provider, model: img2MathAiSelection.model };
+    }
+    img2MathAiSelection = { provider: configured.provider, model: configured.model };
+    return img2MathAiSelection;
+}
+
+function updateImg2MathAiModelStatus(selection) {
+    const target = document.getElementById('img2math-ai-provider');
+    if (!target) return;
+    try {
+        const current = selection || getImg2MathProviderSelection();
+        const parts = formatImg2MathAiModel(current).split(' · ');
+        target.textContent = 'AI Jena · ' + (parts[0] || '이미지 인식');
+        target.classList.remove('is-error');
+    } catch (error) {
+        target.textContent = 'AI Jena 이미지 모델 설정 필요';
+        target.classList.add('is-error');
+    }
+}
+
+async function populateImg2MathModelSelect() {
+    const select = document.getElementById('img2math-model-select');
+    if (!select) return;
+    select.disabled = true;
+    select.innerHTML = '<option>모델 불러오는 중…</option>';
+    try {
+        const selected = getImg2MathProviderSelection();
+        let models = [selected.model].filter(Boolean);
+        const cachedModelMethods = {
+            aistudio: 'getCachedGeminiModels',
+            openai: 'getCachedOpenAIModels'
+        };
+        const method = cachedModelMethods[selected.provider];
+        if (method && window.AIChatBridge && typeof window.AIChatBridge[method] === 'function') {
+            const result = await Promise.resolve(window.AIChatBridge[method]());
+            models = models.concat(Array.isArray(result) ? result : (Array.isArray(result && result.models) ? result.models : []));
+        }
+        models = Array.from(new Set(models.map(function (model) { return String(model || '').trim(); }).filter(Boolean)));
+        if (!models.length) throw new Error('선택 가능한 이미지 인식 모델이 없습니다.');
+        select.replaceChildren();
+        models.forEach(function (model) {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            select.appendChild(option);
+        });
+        select.value = models.includes(selected.model) ? selected.model : models[0];
+        img2MathAiSelection = { provider: selected.provider, model: select.value };
+        select.disabled = false;
+        updateImg2MathAiModelStatus(img2MathAiSelection);
+    } catch (error) {
+        select.innerHTML = '<option>모델 설정 필요</option>';
+        select.disabled = true;
+        updateImg2MathAiModelStatus();
+    }
+}
+
+function getImg2MathSelectedDocumentText() {
+    const selection = typeof window.getSelection === 'function' ? window.getSelection() : null;
+    if (selection && selection.rangeCount > 0 && String(selection.toString() || '').trim()) {
+        const range = selection.getRangeAt(0);
+        const commonNode = range.commonAncestorContainer;
+        const commonElement = commonNode && commonNode.nodeType === Node.ELEMENT_NODE ? commonNode : commonNode && commonNode.parentElement;
+        if (viewer && commonElement && viewer.contains(commonElement)) return String(selection.toString() || '').trim();
+    }
+    if (editorTextarea) {
+        const start = Math.max(0, Number(editorTextarea.selectionStart) || 0);
+        const end = Math.max(start, Number(editorTextarea.selectionEnd) || start);
+        const selected = String(editorTextarea.value || '').slice(start, end).trim();
+        if (selected) return selected;
+    }
+    return img2MathLastDocumentSelection;
+}
+
+function captureImg2MathDocumentSelection() {
+    const popup = document.getElementById('img2math-popup');
+    if (!popup || popup.classList.contains('hidden')) return;
+    const selected = getImg2MathSelectedDocumentText();
+    if (selected) img2MathLastDocumentSelection = selected;
+}
+
+function importSelectedTextIntoImg2Math() {
+    const result = document.getElementById('img2math-result');
+    const status = document.getElementById('img2math-status');
+    const selected = getImg2MathSelectedDocumentText();
+    if (!selected) {
+        if (status) status.textContent = '배경 문서에서 가져올 텍스트를 먼저 선택해 주세요.';
+        return;
+    }
+    img2MathLastDocumentSelection = selected;
+    if (result) result.value = selected;
+    renderImg2MathPreview();
+    if (status) status.textContent = '선택한 텍스트를 인식된 LaTeX 입력창으로 가져왔습니다.';
+}
+
+function insertImg2MathResult() {
+    if (!isEditMode || !editorTextarea) { showToast('편집 모드에서 사용해 주세요.'); return; }
+    const output = document.getElementById('img2math-result');
+    const latex = cleanImg2MathLatex(output && output.value);
+    if (!latex) { showToast('삽입할 수식이 없습니다.'); return; }
+    const raw = String(editorTextarea.value || '');
+    const start = Math.max(0, Math.min(img2MathSelection.start, raw.length));
+    const end = Math.max(start, Math.min(img2MathSelection.end, raw.length));
+    const block = '$$\n' + latex + '\n$$';
+    editorTextarea.value = raw.slice(0, start) + block + raw.slice(end);
+    currentMarkdown = editorTextarea.value;
+    closeImg2MathPopup();
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(start + block.length, start + block.length);
+    renderMarkdown();
+    performAutoSave();
+    showToast('인식한 수식을 문서에 삽입했습니다.');
+}
+
+function constrainImg2MathFloatingWindow(initialize) {
+    const dialog = document.querySelector('#img2math-popup .img2math-dialog');
+    if (!dialog || dialog.offsetParent === null) return;
+    const viewportWidth = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
+    const viewportHeight = Math.max(360, window.innerHeight || document.documentElement.clientHeight || 720);
+    const gap = viewportWidth <= 520 ? 6 : 12;
+    const minWidth = Math.min(560, viewportWidth - gap * 2);
+    const minHeight = Math.min(420, viewportHeight - gap * 2);
+    const maxWidth = Math.max(minWidth, viewportWidth - gap * 2);
+    const maxHeight = Math.max(minHeight, viewportHeight - gap * 2);
+    let rect = dialog.getBoundingClientRect();
+    let width = Math.min(maxWidth, Math.max(minWidth, rect.width || Math.min(940, maxWidth)));
+    let height = Math.min(maxHeight, Math.max(minHeight, rect.height || Math.min(640, maxHeight)));
+    let left = rect.left;
+    let top = rect.top;
+    if (initialize || !img2MathFloatingPositioned || !Number.isFinite(left) || !Number.isFinite(top)) {
+        width = Math.min(940, maxWidth);
+        height = Math.min(640, maxHeight);
+        left = Math.round((viewportWidth - width) / 2);
+        top = Math.round((viewportHeight - height) / 2);
+        img2MathFloatingPositioned = true;
+    }
+    left = Math.min(viewportWidth - gap - width, Math.max(gap, left));
+    top = Math.min(viewportHeight - gap - height, Math.max(gap, top));
+    dialog.style.left = left + 'px';
+    dialog.style.top = top + 'px';
+    dialog.style.width = width + 'px';
+    dialog.style.height = height + 'px';
+}
+
+function bindImg2MathFloatingWindow() {
+    if (img2MathFloatingBound) return;
+    const dialog = document.querySelector('#img2math-popup .img2math-dialog');
+    const header = dialog && dialog.querySelector('.img2math-header');
+    if (!dialog || !header) return;
+    img2MathFloatingBound = true;
+    let action = null;
+
+    const finish = function () {
+        if (!action) return;
+        action = null;
+        document.body.classList.remove('img2math-window-moving');
+    };
+    const move = function (event) {
+        if (!action) return;
+        const viewportWidth = Math.max(320, window.innerWidth || document.documentElement.clientWidth || 1280);
+        const viewportHeight = Math.max(360, window.innerHeight || document.documentElement.clientHeight || 720);
+        const gap = viewportWidth <= 520 ? 6 : 12;
+        const dx = event.clientX - action.startX;
+        const dy = event.clientY - action.startY;
+        if (action.type === 'move') {
+            const left = Math.min(viewportWidth - gap - action.width, Math.max(gap, action.left + dx));
+            const top = Math.min(viewportHeight - gap - action.height, Math.max(gap, action.top + dy));
+            dialog.style.left = left + 'px';
+            dialog.style.top = top + 'px';
+            return;
+        }
+        const direction = action.direction;
+        const minWidth = Math.min(560, viewportWidth - gap * 2);
+        const minHeight = Math.min(420, viewportHeight - gap * 2);
+        let left = action.left;
+        let top = action.top;
+        let right = action.left + action.width;
+        let bottom = action.top + action.height;
+        if (direction.includes('e')) right = Math.min(viewportWidth - gap, Math.max(left + minWidth, right + dx));
+        if (direction.includes('s')) bottom = Math.min(viewportHeight - gap, Math.max(top + minHeight, bottom + dy));
+        if (direction.includes('w')) left = Math.max(gap, Math.min(right - minWidth, left + dx));
+        if (direction.includes('n')) top = Math.max(gap, Math.min(bottom - minHeight, top + dy));
+        dialog.style.left = left + 'px';
+        dialog.style.top = top + 'px';
+        dialog.style.width = (right - left) + 'px';
+        dialog.style.height = (bottom - top) + 'px';
+    };
+
+    header.addEventListener('pointerdown', function (event) {
+        if (event.button !== 0 || event.target.closest('button, select, input, textarea, a')) return;
+        const rect = dialog.getBoundingClientRect();
+        action = { type: 'move', startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+        document.body.classList.add('img2math-window-moving');
+        event.preventDefault();
+    });
+    dialog.querySelectorAll('[data-img2math-resize]').forEach(function (handle) {
+        handle.addEventListener('pointerdown', function (event) {
+            if (event.button !== 0) return;
+            const rect = dialog.getBoundingClientRect();
+            action = { type: 'resize', direction: handle.dataset.img2mathResize || 'se', startX: event.clientX, startY: event.clientY, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+            document.body.classList.add('img2math-window-moving');
+            event.preventDefault();
+            event.stopPropagation();
+        });
+    });
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', finish);
+    document.addEventListener('pointercancel', finish);
+    window.addEventListener('resize', function () { constrainImg2MathFloatingWindow(false); });
+}
+
+function bindImg2MathPopup() {
+    if (img2MathBound) return;
+    const wrap = document.getElementById('img2math-popup');
+    const drop = document.getElementById('img2math-drop');
+    const file = document.getElementById('img2math-file');
+    const result = document.getElementById('img2math-result');
+    if (!wrap || !drop || !file || !result) return;
+    img2MathBound = true;
+    bindImg2MathFloatingWindow();
+    document.getElementById('img2math-select').onclick = function (event) { event.stopPropagation(); file.click(); };
+    document.getElementById('img2math-paste').onclick = function (event) { event.stopPropagation(); pasteImg2MathImage(); };
+    document.getElementById('img2math-clear').onclick = function (event) { event.stopPropagation(); clearImg2MathImage(); };
+    document.getElementById('img2math-generate').onclick = generateImg2Math;
+    document.getElementById('img2math-insert').onclick = insertImg2MathResult;
+    document.getElementById('img2math-import-selection').onclick = importSelectedTextIntoImg2Math;
+    document.getElementById('img2math-model-select').onchange = function (event) {
+        const configured = getMermaidVisionProviderSelection();
+        img2MathAiSelection = { provider: configured.provider, model: String(event.target.value || '').trim() };
+        localStorage.setItem(IMG2MATH_MODEL_SELECTION_KEY, JSON.stringify(img2MathAiSelection));
+        updateImg2MathAiModelStatus(img2MathAiSelection);
+    };
+    file.onchange = function () { setImg2MathImage(file.files && file.files[0]); file.value = ''; };
+    drop.onclick = function (event) { if (!event.target.closest('button')) file.click(); };
+    ['dragenter', 'dragover'].forEach(function (name) { drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.add('border-teal-400'); }); });
+    ['dragleave', 'drop'].forEach(function (name) { drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.remove('border-teal-400'); }); });
+    drop.addEventListener('drop', function (event) { setImg2MathImage(event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0]); });
+    wrap.addEventListener('paste', function (event) { const image = Array.from(event.clipboardData && event.clipboardData.files || []).find(function (item) { return item.type.startsWith('image/'); }); if (image) { event.preventDefault(); setImg2MathImage(image); } });
+    wrap.addEventListener('mousedown', function (event) { if (event.target === wrap) closeImg2MathPopup(); });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && !wrap.classList.contains('hidden')) closeImg2MathPopup();
+    });
+    document.addEventListener('selectionchange', captureImg2MathDocumentSelection);
+    document.addEventListener('mouseup', function () { window.setTimeout(captureImg2MathDocumentSelection, 0); });
+    document.addEventListener('keyup', function () { window.setTimeout(captureImg2MathDocumentSelection, 0); });
+    result.addEventListener('input', renderImg2MathPreview);
+}
+
+function openImg2MathPopup() {
+    if (!advancedAiFeatureFlags.img2math) {
+        showToast('환경설정에서 Img2Math를 허용한 뒤 사용할 수 있습니다.');
+        return false;
+    }
+    if (!isEditMode || !editorTextarea) { showToast('편집 모드에서 사용해 주세요.'); return; }
+    img2MathSelection = { start: editorTextarea.selectionStart || 0, end: editorTextarea.selectionEnd || editorTextarea.selectionStart || 0 };
+    bindImg2MathPopup();
+    const initialSelection = String(editorTextarea.value || '').slice(img2MathSelection.start, img2MathSelection.end).trim();
+    if (initialSelection) img2MathLastDocumentSelection = initialSelection;
+    document.getElementById('math-quick-panel')?.classList.add('hidden');
+    document.getElementById('img2math-popup')?.classList.remove('hidden');
+    constrainImg2MathFloatingWindow(!img2MathFloatingPositioned);
+    updateImg2MathAiModelStatus();
+    populateImg2MathModelSelect();
+    document.getElementById('img2math-drop')?.focus();
+    return true;
+}
+
+function closeImg2MathPopup() {
+    document.getElementById('img2math-popup')?.classList.add('hidden');
+}
+
 function ensureTableInsertPickerBuilt() {
     if (tableInsertPickerBuilt) return;
     const grid = document.getElementById('table-insert-grid');
@@ -10125,9 +11296,10 @@ function ensureTableInsertPickerBuilt() {
         for (let c = 1; c <= maxCols; c += 1) {
             const cell = document.createElement('button');
             cell.type = 'button';
-            cell.className = 'w-4 h-4 rounded-[2px] border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 hover:border-indigo-500';
+            cell.className = 'table-insert-grid-cell w-4 h-4 rounded-[2px] border';
             cell.dataset.rows = String(r);
             cell.dataset.cols = String(c);
+            cell.setAttribute('aria-label', r + 'x' + c + ' table');
             cell.onmouseenter = function () { previewTableInsertSize(r, c); };
             cell.onclick = function () { selectTableInsertSize(r, c); };
             grid.appendChild(cell);
@@ -10153,10 +11325,8 @@ function previewTableInsertSize(rows, cols) {
         const r = Number(cell.dataset.rows || 0);
         const c = Number(cell.dataset.cols || 0);
         const on = rows > 0 && cols > 0 && r <= rows && c <= cols;
-        cell.classList.toggle('bg-amber-300', on);
-        cell.classList.toggle('border-amber-500', on);
-        cell.classList.toggle('bg-slate-100', !on);
-        cell.classList.toggle('dark:bg-slate-800', !on);
+        cell.classList.toggle('is-selected', on);
+        cell.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
 }
 
@@ -10229,6 +11399,141 @@ function insertMarkdownTableBySize(rowsInput, colsInput) {
 function selectTableInsertSize(rows, cols) {
     insertMarkdownTableBySize(rows, cols);
     closeTableInsertPicker();
+}
+
+function splitMarkdownTableRow(line) {
+    const source = String(line || '').trim();
+    const body = source.replace(/^\|/, '').replace(/\|$/, '');
+    const cells = [];
+    let value = '';
+    let escaped = false;
+    for (let i = 0; i < body.length; i += 1) {
+        const char = body[i];
+        if (char === '|' && !escaped) {
+            cells.push(value.trim());
+            value = '';
+        } else {
+            value += char;
+        }
+        if (char === '\\' && !escaped) escaped = true;
+        else escaped = false;
+    }
+    cells.push(value.trim());
+    return cells;
+}
+
+function serializeMarkdownTableRow(cells) {
+    return '| ' + cells.join(' | ') + ' |';
+}
+
+function getMarkdownTableEditContext(text, cursor) {
+    const source = String(text || '');
+    const safeCursor = Math.max(0, Math.min(source.length, Number(cursor) || 0));
+    const lineStart = source.lastIndexOf('\n', Math.max(0, safeCursor - 1)) + 1;
+    let lineEnd = source.indexOf('\n', safeCursor);
+    if (lineEnd < 0) lineEnd = source.length;
+    const currentLine = source.substring(lineStart, lineEnd);
+    if (currentLine.indexOf('|') < 0) return null;
+
+    let blockStart = lineStart;
+    while (blockStart > 0) {
+        const previousEnd = blockStart - 1;
+        const previousStart = source.lastIndexOf('\n', Math.max(0, previousEnd - 1)) + 1;
+        if (source.substring(previousStart, previousEnd).indexOf('|') < 0) break;
+        blockStart = previousStart;
+    }
+    let blockEnd = lineEnd;
+    while (blockEnd < source.length) {
+        const nextStart = blockEnd + 1;
+        let nextEnd = source.indexOf('\n', nextStart);
+        if (nextEnd < 0) nextEnd = source.length;
+        if (source.substring(nextStart, nextEnd).indexOf('|') < 0) break;
+        blockEnd = nextEnd;
+    }
+
+    const lines = source.substring(blockStart, blockEnd).split('\n');
+    const separatorIndex = lines.findIndex(function (line) {
+        const cells = splitMarkdownTableRow(line);
+        return cells.length > 0 && cells.every(function (cell) { return /^:?-{3,}:?$/.test(cell); });
+    });
+    if (separatorIndex !== 1 || lines.length < 2) return null;
+    const rowIndex = source.substring(blockStart, lineStart).split('\n').length - 1;
+    const cells = splitMarkdownTableRow(lines[rowIndex]);
+    if (!cells.length) return null;
+
+    const beforeCursor = currentLine.substring(0, Math.max(0, safeCursor - lineStart));
+    let pipeCount = 0;
+    let escaped = false;
+    for (let i = 0; i < beforeCursor.length; i += 1) {
+        const char = beforeCursor[i];
+        if (char === '|' && !escaped) pipeCount += 1;
+        if (char === '\\' && !escaped) escaped = true;
+        else escaped = false;
+    }
+    const hasLeadingPipe = /^\s*\|/.test(currentLine);
+    const columnIndex = Math.max(0, Math.min(cells.length - 1, pipeCount - (hasLeadingPipe ? 1 : 0)));
+    return { blockStart, blockEnd, lines, rowIndex, columnIndex };
+}
+
+function editMarkdownTable(action) {
+    if (!isEditMode || !editorTextarea) {
+        showToast('편집 모드에서 사용해 주세요.');
+        return false;
+    }
+    const text = editorTextarea.value;
+    const cursor = editorTextarea.selectionStart;
+    const context = getMarkdownTableEditContext(text, cursor);
+    if (!context) {
+        showToast('Markdown 표 안에 커서를 두고 다시 눌러주세요.');
+        editorTextarea.focus();
+        return false;
+    }
+
+    const lines = context.lines.slice();
+    const columnCount = Math.max.apply(null, lines.map(function (line) { return splitMarkdownTableRow(line).length; }));
+    if (action === 'add-row') {
+        const insertAt = context.rowIndex <= 1 ? 2 : context.rowIndex + 1;
+        lines.splice(insertAt, 0, serializeMarkdownTableRow(Array(columnCount).fill('')));
+    } else if (action === 'delete-row') {
+        if (context.rowIndex <= 1) {
+            showToast('머리글과 구분선은 삭제할 수 없습니다.');
+            editorTextarea.focus();
+            return false;
+        }
+        lines.splice(context.rowIndex, 1);
+    } else if (action === 'add-column' || action === 'delete-column') {
+        if (action === 'delete-column' && columnCount <= 1) {
+            showToast('표에는 열이 하나 이상 있어야 합니다.');
+            editorTextarea.focus();
+            return false;
+        }
+        for (let row = 0; row < lines.length; row += 1) {
+            const cells = splitMarkdownTableRow(lines[row]);
+            while (cells.length < columnCount) cells.push(row === 1 ? '---' : '');
+            if (action === 'add-column') cells.splice(context.columnIndex + 1, 0, row === 1 ? '---' : '');
+            else cells.splice(context.columnIndex, 1);
+            lines[row] = serializeMarkdownTableRow(cells);
+        }
+    } else {
+        return false;
+    }
+
+    const replacement = lines.join('\n');
+    const nextText = text.substring(0, context.blockStart) + replacement + text.substring(context.blockEnd);
+    const historyBefore = beginEditorHistoryTransaction();
+    editorTextarea.value = nextText;
+    currentMarkdown = nextText;
+    editorTextarea.focus();
+    const nextCursor = Math.min(context.blockStart + replacement.length, cursor + (replacement.length - (context.blockEnd - context.blockStart)));
+    editorTextarea.setSelectionRange(nextCursor, nextCursor);
+    renderMarkdown();
+    if (activeSidebarTab === 'toc') renderTOC();
+    performAutoSave();
+    commitEditorHistoryTransaction(historyBefore, 'table-edit');
+    showToast(action === 'add-row' ? '표에 행을 추가했습니다.'
+        : action === 'add-column' ? '표에 열을 추가했습니다.'
+            : action === 'delete-row' ? '표의 행을 삭제했습니다.' : '표의 열을 삭제했습니다.');
+    return true;
 }
 
 function insertInlineMathTemplate() {
@@ -10328,6 +11633,10 @@ function getImageUploadEnabledFromSettings(settings) {
     return settings.imageUploadEnabled === true;
 }
 
+function getImageUploadLinkSideVisibleFromSettings(settings) {
+    return !!(settings && settings.imageUploadEnabled === true && settings.imageUploadLinkSideVisible === true);
+}
+
 function getHighlightVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.highlightVisible === true;
@@ -10344,6 +11653,10 @@ function getTemplateNewFileVisibleFromSettings(settings) {
     return getTemplateVisibleFromSettings(settings);
 }
 
+function getA4NewFileVisibleFromSettings(settings) {
+    return !!(settings && settings.a4NewFileVisible === true);
+}
+
 function getNoteCoverInsertVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.noteCoverInsertVisible === true;
@@ -10352,6 +11665,39 @@ function getNoteCoverInsertVisibleFromSettings(settings) {
 function getPdfMergeVisibleFromSettings(settings) {
     if (!settings) return false;
     return settings.pdfMergeVisible === true;
+}
+
+function getAdvancedAiFeatureFlags(settings) {
+    const value = settings || {};
+    return {
+        mermaidRefAi: value.mermaidRefAiEnabled === true,
+        img2math: value.img2mathEnabled === true,
+        tidyJena: value.tidyJenaEnabled === true
+    };
+}
+
+let advancedAiFeatureFlags = getAdvancedAiFeatureFlags(null);
+
+function applyAdvancedAiFeatureVisibility(settings) {
+    advancedAiFeatureFlags = getAdvancedAiFeatureFlags(settings);
+    window.advancedAiFeatureFlags = advancedAiFeatureFlags;
+    const img2mathButton = document.getElementById('btn-img2math');
+    if (img2mathButton) img2mathButton.classList.toggle('hidden', !advancedAiFeatureFlags.img2math);
+    if (!advancedAiFeatureFlags.img2math && typeof closeImg2MathPopup === 'function') closeImg2MathPopup();
+    const mermaidFrame = document.getElementById('mermaid-editor-frame');
+    if (mermaidFrame && mermaidFrame.contentWindow) {
+        mermaidFrame.contentWindow.postMessage({ type: 'mdv-mermaid-ai-feature', enabled: advancedAiFeatureFlags.mermaidRefAi }, '*');
+    }
+}
+
+async function toggleAdvancedAiFeatureSection() {
+    const next = {
+        mermaidRefAiEnabled: !!document.getElementById('mermaid-ref-ai-enabled')?.checked,
+        img2mathEnabled: !!document.getElementById('img2math-enabled')?.checked,
+        tidyJenaEnabled: !!document.getElementById('tidy-jena-enabled')?.checked
+    };
+    applyAdvancedAiFeatureVisibility(next);
+    try { await setAiSettings(next); } catch (error) { console.error(error); }
 }
 
 function getChromeSplitTabVisibleFromSettings(settings) {
@@ -10403,8 +11749,8 @@ async function togglePdfMergeVisibilitySection() {
 
 function applyNoteCoverInsertVisibility(settings) {
     const enabled = getNoteCoverInsertVisibleFromSettings(settings || {});
-    const button = document.getElementById('btn-note-cover-insert');
-    if (button) button.classList.toggle('hidden', !enabled);
+    const wrap = document.getElementById('note-cover-menu-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !enabled);
 }
 
 async function toggleNoteCoverInsertSection() {
@@ -10414,16 +11760,102 @@ async function toggleNoteCoverInsertSection() {
     try { await setAiSettings({ noteCoverInsertVisible: enabled }); } catch (e) { console.error(e); }
 }
 
-function insertDefaultNoteCover() {
+function closeNoteCoverMenu() {
+    const panel = document.getElementById('note-cover-menu-panel');
+    const button = document.getElementById('btn-note-cover-menu');
+    if (panel) panel.classList.add('hidden');
+    if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function toggleNoteCoverMenu(event) {
+    if (event) event.stopPropagation();
+    const panel = document.getElementById('note-cover-menu-panel');
+    const button = document.getElementById('btn-note-cover-menu');
+    if (!panel) return;
+    const willOpen = panel.classList.contains('hidden');
+    closeNoteCoverMenu();
+    if (willOpen) {
+        panel.classList.remove('hidden');
+        if (button) button.setAttribute('aria-expanded', 'true');
+    }
+}
+
+function localIsoDate() {
+    const now = new Date();
+    const pad = value => String(value).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function openNoteCoverInsertDialog(event) {
+    if (event) event.stopPropagation();
+    closeNoteCoverMenu();
+    const existing = window.NoteCoverRenderer && typeof window.NoteCoverRenderer.findFirstCoverBlock === 'function'
+        ? window.NoteCoverRenderer.findFirstCoverBlock(getNoteCoverMarkdownSource()) : null;
+    if (existing) {
+        if (!isEditMode) toggleMode('edit');
+        if (editorTextarea) {
+            editorTextarea.focus();
+            editorTextarea.setSelectionRange(existing.start, existing.end);
+            editorTextarea.scrollTop = 0;
+        }
+        showToast('이미 표지가 있습니다. 삭제하려면 표지 메뉴의 “표지 지우기”를 선택하세요.');
+        return false;
+    }
+    const modal = document.getElementById('note-cover-insert-modal');
+    const titleInput = document.getElementById('note-cover-field-title');
+    const dateInput = document.getElementById('note-cover-field-date');
+    const feedback = document.getElementById('note-cover-insert-feedback');
+    const fileTitle = String(currentFileName || '').replace(/\.md$/i, '').trim();
+    if (titleInput) titleInput.value = !fileTitle || /^untitled$/i.test(fileTitle) ? '' : fileTitle;
+    if (dateInput) dateInput.value = localIsoDate();
+    if (feedback) feedback.textContent = '';
+    if (modal) {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        window.setTimeout(() => { if (titleInput) { titleInput.focus(); titleInput.select(); } }, 0);
+    }
+    return true;
+}
+
+function closeNoteCoverInsertDialog() {
+    const modal = document.getElementById('note-cover-insert-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+    if (editorTextarea) editorTextarea.focus();
+}
+
+function confirmNoteCoverInsert(event) {
+    if (event) event.preventDefault();
+    const value = id => String((document.getElementById(id) || {}).value || '').trim();
+    const title = value('note-cover-field-title');
+    const feedback = document.getElementById('note-cover-insert-feedback');
+    if (!title) {
+        if (feedback) feedback.textContent = '제목을 입력하세요.';
+        const input = document.getElementById('note-cover-field-title');
+        if (input) input.focus();
+        return false;
+    }
+    const inserted = insertDefaultNoteCover({
+        title: title,
+        subtitle: value('note-cover-field-subtitle'),
+        author: value('note-cover-field-author'),
+        date: value('note-cover-field-date')
+    });
+    if (inserted) closeNoteCoverInsertDialog();
+    return inserted;
+}
+
+function insertDefaultNoteCover(fields) {
     if (!isEditMode) toggleMode('edit');
     if (!editorTextarea || !window.NoteCoverRenderer ||
         typeof window.NoteCoverRenderer.insertDefaultCover !== 'function') {
         showToast('표지 삽입 기능을 불러오지 못했습니다.');
         return false;
     }
-    const fileTitle = String(currentFileName || '').replace(/\.md$/i, '').trim();
-    const title = !fileTitle || /^untitled$/i.test(fileTitle) ? '문서 제목' : fileTitle;
-    const updated = window.NoteCoverRenderer.insertDefaultCover(getNoteCoverMarkdownSource(), { title: title });
+    const input = fields && typeof fields === 'object' ? fields : {};
+    const updated = window.NoteCoverRenderer.insertDefaultCover(getNoteCoverMarkdownSource(), input);
     if (!updated.changed) {
         editorTextarea.focus();
         editorTextarea.setSelectionRange(updated.selectionStart || 0, updated.selectionEnd || 0);
@@ -10445,6 +11877,35 @@ function insertDefaultNoteCover() {
     showToast('문서 최상단에 표지를 삽입했습니다. 보기에서 텍스트를 직접 수정할 수 있습니다.');
     return true;
 }
+
+function removeDocumentNoteCover(event) {
+    if (event) event.stopPropagation();
+    closeNoteCoverMenu();
+    if (!window.NoteCoverRenderer || typeof window.NoteCoverRenderer.findFirstCoverBlock !== 'function') {
+        showToast('표지 삭제 기능을 불러오지 못했습니다.');
+        return false;
+    }
+    const source = getNoteCoverMarkdownSource();
+    const cover = window.NoteCoverRenderer.findFirstCoverBlock(source);
+    if (!cover) {
+        showToast('지울 표지가 없습니다.');
+        return false;
+    }
+    if (!window.confirm('표지를 지울까요?')) return false;
+    let next = source.slice(0, cover.start) + source.slice(cover.end);
+    if (cover.start === 0) next = next.replace(/^\r?\n/, '');
+    const applied = applyNoteCoverMarkdownUpdate(
+        { changed: true, markdown: next },
+        'input.noteCoverRemove',
+        { historyKey: 'remove-cover', coverIndex: 0, clearSelection: true, renderAfter: true }
+    );
+    if (applied) showToast('표지를 지웠습니다.');
+    return applied;
+}
+
+document.addEventListener('click', function (event) {
+    if (!event.target.closest || !event.target.closest('#note-cover-menu-wrap')) closeNoteCoverMenu();
+});
 
 function getHtml2pptVisibleFromSettings(settings) {
     if (!settings || typeof settings.html2pptVisible !== 'boolean') return false;
@@ -11105,6 +12566,7 @@ function bindTemplatePanelResize() {
 function applyTemplateVisibility(settings) {
     const headerEnabled = getTemplateVisibleFromSettings(settings || {});
     const newFileEnabled = getTemplateNewFileVisibleFromSettings(settings || {});
+    const a4NewFileEnabled = getA4NewFileVisibleFromSettings(settings || {});
     const menuItem = document.getElementById('new-template-menu-item');
     const menuToggle = document.getElementById('new-file-menu-toggle');
     const newFileButton = document.getElementById('header-new-file-button');
@@ -11113,9 +12575,12 @@ function applyTemplateVisibility(settings) {
         menuItem.classList.toggle('hidden', !newFileEnabled);
         menuItem.classList.toggle('flex', newFileEnabled);
     }
+    document.querySelectorAll('[data-a4-new-file-menu-item]').forEach(function (item) {
+        item.classList.toggle('hidden', !a4NewFileEnabled);
+    });
     if (menuToggle) {
-        menuToggle.classList.toggle('hidden', !newFileEnabled);
-        menuToggle.classList.toggle('flex', newFileEnabled);
+        menuToggle.classList.remove('hidden');
+        menuToggle.classList.add('flex');
     }
     if (newFileButton) {
         newFileButton.classList.toggle('rounded-md', !newFileEnabled);
@@ -11214,7 +12679,8 @@ async function toggleTemplateSection() {
     const enabled = !!(check && check.checked);
     const newFileCheck = document.getElementById('template-new-file-visible');
     const newFileEnabled = !!(newFileCheck && newFileCheck.checked);
-    applyTemplateVisibility({ templateVisible: enabled, templateNewFileVisible: newFileEnabled });
+    const a4Check = document.getElementById('a4-new-file-visible');
+    applyTemplateVisibility({ templateVisible: enabled, templateNewFileVisible: newFileEnabled, a4NewFileVisible: !!(a4Check && a4Check.checked) });
     try { await setAiSettings({ templateVisible: enabled }); } catch (e) { console.error(e); }
 }
 
@@ -11223,8 +12689,22 @@ async function toggleTemplateNewFileSection() {
     const enabled = !!(check && check.checked);
     const headerCheck = document.getElementById('template-visible');
     const headerEnabled = !!(headerCheck && headerCheck.checked);
-    applyTemplateVisibility({ templateVisible: headerEnabled, templateNewFileVisible: enabled });
+    const a4Check = document.getElementById('a4-new-file-visible');
+    applyTemplateVisibility({ templateVisible: headerEnabled, templateNewFileVisible: enabled, a4NewFileVisible: !!(a4Check && a4Check.checked) });
     try { await setAiSettings({ templateNewFileVisible: enabled }); } catch (e) { console.error(e); }
+}
+
+async function toggleA4NewFileVisibilitySection() {
+    const check = document.getElementById('a4-new-file-visible');
+    const enabled = !!(check && check.checked);
+    const headerCheck = document.getElementById('template-visible');
+    const templateNewFileCheck = document.getElementById('template-new-file-visible');
+    applyTemplateVisibility({
+        templateVisible: !!(headerCheck && headerCheck.checked),
+        templateNewFileVisible: !!(templateNewFileCheck && templateNewFileCheck.checked),
+        a4NewFileVisible: enabled
+    });
+    try { await setAiSettings({ a4NewFileVisible: enabled }); } catch (e) { console.error(e); }
 }
 
 function getHtml2pptOpenAiJenaDockWidth() {
@@ -11591,7 +13071,7 @@ function applyHighlightPopupLayout() {
         modal.classList.add('items-start', 'justify-start');
         panel.style.position = 'fixed';
         panel.style.top = `${highlightPopupDockTop}px`;
-        panel.style.left = '12px';
+        panel.style.left = `${highlightPopupDockLeft}px`;
         panel.style.right = 'auto';
         panel.style.margin = '0';
     } else {
@@ -11646,13 +13126,13 @@ function bindHighlightPopupDrag() {
     if (!header || !panel) return;
     enableTouchModalDrag(panel, header, {
         onStart: function (e, panelEl, rect) {
-            if (!highlightPopupDockRight) highlightPopupDragOffsetX = e.clientX - rect.left;
+            highlightPopupDragOffsetX = e.clientX - rect.left;
             highlightPopupDragOffsetY = e.clientY - rect.top;
         },
         onMove: function (e, panelEl, nextLeft, nextTop) {
             if (highlightPopupDockRight) {
+                highlightPopupDockLeft = nextLeft;
                 highlightPopupDockTop = nextTop;
-                panelEl.style.left = '12px';
             }
         }
     });
@@ -11663,9 +13143,7 @@ function bindHighlightPopupDrag() {
         if (target.closest('button') || target.closest('input') || target.closest('select') || target.closest('textarea')) return;
         highlightPopupDragging = true;
         const rect = panel.getBoundingClientRect();
-        if (!highlightPopupDockRight) {
-            highlightPopupDragOffsetX = e.clientX - rect.left;
-        }
+        highlightPopupDragOffsetX = e.clientX - rect.left;
         highlightPopupDragOffsetY = e.clientY - rect.top;
         panel.style.position = 'fixed';
         panel.style.margin = '0';
@@ -11680,12 +13158,11 @@ function bindHighlightPopupDrag() {
         const panelEl = document.getElementById('highlight-popup-panel');
         if (!panelEl) return;
         const nextTop = Math.max(8, Math.min(window.innerHeight - panelEl.offsetHeight - 8, e.clientY - highlightPopupDragOffsetY));
-        if (!highlightPopupDockRight) {
-            const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - highlightPopupDragOffsetX));
-            panelEl.style.left = nextLeft + 'px';
-        } else {
+        const nextLeft = Math.max(8, Math.min(window.innerWidth - panelEl.offsetWidth - 8, e.clientX - highlightPopupDragOffsetX));
+        panelEl.style.left = nextLeft + 'px';
+        if (highlightPopupDockRight) {
+            highlightPopupDockLeft = nextLeft;
             highlightPopupDockTop = nextTop;
-            panelEl.style.left = '12px';
         }
         panelEl.style.top = nextTop + 'px';
         panelEl.style.right = 'auto';
@@ -11698,7 +13175,11 @@ function bindHighlightPopupDrag() {
 
 function toggleHighlightPopupDockRight() {
     highlightPopupDockRight = !highlightPopupDockRight;
-    if (!highlightPopupDockRight) highlightPopupShrink = false;
+    if (!highlightPopupDockRight) {
+        highlightPopupShrink = false;
+    } else {
+        highlightPopupDockLeft = 12;
+    }
     applyHighlightPopupLayout();
 }
 
@@ -11842,13 +13323,18 @@ function openHighlightDataWindow() {
 
 function applyImageUploadFeatureVisibility(settings) {
     const enabled = getImageUploadEnabledFromSettings(settings || {});
+    const linkSideVisible = getImageUploadLinkSideVisibleFromSettings(settings || {});
     const imgBtn = document.getElementById('btn-image-insert');
     if (imgBtn) imgBtn.style.display = 'inline-flex';
     const imageUploadBtn = document.getElementById('btn-image-upload-quick');
     if (imageUploadBtn) imageUploadBtn.classList.toggle('hidden', !enabled);
+    const linkSideBtn = document.getElementById('btn-image-upload-link-side');
+    if (linkSideBtn) linkSideBtn.classList.toggle('hidden', !linkSideVisible);
     const section = document.getElementById('image-upload-settings');
     const check = document.getElementById('image-upload-enabled');
     if (section && check) section.classList.toggle('hidden', !check.checked);
+    const linkSideCheck = document.getElementById('image-upload-link-side-visible');
+    if (linkSideCheck) linkSideCheck.disabled = !enabled;
     setInputModalImagePanelToggleState();
 }
 
@@ -11898,8 +13384,19 @@ document.addEventListener('keydown', function (event) {
 async function toggleImageUploadSection() {
     const check = document.getElementById('image-upload-enabled');
     const enabled = !!(check && check.checked);
-    applyImageUploadFeatureVisibility({ imageUploadEnabled: enabled });
+    const linkSideCheck = document.getElementById('image-upload-link-side-visible');
+    const linkSideVisible = !!(linkSideCheck && linkSideCheck.checked);
+    applyImageUploadFeatureVisibility({ imageUploadEnabled: enabled, imageUploadLinkSideVisible: linkSideVisible });
     try { await setAiSettings({ imageUploadEnabled: enabled }); } catch (e) { console.error(e); }
+}
+
+async function toggleImageUploadLinkSideVisibility() {
+    const uploadCheck = document.getElementById('image-upload-enabled');
+    const check = document.getElementById('image-upload-link-side-visible');
+    const enabled = !!(uploadCheck && uploadCheck.checked);
+    const visible = !!(check && check.checked);
+    applyImageUploadFeatureVisibility({ imageUploadEnabled: enabled, imageUploadLinkSideVisible: visible });
+    try { await setAiSettings({ imageUploadLinkSideVisible: visible }); } catch (e) { console.error(e); }
 }
 
 async function saveImgbbApiKeyFromModal() {
@@ -12113,6 +13610,8 @@ async function persistAiSettingsFromModal() {
     const sspimgOn = verified && sspimgEl && sspimgEl.checked;
     const imageUploadEl = document.getElementById('image-upload-enabled');
     const imageUploadEnabled = !!(imageUploadEl && imageUploadEl.checked);
+    const imageUploadLinkSideEl = document.getElementById('image-upload-link-side-visible');
+    const imageUploadLinkSideVisible = !!(imageUploadLinkSideEl && imageUploadLinkSideEl.checked);
     const scholarSearchVisible = !!(window.ScholarSearchApp &&
         typeof window.ScholarSearchApp.isVisibleSelected === 'function' &&
         window.ScholarSearchApp.isVisibleSelected());
@@ -12126,12 +13625,17 @@ async function persistAiSettingsFromModal() {
     const templateVisible = !!(templateVisibleEl && templateVisibleEl.checked);
     const templateNewFileVisibleEl = document.getElementById('template-new-file-visible');
     const templateNewFileVisible = !!(templateNewFileVisibleEl && templateNewFileVisibleEl.checked);
+    const a4NewFileVisibleEl = document.getElementById('a4-new-file-visible');
+    const a4NewFileVisible = !!(a4NewFileVisibleEl && a4NewFileVisibleEl.checked);
     const noteCoverInsertVisibleEl = document.getElementById('note-cover-insert-visible');
     const noteCoverInsertVisible = !!(noteCoverInsertVisibleEl && noteCoverInsertVisibleEl.checked);
     const pdfMergeVisibleEl = document.getElementById('pdf-merge-visible');
     const pdfMergeVisible = !!(pdfMergeVisibleEl && pdfMergeVisibleEl.checked);
     const chromeSplitTabVisibleEl = document.getElementById('chrome-split-tab-visible');
     const chromeSplitTabVisible = !!(chromeSplitTabVisibleEl && chromeSplitTabVisibleEl.checked);
+    const mermaidRefAiEnabled = !!document.getElementById('mermaid-ref-ai-enabled')?.checked;
+    const img2mathEnabled = !!document.getElementById('img2math-enabled')?.checked;
+    const tidyJenaEnabled = !!document.getElementById('tidy-jena-enabled')?.checked;
     const githubTokenEl = document.getElementById('github-token-input');
     const githubRepoEl = document.getElementById('github-repo-input');
     const githubBranchEl = document.getElementById('github-branch-input');
@@ -12161,9 +13665,13 @@ async function persistAiSettingsFromModal() {
         macroVisible: macroVisible,
         templateVisible: templateVisible,
         templateNewFileVisible: templateNewFileVisible,
+        a4NewFileVisible: a4NewFileVisible,
         noteCoverInsertVisible: noteCoverInsertVisible,
         pdfMergeVisible: pdfMergeVisible,
         chromeSplitTabVisible: chromeSplitTabVisible,
+        mermaidRefAiEnabled: mermaidRefAiEnabled,
+        img2mathEnabled: img2mathEnabled,
+        tidyJenaEnabled: tidyJenaEnabled,
         templateCustomList: normalizeTemplateCustomList(templateCustomList).map(function (item) {
             return { id: item.id, name: item.name, desc: item.desc, content: item.content };
         }),
@@ -12172,6 +13680,7 @@ async function persistAiSettingsFromModal() {
         customShareDestinations: shareAddressSettings.customShareDestinations,
         naverBlogId: shareAddressSettings.naverBlogId,
         imageUploadEnabled: imageUploadEnabled,
+        imageUploadLinkSideVisible: imageUploadLinkSideVisible,
         enterButtonInsertBr: enterButtonInsertBrEnabled,
         selectionWrapEnabled: selectionWrapEnabledValue,
         viewModeEditEnabled: viewModeEditEnabledValue,
@@ -12511,7 +14020,7 @@ async function applyAiFeatureVisibility() {
     const btnScholar = document.getElementById('btn-scholar-ai');
     const btnSsp = document.getElementById('btn-sspimg-ai');
     const btnJenaMenu = document.getElementById('btn-ai-jena-menu');
-    const jenaMenuOn = localStorage.getItem('ss_ai_chat_menu_enabled') === '1';
+    const jenaMenuOn = isAiJenaMenuEntryEnabled();
     const showAiOrJenaMenu = showAi || jenaMenuOn;
     if (headerBtns) {
         if (showAiOrJenaMenu) {
@@ -12886,6 +14395,7 @@ let sidebarAILoaded = false;
 let scholarAIProviderRuntime = null;
 const SCHOLAR_AI_GEMINI_MODELS_KEY = 'ss_scholar_ai_gemini_models_v1';
 const SCHOLAR_AI_LM_MODELS_KEY = 'ss_scholar_ai_lmstudio_models_v1';
+const LMSTUDIO_MAX_TOKENS_DEFAULT_REVISION_KEY = 'ss_lmstudio_max_tokens_default_revision';
 
 function readStoredModelList(key) {
     try {
@@ -12929,7 +14439,7 @@ function readScholarAIProviderSettingsForm() {
         activeBaseUrlSlot: activeBaseUrlSlot,
         apiKey: value('settings-lmstudio-api-key'),
         temperature: Number(value('settings-lmstudio-temperature') || 0.4),
-        maxTokens: Number(value('settings-lmstudio-max-tokens') || 8192),
+        maxTokens: Number(value('settings-lmstudio-max-tokens') || 16384),
         quickMaxTokens: Number(value('settings-aichat-quick-max-tokens') || 4096),
         reasoningMaxTokens: Number(value('settings-aichat-reasoning-max-tokens') || 8192),
         fastMaxTokens: Number(value('settings-aichat-fast-max-tokens') || 4000),
@@ -13147,6 +14657,12 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     migrateLegacyScholarAIProviderSettings(legacySettings);
     let config;
     try { config = window.LocalAI.loadConfig(localStorage); } catch (_) { config = window.LocalAI.defaults || {}; }
+    if (localStorage.getItem(LMSTUDIO_MAX_TOKENS_DEFAULT_REVISION_KEY) !== '16384-v1') {
+        if (!Number(config.maxTokens) || Number(config.maxTokens) === 8192) {
+            config = getScholarAIProviderRuntime().saveLMStudioConfig(Object.assign({}, config, { maxTokens: 16384 }));
+        }
+        localStorage.setItem(LMSTUDIO_MAX_TOKENS_DEFAULT_REVISION_KEY, '16384-v1');
+    }
     const setValue = function (id, value) { const el = document.getElementById(id); if (el) el.value = value == null ? '' : value; };
     setValue('settings-lmstudio-base-url', config.baseUrlPrimary || config.baseUrl || 'http://127.0.0.1:5678/v1');
     setValue('settings-lmstudio-base-url-secondary', config.baseUrlSecondary || '');
@@ -13154,7 +14670,7 @@ function loadScholarAIProviderSettingsUI(legacySettings) {
     if (activeUrlSlot) activeUrlSlot.checked = true;
     setValue('settings-lmstudio-api-key', config.apiKey || '');
     setValue('settings-lmstudio-temperature', config.temperature == null ? 0.4 : config.temperature);
-    setValue('settings-lmstudio-max-tokens', config.maxTokens || 8192);
+    setValue('settings-lmstudio-max-tokens', config.maxTokens || 16384);
     setValue('settings-aichat-quick-max-tokens', config.quickMaxTokens || 4096);
     setValue('settings-aichat-reasoning-max-tokens', config.reasoningMaxTokens || 8192);
     setValue('settings-aichat-fast-max-tokens', config.fastMaxTokens || 4000);
@@ -15560,11 +17076,19 @@ window.AIChatBridge = Object.freeze({
             const messages = normalizeAIChatMessages(request.messages);
             const lastUserIndex = messages.map(function (message) { return message.role; }).lastIndexOf('user');
             if (lastUserIndex < 0) throw new Error('전송할 사용자 질문이 없습니다.');
-            const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true;
+            const reasoningMode = request.mode === 'reasoning' && request.academicSearch !== true && request.internetSearch !== true;
             const continuationMode = request.continuation === true;
             const splitAcademicMode = request.splitAcademicResponse === true;
+            const originalResponseMode = request.originalResponse === true
+                && request.academicSearch !== true
+                && request.internetSearch !== true
+                && request.fastMode !== true
+                && request.continuation !== true
+                && request.splitAcademicResponse !== true;
             const modeInstruction = request.academicSearch
                 ? ''
+                : request.internetSearch
+                ? '수집된 인터넷 검색 근거를 중복 없이 주제별로 통합하고, 시스템 지시의 네 섹션을 모두 완결하세요. 출처 목록을 그대로 반복하거나 계획·추론을 출력하지 마세요.'
                 : continuationMode
                 ? '이전 응답에서 아직 작성하지 않은 본문만 이어서 작성하세요. 질문·체크리스트·계획·작업 지시·모델의 생각·이미 작성한 문장은 출력하지 마세요.'
                 : splitAcademicMode
@@ -15573,12 +17097,16 @@ window.AIChatBridge = Object.freeze({
                 ? (reasoningMode
                     ? '제공된 학술 초록 근거를 충분히 비교·검토하되 필수 항목을 먼저 모두 완결하고 남은 범위에서 상세화하세요. 문장 중간에서 끝내지 마세요.'
                     : '제공된 학술 초록 근거에서 핵심 주장, 같은 결과, 다른 결과를 간결하게 모두 완결하세요. 세부 내용보다 전체 항목의 완성을 우선하고 문장 중간에서 끝내지 마세요.')
+                : originalResponseMode
+                ? ''
                 : (reasoningMode
                     ? '설정된 추론 강도로 충분히 검토한 뒤 완성도 높은 최종 답변을 작성하세요. 사용자가 요청한 모든 항목·코드·설명을 누락하지 말고, 내부 계획이나 추론은 최종 답변에 섞지 마세요.'
                     : '핵심부터 바로 답하되 사용자가 요청한 코드, 설명, 형식과 분량을 완전하게 충족하세요. 인위적인 문장 수 제한을 두지 마세요.');
-            const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 8192);
+            const configuredMaxTokens = Math.max(1, Number(config.maxTokens) || 16384);
             const configuredReasoning = String(config.reasoningLevel || 'auto').toLowerCase();
             const fastMode = request.fastMode === true;
+            const maximizeSearchOutput = request.academicSearch === true || request.internetSearch === true;
+            const searchTimeoutMs = 15 * 60 * 1000;
             const configuredFastMaxTokens = Math.max(1, Number(config.fastMaxTokens) || 4000);
             const configuredFastTimeoutMs = Math.max(1000, Number(config.fastTimeoutMs) || 580000);
             const fastSafetyTimeoutMs = config.fastSafetyTimeout === false
@@ -15591,7 +17119,7 @@ window.AIChatBridge = Object.freeze({
             const historyTokenBudget = contextLength
                 ? Math.max(0, contextLength - fixedInputTokens - historyOutputReserve - 256)
                 : Number.POSITIVE_INFINITY;
-            const historyCandidates = request.academicSearch ? [] : messages.slice(0, lastUserIndex);
+            const historyCandidates = request.academicSearch || request.internetSearch ? [] : messages.slice(0, lastUserIndex);
             const historyMessages = retainAIChatHistory(historyCandidates, historyTokenBudget);
             const history = historyMessages.map(function (message) {
                 return (message.role === 'assistant' ? 'AI' : '사용자') + ': ' + message.content;
@@ -15602,11 +17130,15 @@ window.AIChatBridge = Object.freeze({
             const contextOutputBudget = contextLength
                 ? Math.max(1, contextLength - estimatedInputTokens - 256)
                 : configuredMaxTokens;
-            const requestMaxTokens = Math.max(1, Math.min(contextOutputBudget, fastMode ? configuredFastMaxTokens : contextOutputBudget));
+            const requestMaxTokens = maximizeSearchOutput
+                ? Math.max(1, contextOutputBudget)
+                : Math.max(1, Math.min(contextOutputBudget, fastMode ? configuredFastMaxTokens : contextOutputBudget));
             const minimumTimeout = continuationMode
                 ? 600000
-                : (fastMode ? fastSafetyTimeoutMs : (reasoningMode ? 300000 : (request.academicSearch ? 240000 : 60000)));
-            const requestTimeoutMs = fastMode
+                : (fastMode ? fastSafetyTimeoutMs : (reasoningMode ? 300000 : (request.academicSearch || request.internetSearch ? 240000 : 60000)));
+            const requestTimeoutMs = maximizeSearchOutput
+                ? searchTimeoutMs
+                : fastMode
                 ? minimumTimeout
                 : Math.max(
                     minimumTimeout,
@@ -15627,7 +17159,7 @@ window.AIChatBridge = Object.freeze({
                     max_output_tokens: requestMaxTokens,
                     estimated_input_tokens: estimatedInputTokens,
                     retained_history_tokens: retainedHistoryTokens,
-                    reasoning: request.academicSearch || continuationMode || splitAcademicMode
+                    reasoning: request.academicSearch || request.internetSearch || continuationMode || splitAcademicMode
                         ? 'off'
                         : (reasoningMode ? configuredReasoning : 'off')
                 });
@@ -15636,7 +17168,7 @@ window.AIChatBridge = Object.freeze({
                 input: messages[lastUserIndex].content,
                 systemInstruction: systemPrompt,
                 model: synced.model,
-                reasoning: request.academicSearch || continuationMode || splitAcademicMode
+                reasoning: request.academicSearch || request.internetSearch || continuationMode || splitAcademicMode
                     ? 'off'
                     : (reasoningMode ? (configuredReasoning === 'auto' ? undefined : configuredReasoning) : 'off'),
                 contextLength: contextLength || undefined,
@@ -16229,6 +17761,8 @@ async function loadAiSettingsToUI() {
     if (!settings) {
         const imageCheckEmpty = document.getElementById('image-upload-enabled');
         if (imageCheckEmpty) imageCheckEmpty.checked = false;
+        const imageLinkSideCheckEmpty = document.getElementById('image-upload-link-side-visible');
+        if (imageLinkSideCheckEmpty) imageLinkSideCheckEmpty.checked = false;
         const highlightCheckEmpty = document.getElementById('highlight-visible');
         if (highlightCheckEmpty) highlightCheckEmpty.checked = false;
         const sitesCheckEmpty = document.getElementById('sites-visible');
@@ -16239,12 +17773,18 @@ async function loadAiSettingsToUI() {
         if (templateCheckEmpty) templateCheckEmpty.checked = false;
         const templateNewFileCheckEmpty = document.getElementById('template-new-file-visible');
         if (templateNewFileCheckEmpty) templateNewFileCheckEmpty.checked = false;
+        const a4NewFileCheckEmpty = document.getElementById('a4-new-file-visible');
+        if (a4NewFileCheckEmpty) a4NewFileCheckEmpty.checked = false;
         const noteCoverInsertCheckEmpty = document.getElementById('note-cover-insert-visible');
         if (noteCoverInsertCheckEmpty) noteCoverInsertCheckEmpty.checked = false;
         const pdfMergeCheckEmpty = document.getElementById('pdf-merge-visible');
         if (pdfMergeCheckEmpty) pdfMergeCheckEmpty.checked = false;
         const chromeSplitTabCheckEmpty = document.getElementById('chrome-split-tab-visible');
         if (chromeSplitTabCheckEmpty) chromeSplitTabCheckEmpty.checked = false;
+        ['mermaid-ref-ai-enabled', 'img2math-enabled', 'tidy-jena-enabled'].forEach(function (id) {
+            const checkbox = document.getElementById(id);
+            if (checkbox) checkbox.checked = false;
+        });
         const html2pptCheckEmpty = document.getElementById('html2ppt-visible');
         if (html2pptCheckEmpty) html2pptCheckEmpty.checked = false;
         const html2pptNameCheckEmpty = document.getElementById('html2ppt-name-visible');
@@ -16311,8 +17851,9 @@ async function loadAiSettingsToUI() {
         applyNoteCoverInsertVisibility({ noteCoverInsertVisible: false });
         applyPdfMergeVisibility({ pdfMergeVisible: false });
         applyChromeSplitTabVisibility({ chromeSplitTabVisible: false });
-    applyHtml2pptVisibility({ html2pptVisible: false, html2pptNameVisible: false });
-    applyFmaViewerVisibility({ fmaViewerVisible: false, fmaViewerNameVisible: false });
+        applyHtml2pptVisibility({ html2pptVisible: false, html2pptNameVisible: false });
+        applyFmaViewerVisibility({ fmaViewerVisible: false, fmaViewerNameVisible: false });
+        applyAdvancedAiFeatureVisibility({});
         applyAiUseFold(getAiUseFoldedFromLocal());
         applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
         applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -16350,6 +17891,8 @@ async function loadAiSettingsToUI() {
     if (settings.openaiApiKey) localStorage.setItem('ss_openai_api_key', settings.openaiApiKey);
     const imageCheck = document.getElementById('image-upload-enabled');
     if (imageCheck) imageCheck.checked = settings.imageUploadEnabled === true;
+    const imageLinkSideCheck = document.getElementById('image-upload-link-side-visible');
+    if (imageLinkSideCheck) imageLinkSideCheck.checked = settings.imageUploadLinkSideVisible === true;
     const highlightCheck = document.getElementById('highlight-visible');
     if (highlightCheck) highlightCheck.checked = settings.highlightVisible === true;
     const sitesCheck = document.getElementById('sites-visible');
@@ -16360,12 +17903,21 @@ async function loadAiSettingsToUI() {
     if (templateCheck) templateCheck.checked = settings.templateVisible === true;
     const templateNewFileCheck = document.getElementById('template-new-file-visible');
     if (templateNewFileCheck) templateNewFileCheck.checked = getTemplateNewFileVisibleFromSettings(settings);
+    const a4NewFileCheck = document.getElementById('a4-new-file-visible');
+    if (a4NewFileCheck) a4NewFileCheck.checked = getA4NewFileVisibleFromSettings(settings);
     const noteCoverInsertCheck = document.getElementById('note-cover-insert-visible');
     if (noteCoverInsertCheck) noteCoverInsertCheck.checked = settings.noteCoverInsertVisible === true;
     const pdfMergeCheck = document.getElementById('pdf-merge-visible');
     if (pdfMergeCheck) pdfMergeCheck.checked = settings.pdfMergeVisible === true;
     const chromeSplitTabCheck = document.getElementById('chrome-split-tab-visible');
     if (chromeSplitTabCheck) chromeSplitTabCheck.checked = getChromeSplitTabVisibleFromSettings(settings);
+    const advancedFlags = getAdvancedAiFeatureFlags(settings);
+    const mermaidRefAiCheck = document.getElementById('mermaid-ref-ai-enabled');
+    const img2mathCheck = document.getElementById('img2math-enabled');
+    const tidyJenaCheck = document.getElementById('tidy-jena-enabled');
+    if (mermaidRefAiCheck) mermaidRefAiCheck.checked = advancedFlags.mermaidRefAi;
+    if (img2mathCheck) img2mathCheck.checked = advancedFlags.img2math;
+    if (tidyJenaCheck) tidyJenaCheck.checked = advancedFlags.tidyJena;
     const html2pptCheck = document.getElementById('html2ppt-visible');
     if (html2pptCheck) html2pptCheck.checked = getHtml2pptVisibleFromSettings(settings);
     const html2pptNameCheck = document.getElementById('html2ppt-name-visible');
@@ -16495,6 +18047,7 @@ async function loadAiSettingsToUI() {
     applyPdfMergeVisibility(settings);
     applyHtml2pptVisibility(settings);
     applyFmaViewerVisibility(settings);
+    applyAdvancedAiFeatureVisibility(settings);
     applyAiUseFold(getAiUseFoldedFromLocal());
     applyAiChatSettingsFold(getAiChatSettingsFoldedFromLocal());
     applyShareSettingsFold(getShareSettingsFoldedFromLocal());
@@ -16516,6 +18069,11 @@ async function initAiVisibility() {
     const sspimgEl = document.getElementById('ai-sspimg-enabled');
     const githubEl = document.getElementById('ai-github-enabled');
     const localStorageEl = document.getElementById('local-storage-enabled');
+    const githubTokenEl = document.getElementById('github-token-input');
+    const githubRepoEl = document.getElementById('github-repo-input');
+    const githubBranchEl = document.getElementById('github-branch-input');
+    const githubPullMaxEl = document.getElementById('github-pull-max-files-input');
+    const githubDefaultPushPathEl = document.getElementById('github-default-push-path-input');
     const verified = isAiAccessVerified(settings);
     if (settings) {
         if (useCheck) {
@@ -16526,11 +18084,25 @@ async function initAiVisibility() {
         if (sspimgEl) sspimgEl.checked = verified ? !!settings.sspimgAI : false;
         if (githubEl) githubEl.checked = !!settings.githubEnabled;
         if (localStorageEl) localStorageEl.checked = getLocalStorageFeatureEnabledFromSettings(settings);
+        if (githubTokenEl) githubTokenEl.value = settings.githubToken || '';
+        if (githubRepoEl) githubRepoEl.value = settings.githubRepo || '';
+        if (githubBranchEl) githubBranchEl.value = settings.githubBranch || 'main';
+        if (githubDefaultPushPathEl) githubDefaultPushPathEl.value = settings.githubDefaultPushPath || '';
+        if (githubPullMaxEl) {
+            const rawMax = Number(settings.githubPullMaxFiles);
+            const maxFiles = Number.isFinite(rawMax) ? Math.max(1, Math.min(10000, Math.floor(rawMax))) : 10000;
+            githubPullMaxEl.value = String(maxFiles);
+        }
     } else {
         if (scholarEl) scholarEl.checked = false;
         if (sspimgEl) sspimgEl.checked = false;
         if (githubEl) githubEl.checked = false;
         if (localStorageEl) localStorageEl.checked = true;
+        if (githubTokenEl) githubTokenEl.value = '';
+        if (githubRepoEl) githubRepoEl.value = '';
+        if (githubBranchEl) githubBranchEl.value = 'main';
+        if (githubDefaultPushPathEl) githubDefaultPushPathEl.value = '';
+        if (githubPullMaxEl) githubPullMaxEl.value = '10000';
     }
     enterButtonInsertBr = !!((settings && settings.enterButtonInsertBr === true) || getEnterButtonInsertBrFromLocal());
     selectionWrapEnabled = settings && typeof settings.selectionWrapEnabled === 'boolean'
@@ -16566,6 +18138,7 @@ async function initAiVisibility() {
     applyChromeSplitTabVisibility(settings || { chromeSplitTabVisible: false });
     applyHtml2pptVisibility(settings || { html2pptVisible: false, html2pptNameVisible: false });
     applyFmaViewerVisibility(settings || { fmaViewerVisible: false, fmaViewerNameVisible: false });
+    applyAdvancedAiFeatureVisibility(settings || {});
     applyEditToolsVisibilityByMode();
     await applyGithubUiState(settings || { githubEnabled: false, githubCacheDocs: [] });
     await applyAiFeatureVisibility();
@@ -16574,7 +18147,11 @@ async function initAiVisibility() {
     });
 }
 
-function openSettingsModal() {
+async function openSettingsModal() {
+    if (window.MdproSettingsAccess && typeof window.MdproSettingsAccess.requestAccess === 'function') {
+        const granted = await window.MdproSettingsAccess.requestAccess();
+        if (!granted) return false;
+    }
     ensureInDbStatusUi();
     applyHeaderFileActionStyle(getHeaderFileActionStyle(), false);
     applyHeaderFeatureKeyStyle(getHeaderFeatureKeyStyle(), false);
@@ -16606,6 +18183,7 @@ function openSettingsModal() {
             return loadAiSettingsToUI();
         }).catch(function () {});
     }
+    return true;
 }
 
 const AI_WRITING_STYLE_PROMPT_KEY = 'mdpro_ai_writing_style_prompt_v1';
@@ -16622,6 +18200,7 @@ const DEFAULT_AI_WRITING_STYLE_PROMPT = [
     '역할·기능은 “역할을 수행한다”, “기능을 수행한다”, 의미·가치는 “의미를 갖는다”, “중요성을 지닌다”, “핵심적 기반이 된다”로 표현할 수 있다.',
     '영향·효과는 “기여한다”, “영향을 미친다”, “효과를 나타낸다”를 사용하고, 지위·평가는 “자리매김한다”, “위상을 갖는다”, “전략적 자산으로 간주된다”, “핵심적 요소로 평가된다” 등으로 다양화한다.',
     '동일한 종결 표현을 가까운 문장 안에서 반복하지 않으며, 의미에 가장 정확한 서술어를 선택한다. 표현을 억지로 치환하거나 지나치게 장식하지 않는다.',
+    '모든 글이나 문단의 결론을 관행적으로 “기대된다”로 마무리하지 않는다. 구체적인 근거를 바탕으로 향후 효과나 변화를 전망할 필요가 있는 경우에만 “기대된다”를 사용한다.',
     '객관적이고 논리적인 학술 문체를 유지하고, 주장·근거·해석을 구분한다. 근거보다 강한 단정, 과장, 구어체, 불필요한 존댓말을 피한다.',
     '수식은 한글(HWP) 수식 입력을 고려하여 별도 요청이 없으면 복사 가능한 텍스트 형태로 제시한다.',
     '사용자가 특정 언어, 문체, 시제 또는 형식을 명시한 경우에는 해당 요청을 우선한다.'
@@ -17208,6 +18787,7 @@ function askStorageSaveLocation(origin, targetSource) {
 async function ensureDatabaseStorageMode(storageMode) {
     const requestedMode = storageMode === 'sqlite' ? 'sqlite' : 'indb';
     if (!window.MDPStorage || typeof window.MDPStorage.requestMode !== 'function') return false;
+    await ensureStorageServiceReady();
     if (getActiveStorageMode() !== requestedMode) {
         const state = await window.MDPStorage.requestMode(requestedMode);
         const actualMode = state && state.activeMode === 'sqlite' ? 'sqlite' : 'indb';
@@ -17493,6 +19073,7 @@ window.adjustHeaderScale = adjustHeaderScale;
 window.setMainHeaderBackgroundRemoved = setMainHeaderBackgroundRemoved;
 window.adjustEditorHorizontalShift = adjustEditorHorizontalShift;
 window.resetEditorHorizontalShift = resetEditorHorizontalShift;
+window.toggleEditorShiftFloatOrientation = toggleEditorShiftFloatOrientation;
 if (window.ScholarSearchApp && typeof window.ScholarSearchApp.connectHost === 'function') {
     window.ScholarSearchApp.connectHost({
         dbGetter: function () { return db; },
@@ -17519,6 +19100,11 @@ window.insertSelectedTemplateAsNewFile = insertSelectedTemplateAsNewFile;
 window.toggleTemplateSection = toggleTemplateSection;
 window.toggleNoteCoverInsertSection = toggleNoteCoverInsertSection;
 window.insertDefaultNoteCover = insertDefaultNoteCover;
+window.openNoteCoverInsertDialog = openNoteCoverInsertDialog;
+window.closeNoteCoverInsertDialog = closeNoteCoverInsertDialog;
+window.confirmNoteCoverInsert = confirmNoteCoverInsert;
+window.toggleNoteCoverMenu = toggleNoteCoverMenu;
+window.removeDocumentNoteCover = removeDocumentNoteCover;
 window.toggleHtml2pptPanel = toggleHtml2pptPanel;
 window.openHtml2pptPanel = openHtml2pptPanel;
 window.closeHtml2pptPanel = closeHtml2pptPanel;
@@ -17540,6 +19126,9 @@ window.scrollToDocumentBottom = scrollToDocumentBottom;
 window.closeSaveModal = closeSaveModal;
 window.confirmSaveModal = confirmSaveModal;
 window.openBackupModal = openBackupModal;
+window.openMpvFilePicker = openMpvFilePicker;
+window.openZipBackupFilePicker = openZipBackupFilePicker;
+window.handleZipBackupFileSelect = handleZipBackupFileSelect;
 window.closeBackupModal = closeBackupModal;
 window.openMergeModal = openMergeModal;
 window.closeMergeModal = closeMergeModal;
@@ -17656,6 +19245,7 @@ window.applyHeading = applyHeading;
 window.insertListAtSelection = insertListAtSelection;
 window.handleTableInsertion = handleTableInsertion;
 window.toggleTableInsertPicker = toggleTableInsertPicker;
+window.editMarkdownTable = editMarkdownTable;
 window.closeTableInsertPicker = closeTableInsertPicker;
 window.prepareCaptionPanel = prepareCaptionPanel;
 window.toggleCaptionInsertPanel = toggleCaptionInsertPanel;

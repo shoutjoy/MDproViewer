@@ -389,6 +389,27 @@ function openMergedPdfInPreviewPopup(blob, fileName) {
     return true;
 }
 
+function openRemotePdfInPreviewPopup(pdfUrl, fileName) {
+    let url;
+    try {
+        url = new URL(String(pdfUrl || ''), window.location.href);
+    } catch (_) {
+        showToast('PDF 주소가 올바르지 않습니다.');
+        return false;
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:' && url.protocol !== 'blob:') {
+        showToast('지원하지 않는 PDF 주소입니다.');
+        return false;
+    }
+    if (!ensurePreviewPopupForFile()) return false;
+    const name = String(fileName || decodeURIComponent(url.pathname.split('/').pop() || '') || 'search-result.pdf');
+    const opened = openFileViewerInPreviewPopup(url.href, /\.pdf$/i.test(name) ? name : name + '.pdf');
+    if (opened) showToast('검색 결과 PDF를 PV에서 열었습니다.');
+    return opened;
+}
+
+window.openRemotePdfInPreviewPopup = openRemotePdfInPreviewPopup;
+
 function openImageInPreviewPopup(imageUrl, fileName) {
     if (!isPreviewPopupAlive()) return false;
     const doc = previewPopupWindow.document;

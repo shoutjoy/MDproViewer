@@ -10,6 +10,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import json
+import xml.etree.ElementTree as ET
+
+from web_search import SEARCH_PATHS, web_search
 
 from LocalSave_sqlite.server.api import SqliteApiRouter
 from LocalSave_sqlite.server.database import DatabaseManager
@@ -88,6 +91,43 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(payload)
 
+    def _send_json(self, status, value):
+        payload = json.dumps(value, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        origin = str(self.headers.get("Origin") or "").strip()
+        if self.path.split("?", 1)[0] in SEARCH_PATHS and self._is_local_web_origin(origin):
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    @staticmethod
+    def _is_local_web_origin(origin):
+        if origin == "null":
+            return True
+        try:
+            parsed = urllib.parse.urlsplit(origin)
+            return parsed.scheme in {"http", "https"} and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+        except ValueError:
+            return False
+
+    def _web_search(self, query_string):
+        if self.client_address[0] not in {"127.0.0.1", "::1"}:
+            self._send_json(403, {"ok": False, "error": "검색 API는 이 컴퓨터에서만 사용할 수 있습니다."})
+            return
+        try:
+            self._send_json(200, web_search(query_string))
+        except ValueError as error:
+            self._send_json(400, {"ok": False, "error": str(error)})
+        except LookupError as error:
+            self._send_json(404, {"ok": False, "error": str(error)})
+        except (OSError, urllib.error.URLError, ET.ParseError) as error:
+            self.log_error("web search failed: %s", error)
+            self._send_json(502, {"ok": False, "error": "인터넷 검색 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."})
+
     def _proxy_image(self, raw_url):
         if self.client_address[0] not in {"127.0.0.1", "::1"}:
             self._send_proxy_error(403, "Image proxy is available only from this computer")
@@ -131,6 +171,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if SQLITE_API.handle(self, "GET"):
             return
         parsed = urllib.parse.urlsplit(self.path)
+        if parsed.path in SEARCH_PATHS:
+            self._web_search(parsed.query)
+            return
         if parsed.path == self.IMAGE_PROXY_PATH:
             query = urllib.parse.parse_qs(parsed.query)
             self._proxy_image((query.get("url") or [""])[0])
@@ -184,14 +227,29 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 response = error
             with response:
                 self.send_response(response.status)
-                self.send_header("Content-Type", response.headers.get("Content-Type") or "application/json; charset=utf-8")
+                content_type = response.headers.get("Content-Type") or "application/json; charset=utf-8"
+                self.send_header("Content-Type", content_type)
+                if "text/event-stream" in content_type.lower():
+                    self.send_header("X-Accel-Buffering", "no")
                 self.end_headers()
-                while True:
-                    chunk = response.read(64 * 1024)
-                    if not chunk:
-                        break
-                    self.wfile.write(chunk)
-                    self.wfile.flush()
+                if "text/event-stream" in content_type.lower():
+                    # HTTPResponse.read(size) tries to fill the requested buffer.
+                    # That can hold LM Studio tokens until 64 KiB accumulates or
+                    # generation finishes. SSE is line framed, so forward each
+                    # line as soon as LM Studio produces it.
+                    while True:
+                        line = response.readline()
+                        if not line:
+                            break
+                        self.wfile.write(line)
+                        self.wfile.flush()
+                else:
+                    while True:
+                        chunk = response.read(64 * 1024)
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        self.wfile.flush()
         except (ValueError, OSError, urllib.error.URLError) as error:
             self._send_proxy_error(502, error)
 
